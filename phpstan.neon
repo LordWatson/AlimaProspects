@@ -1,0 +1,17 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/nesbot/carbon/extension.neon
+
+parameters:
+    paths:
+        - app/
+        - bootstrap/app.php
+        - config/
+        - database/factories
+        - database/seeders
+        - routes/
+
+    # Migrations are procedural schema code (and include vendor-published stubs with
+    # driver-specific match() blocks); they are not type-analysed. See mvp.md / ADR notes.
+
+    level: 7
