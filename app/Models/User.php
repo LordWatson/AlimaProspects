@@ -15,6 +15,7 @@ use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
 /**
  * @property int $id
@@ -35,7 +36,12 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, HasTeams, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
+    use HasApiTokens, HasFactory, HasRoles, HasTeams, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable {
+        // Our team membership relation (team_user pivot) is authoritative; spatie's
+        // convenience teams() relation (over model_has_roles) is aliased out of the way.
+        HasTeams::teams insteadof HasRoles;
+        HasRoles::teams as permissionTeams;
+    }
 
     /**
      * Get the attributes that should be cast.

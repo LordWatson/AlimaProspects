@@ -3,9 +3,11 @@
 > Status: **MVP** · Last updated: 2026-10-28
 
 ## Purpose
+
 The foundation every other module builds on. Owns multi-tenancy (`teams` + the user↔team pivot + active-team concept), the `BelongsToTeam` trait and global scope, shared base classes and conventions (base Action, DTO conventions), the immutable **audit log**, structured-logging context, feature flags (Pennant), central exception rendering, and app-wide concerns (timezone/locale handling, money casting). It does **not** own authentication (Auth & Users) or any product domain.
 
 ## Planned scope
+
 - `teams` table; `team_user` pivot with team-scoped role; `users.current_team_id` (active team) + team switcher.
 - `BelongsToTeam` trait: global scope filtering by active team + automatic `team_id` assignment on create; paired with policies that double-check ownership.
 - Team settings: name, timezone, locale (en/ar), default market (UK/UAE).
@@ -17,7 +19,15 @@ The foundation every other module builds on. Owns multi-tenancy (`teams` + the u
 - Pennant feature-flag scaffolding scoped to team.
 
 ## MVP vs post-MVP
+
 Entirely MVP — it is the scaffold.
 
 ## Dependencies
+
 None (other modules depend on it).
+
+## Changelog
+
+| Date       | Phase | Change                                                                                                                                                                                                                                                                                                                                                                                                                         | Files                                                                                                                                                  |
+| ---------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-10-28 | 1     | `LogContext` now also sets spatie's team-scoped permission id (`setPermissionsTeamId`) for the active team each request. Base `Controller` uses `AuthorizesRequests` so controllers can call `$this->authorize()`. `DomainException` is now rendered centrally for web/Inertia as a friendly error toast + redirect (JSON envelope unchanged). `ModuleServiceProvider` adds `throttle:api` to every module's `/api/v1` routes. | `app/Modules/Core/Http/Middleware/LogContext.php`, `app/Http/Controllers/Controller.php`, `bootstrap/app.php`, `app/Modules/ModuleServiceProvider.php` |

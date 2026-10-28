@@ -4,13 +4,13 @@
 
 ## 1. Applicable regimes
 
-| Regime | Scope | What it governs for us |
-|---|---|---|
-| **UK GDPR + Data Protection Act 2018** | UK data subjects | Lawful basis, data-subject rights, retention, security, records of processing |
-| **PECR** (Privacy and Electronic Communications Regs) | UK electronic marketing | Rules for email/SMS marketing; B2B corporate-subscriber nuances; opt-out |
-| **UAE PDPL** — Federal Decree-Law No. 45 of 2021 | UAE data subjects | Consent/lawful basis, cross-border transfer, data-subject rights, breach notice (to the UAE Data Office) |
-| **UAE TDRA / CRA marketing rules & anti-spam** | UAE electronic marketing | Sender identification, prior-consent expectations, opt-out, prohibited content |
-| *(watch)* DIFC DP Law 2020 / ADGM DP Regs | DIFC / ADGM free zones | Some UAE businesses sit under free-zone regimes with their own DP law ⚖️ |
+| Regime                                                | Scope                    | What it governs for us                                                                                   |
+| ----------------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| **UK GDPR + Data Protection Act 2018**                | UK data subjects         | Lawful basis, data-subject rights, retention, security, records of processing                            |
+| **PECR** (Privacy and Electronic Communications Regs) | UK electronic marketing  | Rules for email/SMS marketing; B2B corporate-subscriber nuances; opt-out                                 |
+| **UAE PDPL** — Federal Decree-Law No. 45 of 2021      | UAE data subjects        | Consent/lawful basis, cross-border transfer, data-subject rights, breach notice (to the UAE Data Office) |
+| **UAE TDRA / CRA marketing rules & anti-spam**        | UAE electronic marketing | Sender identification, prior-consent expectations, opt-out, prohibited content                           |
+| _(watch)_ DIFC DP Law 2020 / ADGM DP Regs             | DIFC / ADGM free zones   | Some UAE businesses sit under free-zone regimes with their own DP law ⚖️                                 |
 
 > ⚖️ UAE marketing law skews more toward **prior consent** than UK B2B legitimate-interest practice. The platform must let a team configure, per market, whether a contact may be messaged, and default to the stricter rule when a prospect's jurisdiction is UAE.
 
@@ -34,10 +34,12 @@
 10. **Cross-border transfer.** Record where data is hosted (Hetzner EU) and document the UK↔UAE↔EU transfer position. ⚖️
 
 ## 4. Scraping / acquisition ethics
+
 - **No scraping of sites whose terms forbid it** (e.g. LinkedIn). Lead sourcing uses official APIs (Companies House, Google Places) and a compliant web-search API; the AI treats scraped/public web content as **data, never instructions** (prompt-injection safety — see AI Platform module).
 - Respect `robots.txt` and provider ToS in every `LeadSourceProvider` implementation.
 
 ## 5. Open legal questions (⚖️ for counsel)
+
 - B2B legitimate interest vs. UAE prior-consent — the exact per-market outreach gate and default.
 - DSAR identity verification for prospects who are not our users.
 - Standard privacy-notice wording and the controller/processor split between AlimaProspects and tenant businesses (likely tenant = controller, we = processor; confirm and reflect in the DPA).
@@ -45,4 +47,5 @@
 - Retention defaults that satisfy both "storage limitation" and tenants' commercial needs.
 
 ## 6. Mapping to modules
+
 Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), Outreach (suppression + opt-out + sender ID), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).

@@ -41,7 +41,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $api = $this->modulePath().'/routes/api.php';
 
         if (is_file($api)) {
-            Route::middleware('api')
+            Route::middleware(['api', 'throttle:api'])
                 ->prefix('api/v1')
                 ->name('api.v1.')
                 ->group($api);

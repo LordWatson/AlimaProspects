@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
 use App\Modules\Core\Providers\CoreServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
@@ -12,4 +13,5 @@ return [
 
     // Domain modules (ADR 0002) — register each module's provider here.
     CoreServiceProvider::class,
+    AuthModuleServiceProvider::class,
 ];
