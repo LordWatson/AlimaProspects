@@ -1,6 +1,6 @@
 # Alima — Brand Tokens
 
-> Extracted from `Alima — Brand Guidelines.pdf` (Edition 01, October 2026, V1.0). This file is the engineering source of truth that mirrors the brand book. **Build with tokens, never raw hex.** Where a value is proposed by us (not in the book), it is marked **PENDING APPROVAL**.
+> Extracted from the brand PDFs — **`Alima — Brand Guidelines.pdf`** (Edition 01, October 2026, V1.0) and **`Alima.pdf`** — which live in **`.claude/docs/brand/`** (originals) and **`docs/brand/`** (mirror). Those PDFs are the fixed, authoritative reference; this file is their engineering extraction. **Any frontend (web or mobile) must obey them — see `CLAUDE.md §2a`.** **Build with tokens, never raw hex.** If something you need isn't here, open the PDFs and extract it. Values proposed by us (not in the book) are marked **PENDING APPROVAL**.
 
 Tagline: **Marketing brighter together.** (always with the full stop) · Promise: **Bold ideas. Real impact.**
 

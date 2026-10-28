@@ -14,5 +14,9 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 - Tests: tenancy scope (cross-tenant access fails), audit logger, TeamContext.
 - **Documentation & knowledge base:** `CLAUDE.md`, `docs/architecture.md`, 20 module docs + template, ADRs 0001–0009, `docs/runbooks/{local-setup,deployment}.md`, `docs/compliance.md`, `docs/ai-prompts.md`, `docs/brand/brand-tokens.md`, and `mvp.md`.
 
+### Added — 2026-10-28 — Project agents & skills
+- Agents (`.claude/agents/`): `laravel-module-reviewer` (backend rule compliance), `brand-reviewer` (UI vs brand §2a).
+- Skills (`.claude/skills/`): `new-module` (scaffold a module per ADR 0002), `quality-gates` (run gates with Herd binaries), `phase-complete` (phase definition-of-done). Registered in `CLAUDE.md §5a`.
+
 ### Decisions
 - ADRs 0001–0009 (see `docs/decisions/`). Key kickoff answers: multi-team tenancy; UK + UAE markets (bilingual/RTL, GDPR+PECR+PDPL); Anthropic Claude default behind `AiClient`; providers Companies House + web search + Google Places (no paid enrichment in MVP).
