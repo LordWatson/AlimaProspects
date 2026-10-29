@@ -2,6 +2,7 @@
 
 use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
 use App\Modules\Core\Providers\CoreServiceProvider;
+use App\Modules\Onboarding\Providers\OnboardingServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
 use App\Providers\HorizonServiceProvider;
@@ -14,4 +15,5 @@ return [
     // Domain modules (ADR 0002) — register each module's provider here.
     CoreServiceProvider::class,
     AuthModuleServiceProvider::class,
+    OnboardingServiceProvider::class,
 ];

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LayoutGrid, Palette } from '@lucide/vue';
+import { Building2, LayoutGrid, Palette } from '@lucide/vue';
 import { computed } from 'vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
@@ -21,6 +21,11 @@ const mainNavItems = computed<NavItem[]>(() => [
         title: t('Dashboard'),
         href: dashboard(),
         icon: LayoutGrid,
+    },
+    {
+        title: t('Business profile'),
+        href: '/onboarding',
+        icon: Building2,
     },
     {
         title: t('Design system'),

@@ -9,9 +9,16 @@ use App\Modules\Auth\Actions\CreateTeamAction;
 use App\Modules\Auth\Data\CreateTeamData;
 use App\Modules\Auth\Models\TeamInvitation;
 use App\Modules\Auth\Support\TeamMembership;
+use App\Modules\Core\Enums\Currency;
+use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\Onboarding\Enums\CompanySize;
+use App\Modules\Onboarding\Enums\OnboardingStep;
+use App\Modules\Onboarding\Enums\ServedRegion;
+use App\Modules\Onboarding\Models\BusinessProfile;
+use App\Modules\Onboarding\Models\OnboardingProgress;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -88,6 +95,39 @@ class DemoSeeder extends Seeder
         $this->invitation($teamContext, $uk, $alex, 'readonly.invite@user.com', TeamRole::ReadOnly, expired: true);
         $this->invitation($teamContext, $gulf, $layla, 'gulf.invite@user.com', TeamRole::Admin);
 
+        // --- Completed onboarding + Business Profiles so demo logins land on the dashboard ------
+        $this->businessProfile($teamContext, $uk, [
+            'company_name' => 'Alima UK',
+            'website' => 'https://alima.example',
+            'industry' => 'Marketing & advertising',
+            'company_size' => CompanySize::Small->value,
+            'locations' => ['London, UK'],
+            'regions_served' => [ServedRegion::Uk->value],
+            'primary_market' => Market::Uk->value,
+            'products_services' => ['Brand strategy', 'Paid media', 'Content'],
+            'value_proposition' => 'We help UK brands grow with bold, data-led marketing.',
+            'pricing_min' => 200000,
+            'pricing_max' => 2000000,
+            'pricing_currency' => Currency::Gbp->value,
+            'customer_examples' => ['Northwind Traders', 'Contoso'],
+        ]);
+
+        $this->businessProfile($teamContext, $gulf, [
+            'company_name' => 'Alima Gulf',
+            'website' => 'https://alima-gulf.example',
+            'industry' => 'Marketing & advertising',
+            'company_size' => CompanySize::Medium->value,
+            'locations' => ['Dubai, UAE'],
+            'regions_served' => [ServedRegion::Uae->value],
+            'primary_market' => Market::Uae->value,
+            'products_services' => ['Social media', 'Influencer marketing', 'Events'],
+            'value_proposition' => 'Bilingual campaigns that connect brands with Gulf audiences.',
+            'pricing_min' => 500000,
+            'pricing_max' => 5000000,
+            'pricing_currency' => Currency::Aed->value,
+            'customer_examples' => ['Desert Rose', 'Gulf Star'],
+        ]);
+
         $this->command?->info('DemoSeeder: seeded 5 users, 2 teams (UK/en + UAE/ar) and 3 invitations.');
         $this->command?->info('DemoSeeder: log in with  alex@user.com  /  password');
     }
@@ -101,6 +141,31 @@ class DemoSeeder extends Seeder
             'name' => $name,
             'email' => $email,
         ]);
+    }
+
+    /**
+     * Create a completed Business Profile + onboarding progress for a team (scoped to it), as
+     * finishing the wizard would leave them. Amounts are integer minor units.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function businessProfile(TeamContext $teamContext, Team $team, array $data): void
+    {
+        $teamContext->run($team, function () use ($team, $data): void {
+            BusinessProfile::query()->create([
+                'team_id' => $team->getKey(),
+                ...$data,
+                'version' => 1,
+                'completed_at' => now(),
+            ]);
+
+            OnboardingProgress::query()->create([
+                'team_id' => $team->getKey(),
+                'current_step' => OnboardingStep::Review->value,
+                'completed_steps' => OnboardingStep::dataValues(),
+                'completed_at' => now(),
+            ]);
+        });
     }
 
     /**

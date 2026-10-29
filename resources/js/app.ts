@@ -4,6 +4,7 @@ import { initializeLocaleDirection } from '@/composables/useLocaleDirection';
 import { initializeEcho } from '@/echo';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
+import OnboardingLayout from '@/layouts/OnboardingLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
 import { palette } from '@/shared/tokens';
@@ -19,6 +20,8 @@ void createInertiaApp({
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
+            case name.startsWith('onboarding/'):
+                return OnboardingLayout;
             case name.startsWith('settings/'):
                 return [AppLayout, SettingsLayout];
             default:

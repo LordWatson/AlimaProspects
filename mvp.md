@@ -9,7 +9,7 @@
 | 0     | Foundation, docs & knowledge base             | ✅ Done | 2026-10-28 |
 | 1     | Auth, teams, roles & invitations              | ✅ Done | 2026-10-28 |
 | 2     | Brand design system & app shell (i18n/RTL)    | ✅ Done | 2026-10-28 |
-| 3     | Onboarding & Business Profile                 | ⬜      | —          |
+| 3     | Onboarding & Business Profile                 | ✅ Done | 2026-10-29 |
 | 4     | Ideal Customer Profile (ICP)                  | ⬜      | —          |
 | 5     | AI Platform                                   | ⬜      | —          |
 | 6     | Business Intelligence (AI background check)   | ⬜      | —          |
@@ -127,11 +127,11 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Onboarding & Business Profile (`onboarding-business-profile.md`).
 **Tasks:**
 
-1. [ ] `business_profiles` + `onboarding_progress` migrations/models (team-scoped, `BelongsToTeam`).
-2. [ ] Wizard steps (company, website, industry, size, locations, regions UK/UAE, products/services, value prop, pricing range, customer examples) with per-step validation (FormRequests/Data).
-3. [ ] `SaveOnboardingStepAction` (resumable), `CompleteOnboardingAction` (dispatches background-check job `afterCommit` — stub if Phase 5/6 not done).
-4. [ ] Inertia wizard pages + progress indicator; market selection sets compliance defaults.
-5. [ ] `/api/v1` read of profile + progress.
+1. [x] `business_profiles` + `onboarding_progress` migrations/models (team-scoped, `BelongsToTeam`).
+2. [x] Wizard steps (company, website, industry, size, locations, regions UK/UAE, products/services, value prop, pricing range, customer examples) with per-step validation (FormRequests/Data).
+3. [x] `SaveOnboardingStepAction` (resumable), `CompleteOnboardingAction` (dispatches background-check job `afterCommit` — **stubbed** `RequestBackgroundCheckJob`, Phase 6 implements it).
+4. [x] Inertia wizard pages + progress indicator; market selection sets compliance defaults (writes `teams.market`).
+5. [x] `/api/v1` read of profile + progress (`GET /api/v1/onboarding`).
        **Data model:** `business_profiles`, `onboarding_progress`.
        **Tests:** step save/resume; completion dispatches job; tenancy; validation.
        **Acceptance:** wizard saves/resumes, profile stored, completion hook fires; gates pass; docs updated.

@@ -1,6 +1,7 @@
 import type { Directive } from 'vue';
 import type { Auth } from '@/types/auth';
 import type { LocaleShared } from '@/types/locale';
+import type { OnboardingShared } from '@/types/onboarding';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -21,6 +22,7 @@ declare module '@inertiajs/core' {
             name: string;
             auth: Auth;
             locale: LocaleShared;
+            onboarding: OnboardingShared | null;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

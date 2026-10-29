@@ -299,6 +299,14 @@
         font-size: 110%;
         --font-sans: 'Tajawal', 'Arial', ui-sans-serif, system-ui, sans-serif;
         --font-mono: 'Tajawal', 'Arial', ui-sans-serif, system-ui, sans-serif;
+        /* Arabic is never letter-spaced (brand-tokens.md §3) — neutralise the eyebrow
+           tracking token so tracked eyebrows/labels keep Tajawal's joined letterforms. */
+        --tracking-eyebrow: 0;
+    }
+
+    /* Belt-and-braces: strip any explicit tracking utility under RTL. */
+    html[dir='rtl'] [class*='tracking-'] {
+        letter-spacing: 0;
     }
 }
 

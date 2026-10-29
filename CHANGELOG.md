@@ -5,6 +5,19 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-29 — Phase 3: Onboarding & Business Profile
+
+- **Onboarding module** (`app/Modules/Onboarding`): the guided, resumable wizard a new team completes and the stored **Business Profile** that feeds (later) the AI background check, ICP, scoring and outreach.
+- **Data model:** `business_profiles` and `onboarding_progress` (both `BelongsToTeam`, one row per team). Money (`pricing_min`/`pricing_max`) stored as integer **minor units**; `version` bumps on each (re)completion.
+- **Actions:** `SaveOnboardingStepAction` (resumable per-step save, money normalised to minor units by the chosen currency), `CompleteOnboardingAction` (guards all steps saved, stamps complete, applies the primary market to `teams.market`, dispatches the background check `afterCommit`), `GetOnboardingStateAction` (shared read for both controllers). Guard/reads/writes run in one locked transaction to make completion race-safe.
+- **Background check:** `RequestBackgroundCheckJob` — a **stub** (`ShouldBeUnique` per team, `$uniqueFor`, `$tries/$backoff/$timeout`, `failed()`) that Phase 6 (Business Intelligence) will implement.
+- **Enums:** `OnboardingStep`, `CompanySize`, `ServedRegion` (module) + cross-cutting `Market` and `Currency` (Core). No magic strings.
+- **Web + API:** Inertia wizard (`GET /onboarding`, `POST /onboarding/step/{step}`, `POST /onboarding/complete`) guarded by `BusinessProfilePolicy` (view = any member; edit = Owner/Admin); read-only `GET /api/v1/onboarding` returning profile + progress via `OnboardingStateResource`.
+- **Frontend (on brand, EN/AR + RTL, WCAG AA):** focused `OnboardingLayout` (Cloud Cream, logo, locale/appearance, no sidebar), a resumable wizard (`pages/onboarding/Wizard.vue`) with a step rail (`WizardProgress`) and a chip `ListInput`, a Dashboard first-run setup CTA (Ink panel + spectrum rule), and a sidebar "Business profile" entry. One orange full-stop accent; `rtl:font-bold` headings (Tajawal); RTL eyebrow letter-spacing reset in `app.css`.
+- **i18n:** EN + AR bundles extended to full parity (141 keys each).
+- **Demo data:** both demo teams get a completed Business Profile so demo logins land on the dashboard.
+- **Tests:** `OnboardingWizardTest` (step save/resume, per-step validation, minor-unit conversion, completion applies market + dispatches the faked job, blocked completion, admin-allowed/read-only-forbidden, cross-tenant model + policy isolation, API auth/null/happy path, re-completion version bump) + `OnboardingStepTest`. Full suite 101 green; Larastan level 7 clean; `npm run check`/`types:check`/`build` pass. Reviewed by the `laravel-module-reviewer` and `brand-reviewer` agents; their findings actioned.
+
 ### Added — 2026-10-29 — Public marketing pages, on-brand auth & light-theme default
 
 - **Landing page** (`resources/js/pages/Welcome.vue`) rebuilt on brand: Cloud Cream canvas, Deep Teal structure, Midnight Ink inverse panels, a hero with the promise eyebrow + display headline (one decorative orange full-stop), a three-step "how it works" section, and a closing CTA band. Brand voice throughout; one hero accent per section.
