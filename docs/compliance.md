@@ -46,6 +46,46 @@
 - Free-zone (DIFC/ADGM) overlay for UAE tenants.
 - Retention defaults that satisfy both "storage limitation" and tenants' commercial needs.
 
+## 5a. Signals module — personal data from published news (⚖️)
+
+The **Signals** module (ADR 0011) processes a new, small category of personal data:
+the **name and public role** of a named individual mentioned in a published business-
+news item (a founder, executive or company owner tied to a wealth/liquidity event).
+It is designed to the same "enforced-by-system" standard as the rest of this document.
+
+- **What is stored.** A signal holds the person's **name, public role and source
+  URL** only, plus the AI summary, event metadata and the clamped news snippet. It
+  **never** stores an email address or phone number. (Data minimisation, §3.9.)
+- **Lawful basis.** **Legitimate interest.** The data is already published business
+  news, processed to alert a team to a commercially relevant event, with no contact
+  details and no automated outreach. A **dedicated Signals section is added to the
+  per-team LIA** (purpose: event-based prospecting; necessity: public news is the only
+  source of these events; balancing test: minimal data, published source, no contact
+  details, person can object/erase). The LIA must be recorded before watches run,
+  mirroring the discovery-run gate (§2).
+- **Outreach is gated, not performed.** Signals is **not** an outreach channel. On
+  conversion, a UAE-derived lead is flagged **`outreach_restriction =
+  'uae_prior_consent'`** and the UI shows "Approach via LinkedIn or a referral" — never
+  cold email/SMS — reflecting UAE PDPL / TDRA prior-consent expectations (ADR 0007,
+  §1–2). Outreach (Phase 11) must read this flag and block non-compliant channels.
+- **Retention.** Dismissed signals are hard-deleted after **90 days**; signals nobody
+  acts on after **180 days**; converted signals persist as long as their lead does. A
+  scheduled, chunked `signals:prune` sweep enforces this and logs counts only
+  (configurable per team, built in S6). The UI shows "auto-deletes in N days" on
+  dismissed signals.
+- **Data-subject rights.** A `SignalsPersonalDataExporter` / eraser locates signals by
+  `subject_person_name` within a team, for the Compliance module's DSAR tooling
+  (§3.5) to call (built in S6). Identity verification for non-users remains an open
+  legal question (§5).
+- **Acquisition ethics.** Signals uses the **Serper News API** (ADR 0010/0011), not
+  scraping, and is **snippet-only** (no full-page fetch in v1). The AI treats article
+  text as **data, never instructions** (§4, AI Platform prompt-injection safety).
+
+⚖️ This section forms part of the **pre-launch legal review already required by
+ADR 0007** (UK-B2B-legitimate-interest vs UAE-prior-consent, and the
+controller/processor split). Confirm the LIA wording, the UAE outreach gate, and the
+DSAR identity-verification process for named individuals who are not our users.
+
 ## 6. Mapping to modules
 
-Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), Outreach (suppression + opt-out + sender ID), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).
+Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, snippet-only, own retention sweep + DSAR exporter, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID, and it must honour the Signals UAE flag), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).

@@ -34,6 +34,8 @@
 
 Legend: ⬜ not started · 🟡 in progress · ✅ done · ⛔ blocked.
 
+> **Signals** (trigger-event prospecting, UAE v1) is planned separately in **`signals-plan.md`**, phases **S0–S6**, as a companion to this plan. S0 (decisions, docs & Serper spike) ✅ done 2026-10-29 — see `docs/modules/signals.md` and ADR 0011. It sits after Leads Workspace (10/10b) and before/alongside Outreach (11); its own status table lives in `signals-plan.md`.
+
 ---
 
 ## What the MVP is (and isn't)

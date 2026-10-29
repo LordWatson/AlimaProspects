@@ -7,7 +7,7 @@
 
 | Phase | Title                                              | Status | Completed |
 | ----- | -------------------------------------------------- | ------ | --------- |
-| S0    | Decisions, docs & Serper spike                     | ⬜     | —         |
+| S0    | Decisions, docs & Serper spike                     | ✅ Done | 2026-10-29 |
 | S1    | Signals module scaffold, data model & tenancy      | ⬜     | —         |
 | S2    | Serper News client & ICP-driven query builder      | ⬜     | —         |
 | S3    | AI event extraction & the signal watch run         | ⬜     | —         |
@@ -55,17 +55,17 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
 **Modules & docs:** new `docs/modules/signals.md`, `docs/decisions/0011-signals-module.md`, `docs/compliance.md`, `docs/architecture.md`, `CLAUDE.md`.
 **Tasks:**
 
-1. [ ] **ADR 0011 — Signals module & Serper News.** Signals is its own domain module (ADR 0002), not a `LeadSourceProvider`. It reuses the Serper account from ADR 0010 via the **`/news`** endpoint. v1 is **UAE-only**, **snippet-only** (title + snippet + source + date; no full-page fetch), and conversion is the only route from a signal to a `Lead`.
-2. [ ] **Module doc** `docs/modules/signals.md`, from `_TEMPLATE.md`: purpose, planned code map, data model (ER diagram for `signal_watches`, `signal_runs`, `signals`), key flows (watch run, conversion), external dependencies (Serper News, AI cheap tier), permissions, changelog row.
-3. [ ] **Compliance note** in `docs/compliance.md`:
+1. [x] **ADR 0011 — Signals module & Serper News.** Signals is its own domain module (ADR 0002), not a `LeadSourceProvider`. It reuses the Serper account from ADR 0010 via the **`/news`** endpoint. v1 is **UAE-only**, **snippet-only** (title + snippet + source + date; no full-page fetch), and conversion is the only route from a signal to a `Lead`. → `docs/decisions/0011-signals-module.md`
+2. [x] **Module doc** `docs/modules/signals.md`, from `_TEMPLATE.md`: purpose, planned code map, data model (ER diagram for `signal_watches`, `signal_runs`, `signals`), key flows (watch run, conversion), external dependencies (Serper News, AI cheap tier), permissions, changelog row — plus the recorded spike findings.
+3. [x] **Compliance note** in `docs/compliance.md` (new §5a + §6 mapping):
     - Signals hold personal data (a named person's name and public role, from published news).
     - Lawful basis: legitimate interest; add a section to the LIA.
     - Data minimisation: no contact details on signals.
     - Retention: dismissed signals deleted after 90 days; new signals nobody acts on deleted after 180 days. Configurable, set in S6.
     - UAE outreach: the converted lead is flagged "UAE: prior-consent outreach only".
     - Mark ⚖️ for the pre-launch legal review already required by ADR 0007.
-4. [ ] Add Signals to `docs/architecture.md` (module map) and `CLAUDE.md` (§5 ADR list + §3 if needed). Add phases S0–S6 to the `mvp.md` status table, or link this file from it.
-5. [ ] **Manual Serper spike (human or Claude with the key).** Run the S2 templates in the Serper playground with `gl=ae`, `hl=en`, `tbs=qdr:w` (past week). Record in the module doc how many results per query look like genuine events and any noisy domains to ignore. If fewer than ~3 real events a week come back, adjust the templates before S2.
+4. [x] Add Signals to `docs/architecture.md` (module map table + flowchart) and `CLAUDE.md` (§5 ADR list + §3). Linked this file from the `mvp.md` status table.
+5. [x] **Manual Serper spike (Claude with the key).** Ran the S2 templates against `POST /news` with `gl=ae`, `hl=en`, `tbs=qdr:w` (past week). **Finding:** the plan's strict exact-phrase templates return 0 results (7 of 8); loosened plain-keyword variants return 3–10 genuine Dubai events per event type — well past the ~3/week bar. `/news` caps at ~10 results/query. **Templates loosened for S2**, noisy domains and the geo-qualification requirement recorded in `docs/modules/signals.md` → "Serper News spike — findings".
 
 **Tests:** n/a (docs only).
 **Acceptance:** ADR 0011 accepted; module doc exists; spike findings recorded; templates adjusted.
@@ -119,18 +119,20 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
     - `results_per_query` (default 20), `recency` (`qdr:w`), `cost_micros_per_request`.
     - `ignore_domains`: portals and agencies to drop (e.g. bayut.com, propertyfinder.ae, dubizzle.com, plus the client's competitors, set per team later).
     - The **query templates** per `SignalEventType` and market. Document every key in `.env.example`.
-2. [ ] **v1 UAE query templates** (in config, editable without code changes; `{location}` comes from the watch, which defaults to the ICP's first Geography value):
+2. [ ] **v1 UAE query templates** (in config, editable without code changes; `{location}` comes from the watch, which defaults to the ICP's first Geography value). **Loosened per the S0 Serper spike** — plain keywords, no exact-phrase `"…"` quoting and no `-based` (those returned 0 results on `/news` + `qdr:w`; see `docs/modules/signals.md` → "Serper News spike — findings"):
     - `Acquisition`:
-        - `"{location}-based" company acquired`
-        - `UAE startup "acquired by"`
-        - `"{location}" founder "exits" OR "sells stake"`
+        - `{location} company acquisition`
+        - `UAE acquisition deal`
+        - `UAE startup acquired`
     - `FundingRound`:
-        - `"{location}-based" raises "Series B" OR "Series C" OR "Series D"`
-        - `UAE startup raises million funding`
+        - `{location} startup raises funding`
+        - `UAE Series B funding`
+        - `{location} startup Series A funding round`
     - `Relocation`:
-        - `founder OR CEO OR entrepreneur "relocates to Dubai" OR "moves to Dubai"`
-        - `"family office" opens Dubai`
-        - `"moves headquarters to Dubai"`
+        - `{location} founder relocates`
+        - `family office {location} opens`
+        - _(dropped `company relocates headquarters {location}` — too noisy / mostly non-UAE in the spike)_
+    - **Note for S3:** the AI `signals.extract_event` prompt must **geo-qualify** — set `is_event=false` or low `relevance` when the subject isn't tied to the watched location (keyword hits include non-UAE M&A that merely mention the UAE). `/news` returns ≤ ~10 items/query, so breadth (more templates) beats a bigger `num`.
 3. [ ] **`SignalQueryBuilder`** (Service): watch + active ICP → `list<SignalQuery>` DTOs (`eventType`, `q`, `gl`, `hl`, `tbs`, `num`). Rules:
     - The watch's `location` overrides the ICP Geography value.
     - The watch's `event_types` choose the templates.

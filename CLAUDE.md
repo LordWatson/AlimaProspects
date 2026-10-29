@@ -76,7 +76,7 @@ Code lives under `app/Modules/<Module>/` with: `Actions/ Services/ Contracts/ Da
 
 - `app/Modules/<Module>/` — domain code. `app/Modules/Core/` — tenancy, audit, base classes, logging, exceptions.
 - `docs/` — knowledge base: `architecture.md`, `modules/<module>.md` (read before working a module), `decisions/` (ADRs), `runbooks/`, `compliance.md`, `ai-prompts.md`, `brand/brand-tokens.md`.
-- `mvp.md` — phased plan + status table. `CHANGELOG.md` — notable changes.
+- `mvp.md` — phased plan + status table. `signals-plan.md` — the Signals (trigger-event prospecting) build plan, phases S0–S6 (companion to `mvp.md`; see `docs/modules/signals.md` + ADR 0011). `CHANGELOG.md` — notable changes.
 - Config: `.env.example` documents every key. **Brand PDFs in `.claude/docs/brand/` and `docs/brand/`** (`Alima — Brand Guidelines.pdf`, `Alima.pdf`) → extracted to `docs/brand/brand-tokens.md`. See §2a.
 
 ## 4. How to work a phase (ADR + §8 of the kickoff)
@@ -92,7 +92,7 @@ Code lives under `app/Modules/<Module>/` with: `Actions/ Services/ Contracts/ Da
 
 ## 5. Key decisions (see `docs/decisions/`)
 
-0001 stack · 0002 module structure · 0003 vite-plus lint · 0004 Fortify+Sanctum+spatie · 0005 AI via `laravel/ai` behind `AiClient` · 0006 multi-team tenancy · 0007 UK+UAE markets, bilingual/RTL, compliance · 0008 lead providers (Companies House + web search + Google Places; no paid enrichment in MVP) · 0009 admin (Filament) · 0010 web-search provider (Serper).
+0001 stack · 0002 module structure · 0003 vite-plus lint · 0004 Fortify+Sanctum+spatie · 0005 AI via `laravel/ai` behind `AiClient` · 0006 multi-team tenancy · 0007 UK+UAE markets, bilingual/RTL, compliance · 0008 lead providers (Companies House + web search + Google Places; no paid enrichment in MVP) · 0009 admin (Filament) · 0010 web-search provider (Serper) · 0011 Signals module & Serper News (UAE-only trigger-event prospecting; own module, not a `LeadSourceProvider`).
 
 ## 5a. Project agents & skills (`.claude/`)
 
@@ -115,3 +115,14 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 ```
 
 PR descriptions end with the Claude Code generated-with line. (Commit/push only when the user asks; branch off the default branch first.)
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- When graphify-out/graph.json exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- A committed graphify-out/graph.json is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.

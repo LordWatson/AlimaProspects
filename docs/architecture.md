@@ -51,6 +51,9 @@ flowchart TD
   Enr --> Sc[Scoring & Matching]
   ICP --> Sc
   Sc --> LW[Leads Workspace]
+  AIp --> Sig[Signals]
+  ICP --> Sig
+  Sig -->|convert to Lead| LS
   LW --> Out[Outreach]
   AIp --> Out
   Comp[Compliance & Privacy] --> Out
@@ -78,6 +81,7 @@ flowchart TD
 | 8   | Enrichment & Data Quality     | MVP                      | `modules/enrichment-data-quality.md`     |
 | 9   | Scoring & Matching            | MVP                      | `modules/scoring-matching.md`            |
 | 10  | Leads Workspace               | MVP                      | `modules/leads-workspace.md`             |
+| 10c | Signals (trigger events)      | MVP (UAE v1, S0–S6)      | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (basic)              | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (core)               | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | Post-MVP                 | `modules/ai-insights.md`                 |
