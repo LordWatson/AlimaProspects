@@ -5,14 +5,16 @@ declare(strict_types=1);
 namespace App\Modules\LeadSourcing\Http\Requests;
 
 use App\Modules\LeadSourcing\Enums\LeadSource;
+use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Policies\DiscoveryRunPolicy;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
  * Validates a "start discovery" payload. Authorisation lives in the controller via
- * {@see DiscoveryRunPolicy}. `source` must be a provider that is
- * actually live; `icp_id`, if given, is checked to belong to the team. `limit` is bounded by config.
+ * {@see DiscoveryRunPolicy}. `sources` is one or more live providers (the run fans out to one
+ * {@see DiscoveryRun} per source); `icp_id`, if given, is checked to
+ * belong to the team. `limit` is bounded by config.
  */
 final class StartDiscoveryRequest extends FormRequest
 {
@@ -27,9 +29,11 @@ final class StartDiscoveryRequest extends FormRequest
     public function rules(): array
     {
         $maxLimit = (int) config('lead-sourcing.defaults.max_limit', 100);
+        $available = LeadSource::availableValues();
 
         return [
-            'source' => ['required', 'string', Rule::in(LeadSource::availableValues())],
+            'sources' => ['required', 'array', 'min:1', 'max:'.count($available)],
+            'sources.*' => ['string', 'distinct', Rule::in($available)],
             'icp_id' => [
                 'nullable',
                 'integer',

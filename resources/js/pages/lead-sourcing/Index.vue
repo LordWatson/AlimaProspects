@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { Radar, Search } from '@lucide/vue';
-import { computed } from 'vue';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { Check, Radar, Search } from '@lucide/vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,10 +9,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
 import { useI18n } from '@/composables/useI18n';
 import type {
     DiscoveryIcpOption,
     DiscoveryRun,
+    DiscoveryRunProgress,
     DiscoveryRunStatus,
     DiscoverySource,
     LeadSource,
@@ -33,25 +35,30 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const page = usePage();
 
 const activeIcp = computed(() => props.icps.find((i) => i.is_active) ?? null);
-const firstAvailable = computed(
-    () => props.sources.find((s) => s.available)?.value ?? null,
-);
 
 const form = useForm<{
-    source: LeadSource | null;
+    sources: LeadSource[];
     icp_id: number | null;
     terms: string;
     location: string;
     limit: number;
 }>({
-    source: firstAvailable.value,
+    sources: [],
     icp_id: null,
     terms: '',
     location: '',
     limit: props.defaults.limit,
 });
+
+function toggleSource(source: DiscoverySource): void {
+    if (!source.available) return;
+    form.sources = form.sources.includes(source.value)
+        ? form.sources.filter((s) => s !== source.value)
+        : [...form.sources, source.value];
+}
 
 function submit(): void {
     form.post('/discovery', { preserveScroll: true });
@@ -66,6 +73,52 @@ const statusVariant: Record<
     pending: 'warning',
     failed: 'error',
 };
+
+// Labels mirror DiscoveryRunStatus::label() so a live (Reverb) status reads the same as a server one.
+const statusLabel: Record<DiscoveryRunStatus, string> = {
+    pending: 'Queued',
+    running: 'In progress',
+    completed: 'Completed',
+    failed: 'Failed',
+};
+
+// --- Reverb: live progress for the runs list (so freshly started runs update in place) ----------
+const teamId = computed(() => page.props.auth.currentTeam?.id ?? null);
+const liveProgress = ref<Record<number, DiscoveryRunProgress>>({});
+
+function statusFor(run: DiscoveryRun): DiscoveryRunStatus {
+    return liveProgress.value[run.id]?.status ?? run.status;
+}
+
+function isRunning(run: DiscoveryRun): boolean {
+    const status = statusFor(run);
+    return status === 'pending' || status === 'running';
+}
+
+let channelName: string | null = null;
+
+function onProgress(payload: DiscoveryRunProgress): void {
+    liveProgress.value = { ...liveProgress.value, [payload.run_id]: payload };
+    // When a run settles, pull fresh counts/status from the server for the whole list.
+    if (payload.status === 'completed' || payload.status === 'failed') {
+        router.reload({ only: ['runs', 'pagination'] });
+    }
+}
+
+onMounted(() => {
+    if (teamId.value == null || !window.Echo) return;
+    channelName = `teams.${teamId.value}`;
+    window.Echo.private(channelName).listen(
+        '.discovery-run.progressed',
+        onProgress,
+    );
+});
+
+onBeforeUnmount(() => {
+    if (channelName && window.Echo) {
+        window.Echo.leave(channelName);
+    }
+});
 </script>
 
 <template>
@@ -98,20 +151,30 @@ const statusVariant: Record<
         <Card v-if="can.manage">
             <CardContent>
                 <form class="space-y-6" @submit.prevent="submit">
-                    <!-- Source picker -->
-                    <fieldset class="space-y-3">
+                    <!-- Source picker (multi-select) -->
+                    <fieldset class="space-y-3" aria-describedby="sources-help">
                         <legend
-                            class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                            class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                         >
-                            {{ t('Lead source') }}
+                            {{ t('Lead sources') }}
                         </legend>
+                        <p
+                            id="sources-help"
+                            class="-mt-1 text-xs text-muted-foreground"
+                        >
+                            {{
+                                t(
+                                    'Pick one or more — Alima searches them in parallel.',
+                                )
+                            }}
+                        </p>
                         <div class="grid gap-3 sm:grid-cols-3">
                             <label
                                 v-for="source in sources"
                                 :key="source.value"
-                                class="flex cursor-pointer flex-col gap-1 rounded-2xl border p-4 transition-colors focus-within:ring-[3px] focus-within:ring-ring"
+                                class="flex cursor-pointer flex-col gap-1 rounded-2xl border p-4 transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring"
                                 :class="[
-                                    form.source === source.value
+                                    form.sources.includes(source.value)
                                         ? 'border-brand bg-brand/5'
                                         : 'border-border hover:border-brand/40',
                                     !source.available &&
@@ -126,13 +189,15 @@ const statusVariant: Record<
                                         >{{ t(source.label) }}</span
                                     >
                                     <input
-                                        type="radio"
-                                        name="source"
+                                        type="checkbox"
+                                        name="sources"
                                         class="sr-only"
                                         :value="source.value"
                                         :disabled="!source.available"
-                                        :checked="form.source === source.value"
-                                        @change="form.source = source.value"
+                                        :checked="
+                                            form.sources.includes(source.value)
+                                        "
+                                        @change="toggleSource(source)"
                                     />
                                     <Badge
                                         v-if="!source.available"
@@ -142,16 +207,20 @@ const statusVariant: Record<
                                     <span
                                         v-else
                                         aria-hidden="true"
-                                        class="flex size-4 shrink-0 items-center justify-center rounded-full border"
+                                        class="flex size-4 shrink-0 items-center justify-center rounded border"
                                         :class="
-                                            form.source === source.value
-                                                ? 'border-brand'
+                                            form.sources.includes(source.value)
+                                                ? 'border-brand bg-brand text-brand-foreground'
                                                 : 'border-input'
                                         "
                                     >
-                                        <span
-                                            v-if="form.source === source.value"
-                                            class="size-2 rounded-full bg-brand"
+                                        <Check
+                                            v-if="
+                                                form.sources.includes(
+                                                    source.value,
+                                                )
+                                            "
+                                            class="size-3"
                                         />
                                     </span>
                                 </span>
@@ -160,7 +229,7 @@ const statusVariant: Record<
                                 }}</span>
                             </label>
                         </div>
-                        <InputError :message="form.errors.source" />
+                        <InputError :message="form.errors.sources" />
                     </fieldset>
 
                     <div class="grid gap-5 sm:grid-cols-2">
@@ -242,7 +311,7 @@ const statusVariant: Record<
                         <Button
                             type="submit"
                             variant="brand"
-                            :disabled="form.processing || !form.source"
+                            :disabled="form.processing || !form.sources.length"
                             data-test="start-discovery"
                         >
                             <Search class="size-4" />
@@ -277,9 +346,10 @@ const statusVariant: Record<
                         class="flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-card px-5 py-4 transition-colors hover:border-brand/40 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                         :data-test="`run-${run.id}`"
                     >
-                        <Badge :variant="statusVariant[run.status]">{{
-                            t(run.status_label)
-                        }}</Badge>
+                        <Badge :variant="statusVariant[statusFor(run)]">
+                            <Spinner v-if="isRunning(run)" class="size-3" />
+                            {{ t(statusLabel[statusFor(run)]) }}
+                        </Badge>
                         <span class="text-sm font-medium text-foreground">{{
                             t(run.source_label)
                         }}</span>

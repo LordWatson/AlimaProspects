@@ -18,13 +18,15 @@ use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Services\DiscoveryLimitGuard;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Starts a lead-discovery run. Gatekeeps first — provider availability, the LIA compliance gate
- * (stub until Phase 15) and the per-plan limit (stub until Billing) — then resolves the query from
- * the chosen/active ICP, opens a Pending {@see DiscoveryRun} so the UI shows "queued" immediately,
- * and dispatches {@see DiscoverLeadsJob} `afterCommit` to do the external provider work. No external
+ * Starts a lead-discovery run for each selected provider. Gatekeeps first — provider availability,
+ * the LIA compliance gate (stub until Phase 15) and the per-plan limit (stub until Billing) — then
+ * resolves the query from the chosen/active ICP and **fans out**: one Pending {@see DiscoveryRun}
+ * per source (so picking Companies House + Google Places queues both in parallel, each with its own
+ * status, cost and retries), dispatching a {@see DiscoverLeadsJob} per run `afterCommit`. No external
  * call happens inside the transaction (CLAUDE.md rule).
  */
 final class StartDiscoveryRunAction
@@ -37,48 +39,73 @@ final class StartDiscoveryRunAction
         private readonly AuditLogger $audit,
     ) {}
 
-    public function handle(Team $team, StartDiscoveryData $data, ?User $actor = null): DiscoveryRun
+    /**
+     * @return Collection<int, DiscoveryRun> one Pending run per selected source, in input order
+     */
+    public function handle(Team $team, StartDiscoveryData $data, ?User $actor = null): Collection
     {
-        return $this->teamContext->run($team, function () use ($team, $data, $actor): DiscoveryRun {
+        return $this->teamContext->run($team, function () use ($team, $data, $actor): Collection {
             // --- Gatekeeping (before any work) ---
-            if (! $data->source->isAvailable() || ! $this->registry->has($data->source)) {
-                throw LeadSourcingException::providerUnavailable($data->source->value);
+            foreach ($data->sources as $source) {
+                if (! $source->isAvailable() || ! $this->registry->has($source)) {
+                    throw LeadSourcingException::providerUnavailable($source->value);
+                }
             }
 
             $this->lia->assertDiscoveryAllowed($team);
+            // @todo Billing (Phase 16): the fan-out creates one run per source, each with its own
+            // `requested_limit`, but the allowance is checked/clamped once here. Reserve against
+            // `$limit * count($data->sources)` (or split the limit across sources) once real quotas
+            // land. Harmless while the quota is the unlimited MVP stub.
             $this->limits->ensureWithinAllowance($team);
 
             $icp = $this->resolveIcp($team, $data->icpId);
             $limit = $this->resolveLimit($team, $data->limit);
 
-            $query = DiscoveryQuery::fromIcp($data->source, $icp, $limit, $data->terms, $data->location);
+            // Build a query per source. Terms/location/limit don't vary by source, so one empty-terms
+            // check covers them all — refuse the whole fan-out rather than queue an unsearchable run.
+            $queries = [];
+            foreach ($data->sources as $source) {
+                $query = DiscoveryQuery::fromIcp($source, $icp, $limit, $data->terms, $data->location);
 
-            if (trim($query->terms) === '') {
-                throw LeadSourcingException::nothingToSearch();
+                if (trim($query->terms) === '') {
+                    throw LeadSourcingException::nothingToSearch();
+                }
+
+                $queries[] = [$source, $query];
             }
 
-            return DB::transaction(function () use ($team, $data, $query, $icp, $limit, $actor): DiscoveryRun {
-                $run = DiscoveryRun::query()->create([
-                    'team_id' => (int) $team->getKey(),
-                    'icp_id' => $icp instanceof Icp ? (int) $icp->getKey() : null,
-                    'source' => $data->source,
-                    'status' => DiscoveryRunStatus::Pending,
-                    'params' => $query->toParams(),
-                    'requested_limit' => $limit,
-                    'created_by' => $actor?->getKey(),
-                ]);
+            return DB::transaction(function () use ($team, $queries, $icp, $limit, $actor): Collection {
+                /** @var Collection<int, DiscoveryRun> $runs */
+                $runs = new Collection;
 
-                $this->audit->log('lead_sourcing.run_started', $run, [
-                    'source' => $data->source->value,
-                    'limit' => $limit,
-                    'icp_id' => $run->icp_id,
-                ], $actor);
+                foreach ($queries as [$source, $query]) {
+                    $run = DiscoveryRun::query()->create([
+                        'team_id' => (int) $team->getKey(),
+                        'icp_id' => $icp instanceof Icp ? (int) $icp->getKey() : null,
+                        'source' => $source,
+                        'status' => DiscoveryRunStatus::Pending,
+                        'params' => $query->toParams(),
+                        'requested_limit' => $limit,
+                        'created_by' => $actor?->getKey(),
+                    ]);
 
-                DB::afterCommit(static function () use ($team, $run): void {
-                    DiscoverLeadsJob::dispatch((int) $team->getKey(), (int) $run->getKey());
+                    $this->audit->log('lead_sourcing.run_started', $run, [
+                        'source' => $source->value,
+                        'limit' => $limit,
+                        'icp_id' => $run->icp_id,
+                    ], $actor);
+
+                    $runs->push($run);
+                }
+
+                DB::afterCommit(static function () use ($team, $runs): void {
+                    foreach ($runs as $run) {
+                        DiscoverLeadsJob::dispatch((int) $team->getKey(), (int) $run->getKey());
+                    }
                 });
 
-                return $run;
+                return $runs;
             });
         });
     }

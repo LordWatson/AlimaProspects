@@ -41,10 +41,10 @@ final class DiscoveryController extends Controller
 
         $this->authorize('create', $this->transientRun($team));
 
-        $run = $action->handle($team, StartDiscoveryData::fromValidated($request->validated()), $user);
+        $runs = $action->handle($team, StartDiscoveryData::fromValidated($request->validated()), $user);
 
-        // 201: the run is created (queued); its leads arrive asynchronously.
-        return DiscoveryRunResource::make($run)->response()->setStatusCode(201);
+        // 201: one run per selected source is created (queued); their leads arrive asynchronously.
+        return DiscoveryRunResource::collection($runs)->response()->setStatusCode(201);
     }
 
     public function show(Request $request, int $run, FindDiscoveryRunAction $find): DiscoveryRunResource

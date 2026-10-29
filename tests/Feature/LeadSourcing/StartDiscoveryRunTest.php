@@ -48,7 +48,7 @@ it('starts a discovery run shaped by the active ICP and dispatches the job', fun
     seedActiveIcp($team);
 
     $this->actingAs($user)
-        ->post(route('lead-sourcing.store'), ['source' => 'companies_house'])
+        ->post(route('lead-sourcing.store'), ['sources' => ['companies_house']])
         ->assertRedirect();
 
     $run = DiscoveryRun::query()->firstOrFail();
@@ -63,6 +63,31 @@ it('starts a discovery run shaped by the active ICP and dispatches the job', fun
     Queue::assertPushed(DiscoverLeadsJob::class, fn (DiscoverLeadsJob $job): bool => $job->runId === (int) $run->getKey() && $job->teamId === (int) $team->getKey());
 });
 
+it('fans out to one run per selected source', function (): void {
+    Queue::fake();
+
+    $user = createUserWithTeam();
+    $team = $user->currentTeam()->firstOrFail();
+    seedActiveIcp($team);
+
+    $this->actingAs($user)
+        ->post(route('lead-sourcing.store'), ['sources' => ['companies_house', 'google_places']])
+        ->assertRedirect(route('lead-sourcing.index'));
+
+    $runs = DiscoveryRun::query()->orderBy('id')->get();
+
+    expect($runs)->toHaveCount(2)
+        ->and($runs->pluck('source')->map->value->all())->toBe(['companies_house', 'google_places'])
+        // Both share the same resolved query (terms/limit) — only the source differs.
+        ->and($runs->pluck('params.terms')->unique()->all())->toBe(['Marketing']);
+
+    // One job dispatched per run, each targeting its own run id.
+    Queue::assertPushed(DiscoverLeadsJob::class, 2);
+    foreach ($runs as $run) {
+        Queue::assertPushed(DiscoverLeadsJob::class, fn (DiscoverLeadsJob $job): bool => $job->runId === (int) $run->getKey() && $job->teamId === (int) $team->getKey());
+    }
+});
+
 it('lets explicit terms override the ICP', function (): void {
     Queue::fake();
 
@@ -70,7 +95,7 @@ it('lets explicit terms override the ICP', function (): void {
     seedActiveIcp($user->currentTeam()->firstOrFail());
 
     $this->actingAs($user)
-        ->post(route('lead-sourcing.store'), ['source' => 'companies_house', 'terms' => 'coffee roasters', 'location' => 'Leeds', 'limit' => 10])
+        ->post(route('lead-sourcing.store'), ['sources' => ['companies_house'], 'terms' => 'coffee roasters', 'location' => 'Leeds', 'limit' => 10])
         ->assertRedirect();
 
     $run = DiscoveryRun::query()->firstOrFail();
@@ -80,29 +105,32 @@ it('lets explicit terms override the ICP', function (): void {
         ->and($run->requested_limit)->toBe(10);
 });
 
-it('redirects to the run progress screen', function (): void {
+it('redirects to the discovery index with live progress', function (): void {
     Queue::fake();
 
     $user = createUserWithTeam();
     seedActiveIcp($user->currentTeam()->firstOrFail());
 
-    $response = $this->actingAs($user)->post(route('lead-sourcing.store'), ['source' => 'companies_house']);
-
-    $run = DiscoveryRun::query()->firstOrFail();
-    $response->assertRedirect(route('lead-sourcing.show', ['run' => $run->getKey()]));
+    $this->actingAs($user)
+        ->post(route('lead-sourcing.store'), ['sources' => ['companies_house']])
+        ->assertRedirect(route('lead-sourcing.index'));
 });
 
-it('validates the source is a live provider', function (): void {
+it('validates the sources are live providers', function (): void {
     $user = createUserWithTeam();
     seedActiveIcp($user->currentTeam()->firstOrFail());
 
     $this->actingAs($user)
-        ->post(route('lead-sourcing.store'), ['source' => 'apollo']) // not a known provider
-        ->assertSessionHasErrors('source');
+        ->post(route('lead-sourcing.store'), ['sources' => ['apollo']]) // not a known provider
+        ->assertSessionHasErrors('sources.0');
 
     $this->actingAs($user)
-        ->post(route('lead-sourcing.store'), [])
-        ->assertSessionHasErrors('source');
+        ->post(route('lead-sourcing.store'), []) // nothing selected
+        ->assertSessionHasErrors('sources');
+
+    $this->actingAs($user)
+        ->post(route('lead-sourcing.store'), ['sources' => ['companies_house', 'companies_house']]) // duplicates
+        ->assertSessionHasErrors('sources.0');
 
     expect(DiscoveryRun::query()->count())->toBe(0);
 });
@@ -113,11 +141,9 @@ it('accepts Google Places and web search as live sources (Phase 7b)', function (
     $user = createUserWithTeam();
     seedActiveIcp($user->currentTeam()->firstOrFail());
 
-    foreach (['google_places', 'web_search'] as $source) {
-        $this->actingAs($user)
-            ->post(route('lead-sourcing.store'), ['source' => $source, 'terms' => 'coffee roasters'])
-            ->assertRedirect();
-    }
+    $this->actingAs($user)
+        ->post(route('lead-sourcing.store'), ['sources' => ['google_places', 'web_search'], 'terms' => 'coffee roasters'])
+        ->assertRedirect();
 
     expect(DiscoveryRun::query()->pluck('source')->map->value->all())
         ->toContain('google_places', 'web_search');
@@ -133,7 +159,7 @@ it('forbids a read-only member from starting a run', function (): void {
     $member->forceFill(['current_team_id' => $team->getKey()])->save();
 
     $this->actingAs($member->refresh())
-        ->post(route('lead-sourcing.store'), ['source' => 'companies_house'])
+        ->post(route('lead-sourcing.store'), ['sources' => ['companies_house']])
         ->assertForbidden();
 
     expect(DiscoveryRun::query()->count())->toBe(0);
@@ -146,7 +172,7 @@ it('cannot shape a run from another team’s ICP', function (): void {
     $otherIcp = app(TeamContext::class)->run($otherTeam, fn (): Icp => Icp::query()->create(['team_id' => $otherTeam->getKey(), 'name' => 'Theirs']));
 
     $this->actingAs($user)
-        ->post(route('lead-sourcing.store'), ['source' => 'companies_house', 'icp_id' => $otherIcp->id])
+        ->post(route('lead-sourcing.store'), ['sources' => ['companies_house'], 'icp_id' => $otherIcp->id])
         ->assertSessionHasErrors('icp_id');
 
     expect(DiscoveryRun::query()->count())->toBe(0);
@@ -159,7 +185,7 @@ it('refuses to start with nothing to search for', function (): void {
     // No terms, and no active ICP to imply any.
     expect(fn () => app(StartDiscoveryRunAction::class)->handle(
         $team,
-        new StartDiscoveryData(source: LeadSource::CompaniesHouse),
+        new StartDiscoveryData(sources: [LeadSource::CompaniesHouse]),
         $user,
     ))->toThrow(LeadSourcingException::class);
 

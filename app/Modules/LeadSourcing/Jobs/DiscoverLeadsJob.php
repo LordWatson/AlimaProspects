@@ -18,6 +18,7 @@ use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -189,8 +190,9 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
     }
 
     /**
-     * Persist the discovered leads, de-duplicated per team on `dedupe_key` (the Phase 7 placeholder;
-     * full de-duplication is Phase 8). Returns how many were newly created (vs. updated in place).
+     * Persist the discovered leads, de-duplicated per team on `dedupe_key`. Returns how many were
+     * newly created (vs. merged into an existing row). Each lead is persisted in its own transaction
+     * so one collision can't roll back the rest of the run's leads.
      *
      * @param  list<SourcedLead>  $leads
      */
@@ -198,35 +200,80 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
     {
         $created = 0;
 
-        DB::transaction(function () use ($run, $leads, &$created): void {
-            foreach ($leads as $sourced) {
-                $attributes = $sourced->toLeadAttributes();
-                $dedupeKey = (string) $attributes['dedupe_key'];
-                unset($attributes['dedupe_key']);
+        foreach ($leads as $sourced) {
+            $attributes = $sourced->toLeadAttributes();
+            $dedupeKey = (string) $attributes['dedupe_key'];
+            unset($attributes['dedupe_key']);
 
-                $lead = Lead::query()
-                    ->where('team_id', $this->teamId)
-                    ->where('dedupe_key', $dedupeKey)
-                    ->first();
+            $created += $this->persistLead($run, $sourced, $attributes, $dedupeKey);
+        }
 
-                if ($lead instanceof Lead) {
-                    $this->mergeInto($lead, $sourced, $attributes);
+        return $created;
+    }
 
-                    continue;
-                }
+    /**
+     * Persist one discovered lead, de-duplicated per team on `dedupe_key`. Returns 1 when a new row is
+     * created, 0 when it merges into an existing one.
+     *
+     * Fan-out (Phase 8) dispatches a job per provider at once, so two runs frequently discover the
+     * same company simultaneously. The unique index on `(team_id, dedupe_key)` is the backstop: we
+     * merge when the row already exists, and if a concurrent run inserts it between our check and our
+     * insert the create raises a {@see UniqueConstraintViolationException}, which we catch and turn
+     * into a merge — so a race never duplicates a lead, fails the run, or silently drops a provider's
+     * (paid) result. The create runs in its own transaction so the violation rolls back only that
+     * insert (keeping the job safe on Postgres, where a poisoned transaction can't continue).
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function persistLead(DiscoveryRun $run, SourcedLead $sourced, array $attributes, string $dedupeKey): int
+    {
+        if ($this->mergeIfExists($sourced, $attributes, $dedupeKey)) {
+            return 0;
+        }
 
+        try {
+            DB::transaction(function () use ($run, $attributes, $dedupeKey): void {
                 Lead::query()->create([
                     ...$attributes,
                     'team_id' => $this->teamId,
                     'dedupe_key' => $dedupeKey,
                     'discovery_run_id' => $run->getKey(),
                 ]);
+            });
 
-                $created++;
+            return 1;
+        } catch (UniqueConstraintViolationException) {
+            // A concurrent run won the race between our check and insert — merge into its row instead.
+            $this->mergeIfExists($sourced, $attributes, $dedupeKey);
+
+            return 0;
+        }
+    }
+
+    /**
+     * Merge the sourced lead into the existing row for this `dedupe_key`, if one exists — locked for
+     * the duration so two concurrent merges can't lose each other's writes. Returns true when a row
+     * was found and merged.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function mergeIfExists(SourcedLead $sourced, array $attributes, string $dedupeKey): bool
+    {
+        return (bool) DB::transaction(function () use ($sourced, $attributes, $dedupeKey): bool {
+            $lead = Lead::query()
+                ->where('team_id', $this->teamId)
+                ->where('dedupe_key', $dedupeKey)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lead instanceof Lead) {
+                return false;
             }
-        });
 
-        return $created;
+            $this->mergeInto($lead, $sourced, $attributes);
+
+            return true;
+        });
     }
 
     /**

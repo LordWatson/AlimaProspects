@@ -5,6 +5,13 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — 2026-10-29 — Lead Discovery: pick multiple providers per search
+
+- **Multi-provider discovery.** The discovery form now lets a member tick **one or more** lead sources (e.g. Companies House **and** Google Places) and search them in one action. `StartDiscoveryRunAction` **fans out** — one `DiscoveryRun` per selected source, each queued in parallel with its own status, metered cost, circuit breaker and retries, so one provider failing never affects the others. Cross-provider dedupe already collapses the results at the `leads` table. **No migration** — the data model (one source per run) is unchanged.
+- **Request contract:** the start payload's `source` (string) became **`sources`** (array, `distinct`, each a live provider). The web `store` now redirects to the discovery **index** (for both one and many providers); the API `store` returns a **201 resource collection** (`{ data: [ ... ] }`) instead of a single run.
+- **UI:** the source picker is a multi-select (radio → accessible checkbox, brand-tick cue, focus ring preserved); the recent-runs list subscribes to Reverb so each freshly-started run's status badge updates live in place. EN/AR + RTL parity for the new strings.
+- **Tests:** `StartDiscoveryRunTest` + `DiscoveryApiTest` cover the fan-out (N runs, N jobs), `sources` validation (required / bad provider / `distinct`), and the new redirect + collection shape; `DiscoveryGuardsTest` updated to the new field. Full suite **313 green**; Larastan level 7 clean; `npm run check`/`types:check`/`build` pass.
+
 ### Added — 2026-10-29 — Phase 8: Enrichment & Data Quality
 
 - **Enrichment module** (`app/Modules/Enrichment`): turns raw discovered leads into clean, deduped, source-attributed leads with contacts, free-tier email verification and a data-freshness stamp. No paid provider (ADR 0008) — facts come from **AI extraction of the lead's public web text** (`lead.enrich_extract`, cheap tier, injection-safe); confidence is **stored, never asserted**.

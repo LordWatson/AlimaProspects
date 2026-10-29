@@ -47,13 +47,29 @@ it('starts a run over the API', function (): void {
     seedApiIcp($user->currentTeam()->firstOrFail());
 
     $this->actingAs($user, 'sanctum')
-        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['source' => 'companies_house'])
-        ->assertSuccessful()
-        ->assertJsonPath('data.source', 'companies_house')
-        ->assertJsonPath('data.status', 'pending');
+        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['companies_house']])
+        ->assertCreated()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.source', 'companies_house')
+        ->assertJsonPath('data.0.status', 'pending');
 
     expect(DiscoveryRun::query()->count())->toBe(1);
     Queue::assertPushed(DiscoverLeadsJob::class);
+});
+
+it('fans out to one run per source over the API', function (): void {
+    Queue::fake();
+
+    $user = createUserWithTeam();
+    seedApiIcp($user->currentTeam()->firstOrFail());
+
+    $this->actingAs($user, 'sanctum')
+        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['companies_house', 'google_places']])
+        ->assertCreated()
+        ->assertJsonCount(2, 'data');
+
+    expect(DiscoveryRun::query()->count())->toBe(2);
+    Queue::assertPushed(DiscoverLeadsJob::class, 2);
 });
 
 it('shows a single run with its leads', function (): void {
@@ -72,9 +88,9 @@ it('returns a validation envelope for a bad source', function (): void {
     $user = createUserWithTeam();
 
     $this->actingAs($user, 'sanctum')
-        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['source' => 'apollo'])
+        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['apollo']])
         ->assertStatus(422)
-        ->assertJsonValidationErrors('source');
+        ->assertJsonValidationErrors('sources.0');
 });
 
 it('never leaks another team’s run across the API', function (): void {
@@ -98,6 +114,6 @@ it('forbids a read-only member from starting a run over the API', function (): v
     $member->forceFill(['current_team_id' => $team->getKey()])->save();
 
     $this->actingAs($member->refresh(), 'sanctum')
-        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['source' => 'companies_house'])
+        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['companies_house']])
         ->assertForbidden();
 });

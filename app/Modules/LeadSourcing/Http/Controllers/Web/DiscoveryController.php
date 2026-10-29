@@ -68,11 +68,16 @@ final class DiscoveryController extends Controller
 
         $this->authorize('create', $this->transientRun($team));
 
-        $run = $action->handle($team, StartDiscoveryData::fromValidated($request->validated()), $user);
+        $runs = $action->handle($team, StartDiscoveryData::fromValidated($request->validated()), $user);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Alima is searching for leads — this only takes a moment.')]);
+        $message = $runs->count() === 1
+            ? __('Alima is searching for leads — this only takes a moment.')
+            : __('Alima is searching :count sources for leads — this only takes a moment.', ['count' => $runs->count()]);
 
-        return to_route('lead-sourcing.show', ['run' => $run->getKey()]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+
+        // The runs fan out to one row per source; the index shows them all updating live over Reverb.
+        return to_route('lead-sourcing.index');
     }
 
     public function show(Request $request, int $run, FindDiscoveryRunAction $find): Response

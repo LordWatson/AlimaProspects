@@ -29,7 +29,7 @@ it('refuses a run and returns a 429 envelope when the lead allowance is exhauste
     });
 
     $this->actingAs($user, 'sanctum')
-        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['source' => 'companies_house'])
+        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['companies_house']])
         ->assertStatus(429)
         ->assertJsonPath('error.code', 'lead_sourcing.quota_exhausted');
 
@@ -48,7 +48,7 @@ it('runs the LIA gate before creating a run', function (): void {
     });
 
     $this->actingAs($user, 'sanctum')
-        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['source' => 'companies_house'])
+        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['companies_house']])
         ->assertStatus(403)
         ->assertJsonPath('error.code', 'lead_sourcing.lia_required');
 
