@@ -16,6 +16,9 @@ export type CurrentTeam = {
     id: number;
     name: string;
     role: TeamRole | null;
+    timezone: string;
+    locale: string;
+    market: string;
 };
 
 export type TeamSummary = {

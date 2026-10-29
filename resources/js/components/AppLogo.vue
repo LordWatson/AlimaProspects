@@ -1,19 +1,35 @@
 <script setup lang="ts">
-import { usePage } from '@inertiajs/vue3';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 
-const name = usePage().props.name;
+/*
+ * In-app signature: the snout mark on a Deep Teal tile beside the wordmark
+ * (colourway 03, Teal/Cream). The wordmark is a TEMPORARY typeset placeholder —
+ * the delivered logo master SVGs are still pending (brand-tokens.md §7.3). The
+ * lockup is forced `dir="ltr"` so it never mirrors in RTL (never mirror the
+ * logo) and carries an accessible name.
+ */
 </script>
 
 <template>
     <div
-        class="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground"
+        dir="ltr"
+        class="flex items-center gap-1"
+        role="img"
+        aria-label="Alima"
     >
-        <AppLogoIcon class="size-5 fill-current text-white dark:text-black" />
-    </div>
-    <div class="ml-1 grid flex-1 text-left text-sm">
-        <span class="mb-0.5 truncate leading-tight font-semibold">{{
-            name
-        }}</span>
+        <div
+            class="flex aspect-square size-9 items-center justify-center rounded-md bg-teal text-cream"
+            aria-hidden="true"
+        >
+            <AppLogoIcon class="size-6" />
+        </div>
+        <div class="grid flex-1 text-start">
+            <span
+                class="truncate text-base leading-tight font-semibold tracking-tight text-teal"
+                aria-hidden="true"
+            >
+                alima
+            </span>
+        </div>
     </div>
 </template>

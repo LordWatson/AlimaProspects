@@ -17,8 +17,10 @@ import {
     SidebarMenuItem,
     useSidebar,
 } from '@/components/ui/sidebar';
+import { useI18n } from '@/composables/useI18n';
 
 const page = usePage();
+const { t, isRtl } = useI18n();
 const { isMobile, state } = useSidebar();
 
 const currentTeam = computed(() => page.props.auth.currentTeam ?? null);
@@ -44,17 +46,15 @@ function switchTeam(id: number): void {
                         data-test="team-switcher"
                     >
                         <div
-                            class="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground"
+                            class="flex aspect-square size-8 items-center justify-center rounded-md bg-teal text-cream"
                         >
-                            <AppLogoIcon
-                                class="size-5 fill-current text-white dark:text-black"
-                            />
+                            <AppLogoIcon class="size-5" />
                         </div>
                         <div
-                            class="ml-1 grid flex-1 text-left text-sm leading-tight"
+                            class="ms-1 grid flex-1 text-start text-sm leading-tight"
                         >
                             <span class="truncate font-semibold">{{
-                                currentTeam?.name ?? 'Select a team'
+                                currentTeam?.name ?? t('Select a team')
                             }}</span>
                             <span
                                 v-if="currentTeam?.role"
@@ -62,7 +62,7 @@ function switchTeam(id: number): void {
                                 >{{ currentTeam.role }}</span
                             >
                         </div>
-                        <ChevronsUpDown class="ml-auto size-4" />
+                        <ChevronsUpDown class="ms-auto size-4" />
                     </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -71,14 +71,16 @@ function switchTeam(id: number): void {
                         isMobile
                             ? 'bottom'
                             : state === 'collapsed'
-                              ? 'right'
+                              ? isRtl
+                                  ? 'left'
+                                  : 'right'
                               : 'bottom'
                     "
                     align="start"
                     :side-offset="4"
                 >
                     <DropdownMenuLabel class="text-xs text-muted-foreground">
-                        Teams
+                        {{ t('Teams') }}
                     </DropdownMenuLabel>
                     <DropdownMenuItem
                         v-for="team in teams"
@@ -98,13 +100,13 @@ function switchTeam(id: number): void {
                     <DropdownMenuItem as-child>
                         <Link href="/settings/team" class="gap-2">
                             <Settings2 class="size-4" />
-                            <span>Manage team</span>
+                            <span>{{ t('Manage team') }}</span>
                         </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem as-child>
                         <Link href="/settings/team#create-team" class="gap-2">
                             <Plus class="size-4" />
-                            <span>Create a team</span>
+                            <span>{{ t('Create a team') }}</span>
                         </Link>
                     </DropdownMenuItem>
                 </DropdownMenuContent>

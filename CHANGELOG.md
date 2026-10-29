@@ -5,6 +5,28 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-29 — Public marketing pages, on-brand auth & light-theme default
+
+- **Landing page** (`resources/js/pages/Welcome.vue`) rebuilt on brand: Cloud Cream canvas, Deep Teal structure, Midnight Ink inverse panels, a hero with the promise eyebrow + display headline (one decorative orange full-stop), a three-step "how it works" section, and a closing CTA band. Brand voice throughout; one hero accent per section.
+- **About page** (`resources/js/pages/About.vue`, route `GET /about` → `about`) presenting the brand's four voice principles as values, the UK + UAE bilingual story, and a CTA.
+- **Marketing shell** (`resources/js/layouts/MarketingLayout.vue`): sticky 88px header (logo, nav, locale toggle, one primary CTA), footer, and a spectrum signature rule — shared by the landing + about pages.
+- **Spectrum gradient utility** (`resources/css/app.css` `bg-spectrum`) — the brand §1.4 gradient with its fixed stop order (Ink·Orange·Blue·Lilac·Lime·Teal·Cream), built from palette tokens.
+- **On-brand auth redesign:** `AuthSplitLayout` rebuilt as a Midnight Ink brand panel (cream logo colourway — never Teal-on-Ink — tagline + spectrum rule) beside the Cloud Cream form column with a locale toggle; `AuthLayout` now uses it. `Login`/`Register` copy moved to brand voice; the login status message now uses the `success` token instead of a raw `text-green-600`.
+- **Light theme is now the default** (`HandleAppearance.php`, `resources/views/app.blade.php`, `useAppearance.ts`): visitors land on the Cloud Cream theme unless they explicitly choose Dark or System.
+- **i18n:** EN + AR bundles extended with all marketing/about copy (keys kept at parity; `LocaleTest` still green). Auth page titles/descriptions now translate through `t()`.
+- **Brand-review follow-ups:** status colours moved off raw Tailwind palette values onto the `success`/`destructive` tokens (`InputError`, `DeleteUser`, `VerifyEmail`, `ForgotPassword`, `TwoFactorSetupModal`, settings `Profile`); logo lockups given a reliable accessible name (`role="img"`); new `inverse` Button variant (cream-on-Ink) replacing an ad-hoc override; a `tracking-eyebrow` theme token replacing arbitrary eyebrow tracking; `rtl:font-bold` on marketing headings (Tajawal has no 600 weight); one orange accent + one spectrum band per layout; a compact mobile menu in the marketing header.
+
+### Added — 2026-10-28 — Phase 2: Brand design system & app shell (i18n/RTL)
+
+- **Brand tokens in Tailwind v4** (`resources/css/app.css`): the full Alima palette (Deep Teal, Midnight Ink, Cloud Cream, Signal Orange + Electric Blue/Soft Lilac/Acid Lime, each with tints), semantic digital tokens mapped onto the shadcn component variables, brand `radius`/`shadow`/`motion`, and the Poppins / DM Mono / Tajawal type families. Fonts load from Bunny (GDPR-friendly). Lead-with-cream; **Signal Orange is decorative only — never a status colour** (status.* tokens carry state).
+- **Dark theme** implemented from `brand-tokens.md` §7.1 — ⚠️ **PENDING brand-owner approval** (the book defines only `bg.inverse` sections); flagged in the CSS and `mvp.md`.
+- **Shared token module** `resources/js/shared/tokens.ts` — the single TS source of truth for the palette/type/spacing/motion, ready for the Capacitor mobile app to import.
+- **Base component library** (on brand, WCAG AA, keyboard-accessible): rebranded `Button` (pill, Ink primary / Teal `brand` / Teal link) and `Badge` (status variants from status tokens, decorative accent chips); new `Table` set and `EmptyState`; `Input`/`Toast`/`Dialog`/`Card` inherit the tokens. A living `/design` showcase page demonstrates them all.
+- **App shell:** Alima wordmark + the approved **snout** mark (real panda master SVG still PENDING, §7.3), brand-coloured team switcher, a **locale toggle** and **appearance toggle** in the top bar and user menu; nav labels translated.
+- **i18n (EN/AR + RTL, ADR 0007):** `SetLocale` middleware (cookie → active-team locale → default) on web + API; `Locale` support class; `POST /locale` switcher; `lang/en.json` + `lang/ar.json`; locale + `dir` + the active translation bundle shared via Inertia; `useI18n`, `useLocaleDirection` (keeps `<html lang/dir>` in sync across SPA visits) and `useFormat` (locale/timezone-aware numbers & dates) composables; Tajawal + 10–15% size boost under RTL; components use logical properties.
+- **Realtime:** Laravel Echo over Reverb wired on the front end (`resources/js/echo.ts`, `laravel-echo` + `pusher-js`, `window.Echo`) using the existing `VITE_REVERB_*` env.
+- **Tests:** `LocaleTest` (8) — default, cookie resolution + RTL, unsupported-locale fallback, team fallback, cookie-overrides-team, switch persists cookie, invalid-locale rejected, options metadata. Full suite green (79).
+
 ### Added — 2026-10-28 — Phase 1: Auth, teams, roles & invitations
 
 - **Auth & Users module** (`app/Modules/Auth`): the full team-access layer.

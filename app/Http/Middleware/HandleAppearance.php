@@ -16,7 +16,9 @@ class HandleAppearance
      */
     public function handle(Request $request, Closure $next): Response
     {
-        View::share('appearance', $request->cookie('appearance') ?? 'system');
+        // The app defaults to the light (Cloud Cream) theme; visitors may opt into
+        // dark or system from the appearance toggle, which sets this cookie.
+        View::share('appearance', $request->cookie('appearance') ?? 'light');
 
         return $next($request);
     }

@@ -8,7 +8,7 @@
 | ----- | --------------------------------------------- | ------- | ---------- |
 | 0     | Foundation, docs & knowledge base             | ✅ Done | 2026-10-28 |
 | 1     | Auth, teams, roles & invitations              | ✅ Done | 2026-10-28 |
-| 2     | Brand design system & app shell (i18n/RTL)    | ⬜      | —          |
+| 2     | Brand design system & app shell (i18n/RTL)    | ✅ Done | 2026-10-28 |
 | 3     | Onboarding & Business Profile                 | ⬜      | —          |
 | 4     | Ideal Customer Profile (ICP)                  | ⬜      | —          |
 | 5     | AI Platform                                   | ⬜      | —          |
@@ -106,12 +106,12 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Core; `docs/brand/brand-tokens.md`; ADR 0007.
 **Tasks:**
 
-1. [ ] Encode brand tokens as Tailwind v4 `@theme` vars in `resources/css/app.css` (colours, semantic tokens, radius, shadow, motion, fonts Poppins/DM Mono/Tajawal); export a shared token module in `resources/js/shared/` for mobile.
-2. [ ] Build base components (`Button`, `Input`, `Card`, `Table`, `Modal`, `Badge`, `EmptyState`, `Toast`, form controls) on the brand, WCAG AA, keyboard-accessible, with stories/examples.
-3. [ ] App shell: top bar (logo, team switcher, user menu, locale toggle), responsive nav, toast host; one primary CTA per view convention.
-4. [ ] **i18n**: Laravel + front-end locale files (en, ar), `dir`/RTL handling, Tajawal for Arabic, number/date formatting per team locale/timezone.
-5. [ ] Dark-mode tokens (per `brand-tokens.md` §7 — **confirm values with brand owner**).
-6. [ ] Wire Laravel Echo + Reverb on the front end (the installer step deferred in Phase 0).
+1. [x] Encode brand tokens as Tailwind v4 `@theme` vars in `resources/css/app.css` (colours, semantic tokens, radius, shadow, motion, fonts Poppins/DM Mono/Tajawal); export a shared token module in `resources/js/shared/tokens.ts` for mobile.
+2. [x] Build base components (`Button`, `Input`, `Card`, `Table`, `Modal`, `Badge`, `EmptyState`, `Toast`, form controls) on the brand, WCAG AA, keyboard-accessible, with a `/design` showcase page.
+3. [x] App shell: top bar (logo, team switcher, user menu, locale toggle + appearance toggle), responsive nav, toast host; one primary CTA per view convention.
+4. [x] **i18n**: Laravel + front-end locale files (en, ar), `dir`/RTL handling (`SetLocale` middleware), Tajawal for Arabic, number/date formatting per team locale/timezone (`useI18n`/`useFormat`).
+5. [x] Dark-mode tokens implemented from `brand-tokens.md` §7.1 — ⚠️ **still PENDING brand-owner approval** (flagged below & in the CSS).
+6. [x] Wire Laravel Echo + Reverb on the front end (`resources/js/echo.ts`, `laravel-echo` + `pusher-js`).
        **Data model:** none.
        **Tests:** component render/accessibility smoke (vue-tsc + build); locale switch flips `dir`; a Pest test for locale middleware.
        **Acceptance:** base components exist and are used by the shell; EN/AR + RTL works; build + types pass; docs updated.
