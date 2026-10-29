@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\BusinessIntelligence\Testing;
+namespace App\Modules\Core\Testing;
 
-use App\Modules\BusinessIntelligence\Contracts\WebContentFetcher;
+use App\Modules\Core\Contracts\WebContentFetcher;
 
 /**
  * Test double for {@see WebContentFetcher}: returns a canned body and records the URLs it was asked

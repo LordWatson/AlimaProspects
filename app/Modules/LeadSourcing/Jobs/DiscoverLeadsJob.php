@@ -9,6 +9,7 @@ use App\Modules\LeadSourcing\Contracts\LeadSourceProvider;
 use App\Modules\LeadSourcing\Data\DiscoveryQuery;
 use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
+use App\Modules\LeadSourcing\Events\DiscoveryRunCompleted;
 use App\Modules\LeadSourcing\Events\DiscoveryRunProgressed;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
@@ -135,6 +136,10 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
             ]);
 
             $this->broadcast($run, DiscoveryRunStatus::Completed, 100, 'Discovery complete', count($leads));
+
+            // Hand off to enrichment (Phase 8): a listener fans out a job per new lead. Fired after
+            // the run is settled so enrichment only ever sees persisted leads.
+            event(new DiscoveryRunCompleted($this->teamId, (int) $run->getKey()));
         });
     }
 

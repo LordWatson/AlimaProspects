@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\BusinessIntelligence\Services;
+namespace App\Modules\Core\Services;
 
-use App\Modules\BusinessIntelligence\Contracts\WebContentFetcher;
+use App\Modules\Core\Contracts\WebContentFetcher;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Log;
@@ -14,13 +14,14 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Minimal, defensive HTTP fetch of a business's homepage (Phase 6). The URL is the team's own
- * free-text `BusinessProfile.website`, fetched server-side from a queue worker and read back into
- * the report, so it is an SSRF surface: the fetcher only allows http(s) on ports 80/443, rejects any
- * host that resolves to a loopback/private/link-local/reserved address, re-validates every redirect,
- * caps how much of the body it reads, and strips scripts/styles/markup to plain text. It never
- * executes page content and swallows all errors to an empty string — a background check should
- * degrade, not crash, when a site is slow, down or disallowed. Config: `config/business-intelligence.php`.
+ * Minimal, defensive HTTP fetch of a public web page. The URL is almost always a user-supplied,
+ * free-text address (a team's own `website`, a lead's site) fetched server-side from a queue worker
+ * and read back into the app, so it is an SSRF surface: the fetcher only allows http(s) on ports
+ * 80/443, rejects any host that resolves to a loopback/private/link-local/reserved address,
+ * re-validates every redirect, caps how much of the body it reads, and strips scripts/styles/markup
+ * to plain text. It never executes page content and swallows all errors to an empty string — a
+ * background job should degrade, not crash, when a site is slow, down or disallowed. Config:
+ * `config/web-fetch.php`.
  */
 final class HttpWebContentFetcher implements WebContentFetcher
 {
@@ -38,9 +39,9 @@ final class HttpWebContentFetcher implements WebContentFetcher
             $this->assertSafeUrl($url);
 
             $response = $this->http
-                ->timeout((int) config('business-intelligence.fetch.timeout', 10))
-                ->connectTimeout((int) config('business-intelligence.fetch.connect_timeout', 5))
-                ->withHeaders(['User-Agent' => (string) config('business-intelligence.fetch.user_agent', 'AlimaProspectsBot/1.0')])
+                ->timeout((int) config('web-fetch.timeout', 10))
+                ->connectTimeout((int) config('web-fetch.connect_timeout', 5))
+                ->withHeaders(['User-Agent' => (string) config('web-fetch.user_agent', 'AlimaProspectsBot/1.0')])
                 ->withOptions([
                     'stream' => true,
                     // Re-validate the target of every redirect so a public site can't bounce to an
@@ -66,7 +67,7 @@ final class HttpWebContentFetcher implements WebContentFetcher
 
             return $this->toText($this->readCapped($response));
         } catch (Throwable $e) {
-            Log::channel('ai')->warning('Background-check web fetch failed.', [
+            Log::channel('ai')->warning('Web content fetch failed.', [
                 'url' => $url,
                 'exception' => $e->getMessage(),
             ]);
@@ -180,7 +181,7 @@ final class HttpWebContentFetcher implements WebContentFetcher
      */
     private function readCapped(Response $response): string
     {
-        $maxBytes = (int) config('business-intelligence.fetch.max_bytes', 500_000);
+        $maxBytes = (int) config('web-fetch.max_bytes', 500_000);
         $body = $response->toPsrResponse()->getBody();
 
         $html = '';
@@ -197,7 +198,7 @@ final class HttpWebContentFetcher implements WebContentFetcher
 
     /**
      * Reduce HTML to a bounded block of readable text. Scripts and styles are dropped wholesale so
-     * none of their content reaches the model, then tags are stripped and whitespace collapsed.
+     * none of their content reaches a later AI prompt, then tags are stripped and whitespace collapsed.
      */
     private function toText(string $html): string
     {
@@ -208,7 +209,7 @@ final class HttpWebContentFetcher implements WebContentFetcher
         $text = (string) preg_replace('/\s+/u', ' ', $text);
         $text = trim($text);
 
-        $maxChars = (int) config('business-intelligence.fetch.max_chars', 12_000);
+        $maxChars = (int) config('web-fetch.max_chars', 12_000);
 
         return Str::limit($text, $maxChars, '');
     }

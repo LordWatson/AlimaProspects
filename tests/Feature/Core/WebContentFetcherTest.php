@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use App\Modules\BusinessIntelligence\Contracts\WebContentFetcher;
-use App\Modules\BusinessIntelligence\Services\HttpWebContentFetcher;
+use App\Modules\Core\Contracts\WebContentFetcher;
+use App\Modules\Core\Services\HttpWebContentFetcher;
 use Illuminate\Support\Facades\Http;
 
 it('binds the HTTP fetcher by default', function (): void {

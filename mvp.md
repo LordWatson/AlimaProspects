@@ -15,7 +15,7 @@
 | 6     | Business Intelligence (AI background check)   | ✅ Done | 2026-10-29 |
 | 7     | Lead Sourcing — framework + Companies House   | ✅ Done | 2026-10-29 |
 | 7b    | Lead Sourcing — Google Places + web search    | ✅ Done | 2026-10-29 |
-| 8     | Enrichment & Data Quality                     | ⬜      | —          |
+| 8     | Enrichment & Data Quality                     | ✅ Done | 2026-10-29 |
 | 9     | Scoring & Matching                            | ⬜      | —          |
 | 10    | Leads Workspace — list, detail, contacts      | ⬜      | —          |
 | 10b   | Leads Workspace — pipeline, notes, tasks, CSV | ⬜      | —          |
@@ -246,11 +246,11 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Enrichment & Data Quality (`enrichment-data-quality.md`), ADR 0008, compliance.
 **Tasks:**
 
-1. [ ] `lead_contacts` + enrichment tracking migrations; `SourcedValue` cast/DTO (source/url/collected_at/method on every field).
-2. [ ] `EnrichLeadJob` (idempotent): normalise company data; **AI extraction** of facts from fetched public text (`lead.enrich_extract`, cheap tier, injection-safe).
-3. [ ] **Email verification** (syntax + MX/DNS + disposable-domain); store confidence, never assert.
-4. [ ] **De-duplication** by domain, company number, email; merge keeping best source per field.
-5. [ ] Prefer business/role over personal data; flag personal-looking data (compliance).
+1. [x] `lead_contacts` + enrichment columns on `leads`; `SourcedValue` DTO + `SourcedValueMap` cast (source/url/collected_at/method per field).
+2. [x] `EnrichLeadJob` (idempotent, unique per lead) + `EnrichLeadAction`: normalise company data; **AI extraction** of facts from fetched public text (`lead.enrich_extract`, cheap tier, injection-safe); triggered by `DiscoveryRunCompleted`.
+3. [x] **Email verification** (syntax + MX/DNS + disposable-domain) behind a faked `DnsResolver`; confidence stored, never asserted (no SMTP probe).
+4. [x] **De-duplication** by company number, domain, same-domain email; merge keeping best source per field + promoting bookkeeping, deadlock-safe group locking, scraped-content false-merge guards.
+5. [x] Prefer business/role over personal data; flag personal-looking data (`has_personal_data` + `is_personal`) for compliance.
        **Data model:** `lead_contacts`, enrichment fields on `leads`.
        **Tests:** extraction (faked AI); MX check (faked resolver); dedupe merges; source attribution enforced; tenancy.
        **Acceptance:** leads enriched + deduped with attribution + freshness; gates pass; docs updated.

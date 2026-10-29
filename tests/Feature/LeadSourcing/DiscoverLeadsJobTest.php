@@ -16,8 +16,14 @@ use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use App\Modules\LeadSourcing\Testing\FakeLeadSourceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
+
+// A completed run now fans out enrichment jobs (Phase 8). These tests drive the discovery job
+// directly and assert on the run/leads only, so fake the queue to record — not execute — that
+// hand-off; the trigger itself is covered in tests/Feature/Enrichment.
+beforeEach(fn () => Queue::fake());
 
 /**
  * @param  list<SourcedLead>  $leads
