@@ -13,7 +13,8 @@ use App\Modules\LeadSourcing\Models\DiscoveryRun;
  * Resolve a single discovery run by id, scoped to the team. Run inside the team context so the
  * {@see BelongsToTeam} global scope hides other teams' runs — a request for one that isn't the
  * team's own 404s rather than binding cross-tenant. Policies still double-check ownership at the
- * controller. Eager-loads the ICP and the run's leads for the detail screen.
+ * controller. Eager-loads the ICP and the run's leads — each with its score against the active ICP,
+ * so the detail screen can show grades without an N+1.
  */
 final class FindDiscoveryRunAction
 {
@@ -23,7 +24,11 @@ final class FindDiscoveryRunAction
     {
         return $this->teamContext->run($team, fn (): DiscoveryRun => DiscoveryRun::query()
             ->where('team_id', $team->getKey())
-            ->with(['icp:id,name', 'leads' => fn ($q) => $q->orderByDesc('id')])
+            ->with([
+                'icp:id,name',
+                'leads' => fn ($q) => $q->orderByDesc('id'),
+                'leads.activeScore',
+            ])
             ->findOrFail($id));
     }
 }

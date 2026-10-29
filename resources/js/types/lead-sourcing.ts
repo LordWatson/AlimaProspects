@@ -1,6 +1,10 @@
 // Lead Sourcing (discovery runs + raw leads) shared types (Phase 7).
 
+import type { LeadScoreSummary } from './scoring';
+
 export type LeadSource = 'companies_house' | 'google_places' | 'web_search';
+
+export type EnrichmentStatus = 'pending' | 'enriching' | 'enriched' | 'failed';
 
 export type DiscoveryRunStatus = 'pending' | 'running' | 'completed' | 'failed';
 
@@ -11,10 +15,15 @@ export type Lead = {
     source_label: string;
     status: string;
     status_label: string;
+    enrichment_status: EnrichmentStatus;
+    enrichment_status_label: string;
     company_name: string;
     company_number: string | null;
     company_status: string | null;
     company_type: string | null;
+    industry: string | null;
+    employee_range: string | null;
+    technologies: string[];
     incorporated_on: string | null;
     website: string | null;
     locality: string | null;
@@ -24,6 +33,10 @@ export type Lead = {
     sic_codes: string[];
     source_url: string | null;
     collected_at: string | null;
+    enriched_at: string | null;
+    has_personal_data: boolean;
+    /** The grade against the active ICP, when the lead's `activeScore` was loaded (Phase 9). */
+    score?: LeadScoreSummary | null;
 };
 
 export type DiscoveryRun = {

@@ -11,11 +11,14 @@ use App\Modules\Enrichment\Enums\EnrichmentStatus;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Enums\LeadStatus;
+use App\Modules\Scoring\Models\LeadScore;
 use Database\Factories\LeadFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -124,6 +127,28 @@ class Lead extends Model
     public function contacts(): HasMany
     {
         return $this->hasMany(LeadContact::class);
+    }
+
+    /**
+     * ICP-fit scores for this lead — one per ICP it has been graded against (Phase 9).
+     *
+     * @return HasMany<LeadScore, $this>
+     */
+    public function scores(): HasMany
+    {
+        return $this->hasMany(LeadScore::class);
+    }
+
+    /**
+     * The score against the team's **active** ICP — the one a list or badge should show. Eager-load
+     * this (rather than all `scores`) wherever only the current grade is needed.
+     *
+     * @return HasOne<LeadScore, $this>
+     */
+    public function activeScore(): HasOne
+    {
+        return $this->hasOne(LeadScore::class)
+            ->whereHas('icp', fn (Builder $query): Builder => $query->where('is_active', true));
     }
 
     /**

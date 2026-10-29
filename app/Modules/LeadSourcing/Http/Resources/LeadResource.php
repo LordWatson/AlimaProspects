@@ -46,6 +46,15 @@ final class LeadResource extends JsonResource
             'enriched_at' => $this->enriched_at?->toIso8601String(),
             'has_personal_data' => $this->has_personal_data,
             'contacts' => LeadContactResource::collection($this->whenLoaded('contacts')),
+            // The grade against the team's active ICP (Phase 9), when `activeScore` was loaded —
+            // enough for a badge in a list; the score screen serialises the full LeadScoreResource.
+            'score' => $this->whenLoaded('activeScore', fn (): ?array => $this->activeScore === null ? null : [
+                'score' => $this->activeScore->score,
+                'grade' => $this->activeScore->grade->value,
+                'grade_label' => $this->activeScore->grade->label(),
+                'excluded' => $this->activeScore->excluded,
+                'scored_at' => $this->activeScore->scored_at?->toIso8601String(),
+            ]),
         ];
     }
 }

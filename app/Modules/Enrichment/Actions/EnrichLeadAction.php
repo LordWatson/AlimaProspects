@@ -14,6 +14,7 @@ use App\Modules\Enrichment\Data\ExtractedFacts;
 use App\Modules\Enrichment\Data\SourcedValue;
 use App\Modules\Enrichment\Enums\EmailVerificationStatus;
 use App\Modules\Enrichment\Enums\EnrichmentStatus;
+use App\Modules\Enrichment\Events\LeadEnriched;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\Enrichment\Services\CompanyNormaliser;
 use App\Modules\Enrichment\Services\EmailVerifier;
@@ -33,7 +34,9 @@ use Throwable;
  *
  * External work (web fetch + AI + DNS) runs OUTSIDE any transaction (CLAUDE.md external-call rule);
  * the writes run in one short transaction, and de-duplication in another. Idempotent: a lead already
- * in a terminal enrichment state is left untouched unless `$force` is set. Fetched web content is
+ * in a terminal enrichment state is left untouched unless `$force` is set. On success it fires
+ * {@see LeadEnriched} `afterCommit` for the surviving lead, which is what triggers Scoring (Phase
+ * 9). Fetched web content is
  * wrapped in {@see UntrustedContent} — treated as data, never instructions. AI credit exhaustion and
  * malformed output are terminal (mark Failed, no retry); any other error bubbles for the queue.
  */
@@ -105,7 +108,13 @@ final class EnrichLeadAction
                 'has_personal_data' => $lead->has_personal_data || $hasPersonalData,
             ])->save();
 
-            return $this->deduplicator->deduplicate($lead);
+            $survivor = $this->deduplicator->deduplicate($lead);
+
+            // Scoring picks this up to grade the lead against the active ICP. afterCommit so the
+            // listener never reads uncommitted state, and only ever for the surviving lead.
+            DB::afterCommit(static fn () => event(LeadEnriched::for($survivor)));
+
+            return $survivor;
         });
 
         Log::channel('lead_sourcing')->info('Lead enriched.', [

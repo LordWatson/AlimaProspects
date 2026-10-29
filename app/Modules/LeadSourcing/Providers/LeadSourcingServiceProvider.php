@@ -7,7 +7,9 @@ namespace App\Modules\LeadSourcing\Providers;
 use App\Modules\LeadSourcing\Contracts\LeadInterestGate;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
+use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadSourcing\Policies\DiscoveryRunPolicy;
+use App\Modules\LeadSourcing\Policies\LeadPolicy;
 use App\Modules\LeadSourcing\Services\AllowAllLeadInterestGate;
 use App\Modules\LeadSourcing\Services\CompaniesHouseProvider;
 use App\Modules\LeadSourcing\Services\DiscoveryLimitGuard;
@@ -27,6 +29,7 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
      */
     protected array $policies = [
         DiscoveryRun::class => DiscoveryRunPolicy::class,
+        Lead::class => LeadPolicy::class,
     ];
 
     public function register(): void

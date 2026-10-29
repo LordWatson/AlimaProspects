@@ -8,6 +8,7 @@ use App\Modules\Enrichment\Providers\EnrichmentServiceProvider;
 use App\Modules\ICP\Providers\IcpServiceProvider;
 use App\Modules\LeadSourcing\Providers\LeadSourcingServiceProvider;
 use App\Modules\Onboarding\Providers\OnboardingServiceProvider;
+use App\Modules\Scoring\Providers\ScoringServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
 use App\Providers\HorizonServiceProvider;
@@ -26,4 +27,5 @@ return [
     BusinessIntelligenceServiceProvider::class,
     LeadSourcingServiceProvider::class,
     EnrichmentServiceProvider::class,
+    ScoringServiceProvider::class,
 ];

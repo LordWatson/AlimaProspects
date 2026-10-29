@@ -2,6 +2,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { AlertTriangle, ArrowLeft, Building2, ExternalLink } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -244,6 +245,12 @@ onBeforeUnmount(() => {
                             </th>
                             <th
                                 scope="col"
+                                class="px-4 py-3 text-start font-medium"
+                            >
+                                {{ t('Fit') }}
+                            </th>
+                            <th
+                                scope="col"
                                 class="px-4 py-3 text-end font-medium"
                             >
                                 {{ t('Source') }}
@@ -280,6 +287,32 @@ onBeforeUnmount(() => {
                                 dir="auto"
                             >
                                 {{ lead.locality ?? '—' }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <!-- The grade against the active ICP (Phase 9); the whole score,
+                                     breakdown and explanation live on the score screen. -->
+                                <Link
+                                    :href="`/leads/${lead.id}/score`"
+                                    class="inline-flex items-center gap-1.5 rounded-full focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                                    :aria-label="
+                                        t('See the fit score for :company', {
+                                            company: lead.company_name,
+                                        })
+                                    "
+                                >
+                                    <GradeBadge
+                                        v-if="lead.score"
+                                        :grade="lead.score.grade"
+                                        :score="lead.score.score"
+                                        :label="t(lead.score.grade_label)"
+                                    />
+                                    <span
+                                        v-else
+                                        class="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                                    >
+                                        {{ t('Not graded') }}
+                                    </span>
+                                </Link>
                             </td>
                             <td class="px-4 py-3 text-end">
                                 <a

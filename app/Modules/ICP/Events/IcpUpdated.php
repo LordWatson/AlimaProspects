@@ -13,7 +13,9 @@ use Illuminate\Foundation\Events\Dispatchable;
  * Matching (Phase 9) listens for this to re-score the team's leads. Dispatched `afterCommit` so
  * listeners never see uncommitted state.
  *
- * `activeIcpId` is the team's active ICP after the change, or null when the team now has none.
+ * `activeIcpId` is the team's active ICP after the change, or null when the team now has none — in
+ * which case Scoring queues nothing, because there is no definition left to score against. Existing
+ * scores stay attached to the ICP that produced them as history (see scoring-matching.md).
  */
 final class IcpUpdated
 {

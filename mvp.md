@@ -16,7 +16,7 @@
 | 7     | Lead Sourcing — framework + Companies House   | ✅ Done | 2026-10-29 |
 | 7b    | Lead Sourcing — Google Places + web search    | ✅ Done | 2026-10-29 |
 | 8     | Enrichment & Data Quality                     | ✅ Done | 2026-10-29 |
-| 9     | Scoring & Matching                            | ⬜      | —          |
+| 9     | Scoring & Matching                            | ✅ Done | 2026-10-29 |
 | 10    | Leads Workspace — list, detail, contacts      | ⬜      | —          |
 | 10b   | Leads Workspace — pipeline, notes, tasks, CSV | ⬜      | —          |
 | 11    | Outreach (MVP)                                | ⬜      | —          |
@@ -266,10 +266,10 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Scoring & Matching (`scoring-matching.md`).
 **Tasks:**
 
-1. [ ] `DeterministicScorer` over `icp_criteria` weights vs enriched fields → fit score + breakdown.
-2. [ ] `ScoreLeadAction` combining deterministic + `scoring.qualitative_fit` (AI) → score, grade, explanation; `lead_scores` table.
-3. [ ] Re-score on `IcpUpdated` and on enrichment update (queued, idempotent).
-4. [ ] `score_feedback` (good/bad) capture; surface grade/breakdown/explanation (Inertia + `/api/v1`).
+1. [x] `DeterministicScorer` over `icp_criteria` weights vs enriched fields → fit score + breakdown. _(Weights normalised over what could be **assessed**; a criterion the lead has no data for is `Unknown` and leaves both sides of the ratio, so the score measures fit, not enrichment coverage. Company size by numeric band overlap; country aliases; absolute exclusions.)_
+2. [x] `ScoreLeadAction` combining deterministic + `scoring.qualitative_fit` (AI) → score, grade, explanation; `lead_scores` table. _(AI outside the transaction; the model's own grade is discarded so one scale governs; degrades to either half, and writes nothing when neither has anything to say.)_
+3. [x] Re-score on `IcpUpdated` and on enrichment update (queued, idempotent). _(New `Enrichment\Events\LeadEnriched`; the ICP-change listener is itself queued and chunks the team's leads. No active ICP → nothing queued; old scores stay as history.)_
+4. [x] `score_feedback` (good/bad) capture; surface grade/breakdown/explanation (Inertia + `/api/v1`). _(Verdict snapshots the score it judged. Score screen + a Fit column on the discovery run table; the leads index/detail arrives in Phase 10.)_
        **Data model:** `lead_scores`, `score_feedback`.
        **Tests:** deterministic math; hybrid produces grade+explanation (faked AI); re-score on ICP change; feedback stored; tenancy.
        **Acceptance:** leads graded with explanation; re-scoring works; feedback captured; gates pass; docs updated.
