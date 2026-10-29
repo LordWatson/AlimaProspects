@@ -1,6 +1,6 @@
 # Signals
 
-> Status: **MVP (Signals v1, planned S0–S6)** · Owner: Product · Last updated: 2026-10-29
+> Status: **MVP (Signals v1 — S1 landed; S2–S6 planned)** · Owner: Product · Last updated: 2026-10-29
 
 ## Purpose
 
@@ -26,16 +26,20 @@ other verticals reuse it later with different templates.
 
 ## Code map
 
-> Planned (S1–S6). Filled in with concrete class names as each phase lands.
+> S1 landed (✅). S2–S6 filled in with concrete class names as each phase lands.
 
 - **Backend:** `app/Modules/Signals/…` (scaffolded in S1 via the `new-module` skill)
-    - **Models (S1):** `SignalWatch`, `SignalRun`, `Signal` — all `BelongsToTeam`,
+    - **Models (S1 ✅):** `SignalWatch`, `SignalRun`, `Signal` — all `BelongsToTeam`,
       typed casts (enums, `Carbon`, money as int minor units), relationships
-      `watch → runs → signals` and `signal → lead`.
-    - **Enums (S1):** `SignalEventType` (`Acquisition`, `FundingRound`, `Relocation`;
+      `watch → runs → signals`, `signal → lead` (one-way) and `signal → actionedBy`.
+      Factories `SignalWatchFactory` / `SignalRunFactory` / `SignalFactory`
+      (`database/factories`, with `inactive`/`weekly`, `running`/`completed`/`failed`
+      and `acquisition`/`dismissed`/`converted` states).
+    - **Enums (S1 ✅):** `SignalEventType` (`Acquisition`, `FundingRound`, `Relocation`;
       each with `label()` + `description()`), `SignalStatus` (`New`, `Dismissed`,
-      `Converted`), `SignalWatchCadence` (`Daily`, `Weekly`), `SignalRunStatus`
-      (`Queued`, `Running`, `Completed`, `Failed` — mirrors `DiscoveryRunStatus`).
+      `Converted`), `SignalWatchCadence` (`Daily`, `Weekly`; `staleAfterHours()` →
+      24 / 168 for the S3 scheduler), `SignalRunStatus` (`Queued`, `Running`,
+      `Completed`, `Failed`; `isTerminal()`/`isActive()` — mirrors `DiscoveryRunStatus`).
     - **Contracts (S2):** `NewsSearchClient` (`search(SignalQuery): list<NewsItem>`).
     - **Services (S2–S3):** `SignalQueryBuilder` (watch + active ICP →
       `list<SignalQuery>`, deterministic, no AI), `SerperNewsClient` (implements
@@ -53,10 +57,14 @@ other verticals reuse it later with different templates.
       `backoff=[30,120,300]`, `timeout=120`, `failed()`), runs inside `TeamContext`.
     - **Events (S3–S4):** `SignalRunProgressed` + `SignalsDetected` (broadcast on
       `teams.{teamId}`), `SignalConverted`.
-    - **Policies (S1):** `SignalWatchPolicy`, `SignalPolicy` (double-check `team_id`).
-    - **Exceptions (S1):** `SignalsException extends DomainException`
-      (`alreadyConverted()`, `watchInactive()`, `noSubjectToConvert()`), rendered
+    - **Policies (S1 ✅):** `SignalWatchPolicy` (`view`/`create`/`update`/`delete`/`run`),
+      `SignalPolicy` (`view`/`dismiss`/`restore`/`convert`) — both double-check `team_id`
+      via `User::roleOn()`; view is every role, mutations are Owner/Admin/Member.
+    - **Exceptions (S1 ✅):** `SignalsException extends DomainException`
+      (`alreadyConverted()` 409, `watchInactive()`, `noSubjectToConvert()`), rendered
       centrally in `bootstrap/app.php`.
+    - **Log channel (S1 ✅):** `signals` (daily, `config/logging.php`) — log IDs/counts
+      only, never names or article text.
     - **Testing:** `app/Modules/Signals/Testing/FakeNewsSearchClient` (canned Dubai
       fixtures, bound in tests).
     - **Provider:** `Providers/SignalsServiceProvider` (routes, policies, bindings),
@@ -308,9 +316,18 @@ Policies `SignalWatchPolicy` + `SignalPolicy` double-check `team_id` behind the
 - **Retention** (hard-delete dismissed @ 90 days, unactioned @ 180 days) and the
   **per-team ignore list** and **DSAR hook** land in S6.
 - **Logging:** channel `signals`; log IDs/counts only, never names or article text.
+- **Runs have no policy of their own.** A `SignalRun` is only ever reached through its parent
+  `SignalWatch` (the watch gates viewing), so S1 ships `SignalWatchPolicy` + `SignalPolicy` only.
+  If a run is ever exposed on its own route, give it a `view` policy then.
+- **Cross-team parent references** (`signal_watch_id`, `signal_run_id`, `icp_id`, `lead_id`) are
+  plain FKs, not team-qualified at the DB level. Nothing in S1 can set them wrongly (no Actions
+  yet); the S3 run and S4 conversion Actions **must resolve every parent through a team-scoped
+  query** (e.g. load the lead only under the active team) so a signal can never point at another
+  team's row.
 
 ## Changelog
 
 | Date       | Phase | Change                                                                                                                                                               | Files                                                                                 |
 | ---------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | 2026-10-29 | S0    | Created the module doc: purpose, planned code map, data model (ER diagram for `signal_watches`/`signal_runs`/`signals`), key flows, external deps, permissions — and recorded the Serper News spike (strict templates fail; loosened plain-keyword templates return 3–10 genuine Dubai events/type/week; `/news` caps at ~10 results/query). ADR 0011 accepted. | `docs/modules/signals.md`, `docs/decisions/0011-signals-module.md`, `docs/compliance.md`, `docs/architecture.md`, `CLAUDE.md`, `mvp.md` |
+| 2026-10-29 | S1    | Scaffolded the module (ADR 0002) and built the data model: 4 enums, 3 migrations (`signal_watches`/`signal_runs`/`signals`, all team-scoped, unique `(team_id, url_hash)` + feed index `(team_id, status, published_at)`, one-way `signals.lead_id → leads` `nullOnDelete`), 3 `BelongsToTeam` models + factories, `SignalWatchPolicy`/`SignalPolicy`, `SignalsException`, the `signals` log channel, and the `SignalsServiceProvider` (registered via Core base provider). Tests: enum coverage, cross-tenant isolation + auto-assign for all three models, per-team `url_hash` uniqueness, and `lead_id` nulling on lead delete. `signal_watches.ignore_domains` deferred to S6 per plan. No external calls. | `app/Modules/Signals/**`, `database/migrations/2026_10_29_18000{1,2,3}_*`, `database/factories/Signal*Factory.php`, `config/logging.php`, `bootstrap/providers.php`, `tests/{Unit,Feature}/Signals/*` |

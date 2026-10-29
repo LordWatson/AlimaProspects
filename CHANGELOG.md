@@ -5,6 +5,16 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-29 — Signals S1: module scaffold, data model & tenancy
+
+- **The `Signals` module now exists** (`app/Modules/Signals/`, ADR 0002), registered via the Core base provider. No external calls, controllers or business logic yet — S1 is the data model and its tenancy guarantees; Serper, AI extraction, conversion and the UI follow in S2–S6.
+- **Four backed enums, no magic strings:** `SignalEventType` (`Acquisition`/`FundingRound`/`Relocation`, each with `label()` + `description()` for the UI), `SignalStatus` (`New`/`Dismissed`/`Converted`), `SignalWatchCadence` (`Daily`/`Weekly`, with `staleAfterHours()` → 24 / 168 so the S3 scheduler has no magic numbers), and `SignalRunStatus` (`Queued`/`Running`/`Completed`/`Failed`, `isTerminal()`/`isActive()` — mirrors `DiscoveryRunStatus`).
+- **Three team-scoped tables.** `signal_watches` (what to watch: market/location, `event_types` json, cadence, active flag, `last_run_at`, nullable `icp_id` `nullOnDelete`); `signal_runs` (one execution: query/result/signal counts, `cost_micros` in integer micro-units, user-safe `error`, timings — mirrors `discovery_runs`); `signals` (one kept event: AI headline/summary/scores, subject person **name + public role only — never email or phone**, amount as integer minor units + `Currency`, `raw` clamped Serper item, `source_url`, `url_hash`). Unique `(team_id, url_hash)` so one article is never two signals for a team; feed index `(team_id, status, published_at)`.
+- **One-way link to Lead Sourcing.** `signals.lead_id → leads` is `nullOnDelete`, so a converted signal points at its lead but **Lead Sourcing never depends on Signals** — delete the lead and the signal simply loses the link (covered by a test).
+- **Models, policies, exception, logging.** `SignalWatch`/`SignalRun`/`Signal` all `BelongsToTeam` with typed casts and `@property` docblocks, plus factories with useful states. `SignalWatchPolicy`/`SignalPolicy` double-check `team_id` via `User::roleOn()` — every role may view, only Owner/Admin/Member may create/run watches or dismiss/restore/convert signals. `SignalsException extends DomainException` (`alreadyConverted()` 409, `watchInactive()`, `noSubjectToConvert()`), rendered centrally. New `signals` log channel (log IDs/counts only).
+- **Tests (15, all green):** enum values/labels/behaviour; cross-tenant isolation and `team_id` auto-assign for all three models; per-team `url_hash` uniqueness (same hash allowed across teams, rejected within one); `lead_id` nulling on lead delete; and the full policy matrix (owner, plain member, read-only, outsider). `composer test` green (614 total), `composer analyse` clean (level 7).
+- **Deferred per plan:** `signal_watches.ignore_domains` (per-team ignore list) lands in S6; `config/signals.php` and env keys in S2.
+
 ### Added — 2026-10-29 — Signals S0: decisions, docs & Serper News spike
 
 - **New feature planned: Signals** — a feed of wealth/liquidity events (a company sold, a founder exit, a big funding round, a founder/exec relocating to Dubai) in the team's ICP geography, found via Serper News, classified by AI, and convertible into a standard `Lead`. Phase S0 is docs-only (no application code); the build runs S0–S6 in `signals-plan.md`.

@@ -10,6 +10,7 @@ use App\Modules\LeadSourcing\Providers\LeadSourcingServiceProvider;
 use App\Modules\LeadsWorkspace\Providers\LeadsWorkspaceServiceProvider;
 use App\Modules\Onboarding\Providers\OnboardingServiceProvider;
 use App\Modules\Scoring\Providers\ScoringServiceProvider;
+use App\Modules\Signals\Providers\SignalsServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
 use App\Providers\HorizonServiceProvider;
@@ -30,4 +31,5 @@ return [
     EnrichmentServiceProvider::class,
     ScoringServiceProvider::class,
     LeadsWorkspaceServiceProvider::class,
+    SignalsServiceProvider::class,
 ];

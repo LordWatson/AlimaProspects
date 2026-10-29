@@ -8,7 +8,7 @@
 | Phase | Title                                              | Status | Completed |
 | ----- | -------------------------------------------------- | ------ | --------- |
 | S0    | Decisions, docs & Serper spike                     | ✅ Done | 2026-10-29 |
-| S1    | Signals module scaffold, data model & tenancy      | ⬜     | —         |
+| S1    | Signals module scaffold, data model & tenancy      | ✅ Done | 2026-10-29 |
 | S2    | Serper News client & ICP-driven query builder      | ⬜     | —         |
 | S3    | AI event extraction & the signal watch run         | ⬜     | —         |
 | S4    | Convert a signal into a standard Lead              | ⬜     | —         |
@@ -81,23 +81,23 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
 **Modules & docs:** Signals (`signals.md`).
 **Tasks:**
 
-1. [ ] Scaffold with the **`new-module`** skill: `app/Modules/Signals/` (Actions, Services, Contracts, Data, Enums, Events, Listeners, Jobs, Models, Policies, Http/{Controllers/Web, Controllers/Api/V1, Requests, Resources}, Exceptions, routes/{web,api}.php, Providers/SignalsServiceProvider.php). Register it via the Core base provider.
-2. [ ] **Enums** (backed, with `label()` and `values()`, no magic strings):
+1. [x] Scaffold with the **`new-module`** skill: `app/Modules/Signals/` (Actions, Services, Contracts, Data, Enums, Events, Listeners, Jobs, Models, Policies, Http/{Controllers/Web, Controllers/Api/V1, Requests, Resources}, Exceptions, routes/{web,api}.php, Providers/SignalsServiceProvider.php). Register it via the Core base provider.
+2. [x] **Enums** (backed, with `label()` and `values()`, no magic strings):
     - `SignalEventType`: `Acquisition` (company sold / founder exit), `FundingRound`, `Relocation` (founder/exec moving to the UAE). Each case carries a `description()` for the UI.
     - `SignalStatus`: `New`, `Dismissed`, `Converted`.
     - `SignalWatchCadence`: `Daily`, `Weekly`.
     - `SignalRunStatus`: `Queued`, `Running`, `Completed`, `Failed` (mirror `DiscoveryRunStatus`).
-3. [ ] **Migrations** (named by module, every table has `team_id` + FK + index):
+3. [x] **Migrations** (named by module, every table has `team_id` + FK + index):
     - `signal_watches`: `id`, `team_id`, `icp_id` (nullable FK), `name`, `market` (`Market` enum, default `uae`), `location` (string, e.g. "Dubai"), `event_types` (json list of `SignalEventType`), `cadence`, `is_active` (bool), `last_run_at` (nullable), timestamps.
     - `signal_runs`: `id`, `team_id`, `signal_watch_id`, `status`, `queries_count`, `results_count`, `signals_created`, `cost_micros` (int), `error` (nullable, user-safe message), `started_at`, `finished_at`, timestamps.
     - `signals`: `id`, `team_id`, `signal_watch_id`, `signal_run_id`, `event_type`, `status`, `headline`, `summary` (AI, ≤500 chars), `subject_person_name` (nullable), `subject_person_role` (nullable), `subject_company_name` (nullable), `counterparty_name` (nullable, e.g. the acquirer), `amount_minor` (nullable bigint), `currency` (nullable, `Currency` enum), `location` (nullable), `confidence` (0–100), `relevance` (0–100), `suggested_approach` (nullable text), `source_url`, `source_name` (nullable), `published_at` (nullable, UTC), `url_hash` (char 40), `raw` (json, the clamped Serper item), `lead_id` (nullable FK → leads, `nullOnDelete`), `actioned_by` (nullable FK → users), `actioned_at` (nullable), timestamps.
     - Unique index `(team_id, url_hash)`, so the same article never becomes two signals for one team. Index `(team_id, status, published_at)` for the feed.
-4. [ ] **Models** `SignalWatch`, `SignalRun`, `Signal`: `BelongsToTeam`, typed casts (enums, `Carbon`, money as int minor units), relationships (`watch → runs → signals`, `signal → lead`), `@property` docblocks for Larastan. Factories named by module.
-5. [ ] **Policies** `SignalWatchPolicy` and `SignalPolicy`, which double-check `team_id`:
+4. [x] **Models** `SignalWatch`, `SignalRun`, `Signal`: `BelongsToTeam`, typed casts (enums, `Carbon`, money as int minor units), relationships (`watch → runs → signals`, `signal → lead`), `@property` docblocks for Larastan. Factories named by module.
+5. [x] **Policies** `SignalWatchPolicy` and `SignalPolicy`, which double-check `team_id`:
     - View: every role, including Read-only.
     - Create/update/delete watches and dismiss/convert signals: Owner, Admin, Member.
-6. [ ] Domain exceptions: `SignalsException extends DomainException` (e.g. `alreadyConverted()`, `watchInactive()`, `noSubjectToConvert()`), rendered centrally.
-7. [ ] Log channel `signals` (add to `config/logging.php`, alongside `lead_sourcing`). Log IDs only, never names.
+6. [x] Domain exceptions: `SignalsException extends DomainException` (e.g. `alreadyConverted()`, `watchInactive()`, `noSubjectToConvert()`), rendered centrally.
+7. [x] Log channel `signals` (add to `config/logging.php`, alongside `lead_sourcing`). Log IDs only, never names.
 
 **Data model:** as above.
 **Tests:** factories; enum coverage; **cross-tenant access fails** for each of the three models (global scope + policy); unique `(team_id, url_hash)` enforced; `lead_id` nulls when the lead is deleted.
