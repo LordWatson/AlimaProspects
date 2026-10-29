@@ -44,13 +44,21 @@ function cannedResponses(): array
         'insights.periodic_digest' => [
             'insights' => [['type' => 'stale_lead', 'title' => 'Stale leads', 'body' => '3 leads need a nudge.', 'severity' => 'warning']],
         ],
+        'signals.extract_event' => [
+            'events' => [[
+                'item_index' => 0, 'is_event' => true, 'event_type' => 'funding_round',
+                'subject_person_name' => 'Jane', 'subject_person_role' => 'CEO', 'subject_company_name' => 'Acme',
+                'counterparty_name' => null, 'amount' => 40_000_000, 'currency' => 'USD', 'location' => 'Dubai',
+                'confidence' => 90, 'relevance' => 80, 'summary' => 'Acme raised a Series A.', 'suggested_approach' => 'Intro via LinkedIn.',
+            ]],
+        ],
     ];
 }
 
 it('seeds every prompt from docs/ai-prompts.md', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(6)
+    expect(AiPromptTemplate::query()->count())->toBe(7)
         ->and(AiPromptTemplate::query()->pluck('key')->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.refine_suggestions',
@@ -58,6 +66,7 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
             'lead.enrich_extract',
             'outreach.draft_message',
             'scoring.qualitative_fit',
+            'signals.extract_event',
         ]);
 });
 
@@ -91,5 +100,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(6);
+    expect(AiPromptTemplate::query()->count())->toBe(7);
 });

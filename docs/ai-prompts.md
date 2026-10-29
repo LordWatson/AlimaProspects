@@ -26,8 +26,9 @@ exists (it does).
 | `scoring.qualitative_fit`         | Scoring & Matching          | reasoning | Qualitative ICP-fit assessment + plain-English "why this matches", feeding the hybrid score                                           | yes (object)                 | live v1 (Ph. 9)    |
 | `outreach.draft_message`          | Outreach                    | reasoning | Personalised email / LinkedIn text / call script from business profile + lead + tone controls                                         | yes (object → variants[])    | seeded v1 (Ph. 11) |
 | `insights.periodic_digest`        | AI Insights                 | reasoning | Periodic insights: best segments, ICP tweaks, stale-lead alerts, "contact today" digest                                               | yes (object → insights[])    | seeded v1 (Ph. 14) |
+| `signals.extract_event`           | Signals                     | cheap     | Classify a batch of news items (≤10) as wealth/liquidity events (acquisition / funding / relocation), geo-qualified to the watched location; per item: is_event, type, subject, amount, confidence, relevance, summary, LinkedIn/referral next step | yes (object → events[])      | live v1 (Ph. S3)   |
 
-> Top-level array outputs (suggestions / variants / insights) are wrapped in a named object property,
+> Top-level array outputs (suggestions / variants / insights / events) are wrapped in a named object property,
 > since the structured-output transport and our validator expect an object at the schema root.
 
 ## Rules for adding a prompt

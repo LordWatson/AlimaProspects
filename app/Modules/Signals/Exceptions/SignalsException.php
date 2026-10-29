@@ -90,6 +90,19 @@ final class SignalsException extends DomainException
     }
 
     /**
+     * "Run now" was triggered again too soon (rate-limited per watch).
+     */
+    public static function runThrottled(int $seconds): self
+    {
+        $minutes = (int) ceil($seconds / 60);
+        $e = new self("This watch was run recently. Try again in about {$minutes} minute(s).");
+        $e->errorCode = 'signals.run_throttled';
+        $e->status = 429;
+
+        return $e;
+    }
+
+    /**
      * The signal names no company to build a lead from, and none was supplied.
      */
     public static function noSubjectToConvert(): self

@@ -1,6 +1,6 @@
 # Signals
 
-> Status: **MVP (Signals v1 — S1–S2 landed; S3–S6 planned)** · Owner: Product · Last updated: 2026-10-29
+> Status: **MVP (Signals v1 — S1–S3 landed; S4–S6 planned)** · Owner: Product · Last updated: 2026-10-29
 
 ## Purpose
 
@@ -57,13 +57,22 @@ other verticals reuse it later with different templates.
       `tbs`, `num`), `NewsItem` (`title`, `snippet`, `link`, `urlHash`, `source`,
       `publishedAt` best-effort UTC, `raw`), `ExtractedSignal` (S3, AI output,
       schema-validated), `ConvertSignalData` (S4, spatie/laravel-data).
-    - **Actions (S3–S4):** `RunSignalWatchAction`, `TriggerSignalWatchAction`
-      (run-now, rate-limited), `ConvertSignalToLeadAction`, `DismissSignalAction`,
-      `RestoreSignalAction`.
-    - **Jobs (S3):** `RunSignalWatchJob` (`ShouldBeUnique` per watch, `tries=3`,
-      `backoff=[30,120,300]`, `timeout=120`, `failed()`), runs inside `TeamContext`.
-    - **Events (S3–S4):** `SignalRunProgressed` + `SignalsDetected` (broadcast on
-      `teams.{teamId}`), `SignalConverted`.
+    - **Actions (S3 ✅; S4 to come):** `RunSignalWatchAction` (orchestrates one run),
+      `TriggerSignalWatchAction` (run-now, rate-limited 1/15 min/watch via
+      `RateLimiter`); `ConvertSignalToLeadAction`, `DismissSignalAction`,
+      `RestoreSignalAction` (S4).
+    - **Jobs (S3 ✅):** `RunSignalWatchJob` (`ShouldBeUnique` per watch, `tries=3`,
+      `backoff=[30,120,300]`, `timeout=120`, `uniqueFor=600`, `failed()` marks the
+      latest non-terminal run Failed), runs inside `TeamContext` with
+      `Log::withContext(['team_id','signal_watch_id'])`.
+    - **Console (S3 ✅):** `DispatchDueSignalWatchesCommand` (`signals:dispatch-due`,
+      scheduled hourly in the provider, `withoutOverlapping`) queues a run for each
+      active watch whose cadence is due.
+    - **Data / DTOs (S3 ✅):** `ExtractedSignal` (the schema-validated AI output per
+      item; `fromAiItem()` converts amount→minor units + resolves currency; `meetsThreshold()`).
+    - **Events (S3 ✅; S4 to come):** `SignalRunProgressed` (stages searching →
+      analysing → saving → done) + `SignalsDetected` (afterCommit, count) — both
+      `ShouldBroadcast` on `teams.{teamId}`; `SignalConverted` (S4).
     - **Policies (S1 ✅):** `SignalWatchPolicy` (`view`/`create`/`update`/`delete`/`run`),
       `SignalPolicy` (`view`/`dismiss`/`restore`/`convert`) — both double-check `team_id`
       via `User::roleOn()`; view is every role, mutations are Owner/Admin/Member.
@@ -185,7 +194,27 @@ shown in the team timezone.
 
 ## Key flows
 
-> Planned; sequence diagram added in S3 when the run exists.
+```mermaid
+sequenceDiagram
+    participant Sch as signals:dispatch-due (hourly)
+    participant Job as RunSignalWatchJob
+    participant Act as RunSignalWatchAction
+    participant QB as SignalQueryBuilder
+    participant Serper as SerperNewsClient
+    participant AI as AiClient (signals.extract_event)
+    participant DB as DB (signals/signal_runs)
+    Sch->>Job: dispatch(teamId, watchId) for due active watches
+    Job->>Act: handle(watch) in TeamContext
+    Act->>DB: claim/create run (Running) [tx]
+    Act->>QB: build(watch, activeIcp) → queries
+    Act->>Serper: search(query) per query (outside tx)
+    Serper-->>Act: NewsItem[] (clamped, ignore-domains dropped)
+    Act->>DB: drop url_hashes already seen for this team
+    Act->>AI: structured(batch ≤10, UntrustedContent)
+    AI-->>Act: ExtractedSignal[] (schema-valid)
+    Act->>DB: insertOrIgnore kept signals + run totals + last_run_at [one tx]
+    Act-->>Job: afterCommit → SignalsDetected; progress → done
+```
 
 **Watch run (S3).** `signals:dispatch-due` (hourly scheduler) queues a
 `RunSignalWatchJob` for each active watch whose cadence is due (Daily: `last_run_at`
@@ -334,6 +363,13 @@ Policies `SignalWatchPolicy` + `SignalPolicy` double-check `team_id` behind the
 - **Runs have no policy of their own.** A `SignalRun` is only ever reached through its parent
   `SignalWatch` (the watch gates viewing), so S1 ships `SignalWatchPolicy` + `SignalPolicy` only.
   If a run is ever exposed on its own route, give it a `view` policy then.
+- **Accepted S3 cost trade-offs (revisit with the S6 ignore-list / post-v1 tuning):**
+  (a) a **job retry** re-runs the search and re-pays for AI batches already done in the failed
+  attempt — nothing is persisted per batch, so a transient error after some batches repeats that AI
+  spend; (b) **non-event / below-threshold articles aren't remembered**, so each run re-sends the
+  same persistent noise (round-ups, trackers) to the AI. A failed run now records its spend and
+  advances `last_run_at` (so a failing watch backs off to cadence, not hourly), which bounds the
+  bleed; a per-batch persist and a cheap "seen but rejected" store are the fuller fixes.
 - **Cross-team parent references** (`signal_watch_id`, `signal_run_id`, `icp_id`, `lead_id`) are
   plain FKs, not team-qualified at the DB level. Nothing in S1 can set them wrongly (no Actions
   yet); the S3 run and S4 conversion Actions **must resolve every parent through a team-scoped
@@ -345,5 +381,6 @@ Policies `SignalWatchPolicy` + `SignalPolicy` double-check `team_id` behind the
 | Date       | Phase | Change                                                                                                                                                               | Files                                                                                 |
 | ---------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | 2026-10-29 | S0    | Created the module doc: purpose, planned code map, data model (ER diagram for `signal_watches`/`signal_runs`/`signals`), key flows, external deps, permissions — and recorded the Serper News spike (strict templates fail; loosened plain-keyword templates return 3–10 genuine Dubai events/type/week; `/news` caps at ~10 results/query). ADR 0011 accepted. | `docs/modules/signals.md`, `docs/decisions/0011-signals-module.md`, `docs/compliance.md`, `docs/architecture.md`, `CLAUDE.md`, `mvp.md` |
+| 2026-10-29 | S3    | AI event extraction & the scheduled watch run: `signals.extract_event` cheap-tier prompt (seeded + `ai-prompts.md`, geo-qualifying, injection-safe, LinkedIn/referral-only next step); `ExtractedSignal` DTO (amount→minor, currency resolve, threshold); `RunSignalWatchAction` (claim run → build queries → Serper → drop already-seen → batch AI → keep in-threshold events → one-tx `insertOrIgnore` persist + totals + `last_run_at` → afterCommit `SignalsDetected`); `RunSignalWatchJob` (`ShouldBeUnique`/retries/`failed()`, `TeamContext`, `Log::withContext`); `TriggerSignalWatchAction` (run-now, 15-min rate limit); `signals:dispatch-due` hourly scheduler; `SignalRunProgressed` + `SignalsDetected` Reverb events; AI credit via `AiCreditGuard`. Serper/AI never called inside a transaction. Tests (31): happy path, idempotent re-run, below-threshold drop, injection-as-data, schema-invalid retry-then-skip, non-retryable vs retryable provider failure, credit exhaustion, scheduler due-selection, run-now throttle, cross-tenant dedupe, job uniqueness/`failed()`, DTO mapping. | `app/Modules/Signals/{Actions,Jobs,Console,Events,Data}/*`, `database/seeders/AiPromptTemplateSeeder.php`, `docs/ai-prompts.md`, `tests/{Unit,Feature}/Signals/*`, `tests/Feature/AiPlatform/PromptRegistryTest.php` |
 | 2026-10-29 | S2    | Serper News client & ICP-driven query builder: `config/signals.php` (Serper reused from ADR 0010 by env reference, own HTTP/circuit-breaker/cost tuning, `results_per_query`/`recency`/thresholds/`ignore_domains`/retention, and the loosened UAE templates from the S0 spike); `SignalQuery`/`NewsItem` DTOs; `NewsSearchClient` contract; `SerperNewsClient` (POST `/news`, maps `news[]`, clamps text, rejects non-http(s) links, drops `ignore_domains`, collapses dup URLs, retry-on-429/5xx + circuit breaker + fail-fast key); `SignalQueryBuilder` (deterministic; location override, event-type templates, buying-signal→watched-event-type extra queries); `SignalItemNormaliser` (canonical URL → `url_hash`); `FakeNewsSearchClient`. Tests: builder table tests, client payload mapping/ignore-domains/non-http/dedupe/retry/circuit/missing-key/driver, URL canonicalisation. Every env key in `.env.example`. Serper faked in every test. | `config/signals.php`, `.env.example`, `app/Modules/Signals/{Contracts,Data,Services,Testing,Providers,Exceptions}/*`, `tests/{Unit,Feature}/Signals/*` |
 | 2026-10-29 | S1    | Scaffolded the module (ADR 0002) and built the data model: 4 enums, 3 migrations (`signal_watches`/`signal_runs`/`signals`, all team-scoped, unique `(team_id, url_hash)` + feed index `(team_id, status, published_at)`, one-way `signals.lead_id → leads` `nullOnDelete`), 3 `BelongsToTeam` models + factories, `SignalWatchPolicy`/`SignalPolicy`, `SignalsException`, the `signals` log channel, and the `SignalsServiceProvider` (registered via Core base provider). Tests: enum coverage, cross-tenant isolation + auto-assign for all three models, per-team `url_hash` uniqueness, and `lead_id` nulling on lead delete. `signal_watches.ignore_domains` deferred to S6 per plan. No external calls. | `app/Modules/Signals/**`, `database/migrations/2026_10_29_18000{1,2,3}_*`, `database/factories/Signal*Factory.php`, `config/logging.php`, `bootstrap/providers.php`, `tests/{Unit,Feature}/Signals/*` |

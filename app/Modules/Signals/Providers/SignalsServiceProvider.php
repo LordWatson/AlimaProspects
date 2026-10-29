@@ -6,6 +6,7 @@ namespace App\Modules\Signals\Providers;
 
 use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\ModuleServiceProvider;
+use App\Modules\Signals\Console\DispatchDueSignalWatchesCommand;
 use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalWatch;
@@ -13,6 +14,7 @@ use App\Modules\Signals\Policies\SignalPolicy;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
 use App\Modules\Signals\Services\SerperNewsClient;
 use App\Modules\Signals\Services\SignalItemNormaliser;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Http\Client\Factory as HttpFactory;
 
@@ -25,6 +27,20 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         SignalWatch::class => SignalWatchPolicy::class,
         Signal::class => SignalPolicy::class,
     ];
+
+    public function boot(): void
+    {
+        parent::boot(); // routes + policies
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([DispatchDueSignalWatchesCommand::class]);
+        }
+
+        // Hourly: queue a run for each active watch whose cadence is due (the command decides which).
+        $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {
+            $schedule->command('signals:dispatch-due')->hourly()->withoutOverlapping();
+        });
+    }
 
     public function register(): void
     {

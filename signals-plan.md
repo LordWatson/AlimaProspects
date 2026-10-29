@@ -10,7 +10,7 @@
 | S0    | Decisions, docs & Serper spike                     | ✅ Done | 2026-10-29 |
 | S1    | Signals module scaffold, data model & tenancy      | ✅ Done | 2026-10-29 |
 | S2    | Serper News client & ICP-driven query builder      | ✅ Done | 2026-10-29 |
-| S3    | AI event extraction & the signal watch run         | ⬜     | —         |
+| S3    | AI event extraction & the signal watch run         | ✅ Done | 2026-10-29 |
 | S4    | Convert a signal into a standard Lead              | ⬜     | —         |
 | S5    | Signals feed & watch settings UI (EN/AR, RTL)      | ⬜     | —         |
 | S6    | API v1, retention, compliance hardening & polish   | ⬜     | —         |
@@ -160,23 +160,23 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
 **Modules & docs:** Signals; `docs/ai-prompts.md`; AI Platform (`PromptRegistry`, `AiClient`, `UntrustedContent`, `JsonSchemaValidator`).
 **Tasks:**
 
-1. [ ] **Prompt `signals.extract_event`** (cheap tier), registered in `PromptRegistry` and documented in `docs/ai-prompts.md`.
+1. [x] **Prompt `signals.extract_event`** (cheap tier), registered in `PromptRegistry` and documented in `docs/ai-prompts.md`.
     - **Input:** up to 10 `NewsItem`s, each wrapped in `UntrustedContent`, plus the team's business profile summary, ICP Geography/BuyingSignal values and the watched event types.
     - **Output JSON schema, per item:** `item_index`, `is_event` (bool), `event_type` (enum or null), `subject_person_name`, `subject_person_role`, `subject_company_name`, `counterparty_name`, `amount` (number|null), `currency` (ISO|null), `location`, `confidence` (0–100), `relevance` (0–100, i.e. how likely this person is a high-net-worth buyer for _this_ team), `summary` (≤ 2 sentences), `suggested_approach` (one line; must be LinkedIn / referral / introduction, never "email them").
     - The system prompt must tell the model to ignore instructions inside articles and to return `is_event=false` for listicles, property-portal pages, opinion pieces and rumours.
-2. [ ] **`ExtractedSignal` DTO** + validation through `JsonSchemaValidator`. If the schema fails, retry once, then skip the batch and log it; the run doesn't fail.
-3. [ ] **`RunSignalWatchAction`** (orchestration) for one watch:
+2. [x] **`ExtractedSignal` DTO** + validation through `JsonSchemaValidator`. If the schema fails, retry once, then skip the batch and log it; the run doesn't fail.
+3. [x] **`RunSignalWatchAction`** (orchestration) for one watch:
     1. Create the `signal_runs` row (status Running) in a transaction.
     2. **Outside any transaction:** build queries → call Serper per query → collect items → drop items whose `url_hash` already exists for the team → batch the rest (≤10) through `signals.extract_event`.
     3. Keep items where `is_event && confidence ≥ config('signals.min_confidence', 60) && relevance ≥ config('signals.min_relevance', 40)`.
     4. Persist the kept signals + run totals (`queries_count`, `results_count`, `signals_created`, `cost_micros` = Serper + AI) in **one `DB::transaction()`**. Use `insertOrIgnore` / an upsert on `(team_id, url_hash)` so a re-run is idempotent.
     5. **`afterCommit`:** fire the `SignalsDetected` event (team, run, count) and update `last_run_at`.
-4. [ ] **`RunSignalWatchJob`**: `ShouldBeUnique` (unique per watch id), `$tries = 3`, `$backoff = [30, 120, 300]`, `$timeout = 120`; `failed()` marks the run Failed with a user-safe error and logs to `signals`. Runs inside `TeamContext`. Uses `Log::withContext(['team_id','signal_watch_id','signal_run_id'])`.
-5. [ ] **Scheduler** in `routes/console.php`:
+4. [x] **`RunSignalWatchJob`**: `ShouldBeUnique` (unique per watch id), `$tries = 3`, `$backoff = [30, 120, 300]`, `$timeout = 120`; `failed()` marks the run Failed with a user-safe error and logs to `signals`. Runs inside `TeamContext`. Uses `Log::withContext(['team_id','signal_watch_id','signal_run_id'])`.
+5. [x] **Scheduler** in `routes/console.php`:
     - `signals:dispatch-due` runs hourly and queues `RunSignalWatchJob` for active watches whose cadence is due (Daily: `last_run_at` older than 24h; Weekly: older than 7 days).
     - Also add a **"Run now"** action, `TriggerSignalWatchAction`, rate-limited to once every 15 minutes per watch.
-6. [ ] **Progress over Reverb**: a `SignalRunProgressed` broadcast on the team's private channel (stages: searching, analysing, saving, done), mirroring `DiscoveryRunProgressed`.
-7. [ ] **AI credits**: go through `AiCreditGuard`, so a team out of credit gets a clear Failed run ("AI credit exhausted") instead of a half-run.
+6. [x] **Progress over Reverb**: a `SignalRunProgressed` broadcast on the team's private channel (stages: searching, analysing, saving, done), mirroring `DiscoveryRunProgressed`.
+7. [x] **AI credits**: go through `AiCreditGuard`, so a team out of credit gets a clear Failed run ("AI credit exhausted") instead of a half-run.
 
 **Tests:** end-to-end with `FakeNewsSearchClient` + `FakeAiTransport`:
 - happy path creates the right signals;
