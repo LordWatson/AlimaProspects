@@ -20,6 +20,8 @@ export const buttonVariants = cva(
           "bg-brand text-brand-foreground shadow-sm hover:bg-brand-hover",
         inverse:
           "bg-cream text-ink shadow-sm hover:bg-cream/90 focus-visible:ring-blue",
+        lime:
+          "bg-lime text-ink shadow-sm hover:bg-lime-80 focus-visible:ring-teal",
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 focus-visible:ring-destructive/40",
         outline:
