@@ -5,6 +5,7 @@ import {
     ChevronsUpDown,
     LayoutGrid,
     Palette,
+    Scan,
     Settings2,
     Target,
     type LucideIcon,
@@ -52,12 +53,19 @@ const workspace = computed<Item[]>(() => [
     },
     {
         n: '03',
+        title: t('Background check'),
+        icon: Scan,
+        href: '/business-intel',
+        match: 'startsWith',
+    },
+    {
+        n: '04',
         title: t('Ideal customers'),
         icon: Target,
         href: '/icp',
         match: 'startsWith',
     },
-    { n: '04', title: t('Design system'), icon: Palette, href: '/design' },
+    { n: '05', title: t('Design system'), icon: Palette, href: '/design' },
 ]);
 
 const account = computed<Item[]>(() => [

@@ -12,7 +12,7 @@
 | 3     | Onboarding & Business Profile                 | ✅ Done | 2026-10-29 |
 | 4     | Ideal Customer Profile (ICP)                  | ✅ Done | 2026-10-29 |
 | 5     | AI Platform                                   | ✅ Done | 2026-10-29 |
-| 6     | Business Intelligence (AI background check)   | ⬜      | —          |
+| 6     | Business Intelligence (AI background check)   | ✅ Done | 2026-10-29 |
 | 7     | Lead Sourcing — framework + Companies House   | ⬜      | —          |
 | 7b    | Lead Sourcing — Google Places + web search    | ⬜      | —          |
 | 8     | Enrichment & Data Quality                     | ⬜      | —          |
@@ -189,10 +189,10 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Business Intelligence (`business-intelligence.md`).
 **Tasks:**
 
-1. [ ] `business_intel_reports` (versioned, status) model/migration.
-2. [ ] `RunBackgroundCheckJob` (idempotent, `ShouldBeUnique`): fetch site/public pages, call `business_intel.background_check`, validate schema, store, **progress over Reverb**.
-3. [ ] `AcceptBackgroundCheckAction` (merge into Business Profile + optionally seed ICP), `RerunBackgroundCheckAction`.
-4. [ ] Inertia review screen (diff vs the business's own profile); accept/edit; `/api/v1` read.
+1. [x] `business_intel_reports` (versioned, status) model/migration.
+2. [x] `RunBackgroundCheckJob` (idempotent, `ShouldBeUnique`): fetch site/public pages, call `business_intel.background_check`, validate schema, store, **progress over Reverb**. _(Minimal SSRF-safe `WebContentFetcher` seam since Phase 7 isn't done.)_
+3. [x] `AcceptBackgroundCheckAction` (merge into Business Profile + optionally seed ICP), `RerunBackgroundCheckAction`.
+4. [x] Inertia review screen (diff vs the business's own profile); accept/edit; `/api/v1` read.
        **Data model:** `business_intel_reports`.
        **Tests:** job produces a report (faked AI); accept merges; rerun versions; injection-safe handling; tenancy.
        **Acceptance:** background check runs, is reviewable/acceptable, versioned; gates pass; docs updated.

@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 use App\Models\User;
 use App\Modules\Auth\Support\TeamMembership;
+use App\Modules\BusinessIntelligence\Jobs\RunBackgroundCheckJob;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Onboarding\Actions\CompleteOnboardingAction;
 use App\Modules\Onboarding\Exceptions\OnboardingException;
-use App\Modules\Onboarding\Jobs\RequestBackgroundCheckJob;
 use App\Modules\Onboarding\Models\BusinessProfile;
 use App\Modules\Onboarding\Models\OnboardingProgress;
 use App\Modules\Onboarding\Policies\BusinessProfilePolicy;
@@ -132,7 +132,7 @@ it('completes onboarding, applies the market and dispatches the background check
     expect($profile->isComplete())->toBeTrue()
         ->and($team->fresh()->market)->toBe('uae');
 
-    Queue::assertPushed(RequestBackgroundCheckJob::class);
+    Queue::assertPushed(RunBackgroundCheckJob::class);
 });
 
 it('blocks completion while steps are missing', function (): void {
@@ -145,7 +145,7 @@ it('blocks completion while steps are missing', function (): void {
         ->assertRedirect();
 
     expect(OnboardingProgress::query()->whereNotNull('completed_at')->count())->toBe(0);
-    Queue::assertNotPushed(RequestBackgroundCheckJob::class);
+    Queue::assertNotPushed(RunBackgroundCheckJob::class);
 });
 
 it('forbids a read-only member from saving a step', function (): void {

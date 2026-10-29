@@ -2,6 +2,7 @@
 
 use App\Modules\AiPlatform\Providers\AiPlatformServiceProvider;
 use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
+use App\Modules\BusinessIntelligence\Providers\BusinessIntelligenceServiceProvider;
 use App\Modules\Core\Providers\CoreServiceProvider;
 use App\Modules\ICP\Providers\IcpServiceProvider;
 use App\Modules\Onboarding\Providers\OnboardingServiceProvider;
@@ -20,4 +21,5 @@ return [
     AiPlatformServiceProvider::class,
     OnboardingServiceProvider::class,
     IcpServiceProvider::class,
+    BusinessIntelligenceServiceProvider::class,
 ];

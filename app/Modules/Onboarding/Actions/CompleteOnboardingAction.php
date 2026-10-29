@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Onboarding\Actions;
 
 use App\Models\User;
+use App\Modules\BusinessIntelligence\Jobs\RunBackgroundCheckJob;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Onboarding\Enums\OnboardingStep;
 use App\Modules\Onboarding\Exceptions\OnboardingException;
-use App\Modules\Onboarding\Jobs\RequestBackgroundCheckJob;
 use App\Modules\Onboarding\Models\BusinessProfile;
 use App\Modules\Onboarding\Models\OnboardingProgress;
 use Illuminate\Support\Facades\DB;
@@ -72,7 +72,7 @@ final class CompleteOnboardingAction
             $this->audit->log('onboarding.completed', $profile, ['version' => $profile->version], $actor);
 
             DB::afterCommit(static function () use ($team): void {
-                RequestBackgroundCheckJob::dispatch((int) $team->getKey());
+                RunBackgroundCheckJob::dispatch((int) $team->getKey());
             });
 
             return $profile->refresh();
