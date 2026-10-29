@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\LeadSourcing\Support;
+namespace App\Modules\Core\Support;
 
 use Illuminate\Contracts\Cache\Repository as Cache;
 
@@ -13,7 +13,8 @@ use Illuminate\Contracts\Cache\Repository as Cache;
  * refused outright instead of hammering a struggling provider. A single success closes it again.
  *
  * State lives in the shared cache so it holds across queue workers. It is advisory, not a hard
- * guarantee — good enough to shed load and recover, which is all Phase 7 needs.
+ * guarantee — good enough to shed load and recover. Shared across modules (Lead Sourcing, Signals);
+ * each module passes its own {@see $prefix} so their breaker state never shares a cache namespace.
  */
 final class CircuitBreaker
 {
@@ -21,6 +22,7 @@ final class CircuitBreaker
         private readonly Cache $cache,
         private readonly int $threshold = 5,
         private readonly int $cooldownSeconds = 60,
+        private readonly string $prefix = 'cb',
     ) {}
 
     /**
@@ -56,11 +58,11 @@ final class CircuitBreaker
 
     private function failuresKey(string $key): string
     {
-        return "lead_sourcing:cb:failures:{$key}";
+        return "{$this->prefix}:failures:{$key}";
     }
 
     private function openKey(string $key): string
     {
-        return "lead_sourcing:cb:open:{$key}";
+        return "{$this->prefix}:open:{$key}";
     }
 }

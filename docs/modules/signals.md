@@ -1,6 +1,6 @@
 # Signals
 
-> Status: **MVP (Signals v1 — S1 landed; S2–S6 planned)** · Owner: Product · Last updated: 2026-10-29
+> Status: **MVP (Signals v1 — S1–S2 landed; S3–S6 planned)** · Owner: Product · Last updated: 2026-10-29
 
 ## Purpose
 
@@ -40,16 +40,23 @@ other verticals reuse it later with different templates.
       `Converted`), `SignalWatchCadence` (`Daily`, `Weekly`; `staleAfterHours()` →
       24 / 168 for the S3 scheduler), `SignalRunStatus` (`Queued`, `Running`,
       `Completed`, `Failed`; `isTerminal()`/`isActive()` — mirrors `DiscoveryRunStatus`).
-    - **Contracts (S2):** `NewsSearchClient` (`search(SignalQuery): list<NewsItem>`).
-    - **Services (S2–S3):** `SignalQueryBuilder` (watch + active ICP →
-      `list<SignalQuery>`, deterministic, no AI), `SerperNewsClient` (implements
-      `NewsSearchClient`, reuses the `AbstractHttpLeadSourceProvider` hardening
-      pattern — timeouts, retry-on-429/5xx, circuit breaker, `requireApiKey`),
-      `SignalItemNormaliser` (URL canonicalisation → `url_hash`).
-    - **Data / DTOs (S2–S4):** `SignalQuery` (`eventType`, `q`, `gl`, `hl`, `tbs`,
-      `num`), `NewsItem` (`title`, `snippet`, `link`, `source`, `date`, `raw`),
-      `ExtractedSignal` (AI output, schema-validated), `ConvertSignalData`
-      (spatie/laravel-data).
+    - **Contracts (S2 ✅):** `NewsSearchClient` (`search(SignalQuery): list<NewsItem>`);
+      real impl `SerperNewsClient`, test impl `FakeNewsSearchClient`.
+    - **Services (S2 ✅; S3 to come):** `SignalQueryBuilder` (watch + active ICP →
+      `list<SignalQuery>`, deterministic, no AI — watch location overrides ICP
+      geography, event_types pick templates, buying-signal criteria append extra
+      queries only when they map to a watched event type), `SerperNewsClient`
+      (implements `NewsSearchClient`; reuses the `AbstractHttpLeadSourceProvider`
+      hardening pattern — timeouts, retry-on-429/5xx, the shared
+      `Core\Support\CircuitBreaker` with prefix `signals:cb` and key `signals_news`,
+      fail-fast on a missing key — drops `ignore_domains`, collapses duplicate URLs,
+      clamps all text incl. `raw`, rejects over-long/non-http(s) links, and fails on a
+      malformed 200 body), `SignalItemNormaliser` (URL canonicalisation → `url_hash`:
+      lower-cased host, `utm_*`/fragment stripped, query sorted).
+    - **Data / DTOs (S2 ✅; S4 to come):** `SignalQuery` (`eventType`, `q`, `gl`, `hl`,
+      `tbs`, `num`), `NewsItem` (`title`, `snippet`, `link`, `urlHash`, `source`,
+      `publishedAt` best-effort UTC, `raw`), `ExtractedSignal` (S3, AI output,
+      schema-validated), `ConvertSignalData` (S4, spatie/laravel-data).
     - **Actions (S3–S4):** `RunSignalWatchAction`, `TriggerSignalWatchAction`
       (run-now, rate-limited), `ConvertSignalToLeadAction`, `DismissSignalAction`,
       `RestoreSignalAction`.
@@ -81,7 +88,7 @@ other verticals reuse it later with different templates.
   EN/AR strings in `lang/`; brand tokens only (CLAUDE.md §2a).
 - **Shared:** `resources/js/types/signals.ts` (S5).
 - **Tests:** `tests/Feature/Signals/*`, `tests/Unit/Signals/*`.
-- **Config / env vars:** `config/signals.php` (S2) — Serper settings (reuse the
+- **Config / env vars:** `config/signals.php` (S2 ✅) — Serper settings (reuse the
   ADR 0010 key/base URL by reference; own `timeout`, `connect_timeout`, `retries`,
   `backoff`), `results_per_query`, `recency` (`qdr:w`), `cost_micros_per_request`,
   `min_confidence`, `min_relevance`, `ignore_domains`, the per-event-type **query
@@ -313,6 +320,14 @@ Policies `SignalWatchPolicy` + `SignalPolicy` double-check `team_id` behind the
   to the run time when unparseable (S2 risk).
 - **Query templates are the main quality lever** and are config, not code — tune per
   the spike before S2 and per dismiss reasons post-v1.
+- **ICP buying-signal → event-type matching** (`SignalQueryBuilder`) is intentionally
+  **stem/substring, first-match-wins**: `rais` matches "raises/raised", `exit` matches
+  "exits", and Acquisition is checked before FundingRound before Relocation. This keeps
+  it deterministic and testable; a buying signal only ever adds a query for a **watched**
+  event type. Word-boundary matching is a possible post-v1 refinement.
+- **`CircuitBreaker` lives in `Core\Support`** (extracted from Lead Sourcing in S2) and
+  takes a `prefix`, so Signals' breaker state (`signals:cb:*`) never shares Lead
+  Sourcing's cache namespace (`lead_sourcing:cb:*`).
 - **Retention** (hard-delete dismissed @ 90 days, unactioned @ 180 days) and the
   **per-team ignore list** and **DSAR hook** land in S6.
 - **Logging:** channel `signals`; log IDs/counts only, never names or article text.
@@ -330,4 +345,5 @@ Policies `SignalWatchPolicy` + `SignalPolicy` double-check `team_id` behind the
 | Date       | Phase | Change                                                                                                                                                               | Files                                                                                 |
 | ---------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | 2026-10-29 | S0    | Created the module doc: purpose, planned code map, data model (ER diagram for `signal_watches`/`signal_runs`/`signals`), key flows, external deps, permissions — and recorded the Serper News spike (strict templates fail; loosened plain-keyword templates return 3–10 genuine Dubai events/type/week; `/news` caps at ~10 results/query). ADR 0011 accepted. | `docs/modules/signals.md`, `docs/decisions/0011-signals-module.md`, `docs/compliance.md`, `docs/architecture.md`, `CLAUDE.md`, `mvp.md` |
+| 2026-10-29 | S2    | Serper News client & ICP-driven query builder: `config/signals.php` (Serper reused from ADR 0010 by env reference, own HTTP/circuit-breaker/cost tuning, `results_per_query`/`recency`/thresholds/`ignore_domains`/retention, and the loosened UAE templates from the S0 spike); `SignalQuery`/`NewsItem` DTOs; `NewsSearchClient` contract; `SerperNewsClient` (POST `/news`, maps `news[]`, clamps text, rejects non-http(s) links, drops `ignore_domains`, collapses dup URLs, retry-on-429/5xx + circuit breaker + fail-fast key); `SignalQueryBuilder` (deterministic; location override, event-type templates, buying-signal→watched-event-type extra queries); `SignalItemNormaliser` (canonical URL → `url_hash`); `FakeNewsSearchClient`. Tests: builder table tests, client payload mapping/ignore-domains/non-http/dedupe/retry/circuit/missing-key/driver, URL canonicalisation. Every env key in `.env.example`. Serper faked in every test. | `config/signals.php`, `.env.example`, `app/Modules/Signals/{Contracts,Data,Services,Testing,Providers,Exceptions}/*`, `tests/{Unit,Feature}/Signals/*` |
 | 2026-10-29 | S1    | Scaffolded the module (ADR 0002) and built the data model: 4 enums, 3 migrations (`signal_watches`/`signal_runs`/`signals`, all team-scoped, unique `(team_id, url_hash)` + feed index `(team_id, status, published_at)`, one-way `signals.lead_id → leads` `nullOnDelete`), 3 `BelongsToTeam` models + factories, `SignalWatchPolicy`/`SignalPolicy`, `SignalsException`, the `signals` log channel, and the `SignalsServiceProvider` (registered via Core base provider). Tests: enum coverage, cross-tenant isolation + auto-assign for all three models, per-team `url_hash` uniqueness, and `lead_id` nulling on lead delete. `signal_watches.ignore_domains` deferred to S6 per plan. No external calls. | `app/Modules/Signals/**`, `database/migrations/2026_10_29_18000{1,2,3}_*`, `database/factories/Signal*Factory.php`, `config/logging.php`, `bootstrap/providers.php`, `tests/{Unit,Feature}/Signals/*` |

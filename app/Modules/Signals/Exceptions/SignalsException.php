@@ -16,6 +16,57 @@ final class SignalsException extends DomainException
     protected string $errorCode = 'signals.invalid';
 
     /**
+     * Whether a queued run that hit this error is worth retrying. A transient news-provider failure
+     * is; a configuration error (missing key, wrong driver) never will be, so the S3 job fails fast
+     * instead of burning its retries.
+     */
+    protected bool $retryable = false;
+
+    public function isRetryable(): bool
+    {
+        return $this->retryable;
+    }
+
+    /**
+     * The news provider failed (timeout, 5xx/429, or a tripped circuit breaker). Transient —
+     * retryable.
+     */
+    public static function newsProviderFailed(): self
+    {
+        $e = new self('We couldn’t reach the news service. Please try again shortly.');
+        $e->errorCode = 'signals.news_provider_failed';
+        $e->status = 502;
+        $e->retryable = true;
+
+        return $e;
+    }
+
+    /**
+     * The news provider is missing required configuration (e.g. the Serper API key) — never
+     * retryable.
+     */
+    public static function newsProviderMisconfigured(): self
+    {
+        $e = new self('Signals isn’t set up yet. An administrator needs to add the news service’s API key.');
+        $e->errorCode = 'signals.news_provider_misconfigured';
+        $e->status = 503;
+
+        return $e;
+    }
+
+    /**
+     * A news driver other than the supported one was configured — a config error, not transient.
+     */
+    public static function newsProviderUnavailable(): self
+    {
+        $e = new self('That news source isn’t available.');
+        $e->errorCode = 'signals.news_provider_unavailable';
+        $e->status = 503;
+
+        return $e;
+    }
+
+    /**
      * The signal has already been converted into a lead, so it can't be converted again.
      */
     public static function alreadyConverted(): self

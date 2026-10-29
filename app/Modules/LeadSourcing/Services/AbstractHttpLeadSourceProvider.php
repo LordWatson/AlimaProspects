@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\LeadSourcing\Services;
 
+use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\LeadSourcing\Contracts\LeadSourceProvider;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
-use App\Modules\LeadSourcing\Support\CircuitBreaker;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;

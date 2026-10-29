@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\LeadSourcing\Data\DiscoveryQuery;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Services\CompaniesHouseProvider;
-use App\Modules\LeadSourcing\Support\CircuitBreaker;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function (): void {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Modules\LeadSourcing\Support\CircuitBreaker;
+use App\Modules\Core\Support\CircuitBreaker;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository;
 

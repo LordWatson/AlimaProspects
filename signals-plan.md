@@ -9,7 +9,7 @@
 | ----- | -------------------------------------------------- | ------ | --------- |
 | S0    | Decisions, docs & Serper spike                     | ✅ Done | 2026-10-29 |
 | S1    | Signals module scaffold, data model & tenancy      | ✅ Done | 2026-10-29 |
-| S2    | Serper News client & ICP-driven query builder      | ⬜     | —         |
+| S2    | Serper News client & ICP-driven query builder      | ✅ Done | 2026-10-29 |
 | S3    | AI event extraction & the signal watch run         | ⬜     | —         |
 | S4    | Convert a signal into a standard Lead              | ⬜     | —         |
 | S5    | Signals feed & watch settings UI (EN/AR, RTL)      | ⬜     | —         |
@@ -114,12 +114,12 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
 **Modules & docs:** Signals; reuses `config/lead-sourcing.php` → `providers.web_search` (key, base URL).
 **Tasks:**
 
-1. [ ] **Config** `config/signals.php`:
+1. [x] **Config** `config/signals.php`:
     - Serper settings: reuse the existing key/base URL by reference; own timeout, connect timeout, retries and backoff.
     - `results_per_query` (default 20), `recency` (`qdr:w`), `cost_micros_per_request`.
     - `ignore_domains`: portals and agencies to drop (e.g. bayut.com, propertyfinder.ae, dubizzle.com, plus the client's competitors, set per team later).
     - The **query templates** per `SignalEventType` and market. Document every key in `.env.example`.
-2. [ ] **v1 UAE query templates** (in config, editable without code changes; `{location}` comes from the watch, which defaults to the ICP's first Geography value). **Loosened per the S0 Serper spike** — plain keywords, no exact-phrase `"…"` quoting and no `-based` (those returned 0 results on `/news` + `qdr:w`; see `docs/modules/signals.md` → "Serper News spike — findings"):
+2. [x] **v1 UAE query templates** (in config, editable without code changes; `{location}` comes from the watch, which defaults to the ICP's first Geography value). **Loosened per the S0 Serper spike** — plain keywords, no exact-phrase `"…"` quoting and no `-based` (those returned 0 results on `/news` + `qdr:w`; see `docs/modules/signals.md` → "Serper News spike — findings"):
     - `Acquisition`:
         - `{location} company acquisition`
         - `UAE acquisition deal`
@@ -133,18 +133,18 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
         - `family office {location} opens`
         - _(dropped `company relocates headquarters {location}` — too noisy / mostly non-UAE in the spike)_
     - **Note for S3:** the AI `signals.extract_event` prompt must **geo-qualify** — set `is_event=false` or low `relevance` when the subject isn't tied to the watched location (keyword hits include non-UAE M&A that merely mention the UAE). `/news` returns ≤ ~10 items/query, so breadth (more templates) beats a bigger `num`.
-3. [ ] **`SignalQueryBuilder`** (Service): watch + active ICP → `list<SignalQuery>` DTOs (`eventType`, `q`, `gl`, `hl`, `tbs`, `num`). Rules:
+3. [x] **`SignalQueryBuilder`** (Service): watch + active ICP → `list<SignalQuery>` DTOs (`eventType`, `q`, `gl`, `hl`, `tbs`, `num`). Rules:
     - The watch's `location` overrides the ICP Geography value.
     - The watch's `event_types` choose the templates.
     - ICP `BuyingSignal` criteria are **appended as extra queries** when they match a known event keyword (e.g. "raised funding" → `FundingRound`). Otherwise they're ignored and the reason is logged.
     - Deterministic: no AI. Tested with a table of inputs → expected queries.
-4. [ ] **Contract `NewsSearchClient`** + **`SerperNewsClient`**:
+4. [x] **Contract `NewsSearchClient`** + **`SerperNewsClient`**:
     - Calls `POST /news` with `q`, `gl`, `hl`, `tbs`, `num` and maps the `news` array to `NewsItem` DTOs (`title`, `snippet`, `link`, `source`, `date` parsed to UTC when possible, `raw`).
     - Clamps text (as `SourcedLead` does), rejects non-http(s) links and drops `ignore_domains`.
     - Reuses the hardening pattern from `AbstractHttpLeadSourceProvider`: timeouts, retry with backoff on 429/5xx only, circuit breaker (`LeadSourcing\Support\CircuitBreaker`, or extract it to Core if reuse gets awkward), and `requireApiKey`.
     - Throws `SignalsException` on genuine failure; never returns partial garbage silently.
-5. [ ] **`FakeNewsSearchClient`** in `app/Modules/Signals/Testing/` with canned Dubai fixtures, bound in tests.
-6. [ ] `SignalItemNormaliser`: `url_hash` = sha1 of the canonicalised URL (lower-cased host, `utm_*`/fragment stripped), so the same article with tracking parameters dedupes.
+5. [x] **`FakeNewsSearchClient`** in `app/Modules/Signals/Testing/` with canned Dubai fixtures, bound in tests.
+6. [x] `SignalItemNormaliser`: `url_hash` = sha1 of the canonicalised URL (lower-cased host, `utm_*`/fragment stripped), so the same article with tracking parameters dedupes.
 
 **Tests:** query builder table tests (location override, event-type selection, BuyingSignal mapping); Serper client maps a recorded `/news` payload (`Http::fake`); ignores portal domains; retries on 429 then succeeds; circuit opens after repeated failure; missing key fails fast; URL canonicalisation.
 **Acceptance:** `SerperNewsClient` returns normalised Dubai items from a fixture; gates pass; module doc "External dependencies" filled in.

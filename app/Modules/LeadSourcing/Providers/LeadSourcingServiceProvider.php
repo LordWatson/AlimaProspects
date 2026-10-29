@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\LeadSourcing\Providers;
 
+use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\LeadSourcing\Contracts\LeadInterestGate;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
@@ -17,7 +18,6 @@ use App\Modules\LeadSourcing\Services\GooglePlacesProvider;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use App\Modules\LeadSourcing\Services\StubLeadQuotaSource;
 use App\Modules\LeadSourcing\Services\WebSearchProvider;
-use App\Modules\LeadSourcing\Support\CircuitBreaker;
 use App\Modules\ModuleServiceProvider;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -43,6 +43,7 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
             $app->make(Cache::class),
             (int) config('lead-sourcing.circuit_breaker.threshold', 5),
             (int) config('lead-sourcing.circuit_breaker.cooldown', 60),
+            prefix: 'lead_sourcing:cb',
         ));
 
         // The provider registry: one entry per live source. New providers (Phase 7b) register here
