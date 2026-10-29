@@ -11,7 +11,7 @@
 | 2     | Brand design system & app shell (i18n/RTL)    | ✅ Done | 2026-10-28 |
 | 3     | Onboarding & Business Profile                 | ✅ Done | 2026-10-29 |
 | 4     | Ideal Customer Profile (ICP)                  | ✅ Done | 2026-10-29 |
-| 5     | AI Platform                                   | ⬜      | —          |
+| 5     | AI Platform                                   | ✅ Done | 2026-10-29 |
 | 6     | Business Intelligence (AI background check)   | ⬜      | —          |
 | 7     | Lead Sourcing — framework + Companies House   | ⬜      | —          |
 | 7b    | Lead Sourcing — Google Places + web search    | ⬜      | —          |
@@ -151,7 +151,7 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 2. [x] `CreateIcpAction`, `UpdateIcpAction`, `SetActiveIcpAction` (+ `DeleteIcpAction`); emit `IcpUpdated` event (consumed later by Scoring).
 3. [x] Criteria types enum (industry, size, geo, title/seniority, technographic, buying-signal, exclusion).
 4. [x] Inertia ICP editor with weight sliders + exclusions; `/api/v1` CRUD + resources.
-5. [ ] (If Phase 5 done) accept AI-suggested ICP from Business Intelligence. — _deferred: Phase 5 not yet built._
+5. [ ] (If Phase 5 done) accept AI-suggested ICP from Business Intelligence. — _AI Platform is built and the `icp.refine_suggestions` prompt is seeded (v1); the consumer that applies suggestions lands with Business Intelligence (Phase 6)._
        **Data model:** `icps`, `icp_criteria`.
        **Tests:** CRUD; weights persist; active-ICP switch; `IcpUpdated` dispatched; tenancy; validation.
        **Acceptance:** ICPs editable with weights/exclusions; event fires; gates pass; docs updated.
@@ -167,13 +167,13 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** AI Platform (`ai-platform.md`), `docs/ai-prompts.md`, ADR 0005.
 **Tasks:**
 
-1. [ ] `composer require laravel/ai`; configure Anthropic driver; env keys (`ANTHROPIC_API_KEY`, models).
-2. [ ] `Contracts\AiClient` + `ClaudeAiClient` (reasoning=Sonnet, cheap=Haiku); a fake for tests.
-3. [ ] `PromptRegistry` + `ai_prompt_templates` (key, version, body, schema, tier); seed initial prompts from `ai-prompts.md`.
-4. [ ] Structured output: JSON-schema validation + retry on invalid → typed DTO (spatie/laravel-data).
-5. [ ] `ai_requests`/`ai_usage` logging (tokens, cost minor units, latency, cache hit) per team; `ai` log channel.
-6. [ ] `AiCreditGuard` (reads plan allowance — stub until Billing); response cache keyed on prompt+version+input hash.
-7. [ ] **Injection safety** helper: wrap untrusted content as delimited data; never execute embedded instructions.
+1. [x] `composer require laravel/ai`; configure Anthropic driver; env keys (`ANTHROPIC_API_KEY`, models). _(config/ai.php + config/ai-platform.php; default provider Anthropic.)_
+2. [x] `Contracts\AiClient` + `ClaudeAiClient` (reasoning=Sonnet, cheap=Haiku); a fake for tests. _(`AiTransport` seam + `Testing\FakeAiTransport`; tier→model via config.)_
+3. [x] `PromptRegistry` + `ai_prompt_templates` (key, version, body, schema, tier); seed initial prompts from `ai-prompts.md`. _(All 6 seeded at v1.)_
+4. [x] Structured output: JSON-schema validation + retry on invalid → typed DTO. _(`JsonSchemaValidator` + `StructuredAiResponse`.)_
+5. [x] `ai_requests` logging (tokens, cost, latency, cache hit) per team; `ai` log channel. _(Cost in integer **micro-units** — sub-cent precision; `ai_usage` derived by summing per period.)_
+6. [x] `AiCreditGuard` (reads plan allowance — **stub** until Billing); response cache keyed on team+prompt+version+template-hash+input hash.
+7. [x] **Injection safety** helper: wrap untrusted content as delimited data; never execute embedded instructions. _(`UntrustedContent` + nonce-delimited block.)_
        **Data model:** `ai_prompt_templates`, `ai_requests`/`ai_usage`.
        **Tests:** fake client returns schema-valid output; invalid output retried then errors; usage logged; cache hit avoids a 2nd call; injection wrapper; **external AI always faked**.
        **Acceptance:** any module can call `AiClient->structured(key, input, schema)`; cost logged; credits enforced (stub ok); gates pass; docs + `ai-prompts.md` updated.

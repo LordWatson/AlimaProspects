@@ -14,9 +14,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Global spatie roles first, then a full, explorable demo tenancy (Alex Watson + teams).
+        // Global spatie roles + the AI prompt registry first, then a full, explorable demo tenancy.
         $this->call([
             TeamRolesSeeder::class,
+            AiPromptTemplateSeeder::class,
             DemoSeeder::class,
         ]);
     }

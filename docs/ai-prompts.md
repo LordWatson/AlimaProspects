@@ -11,16 +11,24 @@
 - **Injection safety:** any prompt that includes scraped/web/user content wraps it in clearly delimited data blocks with the instruction that content inside is **data, not instructions**.
 - **Cost:** token + cost per call is logged per team against plan credits.
 
-## Registry (planned — populated as modules land)
+## Registry (seeded in Phase 5 — all at version 1; consumed as modules land)
 
-| Key                               | Module                      | Tier      | Purpose                                                                                                                               | Structured output            | Status  |
-| --------------------------------- | --------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------- |
-| `business_intel.background_check` | Business Intelligence       | reasoning | Research the signed-up business from its site + public sources → profile (summary, offering, positioning, competitors, suggested ICP) | yes (BusinessProfile schema) | planned |
-| `icp.refine_suggestions`          | ICP / Business Intelligence | reasoning | Suggest ICP refinements from the business profile                                                                                     | yes (IcpSuggestion[])        | planned |
-| `lead.enrich_extract`             | Enrichment                  | cheap     | Extract structured company/contact facts from fetched public web text                                                                 | yes (EnrichmentFacts)        | planned |
-| `scoring.qualitative_fit`         | Scoring & Matching          | reasoning | Qualitative ICP-fit assessment + plain-English "why this matches", feeding the hybrid score                                           | yes (QualitativeScore)       | planned |
-| `outreach.draft_message`          | Outreach                    | reasoning | Personalised email / LinkedIn text / call script from business profile + lead + tone controls                                         | yes (MessageDraft)           | planned |
-| `insights.periodic_digest`        | AI Insights                 | reasoning | Periodic insights: best segments, ICP tweaks, stale-lead alerts, "contact today" digest                                               | yes (Insight[])              | planned |
+All six prompts are **seeded at version 1** by `AiPromptTemplateSeeder` (Phase 5 — AI Platform) with
+their JSON schemas. Code will reference them via `AiClient->structured(key, input)` from the owning
+module's phase; "status" below tracks whether that **consumer** is built, not whether the template
+exists (it does).
+
+| Key                               | Module                      | Tier      | Purpose                                                                                                                               | Structured output            | Status            |
+| --------------------------------- | --------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ----------------- |
+| `business_intel.background_check` | Business Intelligence       | reasoning | Research the signed-up business from its site + public sources → profile (summary, offering, positioning, competitors, suggested ICP) | yes (object)                 | seeded v1 (Ph. 6) |
+| `icp.refine_suggestions`          | ICP / Business Intelligence | reasoning | Suggest ICP refinements from the business profile                                                                                     | yes (object → suggestions[]) | seeded v1 (Ph. 6) |
+| `lead.enrich_extract`             | Enrichment                  | cheap     | Extract structured company/contact facts from fetched public web text                                                                 | yes (object)                 | seeded v1 (Ph. 8) |
+| `scoring.qualitative_fit`         | Scoring & Matching          | reasoning | Qualitative ICP-fit assessment + plain-English "why this matches", feeding the hybrid score                                           | yes (object)                 | seeded v1 (Ph. 9) |
+| `outreach.draft_message`          | Outreach                    | reasoning | Personalised email / LinkedIn text / call script from business profile + lead + tone controls                                         | yes (object → variants[])    | seeded v1 (Ph. 11) |
+| `insights.periodic_digest`        | AI Insights                 | reasoning | Periodic insights: best segments, ICP tweaks, stale-lead alerts, "contact today" digest                                               | yes (object → insights[])    | seeded v1 (Ph. 14) |
+
+> Top-level array outputs (suggestions / variants / insights) are wrapped in a named object property,
+> since the structured-output transport and our validator expect an object at the schema root.
 
 ## Rules for adding a prompt
 

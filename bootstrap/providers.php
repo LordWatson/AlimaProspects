@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\AiPlatform\Providers\AiPlatformServiceProvider;
 use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
 use App\Modules\Core\Providers\CoreServiceProvider;
 use App\Modules\ICP\Providers\IcpServiceProvider;
@@ -16,6 +17,7 @@ return [
     // Domain modules (ADR 0002) — register each module's provider here.
     CoreServiceProvider::class,
     AuthModuleServiceProvider::class,
+    AiPlatformServiceProvider::class,
     OnboardingServiceProvider::class,
     IcpServiceProvider::class,
 ];

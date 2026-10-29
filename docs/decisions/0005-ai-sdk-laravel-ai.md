@@ -1,7 +1,7 @@
 # ADR 0005 — AI transport: Laravel's first-party AI SDK (`laravel/ai`)
 
-- **Status:** Accepted (to be installed in the AI Platform phase, not at foundation)
-- **Date:** 2026-10-28
+- **Status:** Accepted — **installed in Phase 5** (`laravel/ai` ^1.3, wrapped behind `Contracts\AiClient`)
+- **Date:** 2026-10-28 (installed 2026-10-29)
 
 ## Context
 
