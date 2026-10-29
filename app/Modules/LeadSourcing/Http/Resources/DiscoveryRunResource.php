@@ -38,7 +38,16 @@ final class DiscoveryRunResource extends JsonResource
             'completed_at' => $this->completed_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             // The leads this run produced, when the relation is loaded (detail screen only).
-            'leads' => LeadResource::collection($this->whenLoaded('leads')),
+            //
+            // Resolved to a plain list rather than handed over as a resource collection. A nested
+            // collection keeps its own `data` wrapper when the parent is `->resolve()`d — which the
+            // Inertia controller does — so this arrived as `run.leads = { data: [...] }`, and the
+            // screen, which reads `run.leads.length`, showed "No companies matched" for every run
+            // that had actually found something.
+            'leads' => $this->whenLoaded(
+                'leads',
+                fn (): array => LeadResource::collection($this->leads)->resolve($request),
+            ),
         ];
     }
 }

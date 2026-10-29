@@ -5,6 +5,12 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-10-29 — Discovery run detail listed no companies
+
+- **A completed discovery run always showed "No companies matched", however many leads it had created.** `DiscoveryRunResource` nested `LeadResource::collection(...)` for its `leads`, and the Inertia controller serialises with `->resolve()`, which resolves only the **top** level — so the prop arrived as `run.leads = { data: [...] }` while `pages/lead-sourcing/Show.vue` reads `run.leads.length`. `undefined` is falsy, so the empty state won every time. The nested collection is now resolved to a plain list, the same fix `LeadResource.contacts` got in Phase 10.
+- **Shipped broken in Phase 7**, not a Phase 10 regression: the resource, the controller and the Vue read are all unchanged since then (`git show HEAD:` confirms it). It survived because nothing asserted the leads — `DiscoveryApiTest` had a test _named_ "shows a single run with its leads" that only checked the id and status, and the screen had no web test at all.
+- **Now pinned at both ends.** A new `tests/Feature/LeadSourcing/DiscoveryWebTest.php` asserts the run detail renders its companies as a list (with grades) and an empty run as an empty list, and the API test asserts the same plain shape — so the two can't drift again. A sweep of every other resource found one more nested collection (`IcpResource::criteria`), which is safe because that resource is only ever returned directly from the API rather than `->resolve()`d.
+
 ### Added — 2026-10-29 — Phase 10b: Leads Workspace (pipeline, notes, tasks, bulk, CSV)
 
 - **A customisable pipeline.** `pipeline_stages` per team (`name`, stable `slug`, `position`, one `is_default`, an optional `won`/`lost` `outcome`), created **lazily** the first time a team opens the board — so a team that never looks at it never needs stages, and teams that existed before this phase get one the moment they do, with no backfill. The board is drag-and-drop **and** has an equivalent pick-then-Move control on every card, because a board that only works with a mouse is a board half the team can't use. Owner/Admin can rename (inline, on the column heading), reorder and add or remove columns; removing one **moves its leads** to the starting column and says so before you confirm; the last column and the starting column can't be removed; and the save Action keeps the "exactly one starting column" invariant by promoting another stage rather than letting a team edit its way into having none.

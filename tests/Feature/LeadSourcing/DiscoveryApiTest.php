@@ -11,6 +11,7 @@ use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
+use App\Modules\LeadSourcing\Models\Lead;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 
@@ -75,13 +76,28 @@ it('fans out to one run per source over the API', function (): void {
 it('shows a single run with its leads', function (): void {
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
-    $run = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->completed()->create(['team_id' => $team->getKey()]));
+
+    $run = app(TeamContext::class)->run($team, function () use ($team): DiscoveryRun {
+        $run = DiscoveryRun::factory()->completed()->create(['team_id' => $team->getKey()]);
+
+        Lead::factory()->create([
+            'team_id' => $team->getKey(),
+            'discovery_run_id' => $run->getKey(),
+            'company_name' => 'Bright Bean Coffee',
+        ]);
+
+        return $run;
+    });
 
     $this->actingAs($user, 'sanctum')
         ->getJson(route('api.v1.lead-sourcing.runs.show', ['run' => $run->getKey()]))
         ->assertOk()
         ->assertJsonPath('data.id', $run->getKey())
-        ->assertJsonPath('data.status', 'completed');
+        ->assertJsonPath('data.status', 'completed')
+        // A plain list, not a nested `{ data: [...] }` wrapper — the same shape the web screen
+        // gets, so the two can't drift.
+        ->assertJsonCount(1, 'data.leads')
+        ->assertJsonPath('data.leads.0.company_name', 'Bright Bean Coffee');
 });
 
 it('returns a validation envelope for a bad source', function (): void {
