@@ -6,6 +6,7 @@ import {
     LayoutGrid,
     Palette,
     Settings2,
+    Target,
     type LucideIcon,
 } from '@lucide/vue';
 import { computed } from 'vue';
@@ -49,7 +50,14 @@ const workspace = computed<Item[]>(() => [
         href: '/onboarding',
         match: 'startsWith',
     },
-    { n: '03', title: t('Design system'), icon: Palette, href: '/design' },
+    {
+        n: '03',
+        title: t('Ideal customers'),
+        icon: Target,
+        href: '/icp',
+        match: 'startsWith',
+    },
+    { n: '04', title: t('Design system'), icon: Palette, href: '/design' },
 ]);
 
 const account = computed<Item[]>(() => [

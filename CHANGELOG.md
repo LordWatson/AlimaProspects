@@ -5,6 +5,18 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-29 — Phase 4: Ideal Customer Profile (ICP)
+
+- **ICP module** (`app/Modules/ICP`): a team defines one or more weighted **Ideal Customer Profiles** (one active) that drive discovery and scoring.
+- **Data model:** `icps` (`name`, `description`, `is_active`) and `icp_criteria` (`type`, `value`, `weight`, `position`), both `BelongsToTeam`. `weight` is 1–100 for positive **signals** and null for **exclusions**; `position` preserves editor order.
+- **Criteria types** (`CriterionType` enum, no magic strings): industry, company size, geography, decision-maker title, seniority, technology used, buying signal — plus `exclusion` (unweighted disqualifier: competitors, existing customers, domains).
+- **Actions:** `CreateIcpAction` (a team's first ICP auto-activates), `UpdateIcpAction`, `SetActiveIcpAction`, `DeleteIcpAction` (promotes the newest remaining ICP when the active one is deleted), `GetIcpsAction` + `FindIcpAction` (team-scoped reads). Writes run in `TeamContext->run` + `DB::transaction`; criterion/activation logic is shared via the `WritesIcpCriteria` trait.
+- **Re-score event:** `IcpUpdated(teamId, activeIcpId)` fires `afterCommit` whenever the active ICP's definition changes, the active ICP switches, or the active ICP is deleted — the integration point for Scoring & Matching (Phase 9). No listener yet.
+- **Web + API:** the Inertia ICP workspace (`GET /icp`, `create`, `store`, `edit`, `update`, `activate`, `destroy`) guarded by `IcpPolicy` (view = any member; manage = Owner/Admin); full `/api/v1/icps` CRUD + activate via `IcpResource`/`IcpCriterionResource`. `FindIcpAction` resolves `{icp}` inside the team context so cross-tenant ids 404.
+- **Frontend (on brand, EN/AR + RTL, WCAG AA):** `pages/icp/Index.vue` (saved profiles as cards with active state, inline delete confirm, bright empty state) and `pages/icp/Edit.vue` — the weighted editor with per-signal **importance sliders** (`accent-brand`), a guided scaffold for new profiles, and an exclusions section. One orange full-stop accent; `rtl:` logical properties throughout; "Active" uses the Teal `brand` badge (never Signal Orange). Sidebar gains an "Ideal customers" entry.
+- **i18n:** EN + AR bundles extended to parity with the new ICP copy.
+- **Tests:** `IcpTest` (create + auto-activate + `IcpUpdated`, criteria order, activation deactivates the previous, update replaces criteria + re-emits, activate/delete flows + promotion, validation, index render, read-only forbidden, admin allowed, cross-tenant find 404 + policy isolation, criterion `team_id` auto-assign, API auth/list/CRUD/activate/delete) + `CriterionTypeTest`. Full suite 119 green; Larastan level 7 clean; `npm run check`/`types:check`/`build` pass. Reviewed by the `laravel-module-reviewer` and `brand-reviewer` agents; their findings actioned.
+
 ### Added — 2026-10-29 — Phase 3: Onboarding & Business Profile
 
 - **Onboarding module** (`app/Modules/Onboarding`): the guided, resumable wizard a new team completes and the stored **Business Profile** that feeds (later) the AI background check, ICP, scoring and outreach.

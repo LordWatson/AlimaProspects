@@ -2,6 +2,7 @@
 
 use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
 use App\Modules\Core\Providers\CoreServiceProvider;
+use App\Modules\ICP\Providers\IcpServiceProvider;
 use App\Modules\Onboarding\Providers\OnboardingServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
@@ -16,4 +17,5 @@ return [
     CoreServiceProvider::class,
     AuthModuleServiceProvider::class,
     OnboardingServiceProvider::class,
+    IcpServiceProvider::class,
 ];

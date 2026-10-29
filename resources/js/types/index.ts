@@ -1,4 +1,5 @@
 export * from './auth';
+export * from './icp';
 export * from './locale';
 export * from './navigation';
 export * from './onboarding';

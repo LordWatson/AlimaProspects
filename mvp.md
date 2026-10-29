@@ -10,7 +10,7 @@
 | 1     | Auth, teams, roles & invitations              | ✅ Done | 2026-10-28 |
 | 2     | Brand design system & app shell (i18n/RTL)    | ✅ Done | 2026-10-28 |
 | 3     | Onboarding & Business Profile                 | ✅ Done | 2026-10-29 |
-| 4     | Ideal Customer Profile (ICP)                  | ⬜      | —          |
+| 4     | Ideal Customer Profile (ICP)                  | ✅ Done | 2026-10-29 |
 | 5     | AI Platform                                   | ⬜      | —          |
 | 6     | Business Intelligence (AI background check)   | ⬜      | —          |
 | 7     | Lead Sourcing — framework + Companies House   | ⬜      | —          |
@@ -147,11 +147,11 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** ICP (`icp.md`).
 **Tasks:**
 
-1. [ ] `icps` + `icp_criteria` migrations/models (team-scoped, weights, exclusions).
-2. [ ] `CreateIcpAction`, `UpdateIcpAction`, `SetActiveIcpAction`; emit `IcpUpdated` event (consumed later by Scoring).
-3. [ ] Criteria types enum (industry, size, geo, title/seniority, technographic, buying-signal, exclusion).
-4. [ ] Inertia ICP editor with weight sliders + exclusions; `/api/v1` CRUD + resources.
-5. [ ] (If Phase 5 done) accept AI-suggested ICP from Business Intelligence.
+1. [x] `icps` + `icp_criteria` migrations/models (team-scoped, weights, exclusions).
+2. [x] `CreateIcpAction`, `UpdateIcpAction`, `SetActiveIcpAction` (+ `DeleteIcpAction`); emit `IcpUpdated` event (consumed later by Scoring).
+3. [x] Criteria types enum (industry, size, geo, title/seniority, technographic, buying-signal, exclusion).
+4. [x] Inertia ICP editor with weight sliders + exclusions; `/api/v1` CRUD + resources.
+5. [ ] (If Phase 5 done) accept AI-suggested ICP from Business Intelligence. — _deferred: Phase 5 not yet built._
        **Data model:** `icps`, `icp_criteria`.
        **Tests:** CRUD; weights persist; active-ICP switch; `IcpUpdated` dispatched; tenancy; validation.
        **Acceptance:** ICPs editable with weights/exclusions; event fires; gates pass; docs updated.
