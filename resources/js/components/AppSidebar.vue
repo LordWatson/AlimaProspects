@@ -5,6 +5,7 @@ import {
     ChevronsUpDown,
     LayoutGrid,
     Palette,
+    Radar,
     Scan,
     Settings2,
     Target,
@@ -65,7 +66,14 @@ const workspace = computed<Item[]>(() => [
         href: '/icp',
         match: 'startsWith',
     },
-    { n: '05', title: t('Design system'), icon: Palette, href: '/design' },
+    {
+        n: '05',
+        title: t('Lead discovery'),
+        icon: Radar,
+        href: '/discovery',
+        match: 'startsWith',
+    },
+    { n: '06', title: t('Design system'), icon: Palette, href: '/design' },
 ]);
 
 const account = computed<Item[]>(() => [

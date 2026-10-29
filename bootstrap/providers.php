@@ -5,6 +5,7 @@ use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
 use App\Modules\BusinessIntelligence\Providers\BusinessIntelligenceServiceProvider;
 use App\Modules\Core\Providers\CoreServiceProvider;
 use App\Modules\ICP\Providers\IcpServiceProvider;
+use App\Modules\LeadSourcing\Providers\LeadSourcingServiceProvider;
 use App\Modules\Onboarding\Providers\OnboardingServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
@@ -22,4 +23,5 @@ return [
     OnboardingServiceProvider::class,
     IcpServiceProvider::class,
     BusinessIntelligenceServiceProvider::class,
+    LeadSourcingServiceProvider::class,
 ];

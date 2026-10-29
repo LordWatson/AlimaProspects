@@ -1,0 +1,241 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\LeadSourcing\Jobs;
+
+use App\Modules\Core\Support\TeamContext;
+use App\Modules\LeadSourcing\Contracts\LeadSourceProvider;
+use App\Modules\LeadSourcing\Data\DiscoveryQuery;
+use App\Modules\LeadSourcing\Data\SourcedLead;
+use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
+use App\Modules\LeadSourcing\Events\DiscoveryRunProgressed;
+use App\Modules\LeadSourcing\Models\DiscoveryRun;
+use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+/**
+ * Runs one discovery for a team (Phase 7). It marks the run in-progress, calls the selected
+ * {@see LeadSourceProvider} (external — outside any transaction),
+ * persists the returned company-level {@see Lead}s (de-duplicated per team on `dedupe_key`), records
+ * the counts + metered cost on the run, and broadcasts progress on the team's private channel.
+ *
+ * - Idempotent + `ShouldBeUnique` per run, so a double dispatch can't run the same discovery twice.
+ *   A retry that finds the run already terminal no-ops; re-persisting the same leads updates in
+ *   place rather than duplicating.
+ * - The provider call runs OUTSIDE any DB transaction (CLAUDE.md external-call rule); persistence
+ *   runs in a short transaction.
+ * - A provider failure bubbles so the queue retries with backoff; {@see self::failed()} marks the
+ *   run Failed on final failure.
+ */
+final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
+{
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+
+    /**
+     * @var int
+     */
+    public $tries = 3;
+
+    /**
+     * Release the uniqueness lock after ten minutes so a crashed worker can't block a re-run.
+     *
+     * @var int
+     */
+    public $uniqueFor = 600;
+
+    /**
+     * Kept below the queue's `retry_after` (90s) so a long run can't be dispatched twice.
+     *
+     * @var int
+     */
+    public $timeout = 85;
+
+    /**
+     * @var list<int>
+     */
+    public $backoff = [30, 90, 180];
+
+    public function __construct(public readonly int $teamId, public readonly int $runId) {}
+
+    public function uniqueId(): string
+    {
+        return (string) $this->runId;
+    }
+
+    public function handle(LeadSourceProviderRegistry $registry, TeamContext $teamContext): void
+    {
+        $teamContext->run($this->teamId, function () use ($registry): void {
+            $run = $this->startRun();
+
+            // Already finished (idempotent retry) or gone — nothing to do.
+            if (! $run instanceof DiscoveryRun) {
+                return;
+            }
+
+            $this->broadcast($run, DiscoveryRunStatus::Running, 15, 'Searching '.$run->source->label());
+
+            $provider = $registry->for($run->source);
+            $query = DiscoveryQuery::fromParams($run->source, $run->params ?? []);
+
+            // --- External work: query the provider (outside any transaction) ---
+            $leads = $provider->discover($query);
+
+            // Enforce the run's size here too — never rely solely on the provider to honour the cap.
+            $leads = array_slice($leads, 0, max(0, $run->requested_limit));
+
+            $this->broadcast($run, DiscoveryRunStatus::Running, 60, 'Saving the companies we found', count($leads));
+
+            $created = $this->persistLeads($run, $leads);
+
+            DB::transaction(function () use ($run, $leads, $created, $provider): void {
+                $run->forceFill([
+                    'status' => DiscoveryRunStatus::Completed,
+                    'leads_found' => count($leads),
+                    'leads_created' => $created,
+                    'cost_micros' => $provider->costMicros(count($leads)),
+                    'error_message' => null,
+                    'completed_at' => now(),
+                ])->save();
+            });
+
+            Log::channel('lead_sourcing')->info('Discovery run completed.', [
+                'team_id' => $this->teamId,
+                'run_id' => $run->getKey(),
+                'source' => $run->source->value,
+                'leads_found' => count($leads),
+                'leads_created' => $created,
+                'cost_micros' => $provider->costMicros(count($leads)),
+            ]);
+
+            $this->broadcast($run, DiscoveryRunStatus::Completed, 100, 'Discovery complete', count($leads));
+        });
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        Log::channel('lead_sourcing')->error('Discovery run job failed.', [
+            'team_id' => $this->teamId,
+            'run_id' => $this->runId,
+            'exception' => $exception->getMessage(),
+        ]);
+
+        app(TeamContext::class)->run($this->teamId, function () use ($exception): void {
+            $run = DiscoveryRun::query()
+                ->where('team_id', $this->teamId)
+                ->whereKey($this->runId)
+                ->first();
+
+            if ($run instanceof DiscoveryRun && ! $run->status->isTerminal()) {
+                $this->markFailed($run, $exception);
+            }
+        });
+    }
+
+    /**
+     * Claim the run for this attempt: move Pending → Running and stamp `started_at`. Returns null
+     * when the run is missing or already terminal (an idempotent retry after it finished).
+     */
+    private function startRun(): ?DiscoveryRun
+    {
+        return DB::transaction(function (): ?DiscoveryRun {
+            $run = DiscoveryRun::query()
+                ->where('team_id', $this->teamId)
+                ->lockForUpdate()
+                ->find($this->runId);
+
+            if (! $run instanceof DiscoveryRun || $run->status->isTerminal()) {
+                return null;
+            }
+
+            $run->forceFill([
+                'status' => DiscoveryRunStatus::Running,
+                'started_at' => $run->started_at ?? now(),
+            ])->save();
+
+            return $run;
+        });
+    }
+
+    /**
+     * Persist the discovered leads, de-duplicated per team on `dedupe_key` (the Phase 7 placeholder;
+     * full de-duplication is Phase 8). Returns how many were newly created (vs. updated in place).
+     *
+     * @param  list<SourcedLead>  $leads
+     */
+    private function persistLeads(DiscoveryRun $run, array $leads): int
+    {
+        $created = 0;
+
+        DB::transaction(function () use ($run, $leads, &$created): void {
+            foreach ($leads as $sourced) {
+                $attributes = $sourced->toLeadAttributes();
+                $dedupeKey = (string) $attributes['dedupe_key'];
+                unset($attributes['dedupe_key']);
+
+                $lead = Lead::query()
+                    ->where('team_id', $this->teamId)
+                    ->where('dedupe_key', $dedupeKey)
+                    ->first();
+
+                if ($lead instanceof Lead) {
+                    // Re-discovery refreshes the provider facts, but never clobbers the original
+                    // discoverer (`discovery_run_id` is set only on create) nor nulls a field that
+                    // already holds a value (e.g. an enriched website/SIC codes from Phase 8).
+                    foreach ($attributes as $key => $value) {
+                        if ($value === null && $lead->getAttribute($key) !== null) {
+                            continue;
+                        }
+
+                        $lead->setAttribute($key, $value);
+                    }
+
+                    $lead->save();
+
+                    continue;
+                }
+
+                Lead::query()->create([
+                    ...$attributes,
+                    'team_id' => $this->teamId,
+                    'dedupe_key' => $dedupeKey,
+                    'discovery_run_id' => $run->getKey(),
+                ]);
+
+                $created++;
+            }
+        });
+
+        return $created;
+    }
+
+    private function markFailed(DiscoveryRun $run, Throwable $exception): void
+    {
+        DB::transaction(function () use ($run): void {
+            $run->forceFill([
+                'status' => DiscoveryRunStatus::Failed,
+                'error_message' => 'We couldn’t complete this discovery run. Please try again.',
+                'completed_at' => now(),
+            ])->save();
+        });
+
+        $this->broadcast($run, DiscoveryRunStatus::Failed, 100, 'Discovery failed', $run->leads_found);
+    }
+
+    private function broadcast(DiscoveryRun $run, DiscoveryRunStatus $status, int $percent, string $step, int $leadsFound = 0): void
+    {
+        event(new DiscoveryRunProgressed($this->teamId, (int) $run->getKey(), $status, $percent, $step, $leadsFound));
+    }
+}

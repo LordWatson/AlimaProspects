@@ -13,7 +13,7 @@
 | 4     | Ideal Customer Profile (ICP)                  | ✅ Done | 2026-10-29 |
 | 5     | AI Platform                                   | ✅ Done | 2026-10-29 |
 | 6     | Business Intelligence (AI background check)   | ✅ Done | 2026-10-29 |
-| 7     | Lead Sourcing — framework + Companies House   | ⬜      | —          |
+| 7     | Lead Sourcing — framework + Companies House   | ✅ Done | 2026-10-29 |
 | 7b    | Lead Sourcing — Google Places + web search    | ⬜      | —          |
 | 8     | Enrichment & Data Quality                     | ⬜      | —          |
 | 9     | Scoring & Matching                            | ⬜      | —          |
@@ -208,11 +208,11 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Lead Sourcing (`lead-sourcing.md`), ADR 0008.
 **Tasks:**
 
-1. [ ] `Contracts\LeadSourceProvider`; provider registry/factory; `leads` (company-level) + `discovery_runs` migrations (team-scoped, source attribution).
-2. [ ] `CompaniesHouseProvider` (official API, free) with timeout/retry/circuit-breaker; env key.
-3. [ ] `DiscoverLeadsJob` (idempotent, `$tries/$backoff/$timeout/failed()`, progress over Reverb); `StartDiscoveryRunAction` enforces per-plan limits (stub until Billing).
-4. [ ] Inertia "new discovery" + run-progress screens; `/api/v1` start/list runs.
-5. [ ] Respect ToS/robots; attach `source`/`source_url`/`collected_at` to every field; LIA gate check (stub until Compliance).
+1. [x] `Contracts\LeadSourceProvider`; provider registry/factory; `leads` (company-level) + `discovery_runs` migrations (team-scoped, source attribution).
+2. [x] `CompaniesHouseProvider` (official API, free) with timeout/retry/circuit-breaker; env key.
+3. [x] `DiscoverLeadsJob` (idempotent, `$tries/$backoff/$timeout/failed()`, progress over Reverb); `StartDiscoveryRunAction` enforces per-plan limits (stub until Billing).
+4. [x] Inertia "new discovery" + run-progress screens; `/api/v1` start/list runs.
+5. [x] Respect ToS/robots; attach `source`/`source_url`/`collected_at` to every field; LIA gate check (stub until Compliance). _(Companies House official API used within terms; lead-level attribution — per-field `SourcedValue` lands in Phase 8; dedupe is a per-team `dedupe_key` placeholder.)_
        **Data model:** `leads`, `discovery_runs`.
        **Tests:** faked provider yields leads; run tracked + progress; limit blocks over-quota (stub); dedupe placeholder; tenancy.
        **Acceptance:** a discovery run against Companies House (faked in tests) creates attributed leads with progress; gates pass; docs updated.
