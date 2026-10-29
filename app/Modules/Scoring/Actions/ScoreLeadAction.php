@@ -14,6 +14,7 @@ use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Scoring\Data\DeterministicScore;
 use App\Modules\Scoring\Data\QualitativeFit;
 use App\Modules\Scoring\Enums\ScoreGrade;
+use App\Modules\Scoring\Events\LeadScored;
 use App\Modules\Scoring\Models\LeadScore;
 use App\Modules\Scoring\Services\DeterministicScorer;
 use App\Modules\Scoring\Services\ScoringPayloadBuilder;
@@ -179,6 +180,11 @@ final class ScoreLeadAction
             if (in_array($lead->status, [LeadStatus::Discovered, LeadStatus::Enriched], strict: true)) {
                 $lead->forceFill(['status' => LeadStatus::Scored])->save();
             }
+
+            // The Leads Workspace puts the grade on the lead's timeline, and Notifications
+            // (Phase 12) will announce a strong new match. afterCommit so a listener never reads a
+            // score that isn't there yet.
+            DB::afterCommit(static fn () => event(LeadScored::for($leadScore)));
 
             return $leadScore;
         });

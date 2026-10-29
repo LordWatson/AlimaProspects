@@ -18,6 +18,8 @@ enum LeadSource: string
     case CompaniesHouse = 'companies_house';
     case GooglePlaces = 'google_places';
     case WebSearch = 'web_search';
+    /** Not a provider: a lead the team brought in themselves (Phase 10b CSV import). */
+    case Import = 'import';
 
     public function label(): string
     {
@@ -25,6 +27,7 @@ enum LeadSource: string
             self::CompaniesHouse => 'Companies House',
             self::GooglePlaces => 'Google Places',
             self::WebSearch => 'Web search',
+            self::Import => 'Imported',
         };
     }
 
@@ -37,26 +40,37 @@ enum LeadSource: string
             self::CompaniesHouse => 'UK official company registry — free, authoritative company records.',
             self::GooglePlaces => 'Local and small businesses by location and category (strong for the UAE).',
             self::WebSearch => 'General web discovery across the open internet.',
+            self::Import => 'Leads your team brought in from a CSV.',
         };
     }
 
     /**
-     * Whether this provider is live in the current build. Providers that aren't yet implemented are
-     * listed (so the UI can preview what's coming) but can't be selected for a run.
+     * Whether this source can be **run** as a discovery. Providers that aren't yet implemented are
+     * listed (so the UI can preview what's coming) but can't be selected for a run — and
+     * {@see self::Import} never can, because it isn't a provider: it is how a team's own list gets
+     * in. It is still a perfectly good thing to *filter* a list by.
      */
     public function isAvailable(): bool
     {
-        return true;
+        return $this !== self::Import;
     }
 
     /**
-     * Relative authority of a provider's data, used when the same company is found by more than one
-     * source: an official registry outranks a places directory, which outranks a web-search hit. The
-     * higher-ranked source's attribution (name, source URL, raw payload) wins on a dedupe merge.
+     * Relative authority of a source's data, used when the same company is found by more than one:
+     * an official registry outranks a places directory, which outranks a web-search hit. The
+     * higher-ranked source's attribution (name, source URL, raw payload) wins on a dedupe merge; a
+     * lower-ranked one may only fill gaps.
+     *
+     * **An import outranks every provider.** Not because a spreadsheet is better data than a
+     * registry, but because it is the **team's own** record of who this company is: a later
+     * discovery hit should fill in the number and the address it was missing, never rename the
+     * company the team typed. That is the same "fill in, never overwrite" promise the importer
+     * makes in the other direction.
      */
     public function rank(): int
     {
         return match ($this) {
+            self::Import => 4,
             self::CompaniesHouse => 3,
             self::GooglePlaces => 2,
             self::WebSearch => 1,

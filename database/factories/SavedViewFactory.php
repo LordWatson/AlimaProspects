@@ -1,0 +1,37 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Database\Factories;
+
+use App\Models\User;
+use App\Modules\Core\Models\Team;
+use App\Modules\LeadsWorkspace\Models\SavedView;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/**
+ * @extends Factory<SavedView>
+ */
+class SavedViewFactory extends Factory
+{
+    protected $model = SavedView::class;
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function definition(): array
+    {
+        return [
+            'team_id' => Team::factory(),
+            'user_id' => User::factory(),
+            'name' => 'Grade A in the UK',
+            'filters' => ['grades' => ['A'], 'country' => 'GB'],
+            'is_shared' => false,
+        ];
+    }
+
+    public function shared(): self
+    {
+        return $this->state(fn (): array => ['is_shared' => true]);
+    }
+}

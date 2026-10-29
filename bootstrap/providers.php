@@ -7,6 +7,7 @@ use App\Modules\Core\Providers\CoreServiceProvider;
 use App\Modules\Enrichment\Providers\EnrichmentServiceProvider;
 use App\Modules\ICP\Providers\IcpServiceProvider;
 use App\Modules\LeadSourcing\Providers\LeadSourcingServiceProvider;
+use App\Modules\LeadsWorkspace\Providers\LeadsWorkspaceServiceProvider;
 use App\Modules\Onboarding\Providers\OnboardingServiceProvider;
 use App\Modules\Scoring\Providers\ScoringServiceProvider;
 use App\Providers\AppServiceProvider;
@@ -28,4 +29,5 @@ return [
     LeadSourcingServiceProvider::class,
     EnrichmentServiceProvider::class,
     ScoringServiceProvider::class,
+    LeadsWorkspaceServiceProvider::class,
 ];

@@ -1,5 +1,7 @@
 // Lead Sourcing (discovery runs + raw leads) shared types (Phase 7).
 
+import type { LeadContact } from './enrichment';
+import type { StageOutcome } from './leads-workspace';
 import type { LeadScoreSummary } from './scoring';
 
 export type LeadSource = 'companies_house' | 'google_places' | 'web_search';
@@ -37,6 +39,17 @@ export type Lead = {
     has_personal_data: boolean;
     /** The grade against the active ICP, when the lead's `activeScore` was loaded (Phase 9). */
     score?: LeadScoreSummary | null;
+    /** Loaded on the detail screens (Phase 8/10); absent on a list row. */
+    contacts?: LeadContact[];
+    /** The count alone, for a list row (Phase 10). */
+    contacts_count?: number;
+
+    // --- Leads Workspace (Phase 10b), each present only when the server loaded it ---
+    /** Null means the lead has never been placed, which the board reads as the default column. */
+    stage?: { id: number; name: string; outcome: StageOutcome | null } | null;
+    tags?: { id: number; name: string }[];
+    assignees?: { id: number; name: string }[];
+    open_tasks_count?: number;
 };
 
 export type DiscoveryRun = {

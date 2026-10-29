@@ -9,6 +9,7 @@ import {
     Scan,
     Settings2,
     Target,
+    Users,
     type LucideIcon,
 } from '@lucide/vue';
 import { computed } from 'vue';
@@ -73,7 +74,14 @@ const workspace = computed<Item[]>(() => [
         href: '/discovery',
         match: 'startsWith',
     },
-    { n: '06', title: t('Design system'), icon: Palette, href: '/design' },
+    {
+        n: '06',
+        title: t('Leads'),
+        icon: Users,
+        href: '/leads',
+        match: 'startsWith',
+    },
+    { n: '07', title: t('Design system'), icon: Palette, href: '/design' },
 ]);
 
 const account = computed<Item[]>(() => [

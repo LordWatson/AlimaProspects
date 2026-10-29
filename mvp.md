@@ -17,8 +17,8 @@
 | 7b    | Lead Sourcing — Google Places + web search    | ✅ Done | 2026-10-29 |
 | 8     | Enrichment & Data Quality                     | ✅ Done | 2026-10-29 |
 | 9     | Scoring & Matching                            | ✅ Done | 2026-10-29 |
-| 10    | Leads Workspace — list, detail, contacts      | ⬜      | —          |
-| 10b   | Leads Workspace — pipeline, notes, tasks, CSV | ⬜      | —          |
+| 10    | Leads Workspace — list, detail, contacts      | ✅ Done | 2026-10-29 |
+| 10b   | Leads Workspace — pipeline, notes, tasks, CSV | ✅ Done | 2026-10-29 |
 | 11    | Outreach (MVP)                                | ⬜      | —          |
 | 12    | Notifications                                 | ⬜      | —          |
 | 13    | Reporting & Analytics                         | ⬜      | —          |
@@ -285,10 +285,10 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Leads Workspace (`leads-workspace.md`).
 **Tasks:**
 
-1. [ ] Leads index: server-driven table, filters (grade, source, stage, tags), search, pagination; **saved views** per user.
-2. [ ] Lead detail: company + contacts, score panel, source attribution, data freshness.
-3. [ ] `lead_activities` timeline (polymorphic) aggregating discovery/enrichment/scoring events.
-4. [ ] `/api/v1` list/detail with resources + pagination.
+1. [x] Leads index: server-driven table, filters (grade, source, stage, tags), search, pagination; **saved views** per user. _(Grade, source, enrichment state, country and free text now; **stage and tags arrive with their tables in 10b**, which is when the `LeadFilters` shape grows. Sorting by newest/company/fit/freshness, always tie-broken on `id`; filters ride every page link.)_
+2. [x] Lead detail: company + contacts, score panel, source attribution, data freshness. _(Plus a compliance note when a contact looks like a named person rather than a role.)_
+3. [x] `lead_activities` timeline (polymorphic) aggregating discovery/enrichment/scoring events. _(Three queued listeners; `properties` stores values, never a sentence, so the line is composed EN/AR at render time. Scoring gained a `LeadScored` event to listen to.)_
+4. [x] `/api/v1` list/detail with resources + pagination. _(Detail is one `LeadDetailResource` carrying lead + score + timeline, so a phone fills the screen in one round trip.)_
        **Data model:** `lead_activities`, `saved_views`.
        **Tests:** filter/search/pagination; detail loads contacts+score; timeline; tenancy; no N+1 (preventLazyLoading).
        **Acceptance:** list + detail usable; saved views work; gates pass; docs updated.
@@ -304,10 +304,10 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Leads Workspace.
 **Tasks:**
 
-1. [ ] `pipeline_stages` (team-customisable), `lead_tags`, `lead_notes`, `lead_tasks` (due/reminder), `lead_assignments`.
-2. [ ] Kanban board (drag between stages), tag/note/task/assign UI; bulk actions (tag, assign, move, suppress, add to outreach).
-3. [ ] **CSV import** (column mapping, dedupe on import) and **export**.
-4. [ ] Task reminders raise notifications (Phase 12); stage moves write to timeline + audit.
+1. [x] `pipeline_stages` (team-customisable), `lead_tags`, `lead_notes`, `lead_tasks` (due/reminder), `lead_assignments`. _(Plus `leads.pipeline_stage_id`, nullable — **null means the default column**, so no backfill and no lead left off the board; the fold lives in `LeadQueryBuilder`, not in each caller.)_
+2. [x] Kanban board (drag between stages), tag/note/task/assign UI; bulk actions (tag, assign, move, suppress, add to outreach). _(Drag **and** an equivalent pick-then-Move control, since a mouse-only board is unusable for half a team. **`suppress` and `add to outreach` are deliberately deferred** to Compliance (15) and Outreach (11) — a button that silently did nothing would be worse than not offering it.)_
+3. [x] **CSV import** (column mapping, dedupe on import) and **export**. _(BOM/Windows-1252/delimiter/ragged rows handled; de-dupe fills gaps and never overwrites; a new `LeadSource::Import` outranks every provider so discovery can't rename what the team typed. Export streams by keyset and neutralises formula cells; its columns are the importer's, so a round trip is lossless.)_
+4. [x] Task reminders raise notifications (Phase 12); stage moves write to timeline + audit. _(Stage moves write both in one transaction. **Reminders are stored, not sent** — `remind_at` plus a `reminded_at` ready for an idempotent sweep; the task form says so rather than implying a nudge that isn't coming.)_
        **Data model:** `pipeline_stages`, `lead_tags`, `lead_notes`, `lead_tasks`, `lead_assignments`.
        **Tests:** stage move; note/task CRUD; assignment; bulk action; CSV round-trip + dedupe; tenancy.
        **Acceptance:** full CRM-lite collaboration works; gates pass; docs updated.
