@@ -72,7 +72,7 @@ it('returns a validation envelope for a bad source', function (): void {
     $user = createUserWithTeam();
 
     $this->actingAs($user, 'sanctum')
-        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['source' => 'google_places'])
+        ->postJson(route('api.v1.lead-sourcing.runs.store'), ['source' => 'apollo'])
         ->assertStatus(422)
         ->assertJsonValidationErrors('source');
 });

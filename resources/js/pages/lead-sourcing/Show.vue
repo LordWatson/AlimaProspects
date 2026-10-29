@@ -39,6 +39,13 @@ const isRunning = computed(
 );
 const leads = computed(() => props.run.leads ?? []);
 
+// Metered provider cost for this run (integer micro-units → major units). Free providers are 0.
+const estimatedCost = computed(() =>
+    props.run.cost_micros > 0
+        ? `$${(props.run.cost_micros / 1_000_000).toFixed(3)}`
+        : null,
+);
+
 // --- Reverb: live progress -------------------------------------------------
 let channelName: string | null = null;
 
@@ -184,6 +191,13 @@ onBeforeUnmount(() => {
                     class="font-mono text-xs text-muted-foreground"
                 >
                     {{ t(':count new', { count: run.leads_created }) }}
+                </span>
+                <span
+                    v-if="estimatedCost"
+                    class="font-mono text-xs text-muted-foreground"
+                >
+                    {{ t('Est. cost') }}
+                    <bdi dir="ltr">{{ estimatedCost }}</bdi>
                 </span>
             </div>
 

@@ -42,17 +42,23 @@ final class SourcedLead extends Data
         public array $sicCodes = [],
         public ?string $sourceUrl = null,
         public array $raw = [],
+        // A provider-specific stable id (e.g. a Google Places place id) used to dedupe website-less
+        // records that a shared name would otherwise wrongly merge.
+        public ?string $externalId = null,
     ) {}
 
     /**
      * A normalised identity key for the dedupe placeholder (Phase 8 does full de-duplication):
-     * prefer the registry number, else the website domain, else a slug of the name. Never empty.
+     * registry number → website domain → provider external id → slug+hash of the name. Number and
+     * domain are **source-agnostic** so the same company found by two providers de-duplicates (ADR
+     * 0008 / Phase 7b); the external-id and name fallbacks are provider-scoped (a place id or a bare
+     * name can't be trusted to mean the same company across sources). Never empty.
      */
     public function dedupeKey(): string
     {
         $number = trim((string) $this->companyNumber);
         if ($number !== '') {
-            return $this->source->value.':no:'.Str::lower($number);
+            return 'no:'.Str::lower($number);
         }
 
         $domain = $this->domain();
@@ -60,11 +66,17 @@ final class SourcedLead extends Data
             return 'domain:'.$domain;
         }
 
-        // Name-only is the weakest key: clamp the slug (so it can't exceed the column) and append a
-        // short hash of the full name so two genuinely different same-prefix names don't collide.
+        $externalId = trim((string) $this->externalId);
+        if ($externalId !== '') {
+            return 'ext:'.$this->source->value.':'.Str::lower($externalId);
+        }
+
+        // Name-only is the weakest key and provider-scoped: clamp the slug (so it can't exceed the
+        // column) and append a short hash of that slug — case-insensitively — so distinct same-prefix
+        // names don't collide while "ACME" and "Acme" still match.
         $slug = Str::slug($this->companyName);
 
-        return 'name:'.Str::limit($slug, 150, '').':'.substr(sha1($this->companyName), 0, 12);
+        return 'name:'.$this->source->value.':'.Str::limit($slug, 120, '').':'.substr(sha1($slug), 0, 12);
     }
 
     /**
@@ -101,15 +113,16 @@ final class SourcedLead extends Data
             'company_status' => $this->text($this->companyStatus),
             'company_type' => $this->text($this->companyType),
             'incorporated_on' => $this->date($this->incorporatedOn),
-            'website' => $this->text($this->website),
+            // URLs are rendered as links in the UI — only http(s) is stored (a `javascript:` or other
+            // scheme is dropped), and the value is length-clamped to the column.
+            'website' => $this->safeUrl($this->website),
             'locality' => $this->text($this->locality),
             'region' => $this->text($this->region),
             'postal_code' => $this->text($this->postalCode),
             'country' => $this->country !== null ? Str::upper(Str::substr(trim($this->country), 0, 2)) : null,
             'address' => $this->address === [] ? null : $this->address,
             'sic_codes' => $this->sicCodes === [] ? null : $this->sicCodes,
-            // Clamp to the column width (string(255)); a hostile/overlong URL must not fail the write.
-            'source_url' => $this->sourceUrl !== null ? Str::limit($this->sourceUrl, 255, '') : null,
+            'source_url' => $this->safeUrl($this->sourceUrl),
             'raw' => $this->raw === [] ? null : $this->raw,
             'collected_at' => now(),
             'dedupe_key' => $this->dedupeKey(),
@@ -121,6 +134,21 @@ final class SourcedLead extends Data
         $trimmed = trim((string) $value);
 
         return $trimmed === '' ? null : Str::limit($trimmed, self::MAX_TEXT, '');
+    }
+
+    /**
+     * Accept only an http(s) URL (clamped to the column); anything else — a non-http scheme, or junk
+     * — is dropped so it can never be stored or rendered as a link.
+     */
+    private function safeUrl(?string $value): ?string
+    {
+        $trimmed = trim((string) $value);
+
+        if ($trimmed === '' || ! Str::startsWith(Str::lower($trimmed), ['http://', 'https://'])) {
+            return null;
+        }
+
+        return Str::limit($trimmed, self::MAX_TEXT, '');
     }
 
     private function date(?string $value): ?Carbon

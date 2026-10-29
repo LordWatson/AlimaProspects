@@ -14,7 +14,7 @@
 | 5     | AI Platform                                   | ✅ Done | 2026-10-29 |
 | 6     | Business Intelligence (AI background check)   | ✅ Done | 2026-10-29 |
 | 7     | Lead Sourcing — framework + Companies House   | ✅ Done | 2026-10-29 |
-| 7b    | Lead Sourcing — Google Places + web search    | ⬜      | —          |
+| 7b    | Lead Sourcing — Google Places + web search    | ✅ Done | 2026-10-29 |
 | 8     | Enrichment & Data Quality                     | ⬜      | —          |
 | 9     | Scoring & Matching                            | ⬜      | —          |
 | 10    | Leads Workspace — list, detail, contacts      | ⬜      | —          |
@@ -228,9 +228,9 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Lead Sourcing, ADR 0008.
 **Tasks:**
 
-1. [ ] `GooglePlacesProvider` (location + category; strong for UAE); env key; cost logged.
-2. [ ] `WebSearchProvider` (Serper/Brave/Bing abstraction); used for discovery + feeding BI/enrichment.
-3. [ ] Provider selection in the discovery UI; per-provider cost surfaced; dedupe across providers.
+1. [x] `GooglePlacesProvider` (location + category; strong for UAE); env key; cost logged.
+2. [x] `WebSearchProvider` (Serper/Brave/Bing abstraction — Serper is the MVP driver, ADR 0010); used for discovery + feeding BI/enrichment.
+3. [x] Provider selection in the discovery UI; per-provider cost surfaced; dedupe across providers. _(All three providers selectable; `cost_micros` surfaced per run; source-agnostic `dedupe_key` collapses shared-key-type leads across providers.)_
        **Data model:** none new (reuse `leads`/`discovery_runs`; add `provider` metadata).
        **Tests:** each provider faked; multi-provider run dedupes; cost recorded.
        **Acceptance:** three providers selectable; costs tracked; gates pass; docs updated.

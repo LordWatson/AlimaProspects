@@ -47,14 +47,44 @@ return [
             'retry_sleep_ms' => (int) env('COMPANIES_HOUSE_RETRY_SLEEP_MS', 250),
         ],
 
-        // Phase 7b.
         'google_places' => [
+            // Places API (New) Text Search. Auth via the X-Goog-Api-Key header.
+            'base_url' => env('GOOGLE_PLACES_BASE_URL', 'https://places.googleapis.com'),
             'api_key' => env('GOOGLE_PLACES_API_KEY'),
+            'maps_url' => env('GOOGLE_PLACES_MAPS_URL', 'https://www.google.com/maps/place/?q=place_id:'),
+
+            'timeout' => (int) env('GOOGLE_PLACES_TIMEOUT', 10),
+            'connect_timeout' => (int) env('GOOGLE_PLACES_CONNECT_TIMEOUT', 5),
+            'retry_times' => (int) env('GOOGLE_PLACES_RETRY_TIMES', 2),
+            'retry_sleep_ms' => (int) env('GOOGLE_PLACES_RETRY_SLEEP_MS', 250),
+
+            // Indicative billed cost of one Text Search request, in micro-units (~$0.032). Verify
+            // against live pricing; surfaced on discovery_runs.cost_micros.
+            'cost_micros_per_request' => (int) env('GOOGLE_PLACES_COST_MICROS', 32_000),
         ],
 
         'web_search' => [
+            // Driver selected here; only `serper` is implemented in the MVP (ADR 0010).
             'provider' => env('WEB_SEARCH_PROVIDER', 'serper'),
             'api_key' => env('WEB_SEARCH_API_KEY'),
+            'base_url' => env('WEB_SEARCH_BASE_URL', 'https://google.serper.dev'),
+
+            'timeout' => (int) env('WEB_SEARCH_TIMEOUT', 10),
+            'connect_timeout' => (int) env('WEB_SEARCH_CONNECT_TIMEOUT', 5),
+            'retry_times' => (int) env('WEB_SEARCH_RETRY_TIMES', 2),
+            'retry_sleep_ms' => (int) env('WEB_SEARCH_RETRY_SLEEP_MS', 250),
+
+            // Indicative billed cost of one search query, in micro-units (~$0.003).
+            'cost_micros_per_request' => (int) env('WEB_SEARCH_COST_MICROS', 3_000),
+
+            // Aggregator / social / directory domains that are not a company's own site. Results on
+            // these are skipped so distinct companies don't all collapse to one `domain:` lead.
+            'ignore_domains' => [
+                'linkedin.com', 'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
+                'youtube.com', 'tiktok.com', 'pinterest.com', 'yelp.com', 'trustpilot.com',
+                'crunchbase.com', 'glassdoor.com', 'indeed.com', 'wikipedia.org', 'amazon.com',
+                'google.com', 'bing.com', 'yell.com', 'yellowpages.com', 'maps.google.com',
+            ],
         ],
 
     ],

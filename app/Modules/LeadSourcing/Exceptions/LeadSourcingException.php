@@ -16,6 +16,18 @@ final class LeadSourcingException extends DomainException
     protected string $errorCode = 'lead_sourcing.invalid';
 
     /**
+     * Whether a queued run that hit this error is worth retrying. A transient provider failure is;
+     * a configuration / unavailable-provider error never will be, so the job fails fast instead of
+     * burning its retries.
+     */
+    protected bool $retryable = false;
+
+    public function isRetryable(): bool
+    {
+        return $this->retryable;
+    }
+
+    /**
      * The selected provider isn't live in this build.
      */
     public static function providerUnavailable(string $source): self
@@ -33,6 +45,18 @@ final class LeadSourcingException extends DomainException
     {
         $e = new self('We don’t recognise that lead source.');
         $e->errorCode = 'lead_sourcing.unknown_provider';
+
+        return $e;
+    }
+
+    /**
+     * The provider is missing required configuration (e.g. an API key) — never retryable.
+     */
+    public static function providerMisconfigured(string $source): self
+    {
+        $e = new self('That lead source isn’t set up yet. An administrator needs to add its API key.');
+        $e->errorCode = 'lead_sourcing.provider_misconfigured';
+        $e->status = 503;
 
         return $e;
     }
@@ -80,6 +104,7 @@ final class LeadSourcingException extends DomainException
         $e = new self('We couldn’t reach that lead source. Please try again shortly.');
         $e->errorCode = 'lead_sourcing.provider_failed';
         $e->status = 502;
+        $e->retryable = true;
 
         return $e;
     }

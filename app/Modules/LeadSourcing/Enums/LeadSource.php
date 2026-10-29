@@ -8,9 +8,8 @@ use App\Modules\LeadSourcing\Contracts\LeadSourceProvider;
 
 /**
  * The external providers a lead can be discovered from, behind the
- * {@see LeadSourceProvider} contract (ADR 0008). Only
- * {@see self::CompaniesHouse} ships in Phase 7; Google Places and web search are added in Phase 7b
- * and slot in here without touching the discovery pipeline.
+ * {@see LeadSourceProvider} contract (ADR 0008). All three ship in the MVP: Companies House
+ * (Phase 7), Google Places and web search (Phase 7b, the latter backed by Serper — ADR 0010).
  *
  * Values are stable storage keys; {@see self::label()} is the display name. No magic strings.
  */
@@ -47,7 +46,21 @@ enum LeadSource: string
      */
     public function isAvailable(): bool
     {
-        return $this === self::CompaniesHouse;
+        return true;
+    }
+
+    /**
+     * Relative authority of a provider's data, used when the same company is found by more than one
+     * source: an official registry outranks a places directory, which outranks a web-search hit. The
+     * higher-ranked source's attribution (name, source URL, raw payload) wins on a dedupe merge.
+     */
+    public function rank(): int
+    {
+        return match ($this) {
+            self::CompaniesHouse => 3,
+            self::GooglePlaces => 2,
+            self::WebSearch => 1,
+        };
     }
 
     /**

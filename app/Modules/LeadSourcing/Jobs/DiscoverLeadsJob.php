@@ -10,6 +10,7 @@ use App\Modules\LeadSourcing\Data\DiscoveryQuery;
 use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
 use App\Modules\LeadSourcing\Events\DiscoveryRunProgressed;
+use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
@@ -91,7 +92,20 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
             $query = DiscoveryQuery::fromParams($run->source, $run->params ?? []);
 
             // --- External work: query the provider (outside any transaction) ---
-            $leads = $provider->discover($query);
+            try {
+                $leads = $provider->discover($query);
+            } catch (LeadSourcingException $e) {
+                // A misconfiguration / unavailable provider can never succeed — fail the run now
+                // rather than letting it bubble and burn the queue's retries. A transient failure
+                // (provider_failed) bubbles so the queue retries with backoff.
+                if ($e->isRetryable()) {
+                    throw $e;
+                }
+
+                $this->markFailed($run, $e);
+
+                return;
+            }
 
             // Enforce the run's size here too — never rely solely on the provider to honour the cap.
             $leads = array_slice($leads, 0, max(0, $run->requested_limit));
@@ -191,18 +205,7 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
                     ->first();
 
                 if ($lead instanceof Lead) {
-                    // Re-discovery refreshes the provider facts, but never clobbers the original
-                    // discoverer (`discovery_run_id` is set only on create) nor nulls a field that
-                    // already holds a value (e.g. an enriched website/SIC codes from Phase 8).
-                    foreach ($attributes as $key => $value) {
-                        if ($value === null && $lead->getAttribute($key) !== null) {
-                            continue;
-                        }
-
-                        $lead->setAttribute($key, $value);
-                    }
-
-                    $lead->save();
+                    $this->mergeInto($lead, $sourced, $attributes);
 
                     continue;
                 }
@@ -219,6 +222,38 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
         });
 
         return $created;
+    }
+
+    /**
+     * Merge a re-discovered {@see SourcedLead} into an existing {@see Lead} without losing provenance.
+     * The original discoverer (`discovery_run_id`) is always kept (set only on create). Identity +
+     * attribution fields (`source`, `company_name`, `source_url`, `raw`) are only overwritten when the
+     * new source is at least as authoritative as the one on record ({@see LeadSource::rank()}); a
+     * lower-ranked source (e.g. a web-search hit re-finding a Companies House lead) may only fill
+     * fields that are still null. No field is ever nulled.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function mergeInto(Lead $lead, SourcedLead $sourced, array $attributes): void
+    {
+        $authoritative = $sourced->source->rank() >= $lead->source->rank();
+        $attributionKeys = ['source', 'company_name', 'source_url', 'raw'];
+
+        foreach ($attributes as $key => $value) {
+            if ($value === null) {
+                continue; // never null an existing value
+            }
+
+            $existing = $lead->getAttribute($key);
+
+            if ($authoritative) {
+                $lead->setAttribute($key, $value); // same-or-higher rank refreshes the record
+            } elseif ($existing === null && ! in_array($key, $attributionKeys, strict: true)) {
+                $lead->setAttribute($key, $value); // weaker source only fills non-attribution gaps
+            }
+        }
+
+        $lead->save();
     }
 
     private function markFailed(DiscoveryRun $run, Throwable $exception): void

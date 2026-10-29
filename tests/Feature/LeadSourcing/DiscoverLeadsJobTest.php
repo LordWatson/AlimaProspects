@@ -8,6 +8,7 @@ use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Events\DiscoveryRunProgressed;
+use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
@@ -93,6 +94,79 @@ it('de-duplicates leads by dedupe key across runs (placeholder)', function (): v
         ->and($run2->fresh()->leads_created)->toBe(0); // updated, not created
 });
 
+it('de-duplicates the same company found by two different providers', function (): void {
+    $team = Team::factory()->create();
+
+    // A Google Places run finds acme.com.
+    $placesRun = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->create([
+        'team_id' => $team->getKey(),
+        'source' => LeadSource::GooglePlaces,
+    ]));
+    app(LeadSourceProviderRegistry::class)->register(
+        (new FakeLeadSourceProvider(LeadSource::GooglePlaces))->willReturn([
+            new SourcedLead(source: LeadSource::GooglePlaces, companyName: 'Acme', website: 'https://acme.com'),
+        ]),
+    );
+    runDiscovery($team, $placesRun);
+
+    // A web-search run then finds the same site (different URL path, same domain).
+    $webRun = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->create([
+        'team_id' => $team->getKey(),
+        'source' => LeadSource::WebSearch,
+    ]));
+    app(LeadSourceProviderRegistry::class)->register(
+        (new FakeLeadSourceProvider(LeadSource::WebSearch))->willReturn([
+            new SourcedLead(source: LeadSource::WebSearch, companyName: 'Acme Ltd', website: 'https://www.acme.com/about'),
+        ]),
+    );
+    runDiscovery($team, $webRun);
+
+    // One lead: both resolved to dedupe key `domain:acme.com`.
+    $lead = Lead::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
+
+    expect(Lead::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->count())->toBe(1)
+        ->and($webRun->fresh()->leads_created)->toBe(0) // the web run updated, not created
+        ->and($placesRun->fresh()->leads_created)->toBe(1)
+        // The lower-ranked web-search run must NOT overwrite the richer Google Places attribution.
+        ->and($lead->source)->toBe(LeadSource::GooglePlaces)
+        ->and($lead->company_name)->toBe('Acme')
+        ->and($lead->discovery_run_id)->toBe($placesRun->getKey());
+});
+
+it('upgrades attribution when a higher-ranked provider re-finds a lead', function (): void {
+    $team = Team::factory()->create();
+
+    // A web-search run finds acme.com first.
+    $webRun = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->create([
+        'team_id' => $team->getKey(),
+        'source' => LeadSource::WebSearch,
+    ]));
+    app(LeadSourceProviderRegistry::class)->register(
+        (new FakeLeadSourceProvider(LeadSource::WebSearch))->willReturn([
+            new SourcedLead(source: LeadSource::WebSearch, companyName: 'Acme (web title)', website: 'https://acme.com'),
+        ]),
+    );
+    runDiscovery($team, $webRun);
+
+    // Then Google Places (higher rank) re-finds the same domain with a cleaner name.
+    $placesRun = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->create([
+        'team_id' => $team->getKey(),
+        'source' => LeadSource::GooglePlaces,
+    ]));
+    app(LeadSourceProviderRegistry::class)->register(
+        (new FakeLeadSourceProvider(LeadSource::GooglePlaces))->willReturn([
+            new SourcedLead(source: LeadSource::GooglePlaces, companyName: 'Acme Coffee Roasters', website: 'https://acme.com'),
+        ]),
+    );
+    runDiscovery($team, $placesRun);
+
+    $lead = Lead::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
+
+    expect($lead->source)->toBe(LeadSource::GooglePlaces)
+        ->and($lead->company_name)->toBe('Acme Coffee Roasters')
+        ->and($lead->discovery_run_id)->toBe($webRun->getKey()); // original discoverer preserved
+});
+
 it('respects the requested limit from the query', function (): void {
     [$team, $run, $fake] = bootDiscovery([
         sourcedCompany('A Ltd', '1'),
@@ -135,6 +209,21 @@ it('no-ops on a run that is already terminal (idempotent retry)', function (): v
 
     expect($fake->lastQuery())->toBeNull() // provider never called
         ->and(Lead::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->count())->toBe(0);
+});
+
+it('fails the run fast (no retry) on a non-retryable provider error', function (): void {
+    $team = Team::factory()->create();
+    $run = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->create(['team_id' => $team->getKey()]));
+
+    app(LeadSourceProviderRegistry::class)->register(
+        (new FakeLeadSourceProvider)->willFail(LeadSourcingException::providerMisconfigured('companies_house')),
+    );
+
+    // A misconfiguration is terminal: the job handles it without throwing (so the queue won't retry).
+    runDiscovery($team, $run);
+
+    expect($run->fresh()->status)->toBe(DiscoveryRunStatus::Failed)
+        ->and($run->fresh()->error_message)->not->toBeNull();
 });
 
 it('marks the run failed via failed() after a provider error', function (): void {

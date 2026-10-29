@@ -6,6 +6,7 @@ use App\Modules\LeadSourcing\Data\DiscoveryQuery;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Services\CompaniesHouseProvider;
+use App\Modules\LeadSourcing\Support\CircuitBreaker;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function (): void {
@@ -48,7 +49,7 @@ it('maps Companies House search results into sourced leads with attribution', fu
         ->and($lead->country)->toBe('GB')
         ->and($lead->locality)->toBe('London')
         ->and($lead->sourceUrl)->toBe('https://find-and-update.company-information.service.gov.uk/company/12345678')
-        ->and($lead->dedupeKey())->toBe('companies_house:no:12345678');
+        ->and($lead->dedupeKey())->toBe('no:12345678');
 });
 
 it('sends the query with basic auth and an items-per-page cap', function (): void {
@@ -84,6 +85,22 @@ it('throws a domain exception when the API fails', function (): void {
 
     expect(fn () => app(CompaniesHouseProvider::class)->discover(chQuery()))
         ->toThrow(LeadSourcingException::class);
+});
+
+it('does not trip the circuit breaker on a 4xx response', function (): void {
+    Http::fake(['api.company-information.service.gov.uk/*' => Http::response('bad request', 400)]);
+
+    // Several client-error failures — these are our fault, so the breaker must stay closed.
+    foreach (range(1, 6) as $ignored) {
+        try {
+            app(CompaniesHouseProvider::class)->discover(chQuery());
+        } catch (LeadSourcingException) {
+            // expected
+        }
+    }
+
+    // The circuit is still closed (only 5xx/429/connection errors trip it).
+    expect(app(CircuitBreaker::class)->allows('companies_house'))->toBeTrue();
 });
 
 it('throws when no API key is configured', function (): void {

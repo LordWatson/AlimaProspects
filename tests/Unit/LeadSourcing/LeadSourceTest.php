@@ -8,11 +8,11 @@ it('lists all provider keys', function (): void {
     expect(LeadSource::values())->toBe(['companies_house', 'google_places', 'web_search']);
 });
 
-it('marks only Companies House available in Phase 7', function (): void {
+it('marks all three providers available (Phase 7b)', function (): void {
     expect(LeadSource::CompaniesHouse->isAvailable())->toBeTrue()
-        ->and(LeadSource::GooglePlaces->isAvailable())->toBeFalse()
-        ->and(LeadSource::WebSearch->isAvailable())->toBeFalse()
-        ->and(LeadSource::availableValues())->toBe(['companies_house']);
+        ->and(LeadSource::GooglePlaces->isAvailable())->toBeTrue()
+        ->and(LeadSource::WebSearch->isAvailable())->toBeTrue()
+        ->and(LeadSource::availableValues())->toBe(['companies_house', 'google_places', 'web_search']);
 });
 
 it('has a label and description for each source', function (LeadSource $source): void {

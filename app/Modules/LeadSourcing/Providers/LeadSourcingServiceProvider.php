@@ -11,8 +11,10 @@ use App\Modules\LeadSourcing\Policies\DiscoveryRunPolicy;
 use App\Modules\LeadSourcing\Services\AllowAllLeadInterestGate;
 use App\Modules\LeadSourcing\Services\CompaniesHouseProvider;
 use App\Modules\LeadSourcing\Services\DiscoveryLimitGuard;
+use App\Modules\LeadSourcing\Services\GooglePlacesProvider;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use App\Modules\LeadSourcing\Services\StubLeadQuotaSource;
+use App\Modules\LeadSourcing\Services\WebSearchProvider;
 use App\Modules\LeadSourcing\Support\CircuitBreaker;
 use App\Modules\ModuleServiceProvider;
 use Illuminate\Contracts\Cache\Repository as Cache;
@@ -43,11 +45,13 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
         // The provider registry: one entry per live source. New providers (Phase 7b) register here
         // and the discovery pipeline picks them up with no further change.
         $this->app->singleton(LeadSourceProviderRegistry::class, function ($app): LeadSourceProviderRegistry {
+            $http = $app->make(HttpFactory::class);
+            $breaker = $app->make(CircuitBreaker::class);
+
             $registry = new LeadSourceProviderRegistry;
-            $registry->register(new CompaniesHouseProvider(
-                $app->make(HttpFactory::class),
-                $app->make(CircuitBreaker::class),
-            ));
+            $registry->register(new CompaniesHouseProvider($http, $breaker));
+            $registry->register(new GooglePlacesProvider($http, $breaker));
+            $registry->register(new WebSearchProvider($http, $breaker));
 
             return $registry;
         });

@@ -97,7 +97,7 @@ it('validates the source is a live provider', function (): void {
     seedActiveIcp($user->currentTeam()->firstOrFail());
 
     $this->actingAs($user)
-        ->post(route('lead-sourcing.store'), ['source' => 'google_places']) // not available yet
+        ->post(route('lead-sourcing.store'), ['source' => 'apollo']) // not a known provider
         ->assertSessionHasErrors('source');
 
     $this->actingAs($user)
@@ -105,6 +105,22 @@ it('validates the source is a live provider', function (): void {
         ->assertSessionHasErrors('source');
 
     expect(DiscoveryRun::query()->count())->toBe(0);
+});
+
+it('accepts Google Places and web search as live sources (Phase 7b)', function (): void {
+    Queue::fake();
+
+    $user = createUserWithTeam();
+    seedActiveIcp($user->currentTeam()->firstOrFail());
+
+    foreach (['google_places', 'web_search'] as $source) {
+        $this->actingAs($user)
+            ->post(route('lead-sourcing.store'), ['source' => $source, 'terms' => 'coffee roasters'])
+            ->assertRedirect();
+    }
+
+    expect(DiscoveryRun::query()->pluck('source')->map->value->all())
+        ->toContain('google_places', 'web_search');
 });
 
 it('forbids a read-only member from starting a run', function (): void {

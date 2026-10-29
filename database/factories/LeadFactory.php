@@ -46,7 +46,7 @@ class LeadFactory extends Factory
             'source_url' => 'https://find-and-update.company-information.service.gov.uk/company/'.$number,
             'collected_at' => now(),
             'raw' => ['title' => $name, 'company_number' => $number],
-            'dedupe_key' => 'companies_house:no:'.Str::lower($number),
+            'dedupe_key' => 'no:'.Str::lower($number),
         ];
     }
 }

@@ -92,7 +92,7 @@ Code lives under `app/Modules/<Module>/` with: `Actions/ Services/ Contracts/ Da
 
 ## 5. Key decisions (see `docs/decisions/`)
 
-0001 stack · 0002 module structure · 0003 vite-plus lint · 0004 Fortify+Sanctum+spatie · 0005 AI via `laravel/ai` behind `AiClient` · 0006 multi-team tenancy · 0007 UK+UAE markets, bilingual/RTL, compliance · 0008 lead providers (Companies House + web search + Google Places; no paid enrichment in MVP) · 0009 admin (Filament).
+0001 stack · 0002 module structure · 0003 vite-plus lint · 0004 Fortify+Sanctum+spatie · 0005 AI via `laravel/ai` behind `AiClient` · 0006 multi-team tenancy · 0007 UK+UAE markets, bilingual/RTL, compliance · 0008 lead providers (Companies House + web search + Google Places; no paid enrichment in MVP) · 0009 admin (Filament) · 0010 web-search provider (Serper).
 
 ## 5a. Project agents & skills (`.claude/`)
 
