@@ -71,6 +71,12 @@ export default defineConfig({
             'composer.json',
             'resources/js/components/ui/*',
             'resources/views/mail/*',
+            // Generated whole on every graph build (and by the post-commit hook), so formatting it
+            // is a fight the generator always wins — and `composer ci:check` loses.
+            'graphify-out/**',
+            // Published vendor views: Laravel's own markup, deliberately kept diffable against
+            // upstream. The brand lives in the theme stylesheet beside them.
+            'resources/views/vendor/mail/**',
         ],
         sortTailwindcss: {
             functions: ['clsx', 'cn', 'cva'],
