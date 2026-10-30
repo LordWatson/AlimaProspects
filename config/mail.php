@@ -115,4 +115,30 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Markdown Mail Settings
+    |--------------------------------------------------------------------------
+    |
+    | The theme every markdown mail the platform sends is inlined with. `alima`
+    | is Laravel's default theme recoloured to the brand (CLAUDE.md 2a,
+    | docs/brand/brand-tokens.md) and lives in
+    | resources/views/vendor/mail/html/themes/alima.css. Set here rather than
+    | per Mailable so the invitation email and the notification mails cannot
+    | drift apart.
+    |
+    | An outreach message to a prospect deliberately does NOT use this: it is
+    | the team talking, not Alima, and carries no Alima chrome at all. See
+    | docs/modules/outreach.md.
+    |
+    */
+
+    'markdown' => [
+        'theme' => env('MAIL_MARKDOWN_THEME', 'alima'),
+
+        'paths' => [
+            resource_path('views/vendor/mail'),
+        ],
+    ],
+
 ];

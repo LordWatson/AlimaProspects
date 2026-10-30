@@ -192,8 +192,13 @@ function submit(): void {
                 </div>
 
                 <!-- Said before the button is pressed, because it cannot be undone. -->
+                <!-- `role="alert"` because this appears *after* the member has already
+                     focused the select, and it is the only warning before an irreversible,
+                     platform-wide suppression. Also wired to the submit button below. -->
                 <p
                     v-if="chosenOutcome?.suppresses"
+                    id="suppression-warning"
+                    role="alert"
                     class="flex gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs text-warning"
                     data-test="suppression-warning"
                 >
@@ -242,6 +247,11 @@ function submit(): void {
                     <Button
                         type="submit"
                         :disabled="form.processing"
+                        :aria-describedby="
+                            chosenOutcome?.suppresses
+                                ? 'suppression-warning'
+                                : undefined
+                        "
                         data-test="log-submit"
                     >
                         {{ t('Log it') }}

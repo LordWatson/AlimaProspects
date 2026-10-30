@@ -30,16 +30,25 @@
     </p>
 
     <p style="margin:0; font-size:12px; line-height:1.5; color:#6b6977;">
-        {{-- The opt-out. Unambiguous and in the same language as the message. --}}
-        {{ __('Would you rather not hear from us?') }}
-        <a href="mailto:{{ $optOutAddress }}?subject=unsubscribe" style="color:#6b6977;">{{ __('Unsubscribe') }}</a>{{ __(' and we will not contact you again.') }}
+        {{--
+            The opt-out. Unambiguous, and **one whole sentence with a :link placeholder** rather
+            than a link glued to a fragment: a fragment forces English word order and punctuation
+            on the translator, and the plain-text part had already drifted to a different key.
+        --}}
+        {!! __('Would you rather not hear from us? :link and we will not contact you again.', [
+            'link' => '<a href="mailto:'.e($optOutAddress).'?subject=unsubscribe" style="color:#6b6977;">'.e(__('Unsubscribe')).'</a>',
+        ]) !!}
         @if ($privacyNoticeUrl)
             <a href="{{ $privacyNoticeUrl }}" style="color:#6b6977;">{{ __('Privacy notice') }}</a>.
         @endif
     </p>
 
-    <p style="margin:6px 0 0; font-size:11px; line-height:1.5; color:#9d9a99;">
-        {{-- Who transmitted it, which the recipient is entitled to know. --}}
+    {{--
+        Who transmitted it, which the recipient is entitled to know — so it is set at the same
+        12px and the same 5.4:1 colour as the rest of the footer. It was 11px #9d9a99 (about
+        2.7:1), which failed AA on the one line the law is interested in.
+    --}}
+    <p style="margin:6px 0 0; font-size:12px; line-height:1.5; color:#6b6977;">
         {{ __('Sent via Alima on behalf of :sender.', ['sender' => $senderName]) }}
     </p>
 </div>

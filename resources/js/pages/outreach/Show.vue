@@ -430,7 +430,11 @@ const outcomeBadge = (attempt: ContactAttempt): string =>
                     </div>
 
                     <div class="flex flex-wrap items-center gap-3">
+                        <!-- Ink only while there is nothing to send: once a draft exists,
+                             Send is the view's one primary action and this steps back to an
+                             outline (brand-tokens.md §2.3, one primary CTA per view). -->
                         <Button
+                            :variant="current ? 'outline' : 'default'"
                             :disabled="draft.processing || !can.work"
                             data-test="generate"
                             @click="generate"
@@ -557,9 +561,10 @@ const outcomeBadge = (attempt: ContactAttempt): string =>
                             {{ copied ? t('Copied') : t('Copy') }}
                         </Button>
 
+                        <!-- Ink while there are unsaved words, because that is then the
+                             action the member must take before Send will do anything. -->
                         <Button
                             v-if="isDirty && !current.is_spent"
-                            variant="brand"
                             :disabled="edit.processing"
                             data-test="save"
                             @click="save"
@@ -569,16 +574,17 @@ const outcomeBadge = (attempt: ContactAttempt): string =>
 
                         <Button
                             v-if="current.can_send"
+                            :variant="isDirty ? 'outline' : 'default'"
                             :disabled="isDirty"
-                            :title="
-                                isDirty
-                                    ? t('Save your changes first.')
-                                    : undefined
+                            :aria-describedby="
+                                isDirty ? 'send-blocked' : undefined
                             "
                             data-test="send"
                             @click="send"
                         >
-                            <Send class="size-4 rtl:rotate-180" />
+                            <!-- Mirrored, not rotated: a rotated paper plane points backwards
+                                 and down. -->
+                            <Send class="size-4 rtl:-scale-x-100" />
                             {{ t('Send email') }}
                         </Button>
 
@@ -603,6 +609,14 @@ const outcomeBadge = (attempt: ContactAttempt): string =>
                             <Trash2 class="size-4" />
                         </Button>
                     </footer>
+
+                    <p
+                        v-if="isDirty && current.can_send"
+                        id="send-blocked"
+                        class="text-xs text-muted-foreground"
+                    >
+                        {{ t('Save your changes first.') }}
+                    </p>
                 </section>
 
                 <EmptyState

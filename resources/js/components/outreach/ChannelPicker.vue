@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AtSign, Lock, MessageSquare, Phone } from '@lucide/vue';
+import { AtSign, Check, Lock, MessageSquare, Phone } from '@lucide/vue';
 import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/composables/useI18n';
@@ -75,10 +75,25 @@ const rows = computed(() =>
                 :variant="modelValue === row.value ? 'lime' : 'outline'"
                 :disabled="!row.allowed"
                 :aria-pressed="modelValue === row.value"
+                :aria-describedby="
+                    row.allowed ? undefined : `blocked-${row.value}`
+                "
                 :data-test="`channel-${row.value}`"
                 @click="emit('update:modelValue', row.value)"
             >
-                <component :is="row.allowed ? row.icon : Lock" class="size-4" />
+                <!-- A tick as well as the fill: lime against the outline variant is close
+                     enough in luminance that colour alone cannot carry the selection
+                     (WCAG 1.4.1). -->
+                <component
+                    :is="
+                        !row.allowed
+                            ? Lock
+                            : modelValue === row.value
+                              ? Check
+                              : row.icon
+                    "
+                    class="size-4"
+                />
                 {{ t(row.label) }}
             </Button>
         </div>
@@ -97,6 +112,7 @@ const rows = computed(() =>
             <li
                 v-for="row in rows.filter((r) => !r.allowed)"
                 :key="`blocked-${row.value}`"
+                :id="`blocked-${row.value}`"
                 class="rounded-xl border border-border bg-muted/40 p-3 text-xs"
                 :data-test="`blocked-${row.value}`"
             >

@@ -78,13 +78,18 @@ final class OutreachMessageMail extends Mailable
      * unsubscribe button, and a recipient who uses it instead of replying is far less likely to
      * reach for "report spam" — which protects the deliverability of every other team on the
      * platform, not just this one.
+     *
+     * **`List-Unsubscribe-Post` is deliberately not sent.** RFC 8058 one-click requires an **HTTPS**
+     * target, and advertising it alongside a `mailto:`-only `List-Unsubscribe` is worse than not
+     * advertising it at all: Gmail and Yahoo either ignore the mismatch or treat it as a bad signal.
+     * The header goes in with the hosted unsubscribe endpoint, which is deferred alongside the
+     * hosted privacy notice (docs/compliance.md §3.7).
      */
     public function headers(): Headers
     {
         return new Headers(
             text: [
                 'List-Unsubscribe' => '<mailto:'.$this->sender->optOutAddress.'?subject=unsubscribe>',
-                'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click',
             ],
         );
     }

@@ -6,6 +6,7 @@ export * from './lead-sourcing';
 export * from './leads-workspace';
 export * from './locale';
 export * from './navigation';
+export * from './notifications';
 export * from './onboarding';
 export * from './outreach';
 export * from './reporting';

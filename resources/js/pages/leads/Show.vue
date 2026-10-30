@@ -156,7 +156,8 @@ const website = computed(() => {
                      decides which channels are open (Phase 11). -->
                 <Button v-if="can.work" as-child>
                     <Link :href="`/leads/${lead.id}/outreach`">
-                        <Send class="size-4 rtl:rotate-180" />
+                        <!-- Mirrored, not rotated: a rotated paper plane points backwards. -->
+                        <Send class="size-4 rtl:-scale-x-100" />
                         {{ t('Reach out') }}
                     </Link>
                 </Button>

@@ -86,6 +86,14 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'notifications' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/notifications.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => (int) env('LOG_DAILY_DAYS', 14),
+            'replace_placeholders' => true,
+        ],
+
         'billing' => [
             'driver' => 'daily',
             'path' => storage_path('logs/billing.log'),

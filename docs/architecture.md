@@ -62,6 +62,11 @@ flowchart TD
   Out --> Rep
   Rep --> Ins[AI Insights post-MVP]
   Core --> Notif[Notifications]
+  LS -->|run complete| Notif
+  Sc -->|new strong matches| Notif
+  LW -->|task due, assignment| Notif
+  Sig -->|signals detected| Notif
+  Out -->|do-not-contact| Comp
   Core --> Bill[Billing & Plans]
   Bill --> AIp
   Bill --> LS
@@ -83,10 +88,10 @@ flowchart TD
 | 9   | Scoring & Matching            | MVP                      | `modules/scoring-matching.md`            |
 | 10  | Leads Workspace               | MVP                      | `modules/leads-workspace.md`             |
 | 10c | Signals (trigger events)      | MVP (UAE v1, S0–S6)      | `modules/signals.md`                     |
-| 11  | Outreach                      | MVP (basic)              | `modules/outreach.md`                    |
+| 11  | Outreach                      | MVP (built, Phase 11)    | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (dashboard built)    | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | Post-MVP                 | `modules/ai-insights.md`                 |
-| 14  | Notifications                 | MVP (in-app+email)       | `modules/notifications.md`               |
+| 14  | Notifications                 | MVP (built, Phase 12)    | `modules/notifications.md`               |
 | 15  | Billing & Plans               | MVP (late)               | `modules/billing-plans.md`               |
 | 16  | Compliance & Privacy          | MVP                      | `modules/compliance-privacy.md`          |
 | 17  | Admin (internal)              | MVP (minimal)            | `modules/admin.md`                       |

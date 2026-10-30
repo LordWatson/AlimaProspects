@@ -60,10 +60,21 @@ Code lives under `app/Modules/<Module>/` with: `Actions/ Services/ Contracts/ Da
 - **Actions** = single operations (`CreateLeadAction`). **Services** = orchestration / third-party integrations. Pass DTOs in, return models/DTOs out.
 - **All writes in `DB::transaction()`** at the Action level. Post-commit work (jobs, events, emails, external calls) uses `DB::afterCommit()` / `afterCommit`. **Never call external APIs inside a transaction.**
 - **Multi-tenancy (ADR 0006):** every tenant table has `team_id`. Use the `BelongsToTeam` trait (global scope + auto-assign). **Policies double-check ownership.** Every tenant model needs a test proving cross-tenant access fails.
-- **Logging:** structured + contextual (`Log::withContext(['team_id','user_id','request_id'])`); channels `ai`, `lead_sourcing`, `billing`. **Never log secrets or full personal data — log IDs.**
+- **Logging:** structured + contextual (`Log::withContext(['team_id','user_id','request_id'])`); a channel per module where one earns it — `ai`, `lead_sourcing`, `signals`, `outreach`, `notifications`, `billing` (add yours to `config/logging.php` and say so in the module doc). **Never log secrets or full personal data — log IDs.**
 - **Errors:** domain-specific exceptions per module (extend `App\Modules\Core\Exceptions\DomainException`), rendered centrally in `bootstrap/app.php`. Friendly to users; details to logs/Sentry. External calls use timeouts, retries w/ backoff, circuit-breaker guards.
 - **Jobs:** idempotent; `ShouldBeUnique` where duplicates harm; set `$tries`, `$backoff`, `$timeout`; implement `failed()`. Long AI/lead jobs report progress over Reverb.
-- **Validation** only in FormRequests/Data. **Authorisation** only in Policies/Gates.
+- **Validation** only in FormRequests/Data. **Authorisation** only in Policies/Gates. **Compliance
+  gating is neither** — whether a lead may be approached is `Outreach\Services\OutreachGuard`'s
+  answer, not a policy's: authorisation asks whether this member may act, the guard asks whether this
+  prospect may be approached, and conflating them means a legal rule enforced by a role check.
+- **Never notify directly.** Raising a notification is
+  `Notifications\Services\NotificationDispatcher` (`send` / `toTeam` / `toAdmins`) — never Laravel's
+  facade, never `$user->notify()`. The dispatcher is what resolves the member's per-team channel
+  preferences, stamps `team_id` on the row, drops members who have left, and keeps the stored payload
+  free of prose (keys + params, never a sentence). A notification that would fan out per record needs
+  **aggregating** first — see `AnnounceTopLeadsJob` for the pattern.
+- **Anything that reaches a prospect goes through Outreach.** Suppression, sender identification and
+  the opt-out are conditions of sending, not features of a screen (`docs/compliance.md` §3.2–3.3).
 - **Enums** for every status/type column. **No magic strings.**
 - **Money** = integer minor units. **Timestamps** UTC in DB, displayed in team timezone.
 - **Strict types** (`declare(strict_types=1);`) in every PHP file; typed properties + return types everywhere.
@@ -76,7 +87,7 @@ Code lives under `app/Modules/<Module>/` with: `Actions/ Services/ Contracts/ Da
 
 - `app/Modules/<Module>/` — domain code. `app/Modules/Core/` — tenancy, audit, base classes, logging, exceptions.
 - `docs/` — knowledge base: `architecture.md`, `modules/<module>.md` (read before working a module), `decisions/` (ADRs), `runbooks/`, `compliance.md`, `ai-prompts.md`, `brand/brand-tokens.md`.
-- `mvp.md` — phased plan + status table. `signals-plan.md` — the Signals (trigger-event prospecting) build plan, phases S0–S6, **complete** (companion to `mvp.md`; see `docs/modules/signals.md`, `docs/runbooks/signals-demo.md` + ADR 0011). `CHANGELOG.md` — notable changes.
+- `mvp.md` — phased plan + status table. **Phases 11 (Outreach) and 12 (Notifications) are complete** — read `docs/modules/outreach.md` and `docs/modules/notifications.md` before touching either. `signals-plan.md` — the Signals (trigger-event prospecting) build plan, phases S0–S6, **complete** (companion to `mvp.md`; see `docs/modules/signals.md`, `docs/runbooks/signals-demo.md` + ADR 0011). `CHANGELOG.md` — notable changes.
 - Config: `.env.example` documents every key. **Brand PDFs in `.claude/docs/brand/` and `docs/brand/`** (`Alima — Brand Guidelines.pdf`, `Alima.pdf`) → extracted to `docs/brand/brand-tokens.md`. See §2a.
 
 ## 4. How to work a phase (ADR + §8 of the kickoff)

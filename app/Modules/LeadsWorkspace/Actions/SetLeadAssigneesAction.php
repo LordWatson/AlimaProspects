@@ -9,6 +9,7 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Enums\LeadActivityType;
+use App\Modules\LeadsWorkspace\Events\LeadAssigned;
 use App\Modules\LeadsWorkspace\Models\LeadAssignment;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,9 @@ use Illuminate\Support\Facades\DB;
  * rejected, because a stale picker (a teammate who left between page load and save) shouldn't lose
  * the rest of the change. Timeline entries name who was added and who was taken off, so a handover
  * is legible months later.
+ *
+ * Fires {@see LeadAssigned} for the **newly added** members only, which Notifications (Phase 12)
+ * turns into "Dana gave you Acme Ltd".
  *
  * Must be called inside the lead's team context.
  */
@@ -112,6 +116,18 @@ final class SetLeadAssigneesAction
                     'added' => $added,
                     'removed' => $removed,
                 ], $actor);
+            }
+
+            // Only the members newly added: somebody already on the lead has not been given
+            // anything, and telling them again whenever a colleague joins would be noise.
+            // afterCommit so the listener never reads an assignment that isn't there yet.
+            if ($added !== []) {
+                DB::afterCommit(static fn () => event(new LeadAssigned(
+                    teamId: (int) $team->getKey(),
+                    leadId: (int) $lead->getKey(),
+                    userIds: $added,
+                    actorId: (int) $actor->getKey(),
+                )));
             }
 
             return LeadAssignment::query()

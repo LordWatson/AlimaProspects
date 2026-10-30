@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { FileText, Plus, ShieldOff, Star, Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -142,42 +143,34 @@ const grouped = computed(() => {
     <Head :title="t('Outreach briefs')" />
 
     <div class="flex flex-col gap-6 py-2">
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div class="max-w-2xl">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                >
-                    {{ t('Outreach') }}
-                </p>
-                <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                    {{ t('Briefs') }}
-                </h1>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    {{
-                        t(
-                            'Tell Alima how your team talks to prospects, and every draft follows it. Not a template with blanks to fill — a brief, in your own words.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <div class="flex flex-wrap gap-2">
-                <Button variant="outline" as-child>
-                    <Link href="/outreach/do-not-contact">
-                        <ShieldOff class="size-4" />
-                        {{ t('Do not contact') }}
-                    </Link>
-                </Button>
-                <Button
-                    v-if="can.manage"
-                    data-test="add-brief"
-                    @click="startAdding"
-                >
+        <!-- This is the destination behind sidebar item 08, so it opens with the hero every
+             main screen opens with (brand-tokens.md §5). Its siblings — the per-lead draft
+             screen and the do-not-contact list — are sub-pages reached from here or from a
+             lead, and use plain headers like `leads/Create.vue` does. -->
+        <PageHero
+            index="08"
+            :eyebrow="t('Outreach')"
+            :title="t('Say it the way|your team says it.')"
+            :description="
+                t(
+                    'Tell Alima how your team talks to prospects, and every draft follows it. Not a template with blanks to fill — a brief, in your own words.',
+                )
+            "
+            size="compact"
+        >
+            <template #actions>
+                <Button v-if="can.manage" variant="lime" @click="startAdding">
                     <Plus class="size-4" />
                     {{ t('New brief') }}
                 </Button>
-            </div>
-        </header>
+                <Button variant="hero" as-child>
+                    <Link href="/outreach/do-not-contact">
+                        <ShieldOff class="size-4" aria-hidden="true" />
+                        {{ t('Do not contact') }}
+                    </Link>
+                </Button>
+            </template>
+        </PageHero>
 
         <!-- The form -->
         <section
@@ -350,8 +343,12 @@ const grouped = computed(() => {
                     <li
                         v-for="template in group.templates"
                         :key="template.id"
-                        class="space-y-3 rounded-2xl border border-border bg-card p-5"
-                        :class="template.is_default ? 'border-lime' : ''"
+                        class="space-y-3 rounded-2xl border bg-card p-5"
+                        :class="
+                            template.is_default
+                                ? 'border-lime'
+                                : 'border-border'
+                        "
                     >
                         <header
                             class="flex flex-wrap items-start justify-between gap-2"

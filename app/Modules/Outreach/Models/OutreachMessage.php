@@ -9,6 +9,7 @@ use App\Modules\Core\Concerns\BelongsToTeam;
 use App\Modules\Core\Enums\SupportedLocale;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\Outreach\Actions\SendOutreachEmailAction;
 use App\Modules\Outreach\Enums\OutreachChannel;
 use App\Modules\Outreach\Enums\OutreachMessageStatus;
 use App\Modules\Outreach\Enums\OutreachTone;
@@ -137,13 +138,16 @@ class OutreachMessage extends Model
     }
 
     /**
-     * Whether this draft has already been used, and so must not be sent or logged again. The
-     * idempotency the send and log endpoints are guarded by: a double-tapped Send button must not
-     * email someone twice.
+     * Whether this draft is no longer available to send — already gone out, or already in flight.
+     *
+     * A courtesy check, **not** the guarantee: it reads a status loaded into memory a moment
+     * earlier, and two simultaneous Send requests would both pass it. The guarantee is the
+     * conditional claim in {@see SendOutreachEmailAction::claim()}.
+     * This is what the screen disables the button on and what gives the member a readable error.
      */
     public function isSpent(): bool
     {
-        return $this->status->hasLeftTheBuilding();
+        return ! $this->status->allowsSend();
     }
 
     /**

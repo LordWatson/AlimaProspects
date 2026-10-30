@@ -103,6 +103,14 @@ final class SendOutreachEmailAction
 
         $address = $this->addressFor($contact);
 
+        // **Claim the row before the provider is called.** The `isSpent()` check above reads a
+        // status loaded a moment earlier, so two simultaneous Send requests would both pass it and
+        // both email the prospect. This is the guarantee: only one of them wins the conditional
+        // update, and the loser is refused here rather than at the mailer.
+        if (! $this->claim($message)) {
+            throw OutreachException::alreadyUsed();
+        }
+
         // --- External work, outside any transaction ---
         try {
             $sent = Mail::to($address)->send(new OutreachMessageMail($message, $sender));
@@ -149,7 +157,38 @@ final class SendOutreachEmailAction
             ]);
 
             return $message;
-        });
+        }, attempts: 2);
+    }
+
+    /**
+     * Move the row from a sendable status to `Sending`, and report whether this call is the one
+     * that got it.
+     *
+     * A single conditional `UPDATE … WHERE status IN (draft, failed)` — so the database decides the
+     * winner, not the order two PHP processes happened to read in. `forceFill` on the in-memory
+     * model afterwards keeps it consistent with the row for the writes that follow.
+     *
+     * A message left in `Sending` is a send whose bookkeeping did not finish. It is deliberately
+     * stranded rather than retried: the attempt row is recoverable from the `outreach` log and the
+     * provider's dashboard, while a second email to a prospect is not recoverable at all.
+     */
+    private function claim(OutreachMessage $message): bool
+    {
+        $claimed = OutreachMessage::query()
+            ->whereKey($message->getKey())
+            ->whereIn('status', [
+                OutreachMessageStatus::Draft->value,
+                OutreachMessageStatus::Failed->value,
+            ])
+            ->update(['status' => OutreachMessageStatus::Sending->value]);
+
+        if ($claimed === 0) {
+            return false;
+        }
+
+        $message->forceFill(['status' => OutreachMessageStatus::Sending]);
+
+        return true;
     }
 
     /**
@@ -161,10 +200,22 @@ final class SendOutreachEmailAction
      */
     private function recordFailure(Team $team, OutreachMessage $message, User $member, Throwable $e): never
     {
-        $message->forceFill([
-            'status' => OutreachMessageStatus::Failed,
-            'error_message' => Str::limit($e->getMessage(), 500),
-        ])->save();
+        // One transaction for both writes (CLAUDE.md: all writes in a transaction at the Action
+        // level) — a row marked failed with no audit entry beside it would be a send nobody can
+        // account for.
+        DB::transaction(function () use ($message, $member, $e): void {
+            $message->forceFill([
+                // Back to a sendable status, releasing the claim: the member fixes whatever the
+                // provider objected to and sends the same draft again.
+                'status' => OutreachMessageStatus::Failed,
+                'error_message' => Str::limit($e->getMessage(), 500),
+            ])->save();
+
+            $this->audit->log('outreach.email_failed', $message, [
+                'lead_id' => $message->lead_id,
+                'channel' => $message->channel->value,
+            ], $member);
+        });
 
         Log::channel('outreach')->error('Outreach email failed to send.', [
             'team_id' => $team->getKey(),
@@ -172,11 +223,6 @@ final class SendOutreachEmailAction
             'message_id' => $message->getKey(),
             'exception' => $e::class,
         ]);
-
-        $this->audit->log('outreach.email_failed', $message, [
-            'lead_id' => $message->lead_id,
-            'channel' => $message->channel->value,
-        ], $member);
 
         throw OutreachException::sendFailed();
     }

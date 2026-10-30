@@ -4,7 +4,7 @@
 --
 {{ $senderName }}@if ($senderWebsite) · {{ $senderWebsite }}@endif
 
-{{ __('Would you rather not hear from us?') }} {{ __('Reply with "unsubscribe", or email :address, and we will not contact you again.', ['address' => $optOutAddress]) }}
+{{ __('Would you rather not hear from us? Reply with "unsubscribe", or email :address, and we will not contact you again.', ['address' => $optOutAddress]) }}
 @if ($privacyNoticeUrl)
 {{ __('Privacy notice') }}: {{ $privacyNoticeUrl }}
 @endif

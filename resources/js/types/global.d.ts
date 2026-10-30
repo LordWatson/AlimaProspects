@@ -1,6 +1,7 @@
 import type { Directive } from 'vue';
 import type { Auth } from '@/types/auth';
 import type { LocaleShared } from '@/types/locale';
+import type { NotificationBell } from '@/types/notifications';
 import type { OnboardingShared } from '@/types/onboarding';
 
 // Extend ImportMeta interface for Vite...
@@ -23,6 +24,8 @@ declare module '@inertiajs/core' {
             auth: Auth;
             locale: LocaleShared;
             onboarding: OnboardingShared | null;
+            /** The bell, shared on every page — it is part of the app shell (Phase 12). */
+            notifications: NotificationBell | null;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

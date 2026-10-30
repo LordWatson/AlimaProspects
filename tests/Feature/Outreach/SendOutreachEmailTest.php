@@ -256,6 +256,63 @@ it('refuses to send the same draft twice', function (): void {
     Mail::assertSentCount(1);
 });
 
+it('sends once when two requests race for the same draft', function (): void {
+    [$user, $team, $message] = sendableDraft();
+
+    // What a double-tapped Send button, or a retried request, actually looks like: two callers
+    // each holding a model they read while it still said `draft`. The in-memory `isSpent()` check
+    // passes for both, so the only thing standing between the prospect and two identical emails is
+    // the conditional claim in the action.
+    $first = $message->load(['lead.team', 'contact']);
+    $second = OutreachMessage::query()->with(['lead.team', 'contact'])->findOrFail($message->getKey());
+
+    expect($first->isSpent())->toBeFalse()
+        ->and($second->isSpent())->toBeFalse();
+
+    app(TeamContext::class)->run($team, fn () => app(SendOutreachEmailAction::class)->handle($team, $first, $user));
+
+    $loser = fn () => app(TeamContext::class)->run(
+        $team,
+        fn () => app(SendOutreachEmailAction::class)->handle($team, $second, $user),
+    );
+
+    expect($loser)->toThrow(OutreachException::class);
+
+    Mail::assertSentCount(1);
+    expect(ContactAttempt::query()->count())->toBe(1)
+        ->and($message->fresh()->status)->toBe(OutreachMessageStatus::Sent);
+});
+
+it('leaves a claimed-but-unfinished send stranded rather than re-sendable', function (): void {
+    [$user, $team, $message] = sendableDraft();
+
+    // A message in `Sending` is a send that went out and whose bookkeeping did not finish. A
+    // second email to a prospect is not recoverable; a missing attempt row is, from the log and
+    // the provider's dashboard. So it must refuse.
+    $message->forceFill(['status' => OutreachMessageStatus::Sending])->save();
+
+    $attempt = fn () => app(TeamContext::class)->run($team, fn () => app(SendOutreachEmailAction::class)
+        ->handle($team, $message->fresh()->load(['lead.team', 'contact']), $user));
+
+    expect($attempt)->toThrow(OutreachException::class);
+    Mail::assertNothingSent();
+});
+
+it('releases the claim on a provider failure so the same draft can be sent again', function (): void {
+    [$user, $team, $message] = sendableDraft();
+
+    Mail::shouldReceive('to')->once()->andThrow(new RuntimeException('Domain not verified.'));
+
+    $attempt = fn () => app(TeamContext::class)->run($team, fn () => app(SendOutreachEmailAction::class)
+        ->handle($team, $message->load(['lead.team', 'contact']), $user));
+
+    expect($attempt)->toThrow(OutreachException::class);
+
+    // Failed, not stranded: the team fixes the domain and sends the same draft.
+    expect($message->fresh()->status)->toBe(OutreachMessageStatus::Failed)
+        ->and($message->fresh()->isSpent())->toBeFalse();
+});
+
 it('refuses to send a channel Alima does not transmit', function (): void {
     [$user, $team] = Fixtures::team();
     [$lead, $contact] = Fixtures::lead($team);
