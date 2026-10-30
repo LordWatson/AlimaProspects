@@ -28,7 +28,9 @@ return new class extends Migration
             $table->string('website')->nullable();
 
             // Validated structured output from `business_intel.background_check` (summary, offering,
-            // positioning, target_customers, competitors, suggested_industries, confidence).
+            // positioning, own_industry, customer_industries, target_customers,
+            // decision_maker_titles, competitors, confidence — see BackgroundCheckFindings; rows
+            // written under prompt v1 instead carry a single `suggested_industries` list).
             $table->json('findings')->nullable();
 
             // Provenance of the AI run (trace any output back to the exact prompt + model).

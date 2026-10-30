@@ -22,7 +22,13 @@ function cannedResponses(): array
     return [
         'business_intel.background_check' => [
             'summary' => 'A UK marketing agency.', 'offering' => 'Campaigns.', 'positioning' => 'Boutique.',
-            'target_customers' => ['SMEs'], 'competitors' => ['Rival Ltd'], 'suggested_industries' => ['Retail'], 'confidence' => 0.8,
+            'own_industry' => 'Marketing agency', 'customer_industries' => ['Retail'],
+            'target_customers' => ['SMEs'], 'decision_maker_titles' => ['Marketing Director'],
+            'competitors' => ['Rival Ltd'], 'confidence' => 0.8,
+        ],
+        'lead_sourcing.shape_query' => [
+            'terms' => 'boutique hotels', 'customer_description' => 'Independent hotels that rebrand.',
+            'exclude_terms' => ['graphic design'], 'reasoning' => 'Hospitality buys design work.',
         ],
         'icp.refine_suggestions' => [
             'suggestions' => [
@@ -58,12 +64,18 @@ function cannedResponses(): array
 it('seeds every prompt from docs/ai-prompts.md', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(7)
-        ->and(AiPromptTemplate::query()->pluck('key')->sort()->values()->all())->toBe([
+    // Ten **rows** for eight keys: `outreach.draft_message` has a version 2 (Phase 11) and
+    // `business_intel.background_check` a version 2 (Phase 7c, which split the team's own industry
+    // from its customers'). Both v1 rows stay seeded so a report or message that recorded
+    // `prompt_version: 1` can still be traced back to what produced it. The registry resolves the
+    // highest active version.
+    expect(AiPromptTemplate::query()->count())->toBe(10)
+        ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.refine_suggestions',
             'insights.periodic_digest',
             'lead.enrich_extract',
+            'lead_sourcing.shape_query',
             'outreach.draft_message',
             'scoring.qualitative_fit',
             'signals.extract_event',
@@ -100,5 +112,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(7);
+    expect(AiPromptTemplate::query()->count())->toBe(10);
 });

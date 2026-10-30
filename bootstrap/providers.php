@@ -8,7 +8,9 @@ use App\Modules\Enrichment\Providers\EnrichmentServiceProvider;
 use App\Modules\ICP\Providers\IcpServiceProvider;
 use App\Modules\LeadSourcing\Providers\LeadSourcingServiceProvider;
 use App\Modules\LeadsWorkspace\Providers\LeadsWorkspaceServiceProvider;
+use App\Modules\Notifications\Providers\NotificationsServiceProvider;
 use App\Modules\Onboarding\Providers\OnboardingServiceProvider;
+use App\Modules\Outreach\Providers\OutreachServiceProvider;
 use App\Modules\Reporting\Providers\ReportingServiceProvider;
 use App\Modules\Scoring\Providers\ScoringServiceProvider;
 use App\Modules\Signals\Providers\SignalsServiceProvider;
@@ -33,5 +35,7 @@ return [
     ScoringServiceProvider::class,
     LeadsWorkspaceServiceProvider::class,
     SignalsServiceProvider::class,
+    OutreachServiceProvider::class,
+    NotificationsServiceProvider::class,
     ReportingServiceProvider::class,
 ];

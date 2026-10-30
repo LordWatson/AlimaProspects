@@ -23,6 +23,16 @@ return [
         'max_limit' => (int) env('LEAD_SOURCING_MAX_LIMIT', 100),
     ],
 
+    // AI query shaping (DiscoveryQueryShaper): turn the team's own business profile into a search
+    // for its CUSTOMERS before any provider is called. Disabling it falls back to the deterministic
+    // DiscoveryQuery::fromIcp(), which searches the ICP's industry values verbatim — fine when those
+    // values genuinely describe buyers, and the reason a design studio used to be shown design
+    // studios when they didn't. One model call per source per run; never called from the job, so a
+    // retry can't re-bill it.
+    'query_shaping' => [
+        'enabled' => (bool) env('LEAD_SOURCING_QUERY_SHAPING', true),
+    ],
+
     // Circuit breaker shared across providers (see Support\CircuitBreaker).
     'circuit_breaker' => [
         'threshold' => (int) env('LEAD_SOURCING_CB_THRESHOLD', 5),

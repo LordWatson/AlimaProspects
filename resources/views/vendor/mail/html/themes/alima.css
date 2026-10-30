@@ -1,0 +1,322 @@
+/* Alima — the shared theme for every markdown mail the platform sends.
+ *
+ * Laravel's default theme, recoloured to the brand (docs/brand/brand-tokens.md): Cloud Cream
+ * canvas, a warm bg.surface card, Midnight Ink type and buttons, warm Ink-tint borders, the brand
+ * radii, and Poppins ahead of the system stack. **Signal Orange appears nowhere** — every colour
+ * in a transactional email is carrying a status, and Orange is decorative only (§2.1).
+ *
+ * Only colour, type and radius are changed. The layout is Laravel's own and is what the
+ * `<x-mail::*>` components are built against; forking it would mean maintaining the component
+ * views too, for no brand gain.
+ *
+ * Selected by `mail.markdown.theme`, so it applies to the invitation email and the notification
+ * mails alike rather than only to whichever was written last.
+ */
+
+/* Base */
+
+body,
+body *:not(html):not(style):not(br):not(tr):not(code) {
+    box-sizing: border-box;
+    /* Poppins (Latin) and Tajawal (Arabic) are named per brand-tokens.md §3, but most mail
+       clients ignore web fonts and fall through to the system stack — so this is a courtesy, not
+       a guarantee, and the layout is designed to read correctly either way. */
+    font-family:
+        'Poppins', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+        Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol';
+    position: relative;
+}
+
+body {
+    -webkit-text-size-adjust: none;
+    background-color: #fbfaf6;
+    color: #4a4857;
+    height: 100%;
+    line-height: 1.4;
+    margin: 0;
+    padding: 0;
+    width: 100% !important;
+}
+
+p,
+ul,
+ol,
+blockquote {
+    line-height: 1.4;
+    text-align: start;
+}
+
+a {
+    /* `action.brand` Deep Teal — the link token (brand-tokens.md §2.1, 7.5:1). */
+    color: #205557;
+}
+
+a img {
+    border: none;
+}
+
+/* Typography */
+
+h1 {
+    color: #181723;
+    font-size: 18px;
+    font-weight: bold;
+    margin-top: 0;
+    text-align: start;
+}
+
+h2 {
+    font-size: 16px;
+    font-weight: bold;
+    margin-top: 0;
+    text-align: start;
+}
+
+h3 {
+    font-size: 14px;
+    font-weight: bold;
+    margin-top: 0;
+    text-align: start;
+}
+
+p {
+    font-size: 16px;
+    line-height: 1.5em;
+    margin-top: 0;
+    text-align: start;
+}
+
+p.sub {
+    font-size: 12px;
+}
+
+img {
+    max-width: 100%;
+}
+
+/* Layout */
+
+.wrapper {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    background-color: #f5f2e8;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+}
+
+.content {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+}
+
+/* Header */
+
+.header {
+    padding: 25px 0;
+    text-align: center;
+}
+
+.header a {
+    color: #181723;
+    font-size: 19px;
+    font-weight: bold;
+    text-decoration: none;
+}
+
+/* Logo */
+
+.logo {
+    height: 75px;
+    margin-top: 15px;
+    margin-bottom: 10px;
+    max-height: 75px;
+    width: 75px;
+}
+
+/* Body */
+
+.body {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    background-color: #f5f2e8;
+    border-bottom: 1px solid #f5f2e8;
+    border-top: 1px solid #f5f2e8;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+}
+
+.inner-body {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 570px;
+    background-color: #fbfaf6;
+    border-color: #ddd9cc;
+    border-radius: 8px;
+    border-width: 1px;
+    box-shadow:
+        0 1px 3px 0 rgba(24, 23, 35, 0.06),
+        0 1px 2px -1px rgba(24, 23, 35, 0.06);
+    margin: 0 auto;
+    padding: 0;
+    width: 570px;
+}
+
+.inner-body a {
+    word-break: break-all;
+}
+
+/* Subcopy */
+
+.subcopy {
+    border-top: 1px solid #ddd9cc;
+    margin-top: 25px;
+    padding-top: 25px;
+}
+
+.subcopy p {
+    font-size: 14px;
+}
+
+/* Footer */
+
+.footer {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 570px;
+    margin: 0 auto;
+    padding: 0;
+    text-align: center;
+    width: 570px;
+}
+
+.footer p {
+    color: #6b6977;
+    font-size: 12px;
+    text-align: center;
+}
+
+.footer a {
+    color: #6b6977;
+    text-decoration: underline;
+}
+
+/* Tables */
+
+.table table {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    margin: 30px auto;
+    width: 100%;
+}
+
+.table th {
+    border-bottom: 1px solid #ddd9cc;
+    margin: 0;
+    padding-bottom: 8px;
+}
+
+.table td {
+    color: #4a4857;
+    font-size: 15px;
+    line-height: 18px;
+    margin: 0;
+    padding: 10px 0;
+}
+
+.content-cell {
+    max-width: 100vw;
+    padding: 32px;
+}
+
+/* Buttons */
+
+.action {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    margin: 30px auto;
+    padding: 0;
+    text-align: center;
+    width: 100%;
+    float: unset;
+}
+
+.button {
+    -webkit-text-size-adjust: none;
+    border-radius: 9999px;
+    color: #f5f2e8;
+    display: inline-block;
+    overflow: hidden;
+    text-decoration: none;
+}
+
+.button-blue,
+.button-primary {
+    background-color: #181723;
+    border-bottom: 8px solid #181723;
+    border-left: 18px solid #181723;
+    border-right: 18px solid #181723;
+    border-top: 8px solid #181723;
+}
+
+.button-green,
+.button-success {
+    background-color: #276b43;
+    border-bottom: 8px solid #276b43;
+    border-left: 18px solid #276b43;
+    border-right: 18px solid #276b43;
+    border-top: 8px solid #276b43;
+}
+
+.button-red,
+.button-error {
+    background-color: #b52a1b;
+    border-bottom: 8px solid #b52a1b;
+    border-left: 18px solid #b52a1b;
+    border-right: 18px solid #b52a1b;
+    border-top: 8px solid #b52a1b;
+}
+
+/* Panels */
+
+.panel {
+    /* Written as a physical side on purpose: Outlook ignores `border-inline-start`, so the RTL
+       flip is emitted by the published layout's `dir`-aware <style> block instead. */
+    border-left: #181723 solid 4px;
+    margin: 21px 0;
+}
+
+.panel-content {
+    background-color: #f5f2e8;
+    color: #4a4857;
+    padding: 16px;
+}
+
+.panel-content p {
+    color: #4a4857;
+}
+
+.panel-item {
+    padding: 0;
+}
+
+.panel-item p:last-of-type {
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+/* Utilities */
+
+.break-all {
+    word-break: break-all;
+}

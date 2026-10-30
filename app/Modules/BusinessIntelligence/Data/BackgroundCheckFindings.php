@@ -13,6 +13,13 @@ use Spatie\LaravelData\Data;
  * {@see StructuredAiResponse}. Mirrors the prompt's JSON schema
  * (summary/offering/positioning required; the lists default to empty; confidence is 0–1). Kept as a
  * DTO so the job, the stored report and the review UI share one typed contract.
+ *
+ * **The seller/buyer split is the point of this DTO.** `ownIndustry` and `competitors` describe the
+ * team's own business; `customerIndustries`, `targetCustomers` and `decisionMakerTitles` describe who
+ * buys from it. Prompt v1 had a single `suggested_industries` list and said nothing about which it
+ * meant, so the same values were written to the team's own profile *and* seeded as the ICP's industry
+ * signal — which is how a design studio ended up with an ICP that found design studios. Keeping the
+ * two sides in separate, named properties is what stops that recurring.
  */
 final class BackgroundCheckFindings extends Data
 {
@@ -25,36 +32,61 @@ final class BackgroundCheckFindings extends Data
     private const int MAX_ITEMS = 12;
 
     /**
-     * @param  list<string>  $targetCustomers
-     * @param  list<string>  $competitors
-     * @param  list<string>  $suggestedIndustries
+     * @param  list<string>  $customerIndustries  industries the team's CUSTOMERS are in
+     * @param  list<string>  $targetCustomers  kinds of organisation that buy
+     * @param  list<string>  $decisionMakerTitles  job titles that buy, at a customer
+     * @param  list<string>  $competitors  businesses that sell what the team sells
      */
     public function __construct(
         public string $summary,
         public string $offering,
         public string $positioning,
+        public ?string $ownIndustry = null,
+        public array $customerIndustries = [],
         public array $targetCustomers = [],
+        public array $decisionMakerTitles = [],
         public array $competitors = [],
-        public array $suggestedIndustries = [],
         public ?float $confidence = null,
     ) {}
 
     /**
-     * Build from the AI response's raw validated data array.
+     * Build from the AI response's raw validated data array, or from a stored report's JSON.
+     *
+     * Reports written under prompt v1 hold a `suggested_industries` list whose values are the team's
+     * **own** trade (that was the only reading v1's framing supported). They are read back into
+     * `ownIndustry` and deliberately **not** into `customerIndustries`: an empty customer list makes
+     * the gap visible and offers a re-run, where quietly reusing the old values would re-seed exactly
+     * the wrong ICP.
      *
      * @param  array<string, mixed>  $data
      */
     public static function fromAi(array $data): self
     {
+        $legacy = self::strings($data['suggested_industries'] ?? []);
+
         return new self(
             summary: self::text($data['summary'] ?? ''),
             offering: self::text($data['offering'] ?? ''),
             positioning: self::text($data['positioning'] ?? ''),
+            ownIndustry: self::nullableText($data['own_industry'] ?? ($legacy[0] ?? null)),
+            customerIndustries: self::strings($data['customer_industries'] ?? []),
             targetCustomers: self::strings($data['target_customers'] ?? []),
+            decisionMakerTitles: self::strings($data['decision_maker_titles'] ?? []),
             competitors: self::strings($data['competitors'] ?? []),
-            suggestedIndustries: self::strings($data['suggested_industries'] ?? []),
             confidence: isset($data['confidence']) ? (float) $data['confidence'] : null,
         );
+    }
+
+    /**
+     * Whether the check produced anything usable as a customer-side signal. False means the model
+     * couldn't tell who buys from this business — the review screen says so and offers a re-run
+     * rather than seeding an ICP from the seller's own trade.
+     */
+    public function hasCustomerSignals(): bool
+    {
+        return $this->customerIndustries !== []
+            || $this->targetCustomers !== []
+            || $this->decisionMakerTitles !== [];
     }
 
     /**
@@ -68,9 +100,11 @@ final class BackgroundCheckFindings extends Data
             'summary' => $this->summary,
             'offering' => $this->offering,
             'positioning' => $this->positioning,
+            'own_industry' => $this->ownIndustry,
+            'customer_industries' => $this->customerIndustries,
             'target_customers' => $this->targetCustomers,
+            'decision_maker_titles' => $this->decisionMakerTitles,
             'competitors' => $this->competitors,
-            'suggested_industries' => $this->suggestedIndustries,
             'confidence' => $this->confidence,
         ];
     }
@@ -110,5 +144,19 @@ final class BackgroundCheckFindings extends Data
     private static function text(mixed $value): string
     {
         return Str::limit(trim((string) $value), self::MAX_TEXT, '');
+    }
+
+    /**
+     * Trim and clamp an optional single-line field, collapsing blank to null.
+     */
+    private static function nullableText(mixed $value): ?string
+    {
+        if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+
+        return $trimmed === '' ? null : Str::limit($trimmed, self::MAX_ITEM, '');
     }
 }

@@ -8,6 +8,7 @@ import {
     Radar,
     Satellite,
     Scan,
+    Send,
     Settings2,
     Target,
     Users,
@@ -91,7 +92,17 @@ const workspace = computed<Item[]>(() => [
         href: '/signals',
         match: 'startsWith',
     },
-    { n: '08', title: t('Design system'), icon: Palette, href: '/design' },
+    {
+        n: '08',
+        title: t('Outreach'),
+        icon: Send,
+        // The per-lead draft screen is reached from the lead, not from here. What this points at
+        // is the team-level half of Outreach — the briefs and the do-not-contact list — and the
+        // second of those has to be findable without a lead in hand (docs/compliance.md §3.2).
+        href: '/outreach/templates',
+        match: 'startsWith',
+    },
+    { n: '09', title: t('Design system'), icon: Palette, href: '/design' },
 ]);
 
 const account = computed<Item[]>(() => [

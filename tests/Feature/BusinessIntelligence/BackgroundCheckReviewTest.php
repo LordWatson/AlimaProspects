@@ -31,9 +31,11 @@ function readyReport(Team $team, array $overrides = []): BusinessIntelReport
             'summary' => 'A UK marketing agency.',
             'offering' => 'Demand generation for B2B SaaS.',
             'positioning' => 'Premium and results-first.',
-            'target_customers' => ['Head of Marketing', 'Founder'],
+            'own_industry' => 'Marketing agency',
+            'customer_industries' => ['SaaS', 'Professional services'],
+            'target_customers' => ['Early-stage SaaS companies'],
+            'decision_maker_titles' => ['Head of Marketing', 'Founder'],
             'competitors' => ['Beta Agency'],
-            'suggested_industries' => ['SaaS', 'Marketing'],
             'confidence' => 0.8,
         ],
     ], $overrides));
@@ -98,7 +100,8 @@ it('accepts a report: fills blank profile fields, seeds an ICP, and marks it acc
 
     app(TeamContext::class)->run($team, function () use ($team, $report): void {
         $profile = BusinessProfile::query()->where('team_id', $team->getKey())->firstOrFail();
-        expect($profile->industry)->toBe('SaaS')
+        // The team's OWN trade, not one of its customers' industries.
+        expect($profile->industry)->toBe('Marketing agency')
             ->and($profile->value_proposition)->toBe('Demand generation for B2B SaaS.');
 
         expect($report->fresh()->status)->toBe(BackgroundCheckStatus::Accepted);

@@ -14,6 +14,7 @@ use App\Modules\LeadSourcing\Events\DiscoveryRunProgressed;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Services\LeadCandidateFilter;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -78,9 +79,12 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
         return (string) $this->runId;
     }
 
-    public function handle(LeadSourceProviderRegistry $registry, TeamContext $teamContext): void
-    {
-        $teamContext->run($this->teamId, function () use ($registry): void {
+    public function handle(
+        LeadSourceProviderRegistry $registry,
+        TeamContext $teamContext,
+        LeadCandidateFilter $filter,
+    ): void {
+        $teamContext->run($this->teamId, function () use ($registry, $filter): void {
             $run = $this->startRun();
 
             // Already finished (idempotent retry) or gone — nothing to do.
@@ -109,6 +113,18 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
+            // What the provider actually returned, captured before filtering: the request was made
+            // and billed whether or not we keep its results, so this — not the kept count — is what
+            // the cost is metered on. Metering the kept count would show a run that excluded
+            // everything as free.
+            $returned = count($leads);
+
+            // Refuse the wrong kind of company before anything is persisted: the team's own trade and
+            // its named competitors rank well for exactly the words that describe its work, so they
+            // come back from every provider. Only web search can exclude them at the API; this is
+            // where the other two are held to the same promise.
+            [$leads, $rejected] = $filter->apply($query, $leads);
+
             // Enforce the run's size here too — never rely solely on the provider to honour the cap.
             $leads = array_slice($leads, 0, max(0, $run->requested_limit));
 
@@ -116,12 +132,12 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
 
             $created = $this->persistLeads($run, $leads);
 
-            DB::transaction(function () use ($run, $leads, $created, $provider): void {
+            DB::transaction(function () use ($run, $leads, $created, $provider, $returned): void {
                 $run->forceFill([
                     'status' => DiscoveryRunStatus::Completed,
                     'leads_found' => count($leads),
                     'leads_created' => $created,
-                    'cost_micros' => $provider->costMicros(count($leads)),
+                    'cost_micros' => $provider->costMicros($returned),
                     'error_message' => null,
                     'completed_at' => now(),
                 ])->save();
@@ -133,7 +149,9 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
                 'source' => $run->source->value,
                 'leads_found' => count($leads),
                 'leads_created' => $created,
-                'cost_micros' => $provider->costMicros(count($leads)),
+                'leads_excluded' => $rejected,
+                'shaped_query' => $query->shaped,
+                'cost_micros' => $provider->costMicros($returned),
             ]);
 
             $this->broadcast($run, DiscoveryRunStatus::Completed, 100, 'Discovery complete', count($leads));

@@ -27,17 +27,23 @@ class BusinessIntelReportFactory extends Factory
             'status' => BackgroundCheckStatus::Ready,
             'business_name' => fake()->company(),
             'website' => fake()->url(),
+            // The prompt v2 shape: the seller's own side (`own_industry`, `competitors`) kept
+            // strictly apart from the buyer's (`customer_industries`, `target_customers`,
+            // `decision_maker_titles`). A factory that still produced v1's single
+            // `suggested_industries` list would hand every test the ambiguity the split removed.
             'findings' => [
                 'summary' => fake()->paragraph(),
                 'offering' => fake()->sentence(),
                 'positioning' => fake()->sentence(),
-                'target_customers' => [fake()->jobTitle(), fake()->jobTitle()],
+                'own_industry' => 'Marketing agency',
+                'customer_industries' => ['SaaS', 'Logistics'],
+                'target_customers' => ['Early-stage SaaS companies'],
+                'decision_maker_titles' => [fake()->jobTitle(), fake()->jobTitle()],
                 'competitors' => [fake()->company(), fake()->company()],
-                'suggested_industries' => ['SaaS', 'Logistics'],
                 'confidence' => 0.8,
             ],
             'prompt_key' => 'business_intel.background_check',
-            'prompt_version' => 1,
+            'prompt_version' => 2,
             'model' => 'claude-sonnet-5-5',
             'cost_micros' => 12_000,
             'error_message' => null,

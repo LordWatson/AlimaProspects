@@ -12,6 +12,7 @@ use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Services\LeadCandidateFilter;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use App\Modules\LeadSourcing\Testing\FakeLeadSourceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -60,6 +61,7 @@ function runDiscovery(Team $team, DiscoveryRun $run): void
     (new DiscoverLeadsJob((int) $team->getKey(), (int) $run->getKey()))->handle(
         app(LeadSourceProviderRegistry::class),
         app(TeamContext::class),
+        app(LeadCandidateFilter::class),
     );
 }
 
@@ -243,8 +245,11 @@ it('marks the run failed via failed() after a provider error', function (): void
     $job = new DiscoverLeadsJob((int) $team->getKey(), (int) $run->getKey());
 
     // Running throws (so the queue would retry); the run is left non-terminal, then failed() settles it.
-    expect(fn () => $job->handle(app(LeadSourceProviderRegistry::class), app(TeamContext::class)))
-        ->toThrow(RuntimeException::class);
+    expect(fn () => $job->handle(
+        app(LeadSourceProviderRegistry::class),
+        app(TeamContext::class),
+        app(LeadCandidateFilter::class),
+    ))->toThrow(RuntimeException::class);
 
     $job->failed(new RuntimeException('provider down'));
 
@@ -255,4 +260,97 @@ it('marks the run failed via failed() after a provider error', function (): void
         DiscoveryRunProgressed::class,
         fn (DiscoveryRunProgressed $e): bool => $e->status === DiscoveryRunStatus::Failed,
     );
+});
+
+it('never persists a candidate the run’s exclusions reject', function (): void {
+    $team = Team::factory()->create();
+
+    $run = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->create([
+        'team_id' => $team->getKey(),
+        'params' => [
+            'terms' => 'boutique hotels',
+            'location' => 'Manchester',
+            'limit' => 25,
+            'icp_id' => null,
+            'industries' => [],
+            'exclude_terms' => ['graphic design'],
+            'customer_description' => 'Independent hotels',
+            'shaped' => true,
+        ],
+    ]));
+
+    app(LeadSourceProviderRegistry::class)->register((new FakeLeadSourceProvider)->willReturn([
+        sourcedCompany('The Grand Hotel', '11111111'),
+        sourcedCompany('Bright Graphic Design Ltd', '22222222'),
+    ]));
+
+    runDiscovery($team, $run);
+
+    // The point of filtering before persistence: an excluded company never reaches the workspace, so
+    // it is never enriched (paid calls), never counted against the allowance, and never read.
+    $names = app(TeamContext::class)->run(
+        $team,
+        fn (): array => Lead::query()->where('team_id', $team->getKey())->pluck('company_name')->all(),
+    );
+
+    expect($names)->toBe(['The Grand Hotel'])
+        ->and($run->fresh()->leads_found)->toBe(1)
+        ->and($run->fresh()->leads_created)->toBe(1);
+});
+
+it('still meters the provider cost for a run that excluded everything', function (): void {
+    $team = Team::factory()->create();
+
+    $run = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->create([
+        'team_id' => $team->getKey(),
+        'source' => LeadSource::WebSearch,
+        'params' => [
+            'terms' => 'boutique hotels',
+            'limit' => 25,
+            'exclude_terms' => ['design'],
+        ],
+    ]));
+
+    app(LeadSourceProviderRegistry::class)->register(
+        (new FakeLeadSourceProvider(LeadSource::WebSearch))
+            ->willReturn([sourcedCompany('Apex Design', '33333333')])
+            ->withCostMicros(3_000),
+    );
+
+    runDiscovery($team, $run);
+
+    // The request was made and billed whether or not we kept its results. Metering the kept count
+    // would show this run as free.
+    expect($run->fresh()->leads_found)->toBe(0)
+        ->and($run->fresh()->cost_micros)->toBe(3_000);
+});
+
+it('meters cost on what the provider returned, not on what the run cap kept', function (): void {
+    $team = Team::factory()->create();
+
+    $run = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->create([
+        'team_id' => $team->getKey(),
+        'source' => LeadSource::WebSearch,
+        'requested_limit' => 2,
+        'params' => ['terms' => 'hotels', 'limit' => 2],
+    ]));
+
+    app(LeadSourceProviderRegistry::class)->register(
+        (new FakeLeadSourceProvider(LeadSource::WebSearch))
+            ->willReturn([
+                sourcedCompany('Alpha Hotel', '11111111'),
+                sourcedCompany('Beta Hotel', '22222222'),
+                sourcedCompany('Gamma Hotel', '33333333'),
+                sourcedCompany('Delta Hotel', '44444444'),
+            ])
+            ->withCostMicros(3_000),
+    );
+
+    runDiscovery($team, $run);
+
+    // The cap is ours, not the provider's: it returned four and billed for the request, so the run
+    // keeps two and still records the cost.
+    expect($run->fresh()->leads_found)->toBe(2)
+        ->and($run->fresh()->leads_created)->toBe(2)
+        ->and($run->fresh()->cost_micros)->toBe(3_000);
 });

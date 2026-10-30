@@ -15,13 +15,14 @@
 | 6     | Business Intelligence (AI background check)   | ✅ Done | 2026-10-29 |
 | 7     | Lead Sourcing — framework + Companies House   | ✅ Done | 2026-10-29 |
 | 7b    | Lead Sourcing — Google Places + web search    | ✅ Done | 2026-10-29 |
+| 7c    | Lead Sourcing — search for customers          | ✅ Done | 2026-10-30 |
 | 8     | Enrichment & Data Quality                     | ✅ Done | 2026-10-29 |
 | 9     | Scoring & Matching                            | ✅ Done | 2026-10-29 |
 | 10    | Leads Workspace — list, detail, contacts      | ✅ Done | 2026-10-29 |
 | 10b   | Leads Workspace — pipeline, notes, tasks, CSV | ✅ Done | 2026-10-29 |
 | 10c   | Leads Workspace — add a lead by hand          | ✅ Done | 2026-10-30 |
-| 11    | Outreach (MVP)                                | ⬜      | —          |
-| 12    | Notifications                                 | ⬜      | —          |
+| 11    | Outreach (MVP)                                | ✅ Done | 2026-10-30 |
+| 12    | Notifications                                 | ✅ Done | 2026-10-30 |
 | 13    | Reporting & Analytics                         | 🟡      | —          |
 | 14    | AI Insights (light)                           | ⬜      | —          |
 | 15    | Compliance & Privacy features                 | ⬜      | —          |
@@ -35,7 +36,7 @@
 
 Legend: ⬜ not started · 🟡 in progress · ✅ done · ⛔ blocked.
 
-> **Signals** (trigger-event prospecting, UAE v1) is planned separately in **`signals-plan.md`**, phases **S0–S6**, as a companion to this plan. **S0–S6 ✅ complete 2026-10-29** — the module, the Serper News client, AI event extraction, convert-to-Lead (with the UAE prior-consent outreach flag), the bilingual feed and watch settings, and API v1 + retention + the DSAR hook. Two open dependencies on later phases: **Outreach (Phase 11) must honour `leads.raw.outreach_restriction`** (see `docs/modules/outreach.md`), and **Compliance (Phase 15) should call `SignalsPersonalDataExporter`**, which is built and tested but has no caller yet. A read-only admin view of `signal_runs` is deferred to **Phase 19**. See `docs/modules/signals.md` and ADR 0011. It sits after Leads Workspace (10/10b) and before/alongside Outreach (11); its own status table lives in `signals-plan.md`.
+> **Signals** (trigger-event prospecting, UAE v1) is planned separately in **`signals-plan.md`**, phases **S0–S6**, as a companion to this plan. **S0–S6 ✅ complete 2026-10-29** — the module, the Serper News client, AI event extraction, convert-to-Lead (with the UAE prior-consent outreach flag), the bilingual feed and watch settings, and API v1 + retention + the DSAR hook. Of its two open dependencies on later phases, the first is now **closed**: Outreach (Phase 11) honours `leads.raw.outreach_restriction` at draft time as well as send time, and reports it per channel over the API (see `docs/modules/outreach.md`). Still open: **Compliance (Phase 15) should call `SignalsPersonalDataExporter`**, which is built and tested but has no caller yet. A read-only admin view of `signal_runs` is deferred to **Phase 19**. See `docs/modules/signals.md` and ADR 0011. It sits after Leads Workspace (10/10b) and before/alongside Outreach (11); its own status table lives in `signals-plan.md`.
 
 ---
 
@@ -242,6 +243,26 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 
 ---
 
+### Phase 7c — Lead Sourcing: search for customers, not competitors
+
+**Goal:** Stop discovery returning companies like the team. Searches were built from the active ICP's industry values, and those values were the team's **own** trade, so a graphic design studio was shown graphic design studios — its competition, dressed as its pipeline.
+**Depends on:** 5 (AI Platform), 6 (Business Intelligence), 7, 7b.
+**Modules & docs:** Lead Sourcing, Business Intelligence, ICP, `docs/ai-prompts.md`.
+**Tasks:**
+
+1. [x] **Name the two sides in the background check.** `business_intel.background_check` **v2**: `own_industry` + `competitors` describe the seller; `customer_industries` + `target_customers` + `decision_maker_titles` describe the buyer. Every field described, and the system prompt states that the business being read is the seller. v1 stays seeded so existing reports remain traceable.
+2. [x] **Stop the ICP seeder crossing them.** `AcceptBackgroundCheckAction` seeds `Industry` signals from the customer side only, `JobTitle` from decision-maker titles, and puts the team's own trade + named competitors in as `Exclusion` criteria. With no customer-side signal it seeds nothing — a wrong ICP is worse than none, because discovery and scoring act on it silently.
+3. [x] **Add the AI query-shaping step Phase 7 deferred.** `lead_sourcing.shape_query` + `DiscoveryQueryShaper`: invert seller into buyer, once per source, before the fan-out. Respects terms the member typed, skipped without a business profile or by config, and **degrades** to the deterministic `DiscoveryQuery::fromIcp()` on any AI error (including exhausted credits) rather than failing the run.
+4. [x] **Make exclusions bite at discovery, not just at scoring.** `DiscoveryQuery` carries `excludeTerms`; `WebSearchProvider` pushes them to Serper as `-"term"`; `LeadCandidateFilter` drops matching candidates for every provider **before** persistence, so an excluded company is never enriched, never counted against the allowance and never read.
+5. [x] Show the team what was searched: the run screen states who it looked for (`customer_description`) and what it left out.
+       **Data model:** none new — `discovery_runs.params` gains `exclude_terms`, `customer_description` and `shaped`; a run written before this phase reads back with the new keys absent.
+       **Tests:** the design-studio case end to end (shaped query excludes the own trade); explicit terms skip the model; AI failure degrades to the deterministic query; an empty shaped result refuses rather than searching the own trade; the filter never persists an excluded candidate; cost is still metered on what the provider returned.
+       **Acceptance:** a design studio's run returns its customers, not studios; gates pass; docs updated.
+       **Dispatch prompt:** _"Execute Phase 7c of mvp.md (search for customers, not competitors). Read lead-sourcing.md, business-intelligence.md and ai-prompts.md. Split the background check's seller/buyer fields, fix the ICP seeding, add the query-shaping prompt with a deterministic fallback, and make exclusions apply at discovery."_
+       **Risks:** one reasoning-tier call per source per run (cost); blunt substring exclusion matching can drop a good lead whose name contains the team's trade word; an ICP seeded before this phase still carries the wrong industry signal and nothing retro-fixes it.
+
+---
+
 ### Phase 8 — Enrichment & Data Quality
 
 **Goal:** Clean, deduped, source-attributed leads with contacts, free email verification, and freshness — no paid provider.
@@ -310,7 +331,7 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 1. [x] `pipeline_stages` (team-customisable), `lead_tags`, `lead_notes`, `lead_tasks` (due/reminder), `lead_assignments`. _(Plus `leads.pipeline_stage_id`, nullable — **null means the default column**, so no backfill and no lead left off the board; the fold lives in `LeadQueryBuilder`, not in each caller.)_
 2. [x] Kanban board (drag between stages), tag/note/task/assign UI; bulk actions (tag, assign, move, suppress, add to outreach). _(Drag **and** an equivalent pick-then-Move control, since a mouse-only board is unusable for half a team. **`suppress` and `add to outreach` are deliberately deferred** to Compliance (15) and Outreach (11) — a button that silently did nothing would be worse than not offering it.)_
 3. [x] **CSV import** (column mapping, dedupe on import) and **export**. _(BOM/Windows-1252/delimiter/ragged rows handled; de-dupe fills gaps and never overwrites; a new `LeadSource::Import` outranks every provider so discovery can't rename what the team typed. Export streams by keyset and neutralises formula cells; its columns are the importer's, so a round trip is lossless.)_
-4. [x] Task reminders raise notifications (Phase 12); stage moves write to timeline + audit. _(Stage moves write both in one transaction. **Reminders are stored, not sent** — `remind_at` plus a `reminded_at` ready for an idempotent sweep; the task form says so rather than implying a nudge that isn't coming.)_
+4. [x] Task reminders raise notifications (Phase 12); stage moves write to timeline + audit. _(Stage moves write both in one transaction. Reminders were stored but unsent until **Phase 12 closed this**: `notifications:task-reminders` sweeps `remind_at` hourly and stamps `reminded_at` before raising, so a reminder cannot go twice.)_
        **Data model:** `pipeline_stages`, `lead_tags`, `lead_notes`, `lead_tasks`, `lead_assignments`.
        **Tests:** stage move; note/task CRUD; assignment; bulk action; CSV round-trip + dedupe; tenancy.
        **Acceptance:** full CRM-lite collaboration works; gates pass; docs updated.
@@ -344,16 +365,16 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Outreach (`outreach.md`), compliance.
 **Tasks:**
 
-1. [ ] `outreach_templates`, `outreach_messages`, `contact_attempts` migrations.
-2. [ ] `DraftMessageAction` → `outreach.draft_message` (channel + tone) → `MessageDraft` (variants); injection-safe.
-3. [ ] Draft UI: generate, edit, **copy** (LinkedIn/call), manual **log**; **send email** via team SMTP/mailbox (feasibility-gated).
-4. [ ] **Suppression + opt-out + sender-ID checks at send time**; per-market (UK/UAE) outreach gate (stub until Compliance).
-5. [ ] Bilingual drafting; log attempts to timeline + audit.
-       **Data model:** `outreach_templates`, `outreach_messages`, `contact_attempts`.
-       **Tests:** draft generated (faked AI); send blocked when suppressed; attempt logged; tenancy.
-       **Acceptance:** drafts + copy + log + compliant send work; gates pass; docs updated.
+1. [x] `outreach_templates`, `outreach_messages`, `contact_attempts` migrations — plus **`outreach_suppressions`**. _(The do-not-contact list is a real table rather than the stub task 4 allowed, because a stub that returns "not suppressed" is an opt-out silently ignored. Compliance (Phase 15) takes ownership of it. Hash + masked preview only: no column holds an address in the clear.)_
+2. [x] `DraftMessageAction` → `outreach.draft_message` **v2** (channel + tone + language) → `MessageDraft` (variants); injection-safe. _(v2 adds the channel's required shape, the grounding rules, and the team's own brief as untrusted content. The grounding rules are the substance: an invented mutual connection in outreach gets **sent**, so the prompt names what is unknown rather than omitting it and forbids inventing a referral, a funding round, a metric or a case study. v1 stays seeded so a message recording `prompt_version: 1` is still traceable.)_
+3. [x] Draft UI: generate, edit, **copy** (LinkedIn/call), manual **log**; **send email** via **Resend**. _(Not the team's own SMTP/mailbox: the envelope sender is the platform's verified address, named for the team — "Acme Ltd via Alima" — with the member as Reply-To. Sending as a domain we hold no SPF/DKIM for is how a tenant's mail lands in spam; per-tenant sending domains are post-MVP. **Copy is a first-class action, equal to Send** — for LinkedIn and call scripts it is the only one, and for a team with no verified sender it is how the work still gets done.)_
+4. [x] **Suppression + opt-out + sender-ID checks at send time**, and the restriction at **draft** time. _(`OutreachGuard` is one gate asked twice — when the screen renders, and again the moment before transmission, because days may pass and a reply saying "stop" may arrive in between. Compliance blocks and configuration blocks are split: a prior-consent restriction or an opt-out stops a draft, while a missing sender or an unchosen recipient does not — a member can still write the message and copy it out. Logging "Asked us to stop" suppresses the contact's email **and** phone globally, in the same transaction.)_
+5. [x] Bilingual drafting; log attempts to timeline + audit. _(One `Contacted` timeline case for all three channels and both routes, subjected to the attempt — so recording the outcome days later updates that entry rather than stacking a second one. Audit carries ids and enums only, never an address or a body.)_
+       **Data model:** `outreach_templates`, `outreach_messages`, `contact_attempts`, `outreach_suppressions`.
+       **Tests:** 86 feature + 25 unit. Draft generated (faked AI); **no credit spent on a draft the guard refuses**; send blocked when suppressed, when the domain is suppressed, when another team logged a global opt-out, when the lead is restricted, when there is no sender; a spent draft refused twice; a failed send left re-sendable; **two requests racing for the same draft sending once**; a claimed-but-unfinished send stranded rather than retried; the sent mail's sender ID + opt-out + `List-Unsubscribe`; tenancy throughout, including every API endpoint.
+       **Acceptance:** ✅ drafts + copy + log + compliant send work; gates pass; docs updated.
        **Dispatch prompt:** _"Execute Phase 11 of mvp.md (Outreach MVP). Read outreach.md + compliance.md. Build templates/messages/attempts, DraftMessageAction, the draft UI with copy/log/send, suppression+opt-out+sender-ID enforcement, and tests with faked AI."_
-       **Risks:** email deliverability/SPF/DKIM out of scope for MVP (document); suppression must be airtight.
+       **Risks:** _(Both addressed. Deliverability is documented as a deployment concern — the sending domain must be verified in Resend or every send is rejected at the provider — and a `List-Unsubscribe` header is sent as well as the footer opt-out, which protects every other team's deliverability, not just the sender's. Suppression matches the address **and** its domain against the global list and the team's own in one indexed query, stores only a SHA-256 hash, exposes no hash over the API and offers **no lookup endpoint** — which would be an enumeration oracle over exactly the people entitled to be left alone.)_
 
 ---
 
@@ -364,14 +385,14 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Notifications (`notifications.md`).
 **Tasks:**
 
-1. [ ] Notifications table + preferences; broadcast via Reverb; mail channel; toast host (Phase 2).
-2. [ ] Notification types: discovery complete, new A-grade leads, task due, assignment, billing limit.
-3. [ ] Preference UI; digest scheduler (daily/weekly).
-       **Data model:** `notifications`, `notification_preferences`.
-       **Tests:** notification dispatched + stored; preference suppresses a channel; digest builds; tenancy.
-       **Acceptance:** in-app + email + prefs + digest work; gates pass; docs updated.
+1. [x] Notifications table + preferences; broadcast via Reverb; mail channel; the bell in the app shell. _(**`team_id` on every row** — a notification belongs to one user but is about work in one team, and a member of three must not see the other two's. `data` holds structured values, never prose, so the sentence is composed at render time in EN or AR. The bell is a **shared Inertia prop**: it is shell, and a controller that forgot to load it would show a member zero unread while they had five.)_
+2. [x] Notification types: discovery complete, **new A-grade leads (aggregated)**, task due, assignment, new signals, AI credit low. _(The aggregation is the feature: a discovery run can grade fifty leads a minute, and one notification per A grade would mean fifty emails and a member who switches the category off before lunch. `AnnounceTopLeadsJob` is `ShouldBeUnique` per team, so a burst collapses into one notification with a count and a couple of names. **`credit_low` is built but has no producer** — "running low" needs the usage figure Billing (Phase 17) will own; `AiCreditGuard` only knows exhausted or not.)_
+3. [x] Preference UI; digest scheduler (daily/weekly) — **plus push (FCM) and a mute**. _(Push was asked for and is built end to end: device registration, FCM **HTTP v1** with a service account, and deletion of tokens the provider permanently rejects — a kept dead token is a notification that silently goes nowhere, which nobody notices because nothing fails. The digest runs **hourly** and converts into each team's timezone, because the member picks an hour and the team picks a clock. The mute silences email and push and leaves the bell alone.)_
+       **Data model:** `notifications`, `notification_preferences`, `notification_settings`, `push_devices`.
+       **Tests:** 71 feature + 23 unit. Dispatched + stored with keys rather than prose; a preference suppresses a channel and an unset one falls back to the type's defaults; the mute leaves the bell alone; an admin-only type never reaches a plain member however their preferences read; a member who has left stops being notified; the aggregation collapses a burst; task reminders send once and are stamped; the digest fires on the team's clock, skips Tuesday for a weekly, won't send twice in a window, and sends nothing when nothing happened; a rejected push token is deleted; **the broadcast event name, payload and private channel**; tenancy throughout, including every API endpoint and the per-team isolation of preferences, settings, the digest builder, the aggregating job and the prune sweep.
+       **Acceptance:** ✅ in-app + email + **push** + prefs + digest work; gates pass; docs updated.
        **Dispatch prompt:** _"Execute Phase 12 of mvp.md (Notifications). Read notifications.md. Build notifications + preferences + Reverb broadcast + email + digests, wire the key producers, and test."_
-       **Risks:** Reverb auth for private channels; digest timezone correctness.
+       **Risks:** _(Both addressed. Reverb uses Laravel's own per-user channel (`App.Models.User.{id}`), which `routes/channels.php` already authorises — a notification is addressed to one person, and `teams.{id}` would show one member's reminders to everybody. Timezone correctness is the digest command's central design: hourly sweep, converted per team before the hour is compared, with a half-window idempotency gap for a retry or a DST fold.)_
 
 ---
 
@@ -382,7 +403,7 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Reporting & Analytics (`reporting-analytics.md`), `dataviz` skill.
 **Tasks:**
 
-1. [~] Aggregation services (optional rollup tables) over leads/scores/pipeline/outreach/AI usage. _(2026-10-30: the `Reporting` module exists — `DashboardReportBuilder` + 7 aggregation Actions reading leads/scores/pipeline/signals/AI usage live. No rollup tables; outreach has no source of truth until Phase 11.)_
+1. [~] Aggregation services (optional rollup tables) over leads/scores/pipeline/outreach/AI usage. _(2026-10-30: the `Reporting` module exists — `DashboardReportBuilder` + 7 aggregation Actions reading leads/scores/pipeline/signals/AI usage live. No rollup tables. **Outreach now has a source of truth** (`outreach_messages`, `contact_attempts`) — the funnel's contacted and replied halves are available to wire.)_
 2. [~] Dashboard: KPIs, funnel by stage, source performance, ICP performance, team activity, AI credits. _(2026-10-30: KPIs, the funnel, a 12-week sourced-vs-qualified trend, the A–D fit mix, and breakdowns by pipeline stage / lead source / signal event type. **Still open:** ICP performance, team activity, and AI usage beyond a single spend tile.)_
 3. [~] Date-range filters; **CSV export** of any report; charts per the `dataviz` guidance. _(2026-10-30: charts built to the `dataviz` guidance — hand-rolled SVG/HTML on validated `--chart-*` tokens, no dependency. **Date-range filters and CSV export are not started.**)_
    **Data model:** optional `report_rollups`.
@@ -391,7 +412,8 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
    **Done so far (2026-10-30, outside a formal phase run):** the dashboard and the chart
    component set, with tests. What remains to close the phase: date-range filters, CSV export,
    ICP/source performance and team-activity reports, fuller AI usage, and the Outreach halves of
-   the funnel once Phase 11 lands.
+   the funnel, which Phase 11 has now made available (`contact_attempts` carries the channel,
+   the outcome and when).
    **Dispatch prompt:** _"Execute Phase 13 of mvp.md (Reporting & Analytics). Read the module doc; load the dataviz skill for charts. Build the aggregation + dashboard + filters + CSV export, and tests."_
    **Risks:** aggregation performance (consider rollups); chart accessibility.
 

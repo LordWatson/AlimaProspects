@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\LeadsWorkspace\Enums;
 
 use App\Modules\LeadsWorkspace\Models\LeadActivity;
+use App\Modules\Outreach\Models\ContactAttempt;
 
 /**
  * What a {@see LeadActivity} records. The timeline aggregates events from across the platform, so
@@ -39,6 +40,16 @@ enum LeadActivityType: string
      */
     case Created = 'created';
 
+    /**
+     * The team approached this company (Outreach, Phase 11). One case for all three channels and
+     * both routes — an email Alima sent and a call the member logged — because from the lead's
+     * side they are the same event: somebody got in touch. The `channel`, `outcome` and `sent`
+     * properties carry the rest, and the entry is subjected to the {@see ContactAttempt},
+     * so recording the outcome days later updates the entry rather than stacking a second one on
+     * top of it.
+     */
+    case Contacted = 'contacted';
+
     // What the team did with a signal (Signals, S4). One case, not two: converting a signal and
     // linking it to a company the team already had are the same act with a different outcome, which
     // the `attached` property carries — exactly how `Imported` carries `merged`.
@@ -59,6 +70,7 @@ enum LeadActivityType: string
             self::TagsChanged => 'Tags changed',
             self::Imported => 'Imported',
             self::Created => 'Added by hand',
+            self::Contacted => 'Contacted',
             self::SignalConverted => 'From a signal',
         };
     }
@@ -73,7 +85,7 @@ enum LeadActivityType: string
             self::Discovered, self::Enriched, self::Scored => true,
             self::StageChanged, self::NoteAdded, self::TaskCreated, self::TaskCompleted,
             self::Assigned, self::Unassigned, self::TagsChanged, self::Imported,
-            self::Created, self::SignalConverted => false,
+            self::Created, self::Contacted, self::SignalConverted => false,
         };
     }
 

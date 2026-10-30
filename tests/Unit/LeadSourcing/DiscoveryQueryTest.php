@@ -34,3 +34,42 @@ it('prefers explicit terms over the ICP and has no terms with neither', function
     expect($empty->terms)->toBe('')
         ->and($empty->location)->toBeNull();
 });
+
+it('round-trips the exclusions and the shaped marker through params', function (): void {
+    $query = (new DiscoveryQuery(source: LeadSource::WebSearch, terms: 'hotels', location: 'Leeds'))
+        ->withShapedTerms('boutique hotels', 'Independent hotels', ['graphic design']);
+
+    $rebuilt = DiscoveryQuery::fromParams(LeadSource::WebSearch, $query->toParams());
+
+    // The job re-derives the query from the stored params without the ICP, so anything the filter or
+    // the provider needs has to survive the round trip.
+    expect($rebuilt->terms)->toBe('boutique hotels')
+        ->and($rebuilt->excludeTerms)->toBe(['graphic design'])
+        ->and($rebuilt->customerDescription)->toBe('Independent hotels')
+        ->and($rebuilt->shaped)->toBeTrue()
+        ->and($rebuilt->location)->toBe('Leeds');
+});
+
+it('reads an old run’s params, which carry none of the new keys', function (): void {
+    $rebuilt = DiscoveryQuery::fromParams(LeadSource::WebSearch, [
+        'terms' => 'marketing',
+        'location' => 'London',
+        'limit' => 25,
+        'icp_id' => 3,
+        'industries' => ['Marketing'],
+    ]);
+
+    expect($rebuilt->excludeTerms)->toBe([])
+        ->and($rebuilt->customerDescription)->toBeNull()
+        ->and($rebuilt->shaped)->toBeFalse();
+});
+
+it('de-duplicates exclusions case-insensitively and caps the list', function (): void {
+    $query = (new DiscoveryQuery(source: LeadSource::WebSearch, terms: 'hotels'))
+        ->withShapedTerms('hotels', null, [
+            'Design', 'design', 'DESIGN',
+            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+        ]);
+
+    expect($query->excludeTerms)->toBe(['Design']);
+});

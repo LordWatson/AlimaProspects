@@ -24,6 +24,10 @@ const sidebarNavItems: NavItem[] = [
         href: '/settings/team',
     },
     {
+        title: 'Notifications',
+        href: '/settings/notifications',
+    },
+    {
         title: 'API tokens',
         href: '/settings/api-tokens',
     },

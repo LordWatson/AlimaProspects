@@ -149,6 +149,28 @@ CTAs: _Let's grow · Let's talk · Start a project · See the work_. Headlines l
 
 ## 7. Open items flagged for brand-owner approval
 
+### 7a. Added 2026-10-30 (Phases 11–12)
+
+- **`PageHero` on utility and sub-pages.** §5 says every main screen opens with the hero. Interpreted
+  so far as: a **sidebar destination** gets one (`outreach/Templates.vue`, index 08, like
+  `signals/Watches.vue` at 07), while a **sub-page reached from a record** uses a plain header —
+  `leads/Create.vue` and `leads/Import.vue` set that precedent in Phase 10, and
+  `outreach/Show.vue`, `outreach/Suppressions.vue` and `notifications/Index.vue` follow it.
+  Settings screens have the settings layout's own `Heading` instead. **Needs confirming**, and the
+  answer belongs here rather than being decided per screen.
+- **The Arabic brand name.** `lang/ar.json` renders Alima as "أليما" in running copy. The book does
+  not say whether an Arabic wordmark or a transliteration is approved. **Needs confirming.** The
+  logo artwork itself is never altered or mirrored either way (§4).
+- **Poppins and Tajawal in email.** Both are named in the mail theme's font stack, and most mail
+  clients ignore web fonts and fall through to the system stack. Recorded as an accepted
+  limitation: the mail layout is designed to read correctly either way.
+- **Transactional email chrome.** Alima's own mails (invitation, digest) use the shared `alima`
+  markdown theme — Laravel's default layout recoloured to the palette, not a bespoke one, because
+  the `<x-mail::*>` components are built against that layout. An **outreach message to a prospect
+  carries no Alima chrome at all**: it is the tenant speaking, and Alima branding on it would
+  misattribute the sender, which is what sender-identification law exists to prevent (see
+  `docs/modules/outreach.md`). The only brand rule applied there is the Arabic one.
+
 1. **PENDING APPROVAL — Dark mode palette.** The book defines only `bg.inverse` (#181723) sections, not a full dark theme. Proposed dark tokens (to be confirmed):
     - `bg.canvas` `#181723`, `bg.surface` `#211F2E`, `bg.inverse` `#F5F2E8`
     - `text.primary` `#F5F2E8`, `text.secondary` `#C9C6C1`, `text.muted` `#9D9A99`

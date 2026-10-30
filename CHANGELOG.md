@@ -5,6 +5,266 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-10-30 — Lead discovery looked for the company, not its customers
+
+- **The bug, plainly.** A graphic design studio asked Alima for leads and got back graphic design
+  studios. Discovery was searching the active ICP's industry values verbatim, those values were the
+  team's **own** trade, and so every run returned the team's competition — companies that will never
+  buy from it — presented as its pipeline.
+- **One field meant two opposite things.** The AI background check returned a single
+  `suggested_industries` list with nothing in the schema saying what it was. The model read it the
+  only way the prompt's framing allowed (the industry this business _is in_) while the ICP seeder
+  read it as the industries its _customers_ are in, and wrote the same values to both. Prompt **v2**
+  names and describes the two sides separately — `own_industry` and `competitors` for the seller,
+  `customer_industries`, `target_customers` and `decision_maker_titles` for the buyer — and states
+  outright that the business being researched is the seller. v1 stays seeded, so a report that
+  recorded `prompt_version: 1` is still traceable to what produced it.
+- **A suggested ICP now only ever describes customers.** Customer industries become the industry
+  signal, decision-maker titles the job-title signal, and the team's own trade plus any named
+  competitor go in as **exclusions**. When the check cannot tell who buys, nothing is seeded and the
+  option is disabled: an ICP built from the seller's own trade is worse than no ICP, because
+  discovery and scoring both act on it without asking again.
+- **Alima now works out who buys from you before it searches.** The new
+  `lead_sourcing.shape_query` prompt takes the business profile and inverts it — a design studio
+  becomes a search for the businesses that commission design work — and phrases the result for the
+  provider that will receive it, since a company register matches registered names, a places API
+  matches categories, and a web search reads whole pages. It runs once per source before the fan-out,
+  never inside the job, so a retry cannot re-bill it. If the member typed their own terms, those win
+  untouched; if the model fails or the team is out of credits, the run falls back to the old
+  deterministic search rather than erroring, because a blunt search beats no search.
+- **"Never show me competitors" now holds for every source.** Exclusions used to apply only when
+  scoring, by which point the company was already in the workspace — enriched with paid calls,
+  counted against the allowance, and sitting there to be read. Web search now pushes them to the API
+  as negative terms, and every provider's results are filtered **before** anything is persisted.
+- **The run screen says what it did.** Each run now states who it looked for and what it left out, so
+  a run that returns fewer leads than asked for reads as a deliberate exclusion rather than a
+  failure. Costs are still metered on what the provider returned, not on what survived the filter —
+  the request was billed either way.
+- **Still a judgement call, so it is visible.** An ICP saved before this change can still name the
+  team's own trade; the query shaper is told to prefer the business profile where the two disagree,
+  but nothing rewrites stored criteria. Exclusion matching is a substring test on company name and
+  domain. It is cheap rather than clever: the name is matched on whole words, so excluding "design"
+  drops "Apex Design" but keeps "Designer Outlet", while a customer whose name genuinely contains
+  the team's trade word will still be dropped. See `docs/modules/lead-sourcing.md` → Known
+  limitations.
+
+### Added — 2026-10-30 — Outreach: drafts you can send, and a list you cannot
+
+- **Alima writes the message.** `outreach.draft_message` v2 (reasoning tier) drafts an **email**, a
+  **LinkedIn message** or a **call script** from the business profile, the lead's own data and — when
+  the team has graded it — the grounded reasons it looked like a fit. Four tones, either language,
+  two or three genuinely different angles per call, and the member edits what comes back, which is
+  the expected workflow rather than an exception to it.
+- **The grounding rules are the substance of the prompt, not a nicety.** An invented mutual
+  connection, funding round or metric in a scoring explanation is a bad explanation; in outreach it
+  is a bad explanation that gets **sent**. So every block names what is _unknown_ rather than
+  omitting it, the model is told plainly what it may not claim, and a model that volunteers a
+  variant for a channel nobody asked for has it dropped. A role mailbox is flagged in the prompt
+  too, because "Hi Info," is the single most obvious tell of an automated message.
+- **Reusable briefs, not mail-merge templates.** A brief is what the team would tell a new
+  salesperson before their first call — "lead with their onboarding time, ask for fifteen minutes,
+  never promise a discount" — in their own words, handed to the model as context. It is wrapped as
+  untrusted content, because a free-text field a member types into is exactly where somebody tries
+  "ignore all previous instructions". Owner/Admin only: a brief is not one member's draft, it shapes
+  every message the team sends afterwards.
+- **Copy is a first-class action, equal to Send.** For a LinkedIn message or a call script it is the
+  only one — Alima transmits nothing and says so on the screen — and for a team with no verified
+  sender it is how the work still gets done.
+- **Email goes out over Resend**, from the platform's verified address named for the team ("Acme Ltd
+  via Alima"), with the member as Reply-To. Not the team's own domain: sending as a domain we hold no
+  SPF/DKIM for is how a tenant's mail lands in spam, and per-tenant sending domains are post-MVP.
+  Every message carries sender identification, an unambiguous opt-out and a `List-Unsubscribe`
+  header — a recipient who uses their mail client's own unsubscribe button instead of replying is
+  far less likely to reach for "report spam", which protects every other team on the platform.
+- **The sent email is deliberately not Alima-branded.** Every other mail the platform sends is Alima
+  talking and obeys the brand; this one is the **team** talking to their own prospect. Alima's chrome
+  on it would brand a tenant's cold email as Alima marketing — misattributing the sender, which is
+  the one thing sender identification exists to prevent — and a decorated HTML cold email is
+  markedly worse at reaching an inbox anyway. The body is the member's text and nothing else, and
+  Alima appears only in the footer's one identifying line. The Arabic rule still applies, because
+  that one is about setting _someone's_ words legibly.
+
+### Added — 2026-10-30 — the gate, and the do-not-contact list
+
+- **`OutreachGuard` is one gate, asked twice.** Once when the draft screen renders, so a member is
+  never offered a channel they cannot use, and again **immediately before the message is
+  transmitted** — because minutes or days may pass in between and a reply saying "stop" may have
+  arrived. The second check is the one that counts; the first is courtesy.
+- **The Signals dependency is closed.** A lead carrying `raw.outreach_restriction` — every lead
+  converted from a UAE signal, where PDPL requires prior consent and a news article plainly is not
+  consent — is refused the email channel **at draft time as well as send time**, read through
+  `OutreachRestriction::allowsDirectMarketing()` rather than by comparing cases, so a restriction
+  added in a later market cannot be missed by a `match` that still compiles. The permitted channels
+  are offered instead, the closed one stays on screen **with its reason beside it** rather than
+  being hidden, and the drafting prompt is told to keep its suggested next step to a LinkedIn
+  approach or a referral — so a restricted lead is not handed a message whose closing line is "can
+  I email you some information".
+- **Compliance refusals and configuration refusals are split, on purpose.** A prior-consent
+  restriction or an opt-out stops a **draft**: letting a member write a message they can never send
+  spends AI credit on nothing and teaches them the warning is negotiable. A missing sender identity
+  or an unchosen recipient does **not** stop a draft — a member can still legitimately write the
+  message and copy it into their own mailbox, and refusing them would be the platform withholding
+  the work over its own setup.
+- **The do-not-contact list is a real table, not the stub the plan allowed.** A stub that returns
+  "not suppressed" is an opt-out silently ignored. Two scopes: **global**, honoured by every team,
+  because a person who asked to be left alone asked everyone; and **team**, which is that team's own
+  housekeeping. An email check also tests its **domain**, so "stop contacting anyone at this
+  company" means that.
+- **Logging "Asked us to stop" suppresses the identity immediately, globally, in the same
+  transaction** — not a job, not a listener, not the next sweep. It takes the contact's email **and**
+  their phone number: somebody who says "stop contacting me" on a call has not given permission to
+  email them instead. A bounce is narrower, because it is a fact about one address and only that
+  team knows it. Which of the two — or neither — an outcome demands is the enum's answer, so a new
+  outcome has to decide before it can exist.
+- **The list stores a SHA-256 hash and a masked preview, and nothing else.** A register of exactly
+  the people who want nothing to do with us is not somewhere to keep their addresses in the clear.
+  The hash is never exposed over the API and there is deliberately **no lookup endpoint** — one would
+  be an enumeration oracle a client could test any address against. A global opt-out is visible to
+  every team (it is why their send was refused) and removable by nobody from the product: the model,
+  the policy and the service all refuse it, because lifting one would let a tenant overrule a
+  person's stated wish with a button.
+- **Every approach is logged**, whoever made it — an email Alima sent, a LinkedIn message pasted, a
+  call made — with the outcome editable afterwards, because the answer usually arrives days later.
+  One `Contacted` timeline entry per attempt, subjected to it, so recording the outcome later
+  updates that entry rather than stacking a second "contacted" on top.
+
+### Added — 2026-10-30 — Notifications, including push
+
+- **One place to tell somebody something.** Every module now raises notifications through
+  `NotificationDispatcher` rather than sending directly: a producer says what happened and to whom,
+  and whether and how it is delivered is settled in one place. `toTeam()` and `toAdmins()` exist
+  because the common mistakes are about the audience — notifying a whole team about one member's
+  reminder, or a plain member about billing.
+- **In-app, email and push**, with a per-type × per-channel grid per team, because the same person
+  may run their own side project and work in someone else's team and want very different things from
+  each. The bell lives in the app shell as a shared Inertia prop — it is chrome, and a controller
+  that forgot to load it would show a member zero unread while they had five — and Reverb raises a
+  toast and bumps the count without a page load, on the member's **own** channel rather than the
+  team's.
+- **The defaults are conservative about email.** In-app costs a member nothing; an email they did not
+  ask for costs them their attention and costs us their trust in the next one. So email is on by
+  default only where the thing is time-sensitive and they would be cross to have missed it — a
+  reminder, an assignment, the AI allowance running out. A **row** in the preferences table means the
+  member has an opinion; with no row the type's own defaults apply, so a type added later never
+  arrives switched off for everyone who signed up before it existed.
+- **New strong matches arrive as one notification, not fifty.** A discovery run can grade fifty leads
+  in a minute. `AnnounceTopLeadsJob` is `ShouldBeUnique` per team and runs on a delay, so the burst
+  collapses into a single message with a count and a couple of company names — which is the feature,
+  because the alternative is a member who switches the whole category off before lunch.
+- **Task reminders now actually arrive.** Phase 10b built `remind_at` and a `reminded_at` beside it
+  and said plainly that nothing sent them; `notifications:task-reminders` is that sweep.
+  `reminded_at` is stamped **before** the notification is raised, because a reminder that arrives
+  twice is worse than one stamped and lost: the second is a bug someone can see on the task, the
+  first is us crying wolf. A reminder whose window has passed is not skipped — a member whose worker
+  was down until Monday still wants Friday's reminder.
+- **Push, end to end.** Device registration, FCM **HTTP v1** with a service-account key (the legacy
+  `FCM_SERVER_KEY` endpoint was retired by Google in June 2024 and is no longer a usable
+  credential), and — the part that keeps push working over time — **deletion of the tokens the
+  provider permanently rejects.** A device whose app was uninstalled returns `UNREGISTERED` for ever,
+  and a row we keep is a notification that silently goes nowhere, which nobody ever notices because
+  nothing fails. Registration is idempotent on the token and re-assigns its owner, since FCM
+  re-issues on reinstall and a handset can legitimately change hands.
+- **A daily or weekly round-up, on the team's clock.** The member picks an hour and the team picks a
+  timezone, so the sweep runs **hourly** and converts before it compares — a single nightly run at
+  08:00 UTC would mail Dubai at noon and drift every time the clocks changed in London. Only the
+  sections the member asked for go in (a digest that ignored preferences would re-enable everything
+  they turned off), and an empty one is **not sent**, because "nothing happened this week" is an
+  email that teaches people to filter us.
+- **A mute that silences the interruptions and leaves the bell alone.** "Stop buzzing me" is not
+  "hide what happened": a member back from a quiet week still has to be able to find out what they
+  missed. With an end date, because a mute nobody remembers switching on is a product that looks
+  broken.
+- **Nothing stored is a finished sentence.** A notification row holds translation keys and params,
+  exactly as `lead_activities` does, so a notification written in English reads correctly in Arabic
+  three days later. Email and push are rendered once, at send time, under the team's locale.
+- **Every markdown email the platform sends is now branded.** `mail.markdown.theme` points at an
+  Alima theme — Cloud Cream canvas, warm surface card, Midnight Ink type and buttons, brand radii,
+  Poppins ahead of the system stack, and no Signal Orange anywhere, since every colour in a
+  transactional email carries a status. Set in config rather than per Mailable, so the invitation
+  email and the notification mails cannot drift apart. (The outreach message to a prospect is the
+  deliberate exception — see above.)
+
+### Changed — 2026-10-30
+
+- `LeadActivityType` gains **`Contacted`** — one case for all three channels and both routes, because
+  from the lead's side an email Alima sent and a call a member made are the same event.
+- `SetLeadAssigneesAction` now fires **`LeadAssigned`** (after commit) for the **newly added** members
+  only. Somebody already on the lead has not been given anything, and the member who assigned it to
+  themselves — the most common assignment in the product — is never notified about their own click.
+- `AiPromptTemplateSeeder` adds `outreach.draft_message` **v2**. v1 stays seeded and active so a
+  message that recorded `prompt_version: 1` can still be traced back to what wrote it; the registry
+  resolves the highest active version.
+- The sidebar gains **08 Outreach** (the briefs and the do-not-contact list, which has to be findable
+  without a lead in hand); the design system moves to 09. Settings gains **Notifications**.
+- Added log channels `outreach` (30 days — "did we contact this person, and when" is a question
+  compliance may be asked months later) and `notifications`.
+
+### Fixed — 2026-10-30 — what the reviewers found
+
+Phases 11 and 12 were reviewed by `laravel-module-reviewer` and `brand-reviewer` before being
+called done. The five that mattered:
+
+- **A double-click could send the same outreach email twice.** The "already sent?" check read a
+  status loaded a moment earlier, so two simultaneous Send requests both passed it and both reached
+  the mailer. The row is now **claimed with a conditional update** before the provider is called, and
+  the caller that loses the claim is refused — the database decides the winner rather than the order
+  two PHP processes happened to read in. A send whose bookkeeping then fails is deliberately
+  stranded rather than retried: a missing attempt row is recoverable from the log and the provider's
+  dashboard, a second email to a prospect is not.
+- **The notification bell's live updates never fired.** `TeamNotification` defined
+  `broadcastType()` thinking it named the event; the hook is `broadcastAs()`. So the notification
+  broadcast under its framework class name, `Echo.listen('.notification.created')` matched nothing,
+  and `broadcastType()`'s return was merged over the payload's own `type` — so the one notification
+  that did arrive could not be classified either. Invisible to every other test in the module,
+  because the database channel is unaffected; now pinned by its own test.
+- **One mail failure skipped everyone after it in the digest and reminder sweeps.** `Mail::send` in
+  an unguarded loop: the member it failed for lost that window's digest (already stamped), and so
+  did everybody the loop had not reached, who are skipped until the next hourly run — by which time
+  their hour has passed. Each item is now isolated and logged.
+- **The Arabic digest rendered left-to-right.** Laravel's markdown mail layout has no `dir`
+  attribute, so `text-align: start` resolved to `left` even for Arabic, and the recoloured theme
+  still had two `text-align: left` rules and a `border-left` left in it. The layout is now published
+  with a `dir`-aware `<html>` and a direction-specific rule for the one border Outlook would
+  otherwise get wrong.
+- **The unread marker was lime-only, and its label was silently dropped.** Acid Lime on cream is
+  about 1.3:1 and was the only cue (WCAG 1.4.1 and 1.4.11), and an `aria-label` on a bare `<span>`
+  has no role — so screen-reader users never learned a row was unread. Now a weight change on the
+  title, a ring on the dot, and a real `sr-only` label. The bell's rows are also proper
+  `DropdownMenuItem`s now, so arrow keys work and a notification without a link is a `<button>`
+  rather than an unreachable `<div>`.
+
+Also: `List-Unsubscribe-Post` dropped (RFC 8058 one-click needs an HTTPS target, and advertising it
+with only a `mailto:` is worse than not advertising it); the sent email's transmitter line raised
+from ~2.7:1 to 5.4:1, which is the one line sender-identification law is interested in; the opt-out
+sentence rebuilt as one whole-sentence key instead of a link glued to a fragment that forced English
+word order; the notification ownership condition consolidated onto `Notification::scopeOwnedBy()`
+instead of being copy-pasted into three queries that could each forget a predicate; a
+`PushDeviceResource` so the push endpoints obey "API Resources only"; `recordFailure()` wrapped in a
+transaction; the outreach briefs screen given its `PageHero` as the sidebar's own destination; one
+primary CTA per view on the draft screen; a `border-border`/`border-lime` conflict; the mute date
+put through the app's locale and the team's timezone; `rtl:-scale-x-100` instead of
+`rtl:rotate-180` on the paper-plane icon, which was pointing backwards; the mail theme's remaining
+off-palette values; and 14 new cross-tenant tests across both modules' API surfaces.
+
+Separately, **`composer test` is green again.** The whole suite had outgrown PHP's 128M default and
+`artisan test` spawns Pest as a child process that a `-d memory_limit=` on the parent never reaches,
+so the limit is now set in `phpunit.xml` where it applies however the suite is run.
+
+### Deferred — 2026-10-30
+
+- **`credit_low` has no producer.** The type, its admin-only gate, its preferences and its copy are
+  built and tested, but nothing raises it: `AiCreditGuard` only knows "exhausted or not", and
+  "running low" needs the usage figure Billing (Phase 16) will own.
+- **Inbound opt-out replies are not processed.** A recipient who replies "unsubscribe" reaches the
+  member's inbox and the platform's opt-out address; recording it is a manual step (log the attempt
+  with "Asked us to stop"). The footer says to reply, which PECR accepts.
+- **One-click unsubscribe is a `mailto:`.** The `List-Unsubscribe-Post` header advertises one-click,
+  which needs a hosted endpoint to honour fully — deferred with the hosted prospect privacy notice.
+- **Locale is the team's, not the member's,** for email and push. It is the only per-recipient locale
+  the platform stores; the in-app channel is unaffected.
+- **Compliance (Phase 15) takes ownership of `outreach_suppressions`** and adds the DSAR and
+  retention tooling over it.
+
 ### Added — 2026-10-30 — a lead you can add yourself
 
 - **Leads can be typed in by hand.** Until now a lead could only arrive from a discovery run, a CSV

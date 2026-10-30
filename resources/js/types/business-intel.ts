@@ -2,14 +2,28 @@
 
 export type BackgroundCheckStatus = 'pending' | 'ready' | 'accepted' | 'failed';
 
-/** The structured findings produced by the `business_intel.background_check` prompt. */
+/**
+ * The structured findings produced by the `business_intel.background_check` prompt.
+ *
+ * `own_industry` and `competitors` describe the team's own business; `customer_industries`,
+ * `target_customers` and `decision_maker_titles` describe who buys from it. Keeping the two sides
+ * apart is the point — prompt v1 had one `suggested_industries` list meaning both, which is how a
+ * team's ICP ended up naming its own trade. Fields are optional because reports written under v1 are
+ * still in the database with the old keys.
+ */
 export type BackgroundCheckFindings = {
     summary: string;
     offering: string;
     positioning: string;
-    target_customers: string[];
-    competitors: string[];
-    suggested_industries: string[];
+    /** The team's own trade. Shown for confirmation, and excluded from discovery. */
+    own_industry?: string | null;
+    /** The industries the team's customers are in. This is what seeds the ICP. */
+    customer_industries?: string[];
+    target_customers?: string[];
+    decision_maker_titles?: string[];
+    competitors?: string[];
+    /** Present only on reports produced by prompt v1, where it meant the team's own trade. */
+    suggested_industries?: string[];
     confidence: number | null;
 };
 

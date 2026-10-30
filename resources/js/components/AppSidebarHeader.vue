@@ -2,6 +2,7 @@
 import AppearanceToggle from '@/components/AppearanceToggle.vue';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import LocaleToggle from '@/components/LocaleToggle.vue';
+import NotificationBell from '@/components/notifications/NotificationBell.vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { BreadcrumbItem } from '@/types';
 
@@ -26,6 +27,9 @@ withDefaults(
             </template>
         </div>
         <div class="ms-auto flex items-center gap-1">
+            <!-- The bell belongs to the shell, not to a screen: it reads the shared
+                 `notifications` prop, so it is correct on every page (Phase 12). -->
+            <NotificationBell />
             <LocaleToggle />
             <AppearanceToggle />
         </div>

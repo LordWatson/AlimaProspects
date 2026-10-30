@@ -23,8 +23,8 @@
 ## 3. Enforced-by-system requirements
 
 1. **Source attribution on every field.** Every enriched data point stores `source`, `source_url`, `collected_at`, and `method`. No orphan data. (Enrichment & Scoring modules.)
-2. **Suppression / do-not-contact.** A suppression list exists at **two scopes**: global (platform-wide, e.g. a person who opted out anywhere) and per-team. Any opt-out is honoured **across all teams** for that identity (email/domain/phone hash). Outreach actions check suppression at send time and block.
-3. **Opt-out handling.** Every outbound message includes an unambiguous opt-out and sender identity. Processing an opt-out writes to the global suppression list immediately.
+2. **Suppression / do-not-contact.** ✅ **Built (Phase 11)** — `outreach_suppressions`, at **two scopes**: global (platform-wide, honoured by every team) and per-team. Any opt-out is honoured **across all teams** for that identity, matched on a **SHA-256 hash of the normalised value** — an email check also tests its domain, so "stop contacting anyone at this company" means that. The table stores the hash and a masked preview (`j***@example.com`) and **no column holds the address in the clear**: a register of exactly the people who want nothing to do with us is not somewhere to keep their contact details (§3.9). The hash is never exposed over the API and there is deliberately **no lookup endpoint**, which would be an enumeration oracle. `OutreachGuard` checks at draft time _and_ again immediately before transmission, because days may pass in between. Compliance (Phase 15) takes ownership of the table and adds the DSAR and retention tooling over it; it is a real table rather than a stub because a stub that returns "not suppressed" is an opt-out silently ignored.
+3. **Opt-out handling.** ✅ **Built (Phase 11)** — every sent message carries sender identification (the team's trading name and website, plus one line naming Alima as the transmitter), an unambiguous opt-out, a link to the privacy notice, and `List-Unsubscribe` + `List-Unsubscribe-Post` headers. Recording the outcome "Asked us to stop" writes the contact's **email and phone** to the **global** list immediately, inside the same transaction — somebody who says "stop contacting me" on a call has not given permission to email them instead. A global opt-out is removable by nobody from the product (the model, the policy and the service each refuse it). **Not yet automatic:** an inbound "unsubscribe" reply reaches the member's inbox and the platform's opt-out address, and recording it is a manual step; the footer says to reply, which PECR accepts. One-click unsubscribe is a `mailto:` until the hosted endpoint lands with §3.7.
 4. **Retention & purging.** Configurable retention policy per team (default: uncontacted leads purged after N months; contacted leads after M months of inactivity). A scheduled job purges/anonymises expired records and logs the action.
 5. **Data-subject rights (DSAR / erasure).** A prospect can request access or erasure; the Compliance module supports locating all records for an identity across a team and producing an export or a verified deletion, with an audit trail. ⚖️ (identity-verification process needs legal sign-off)
 6. **Team data export.** A team can export all of its own data (leads, contacts, activity) in a portable format.
@@ -73,6 +73,13 @@ the two deviations from the original design noted inline.
   prior-consent expectations (ADR 0007, §1–2). Outreach (Phase 11) must read this flag
   and block non-compliant channels; `docs/modules/outreach.md` records exactly what it
   must do, and `LeadResource` sends the flag on **every** lead so no client can miss it.
+  ✅ **Done (Phase 11).** `OutreachGuard` reads it through `allowsDirectMarketing()` rather than by
+  comparing cases, and refuses email at **draft** time as well as at send time — the restriction is
+  the basis on which the lead was allowed to exist, not a warning to click past. The permitted
+  channels are offered instead, the closed one stays on screen **with its reason beside it**, the
+  drafting prompt is told to keep its suggested next step to a LinkedIn approach or a referral, and
+  `GET /api/v1/leads/{lead}/outreach/decisions` reports the decision per channel so a mobile client
+  knows before it offers a compose screen.
     - **Deviation from the original design:** the flag is keyed on the **watch's
       market** (`Market::outreachRestriction()`, modelled by
       `Core\Enums\OutreachRestriction`), **not** on the converted lead's country. The
@@ -129,4 +136,4 @@ DSAR identity-verification process for named individuals who are not our users.
 
 ## 6. Mapping to modules
 
-Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, snippet-only, own retention sweep + DSAR exporter, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID, and it must honour the Signals UAE flag), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).
+Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, snippet-only, own retention sweep + DSAR exporter, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID — **all built in Phase 11**, including the Signals UAE flag, which it honours at draft time as well as send time), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).

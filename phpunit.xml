@@ -18,6 +18,12 @@
         </include>
     </source>
     <php>
+        <!-- The whole suite in one process needs more than the 128M default, and `artisan test`
+             spawns Pest as a child process that a `-d memory_limit=` on the parent never reaches.
+             Setting it here applies wherever the suite is run from — `composer test`,
+             `vendor/bin/pest`, or CI. -->
+        <ini name="memory_limit" value="2G"/>
+
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
