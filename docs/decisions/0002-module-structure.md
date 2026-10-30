@@ -4,9 +4,11 @@
 - **Date:** 2026-10-28
 
 ## Context
+
 A broad B2B SaaS with many bounded concerns (tenancy, AI, sourcing, scoring, CRM, billing, compliance…). A flat `app/` would not scale and would blur ownership.
 
 ## Decision
+
 Organise code by **domain module** under `app/Modules/<Module>/` with a fixed internal layout:
 
 ```
@@ -26,6 +28,7 @@ Migrations, factories and seeders stay in the standard Laravel locations but are
 A base **module service provider** auto-registers each module's routes, policies and migration paths. Modules are registered in `bootstrap/providers.php` (or discovered) via the Core base provider.
 
 ## Consequences
+
 - Clear ownership and discoverability; features are self-contained.
 - Thin controllers calling single-purpose Actions / orchestrating Services (see `CLAUDE.md`).
 - Slightly more boilerplate per module, mitigated by a generator/stub later.

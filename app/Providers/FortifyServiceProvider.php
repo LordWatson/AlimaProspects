@@ -96,5 +96,17 @@ class FortifyServiceProvider extends ServiceProvider
                 ($request->input('credential.id') ?: $request->session()->getId()).'|'.$request->ip(),
             );
         });
+
+        // Global /api/v1 limiter — per authenticated token, else per IP.
+        RateLimiter::for('api', function (Request $request) {
+            return Limit::perMinute(60)->by($request->user()?->getAuthIdentifier() ?: $request->ip());
+        });
+
+        // Hard limit on credential → token exchange to resist brute force.
+        RateLimiter::for('auth-token', function (Request $request) {
+            $key = Str::transliterate(Str::lower((string) $request->input('email')).'|'.$request->ip());
+
+            return Limit::perMinute(5)->by($key);
+        });
     }
 }

@@ -6,12 +6,14 @@ description: Run AlimaProspects' quality gates (Pint, Larastan, Pest, vue-tsc, b
 # Quality gates (Windows + Herd)
 
 **Critical:** this machine has Laragon on the PATH shadowing Herd, so a bare `php`/`composer` may be the wrong (8.3) version. **Always use Herd's binaries:**
+
 - PHP 8.5: `C:/Users/alexa/.config/herd/bin/php.bat`
 - Composer: `C:/Users/alexa/.config/herd/bin/composer.bat`
 
 (Or fix the PATH so Herd precedes Laragon — see `docs/runbooks/local-setup.md §0`.)
 
 ## Backend
+
 ```bash
 # Format (auto-fix) then verify no diff:
 "C:/Users/alexa/.config/herd/bin/php.bat" vendor/bin/pint --parallel
@@ -22,6 +24,7 @@ description: Run AlimaProspects' quality gates (Pint, Larastan, Pest, vue-tsc, b
 ```
 
 ## Frontend
+
 ```bash
 npm run check         # lint + format (vite-plus)
 npm run types:check   # vue-tsc --noEmit
@@ -29,6 +32,7 @@ npm run build         # production build must succeed
 ```
 
 ## Notes
+
 - Tests run on **SQLite :memory:** (see `phpunit.xml`) — they don't need MySQL. Local MySQL may need `DB_PASSWORD` set.
 - **Do not run `php artisan horizon` on Windows** (needs pcntl/posix). Use `php artisan queue:work`. Horizon is installed for Linux prod/CI via `config.platform`.
 - Composer prints a harmless `curl_close()` deprecation notice under PHP 8.5 — ignore it.

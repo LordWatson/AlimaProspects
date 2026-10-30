@@ -10,8 +10,28 @@ export type User = {
     [key: string]: unknown;
 };
 
+export type TeamRole = 'owner' | 'admin' | 'member' | 'read-only';
+
+export type CurrentTeam = {
+    id: number;
+    name: string;
+    role: TeamRole | null;
+    timezone: string;
+    locale: string;
+    market: string;
+};
+
+export type TeamSummary = {
+    id: number;
+    name: string;
+    role: TeamRole | null;
+    is_current: boolean;
+};
+
 export type Auth = {
     user: User;
+    currentTeam?: CurrentTeam | null;
+    teams?: TeamSummary[];
 };
 
 export type Passkey = {

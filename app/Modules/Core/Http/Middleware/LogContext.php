@@ -11,15 +11,20 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Resolves the active team into {@see TeamContext} and attaches structured context
- * (team_id, user_id, request_id) to every log line for the request (CLAUDE.md logging rules).
+ * Resolves the active team into {@see TeamContext} (and spatie's team-scoped permission context)
+ * and attaches structured context (team_id, user_id, request_id) to every log line for the
+ * request (CLAUDE.md logging rules). Runs early in the web + api stacks.
  */
 final class LogContext
 {
-    public function __construct(private readonly TeamContext $teamContext) {}
+    public function __construct(
+        private readonly TeamContext $teamContext,
+        private readonly PermissionRegistrar $permissions,
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -30,6 +35,8 @@ final class LogContext
 
         if ($user instanceof User && $user->currentTeamId() !== null) {
             $this->teamContext->set($user->currentTeamId());
+            // Keep spatie's team-scoped roles/permissions resolving against the active team.
+            $this->permissions->setPermissionsTeamId($user->currentTeamId());
         }
 
         Log::withContext([

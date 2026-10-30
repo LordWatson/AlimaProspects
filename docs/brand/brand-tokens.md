@@ -12,33 +12,35 @@ The brand is bilingual (English + Arabic) and markets to the UK and UAE — plan
 
 ### 1.1 Palette — masters (HEX + RGB are authoritative, taken from the logo artwork)
 
-| Token name | Brand name | HEX | RGB | Role |
-|---|---|---|---|---|
-| `teal` | Deep Teal | `#205557` | 32 85 87 | Primary · structure, links |
-| `ink` | Midnight Ink | `#181723` | 24 23 35 | Primary · text, dark sections, main buttons |
-| `cream` | Cloud Cream | `#F5F2E8` | 245 242 232 | Primary · page background (lead with cream, ~50%) |
-| `orange` | Signal Orange | `#F03D2A` | 240 61 42 | Accent · **decorative only, never a status colour** |
-| `blue` | Electric Blue | `#4E91D4` | 78 145 212 | Accent |
-| `lilac` | Soft Lilac | `#C9A4D8` | 201 164 216 | Accent |
-| `lime` | Acid Lime | `#D2E842` | 210 232 66 | Accent |
+| Token name | Brand name    | HEX       | RGB         | Role                                                |
+| ---------- | ------------- | --------- | ----------- | --------------------------------------------------- |
+| `teal`     | Deep Teal     | `#205557` | 32 85 87    | Primary · structure, links                          |
+| `ink`      | Midnight Ink  | `#181723` | 24 23 35    | Primary · text, dark sections, main buttons         |
+| `cream`    | Cloud Cream   | `#F5F2E8` | 245 242 232 | Primary · page background (lead with cream, ~50%)   |
+| `orange`   | Signal Orange | `#F03D2A` | 240 61 42   | Accent · **decorative only, never a status colour** |
+| `blue`     | Electric Blue | `#4E91D4` | 78 145 212  | Accent                                              |
+| `lilac`    | Soft Lilac    | `#C9A4D8` | 201 164 216 | Accent                                              |
+| `lime`     | Acid Lime     | `#D2E842` | 210 232 66  | Accent                                              |
 
 CMYK (coated stock, press-proof before use): Teal 85/40/50/40 · Ink 75/70/45/80 · Cream 3/3/8/0 · Orange 0/85/90/0 · Blue 70/35/0/0 · Lilac 20/35/0/0 · Lime 20/0/85/0. Pantone values are TBD in the book (`PMS ____ C`).
 
 ### 1.2 Proportion
+
 Lead with **Cloud Cream ~50%**, Teal ~20%, Ink ~15%, Accents ~15% (Orange 5 · Blue 4 · Lilac 3 · Lime 3). **One hero accent per layout**, a second only to support it.
 
 ### 1.3 Tints (mix with Cloud Cream, not white — keep them warm; never tint the logo)
 
-| Base | 100 | 80 | 60 | 40 | 20 |
-|---|---|---|---|---|---|
-| Deep Teal | `#205557` | `#4B7474` | `#759491` | `#A0B3AE` | `#CAD3CB` |
-| Midnight Ink | `#181723` | `#44434A` | `#706F72` | `#9D9A99` | `#C9C6C1` |
+| Base          | 100       | 80        | 60        | 40        | 20        |
+| ------------- | --------- | --------- | --------- | --------- | --------- |
+| Deep Teal     | `#205557` | `#4B7474` | `#759491` | `#A0B3AE` | `#CAD3CB` |
+| Midnight Ink  | `#181723` | `#44434A` | `#706F72` | `#9D9A99` | `#C9C6C1` |
 | Signal Orange | `#F03D2A` | `#F16150` | `#F28576` | `#F3AA9C` | `#F4CEC2` |
 | Electric Blue | `#4E91D4` | `#6FA4D8` | `#91B8DC` | `#B2CBE0` | `#D4DFE4` |
-| Soft Lilac | `#C9A4D8` | `#D2B4DB` | `#DBC3DE` | `#E3D3E2` | `#ECE2E5` |
-| Acid Lime | `#D2E842` | `#D9EA63` | `#E0EC84` | `#E7EEA6` | `#EEF0C7` |
+| Soft Lilac    | `#C9A4D8` | `#D2B4DB` | `#DBC3DE` | `#E3D3E2` | `#ECE2E5` |
+| Acid Lime     | `#D2E842` | `#D9EA63` | `#E0EC84` | `#E7EEA6` | `#EEF0C7` |
 
 ### 1.4 Spectrum gradient
+
 90° linear, fixed stop order **Ink, Orange, Blue, Lilac, Lime, Teal, Cream** (0·16·33·50·66·83·100%). Never reorder. Use for hero bands / motion / loaders. Never behind body text, as a type fill, or inside the logo.
 
 ---
@@ -49,22 +51,22 @@ Lead with **Cloud Cream ~50%**, Teal ~20%, Ink ~15%, Accents ~15% (Orange 5 · B
 
 ### 2.1 Colour tokens
 
-| Token | Value | Notes |
-|---|---|---|
-| `bg.canvas` | `#F5F2E8` | Page background (Cloud Cream) |
-| `bg.surface` | `#FBFAF6` | Cards, sheets |
-| `bg.inverse` | `#181723` | Dark sections |
-| `text.primary` | `#181723` | 15.8:1 |
-| `text.secondary` | `#4A4857` | 8.0:1 |
-| `text.muted` | `#6B6977` | 4.8:1 |
-| `border.control` | `#8C8A8F` | 3.1:1 inputs |
-| `action.primary` | `#181723` | Main buttons |
-| `action.brand` | `#205557` | Links · 7.5:1 |
-| `action.brand.hover` | `#173F41` | Hover, pressed |
-| `focus.ring` | `#2C6CAD` | 3 px ring · 4.9:1 |
-| `status.error` | `#B52A1B` | 5.7:1 |
-| `status.warning` | `#8A5A00` | 5.3:1 |
-| `status.success` | `#276B43` | 5.7:1 |
+| Token                | Value     | Notes                         |
+| -------------------- | --------- | ----------------------------- |
+| `bg.canvas`          | `#F5F2E8` | Page background (Cloud Cream) |
+| `bg.surface`         | `#FBFAF6` | Cards, sheets                 |
+| `bg.inverse`         | `#181723` | Dark sections                 |
+| `text.primary`       | `#181723` | 15.8:1                        |
+| `text.secondary`     | `#4A4857` | 8.0:1                         |
+| `text.muted`         | `#6B6977` | 4.8:1                         |
+| `border.control`     | `#8C8A8F` | 3.1:1 inputs                  |
+| `action.primary`     | `#181723` | Main buttons                  |
+| `action.brand`       | `#205557` | Links · 7.5:1                 |
+| `action.brand.hover` | `#173F41` | Hover, pressed                |
+| `focus.ring`         | `#2C6CAD` | 3 px ring · 4.9:1             |
+| `status.error`       | `#B52A1B` | 5.7:1                         |
+| `status.warning`     | `#8A5A00` | 5.3:1                         |
+| `status.success`     | `#276B43` | 5.7:1                         |
 
 ### 2.2 Shape · depth · motion
 
@@ -73,6 +75,7 @@ Lead with **Cloud Cream ~50%**, Teal ~20%, Ink ~15%, Accents ~15% (Orange 5 · B
 - **Motion:** `fast 150ms` · `base 250ms`, easing `cubic-bezier(0.2, 0.8, 0.2, 1)`.
 
 ### 2.3 Spacing & grid
+
 - **Spacing scale (4px base):** 4 · 8 · 16 · 24 · 32 · 48 · 64 · 96 · 128. Sections breathe at 128/96/64.
 - **Grid:** Desktop ≥1280 → 12 col, 80 margin, 24 gutter, 1280 max. Tablet 768+ → 8 col, 40 margin, 20 gutter, fluid. Mobile <768 → 4 col, 20 margin, 16 gutter, fluid.
 - Web header 88px, logo 160px, one primary CTA per view.
@@ -81,15 +84,16 @@ Lead with **Cloud Cream ~50%**, Teal ~20%, Ink ~15%, Accents ~15% (Orange 5 · B
 
 ## 3. Typography
 
-| Family | Token | Use | Source |
-|---|---|---|---|
-| **Poppins** | `font.base` (fallback Arial) | Everything Latin — geometric, rounded, matches the wordmark | Google Fonts · SIL OFL |
-| **DM Mono** | `font.mono` | Labels, deck labels, code/metadata | Google Fonts |
-| **Tajawal** | `font.arabic` (fallback Arial) | Arabic — shares Poppins' geometric build | Google Fonts |
+| Family      | Token                          | Use                                                         | Source                 |
+| ----------- | ------------------------------ | ----------------------------------------------------------- | ---------------------- |
+| **Poppins** | `font.base` (fallback Arial)   | Everything Latin — geometric, rounded, matches the wordmark | Google Fonts · SIL OFL |
+| **DM Mono** | `font.mono`                    | Labels, deck labels, code/metadata                          | Google Fonts           |
+| **Tajawal** | `font.arabic` (fallback Arial) | Arabic — shares Poppins' geometric build                    | Google Fonts           |
 
 **Weights (max two per layout, usually SemiBold over Regular):** 300 Light (large pull quotes only) · 400 Regular (body/captions) · 500 Medium (lead paragraphs, UI labels) · 600 SemiBold (headlines, buttons) · 700 Bold (campaign lines, big numbers).
 
 **Type scale** (perfect fourth ×1.333 — desktop / mobile / print):
+
 - DISPLAY 96/56/72pt · lh 1.05 · tracking −2%
 - H1 64/40/48pt · lh 1.1 · −1%
 - H2 44/32/32pt · lh 1.2
@@ -129,22 +133,29 @@ Lead with **Cloud Cream ~50%**, Teal ~20%, Ink ~15%, Accents ~15% (Orange 5 · B
 ## 6. Voice
 
 Four principles (rewrite any sentence that breaks one):
+
 - **Bright** — optimistic, lead with the opportunity. "Here's what this could become."
 - **Bold** — direct, make a call and explain it. "This will work. Here's why."
 - **Clear** — plain words, short sentences, zero jargon. "More people, more often, for less."
 - **Together** — warm; write with people (we, you, us). "Let's build it together."
 
-CTAs: *Let's grow · Let's talk · Start a project · See the work*. Headlines like *Ideas that move.* / *Bold marketing for what's next.* Rewrite jargon ("leverage synergistic omnichannel solutions" → "connect every channel so your message lands").
+CTAs: _Let's grow · Let's talk · Start a project · See the work_. Headlines like _Ideas that move._ / _Bold marketing for what's next._ Rewrite jargon ("leverage synergistic omnichannel solutions" → "connect every channel so your message lands").
 
 ---
 
 ## 7. Open items flagged for brand-owner approval
 
 1. **PENDING APPROVAL — Dark mode palette.** The book defines only `bg.inverse` (#181723) sections, not a full dark theme. Proposed dark tokens (to be confirmed):
-   - `bg.canvas` `#181723`, `bg.surface` `#211F2E`, `bg.inverse` `#F5F2E8`
-   - `text.primary` `#F5F2E8`, `text.secondary` `#C9C6C1`, `text.muted` `#9D9A99`
-   - `border.control` `#45434F`, `action.brand` `#4B7474` (Teal 80 tint for contrast on dark), `action.brand.hover` `#759491`
-   - `focus.ring` `#6FA4D8`; status on dark: error `#F28576`-adjacent, warning `#D9B15A`, success `#5FB07E` — all to be re-measured for ≥4.5:1 on the dark canvas before use.
+    - `bg.canvas` `#181723`, `bg.surface` `#211F2E`, `bg.inverse` `#F5F2E8`
+    - `text.primary` `#F5F2E8`, `text.secondary` `#C9C6C1`, `text.muted` `#9D9A99`
+    - `border.control` `#45434F`, `action.brand` `#4B7474` (Teal 80 tint for contrast on dark), `action.brand.hover` `#759491`
+    - `focus.ring` `#6FA4D8`; status on dark: error `#F28576`-adjacent, warning `#D9B15A`, success `#5FB07E` — all to be re-measured for ≥4.5:1 on the dark canvas before use.
 2. **PENDING — Pantone values** are blank in the book (`PMS ____ C`); print phase must fill them.
 3. **PENDING — favicon/app-icon source SVGs** are referenced (`/Alima_Brand_Library`) but not delivered in `docs/brand/`; need the master files before the app-shell phase.
 4. **Confirm** whether the product UI uses Signal Orange purely decoratively (per book) given how often SaaS UIs reach for orange as a warning — we will honour the book and use `#8A5A00` for warnings.
+5. **PENDING — Warm UI neutrals (Phase 2).** shadcn/the component system needs neutral surfaces the book doesn't name. Proposed, derived warm from Cream/Ink/Teal tints: `--secondary #E9E6DC`, `--muted #ECE9DF`, `--accent #E6ECE9` (soft teal tint for hover/selected), `--border #DDD9CC`. Confirm or replace with exact book tints.
+6. **PENDING — `--info` status token.** The book defines only error/warning/success. The product needs a neutral "informational / in-progress" state; proposed `#2C6CAD` light / `#6FA4D8` dark (a blue, distinct from decorative Orange). Confirm, or restrict UI to the three book statuses.
+7. **PENDING — chart palette (Phase 2 seed, finalised at Reporting/dataviz).** Series map to Blue, Teal, Lilac, Lime, Orange (Orange last, decorative, never encodes state). Accessible per-series variants (e.g. a darker Lime for a cream canvas) are a dataviz-phase decision — the base Lime `#D2E842` is low-contrast as a mark.
+8. **PENDING — placeholder logo (Phase 2).** Until the master SVGs in §7.3 arrive, the app uses: (a) the **snout** element (nose + smile only, Teal tile / Cream glyph = colourway 03) as the mark, and (b) a **typeset lowercase "alima" wordmark** in Poppins SemiBold Teal — a temporary stand-in for the real wordmark (do not treat as the final logo; the lockup is forced `dir=ltr` and carries an `aria-label`). Replace both with the delivered artwork.
+9. **PENDING — fonts via Bunny CDN.** Poppins / DM Mono / Tajawal load from `fonts.bunny.net` (GDPR-friendly, EU-hosted — relevant for UK/UAE). Confirm CDN use or switch to self-hosting; Tajawal is loaded 400/500/700 (no 600 — `font-semibold` falls back).
+10. **PENDING — dark-theme deviations from §7.1.** The implemented dark theme (in `app.css`, marked PENDING) deviates slightly from the §7.1 proposal for contrast: `--muted-foreground #B4B1AD`, `--brand #759491`, `--brand-hover #A0B3AE`, `--input #514F5C`, and **`--destructive #EF9A9A`** (a red deliberately OFF the Signal Orange ramp — §7.1 had suggested an orange-adjacent value, which would violate "Orange is never a status colour"). Re-measure all for AA before launch.

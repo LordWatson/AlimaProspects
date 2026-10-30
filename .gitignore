@@ -41,3 +41,6 @@ yarn-error.log
 /playwright-report
 /database/e2e.sqlite
 /database/testing.sqlite
+
+graphify-out/*
+!graphify-out/GRAPH_REPORT.md

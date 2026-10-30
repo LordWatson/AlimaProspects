@@ -1,19 +1,27 @@
 <script setup lang="ts">
-import { usePage } from '@inertiajs/vue3';
-import AppLogoIcon from '@/components/AppLogoIcon.vue';
-
-const name = usePage().props.name;
+/*
+ * The Alima primary signature — the master horizontal lock-up (panda mark +
+ * "alima" wordmark), used verbatim as delivered artwork (brand guidelines §2:
+ * never redraw the logo). Teal/Cream colourways only; `tone="dark"` picks the
+ * Cream lock-up for dark surfaces. Forced dir="ltr" so it never mirrors in RTL.
+ */
+withDefaults(
+    defineProps<{
+        tone?: 'light' | 'dark';
+    }>(),
+    { tone: 'light' },
+);
 </script>
 
 <template>
-    <div
-        class="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground"
-    >
-        <AppLogoIcon class="size-5 fill-current text-white dark:text-black" />
-    </div>
-    <div class="ml-1 grid flex-1 text-left text-sm">
-        <span class="mb-0.5 truncate leading-tight font-semibold">{{
-            name
-        }}</span>
-    </div>
+    <img
+        dir="ltr"
+        :src="
+            tone === 'dark'
+                ? '/brand/alima_logo_cream.svg'
+                : '/brand/alima_logo_teal.svg'
+        "
+        alt="Alima"
+        class="h-8 w-auto"
+    />
 </template>

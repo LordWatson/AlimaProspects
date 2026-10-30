@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\User;
+use App\Modules\Auth\Actions\CreatePersonalTeamAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,4 +49,16 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * Create a verified user with their personal team (Owner), as registration would.
+ */
+function createUserWithTeam(array $attributes = []): User
+{
+    $user = User::factory()->create($attributes);
+
+    app(CreatePersonalTeamAction::class)->handle($user);
+
+    return $user->refresh();
 }

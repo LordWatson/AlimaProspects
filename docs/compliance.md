@@ -4,13 +4,13 @@
 
 ## 1. Applicable regimes
 
-| Regime | Scope | What it governs for us |
-|---|---|---|
-| **UK GDPR + Data Protection Act 2018** | UK data subjects | Lawful basis, data-subject rights, retention, security, records of processing |
-| **PECR** (Privacy and Electronic Communications Regs) | UK electronic marketing | Rules for email/SMS marketing; B2B corporate-subscriber nuances; opt-out |
-| **UAE PDPL** — Federal Decree-Law No. 45 of 2021 | UAE data subjects | Consent/lawful basis, cross-border transfer, data-subject rights, breach notice (to the UAE Data Office) |
-| **UAE TDRA / CRA marketing rules & anti-spam** | UAE electronic marketing | Sender identification, prior-consent expectations, opt-out, prohibited content |
-| *(watch)* DIFC DP Law 2020 / ADGM DP Regs | DIFC / ADGM free zones | Some UAE businesses sit under free-zone regimes with their own DP law ⚖️ |
+| Regime                                                | Scope                    | What it governs for us                                                                                   |
+| ----------------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| **UK GDPR + Data Protection Act 2018**                | UK data subjects         | Lawful basis, data-subject rights, retention, security, records of processing                            |
+| **PECR** (Privacy and Electronic Communications Regs) | UK electronic marketing  | Rules for email/SMS marketing; B2B corporate-subscriber nuances; opt-out                                 |
+| **UAE PDPL** — Federal Decree-Law No. 45 of 2021      | UAE data subjects        | Consent/lawful basis, cross-border transfer, data-subject rights, breach notice (to the UAE Data Office) |
+| **UAE TDRA / CRA marketing rules & anti-spam**        | UAE electronic marketing | Sender identification, prior-consent expectations, opt-out, prohibited content                           |
+| _(watch)_ DIFC DP Law 2020 / ADGM DP Regs             | DIFC / ADGM free zones   | Some UAE businesses sit under free-zone regimes with their own DP law ⚖️                                 |
 
 > ⚖️ UAE marketing law skews more toward **prior consent** than UK B2B legitimate-interest practice. The platform must let a team configure, per market, whether a contact may be messaged, and default to the stricter rule when a prospect's jurisdiction is UAE.
 
@@ -34,15 +34,99 @@
 10. **Cross-border transfer.** Record where data is hosted (Hetzner EU) and document the UK↔UAE↔EU transfer position. ⚖️
 
 ## 4. Scraping / acquisition ethics
+
 - **No scraping of sites whose terms forbid it** (e.g. LinkedIn). Lead sourcing uses official APIs (Companies House, Google Places) and a compliant web-search API; the AI treats scraped/public web content as **data, never instructions** (prompt-injection safety — see AI Platform module).
 - Respect `robots.txt` and provider ToS in every `LeadSourceProvider` implementation.
 
 ## 5. Open legal questions (⚖️ for counsel)
+
 - B2B legitimate interest vs. UAE prior-consent — the exact per-market outreach gate and default.
 - DSAR identity verification for prospects who are not our users.
 - Standard privacy-notice wording and the controller/processor split between AlimaProspects and tenant businesses (likely tenant = controller, we = processor; confirm and reflect in the DPA).
 - Free-zone (DIFC/ADGM) overlay for UAE tenants.
 - Retention defaults that satisfy both "storage limitation" and tenants' commercial needs.
 
+## 5a. Signals module — personal data from published news (⚖️)
+
+The **Signals** module (ADR 0011) processes a new, small category of personal data:
+the **name and public role** of a named individual mentioned in a published business-
+news item (a founder, executive or company owner tied to a wealth/liquidity event).
+It is designed to the same "enforced-by-system" standard as the rest of this document.
+
+**Status: built (S1–S6, 2026-10-29).** Everything below is implemented and tested, with
+the two deviations from the original design noted inline.
+
+- **What is stored.** A signal holds the person's **name, public role and source
+  URL** only, plus the AI summary, event metadata and the clamped news snippet. It
+  **never** stores an email address or phone number. (Data minimisation, §3.9.)
+- **Lawful basis.** **Legitimate interest.** The data is already published business
+  news, processed to alert a team to a commercially relevant event, with no contact
+  details and no automated outreach. A **dedicated Signals section is added to the
+  per-team LIA** (purpose: event-based prospecting; necessity: public news is the only
+  source of these events; balancing test: minimal data, published source, no contact
+  details, person can object/erase). The LIA must be recorded before watches run,
+  mirroring the discovery-run gate (§2).
+- **Outreach is gated, not performed.** Signals is **not** an outreach channel. On
+  conversion, a UAE-derived lead is flagged **`leads.raw.outreach_restriction =
+  'uae_prior_consent'`** and the lead screen shows "Get consent first — reach out on
+  LinkedIn or through a referral" — never cold email/SMS — reflecting UAE PDPL / TDRA
+  prior-consent expectations (ADR 0007, §1–2). Outreach (Phase 11) must read this flag
+  and block non-compliant channels; `docs/modules/outreach.md` records exactly what it
+  must do, and `LeadResource` sends the flag on **every** lead so no client can miss it.
+    - **Deviation from the original design:** the flag is keyed on the **watch's
+      market** (`Market::outreachRestriction()`, modelled by
+      `Core\Enums\OutreachRestriction`), **not** on the converted lead's country. The
+      restriction protects the person being approached, who is where the watch was
+      looking; keying it on the company's country silently dropped the restriction the
+      moment a Dubai founder's lead was filed under a UK holding company — which is
+      precisely the case it exists for. It is also **re-asserted after de-duplication**,
+      because a merge fills `raw` only when empty and would otherwise lose it. A
+      restriction may be **added** to a lead but never dropped from one.
+- **Retention.** Dismissed signals are hard-deleted after **90 days**; signals nobody
+  acts on after **180 days**; converted signals persist as long as their lead does,
+  because they are that lead's provenance. The **`signals:prune`** command enforces
+  this — scheduled nightly at 03:20, chunked (500 rows a pass), idempotent, sweeping
+  every team, and logging **counts and windows only**. `--dry-run` reports what it
+  would delete without deleting it, because retention is irreversible. Windows are
+  configurable via `SIGNALS_RETENTION_DISMISSED_DAYS` / `_UNACTIONED_DAYS`.
+    - Measured on **`created_at`, not `published_at`**: the promise is about how long
+      Alima holds the record, and an article's own date is outside our control (and
+      sometimes a best-effort parse of "3 days ago").
+    - The feed shows **"Deletes in N days"** on every unconverted signal, computed from
+      the same window the sweep uses, so retention never removes something a team
+      assumed was kept.
+- **Data-subject rights.** `Signals\Services\SignalsPersonalDataExporter` locates
+  signals by `subject_person_name` **within one team** (case-insensitive, with `LIKE`
+  wildcards escaped so a name containing `%` searches for itself), for the Compliance
+  module's DSAR tooling (§3.5) to call. `export()` returns the whole of what Signals
+  holds — there is no email or phone to report, because the module stores neither —
+  with each row flagged `erasable`. `erase()` deletes the erasable matches and
+  reports the rest.
+    - **Deviation from the original design:** a **converted** signal is reported but
+      **not erased**. It is the provenance of a lead someone is actively working, and
+      removing it would leave the team unable to say where that lead came from — the
+      opposite of the accountability the request is exercising. `erase()` returns
+      `retained` and `retained_signal_ids` so the decision is explicit; Phase 15 decides
+      what happens to the lead, and the signal goes with that decision.
+    - Matching is **by name and therefore imprecise**; results are candidates for a human
+      to confirm, never an automatic erasure ("J. Smith" is not reliably "John Smith").
+      Names shorter than 3 characters are refused outright.
+    - Identity verification for non-users remains an open legal question (§5).
+- **Acquisition ethics.** Signals uses the **Serper News API** (ADR 0010/0011), not
+  scraping, and is **snippet-only** (no full-page fetch in v1). The AI treats article
+  text as **data, never instructions** (§4, AI Platform prompt-injection safety).
+  Property portals and aggregators are excluded globally, and each team can exclude
+  its own list of sources (`signal_watches.ignore_domains`).
+- **Audit trail.** Watch create/update/delete, convert, dismiss and restore all write
+  audit entries carrying **ids, enum values and counts only** — never a headline, a
+  person's name, or a team's competitor list. A watch deletion records how many signals
+  and runs went with it, since that is the only place those counts survive the cascade.
+
+⚖️ This section forms part of the **pre-launch legal review already required by
+ADR 0007** (UK-B2B-legitimate-interest vs UAE-prior-consent, and the
+controller/processor split). Confirm the LIA wording, the UAE outreach gate, and the
+DSAR identity-verification process for named individuals who are not our users.
+
 ## 6. Mapping to modules
-Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), Outreach (suppression + opt-out + sender ID), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).
+
+Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, snippet-only, own retention sweep + DSAR exporter, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID, and it must honour the Signals UAE flag), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).

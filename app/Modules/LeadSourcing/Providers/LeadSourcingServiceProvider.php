@@ -1,0 +1,67 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\LeadSourcing\Providers;
+
+use App\Modules\Core\Support\CircuitBreaker;
+use App\Modules\LeadSourcing\Contracts\LeadInterestGate;
+use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
+use App\Modules\LeadSourcing\Models\DiscoveryRun;
+use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Policies\DiscoveryRunPolicy;
+use App\Modules\LeadSourcing\Policies\LeadPolicy;
+use App\Modules\LeadSourcing\Services\AllowAllLeadInterestGate;
+use App\Modules\LeadSourcing\Services\CompaniesHouseProvider;
+use App\Modules\LeadSourcing\Services\DiscoveryLimitGuard;
+use App\Modules\LeadSourcing\Services\GooglePlacesProvider;
+use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
+use App\Modules\LeadSourcing\Services\StubLeadQuotaSource;
+use App\Modules\LeadSourcing\Services\WebSearchProvider;
+use App\Modules\ModuleServiceProvider;
+use Illuminate\Contracts\Cache\Repository as Cache;
+use Illuminate\Http\Client\Factory as HttpFactory;
+
+final class LeadSourcingServiceProvider extends ModuleServiceProvider
+{
+    /**
+     * @var array<class-string, class-string>
+     */
+    protected array $policies = [
+        DiscoveryRun::class => DiscoveryRunPolicy::class,
+        Lead::class => LeadPolicy::class,
+    ];
+
+    public function register(): void
+    {
+        // Compliance + billing seams — unlimited/allow-all stubs until Phases 15 and 16 swap them.
+        $this->app->bind(LeadQuotaSource::class, StubLeadQuotaSource::class);
+        $this->app->bind(LeadInterestGate::class, AllowAllLeadInterestGate::class);
+
+        // Shared circuit breaker for provider HTTP, configured from config/lead-sourcing.php.
+        $this->app->singleton(CircuitBreaker::class, fn ($app): CircuitBreaker => new CircuitBreaker(
+            $app->make(Cache::class),
+            (int) config('lead-sourcing.circuit_breaker.threshold', 5),
+            (int) config('lead-sourcing.circuit_breaker.cooldown', 60),
+            prefix: 'lead_sourcing:cb',
+        ));
+
+        // The provider registry: one entry per live source. New providers (Phase 7b) register here
+        // and the discovery pipeline picks them up with no further change.
+        $this->app->singleton(LeadSourceProviderRegistry::class, function ($app): LeadSourceProviderRegistry {
+            $http = $app->make(HttpFactory::class);
+            $breaker = $app->make(CircuitBreaker::class);
+
+            $registry = new LeadSourceProviderRegistry;
+            $registry->register(new CompaniesHouseProvider($http, $breaker));
+            $registry->register(new GooglePlacesProvider($http, $breaker));
+            $registry->register(new WebSearchProvider($http, $breaker));
+
+            return $registry;
+        });
+
+        $this->app->bind(DiscoveryLimitGuard::class, fn ($app): DiscoveryLimitGuard => new DiscoveryLimitGuard(
+            $app->make(LeadQuotaSource::class),
+        ));
+    }
+}
