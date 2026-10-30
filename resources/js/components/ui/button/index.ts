@@ -22,6 +22,12 @@ export const buttonVariants = cva(
           "bg-cream text-ink shadow-sm hover:bg-cream/90 focus-visible:ring-blue",
         lime:
           "bg-lime text-ink shadow-sm hover:bg-lime-80 focus-visible:ring-teal",
+        // The secondary action inside a `PageHero` — outline, but on Midnight Ink. `outline` uses
+        // `bg-background`/`border-input`, which is a cream chip on a dark panel; this is the same
+        // shape in the hero's own colours. Cream/40 ring clears 3:1 on Ink, and the focus ring
+        // offsets against Ink rather than the page background.
+        hero:
+          "bg-transparent text-cream ring-1 ring-cream/40 ring-inset hover:bg-cream/10 focus-visible:ring-cream focus-visible:ring-offset-ink",
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 focus-visible:ring-destructive/40",
         outline:

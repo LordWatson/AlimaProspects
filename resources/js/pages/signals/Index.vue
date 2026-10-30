@@ -2,6 +2,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { Check, Satellite, Settings2, SlidersHorizontal } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import PageHero from '@/components/PageHero.vue';
 import Pagination from '@/components/Pagination.vue';
 import ConvertSignalModal from '@/components/signals/ConvertSignalModal.vue';
 import DismissSignalDialog from '@/components/signals/DismissSignalDialog.vue';
@@ -216,38 +217,30 @@ onBeforeUnmount(() => {
     <Head :title="t('Signals')" />
 
     <div class="flex flex-col gap-8 py-2">
-        <!-- Header -->
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <PageHero
+            index="07"
+            :eyebrow="t('Signals')"
+            :title="t('Who just came into|money.')"
+            :description="
+                t(
+                    'Company sales, funding rounds and founders moving to town — found in published news, summarised, and ranked for how well they fit you.',
+                )
+            "
+            :stat="{
+                label: t('New signals'),
+                value: counts.new,
+                caption: t('Waiting on you'),
+            }"
         >
-            <div class="max-w-2xl space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-                >
-                    {{ t('Signals') }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                >
-                    {{ t('Who just came into money')
-                    }}<span class="text-orange">.</span>
-                </h1>
-                <p class="text-base text-muted-foreground">
-                    {{
-                        t(
-                            'Company sales, funding rounds and founders moving to town — found in published news, summarised, and ranked for how well they fit you.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <Button v-if="can.manageWatches" variant="outline" as-child>
-                <Link href="/signals/watches">
-                    <Settings2 class="size-4" aria-hidden="true" />
-                    {{ t('Watch settings') }}
-                </Link>
-            </Button>
-        </header>
+            <template v-if="can.manageWatches" #actions>
+                <Button variant="hero" as-child>
+                    <Link href="/signals/watches">
+                        <Settings2 class="size-4" aria-hidden="true" />
+                        {{ t('Watch settings') }}
+                    </Link>
+                </Button>
+            </template>
+        </PageHero>
 
         <!-- A team with no watches has nothing to show and needs telling why. -->
         <EmptyState

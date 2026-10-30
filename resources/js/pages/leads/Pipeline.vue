@@ -10,6 +10,7 @@ import {
 } from '@lucide/vue';
 import { computed, nextTick, ref, useTemplateRef } from 'vue';
 import InputError from '@/components/InputError.vue';
+import PageHero from '@/components/PageHero.vue';
 import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -233,32 +234,18 @@ function removeStage(stage: PipelineStage): void {
     <Head :title="t('Pipeline')" />
 
     <div class="flex flex-col gap-8 py-2">
-        <!-- Header -->
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <PageHero
+            index="06"
+            :eyebrow="t('Pipeline')"
+            :title="t('Your|board.')"
+            :description="
+                t(
+                    'Every lead your team is working, by where it has got to. Drag a card, or pick a stage and press Move — both do the same thing.',
+                )
+            "
         >
-            <div class="max-w-2xl space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-                >
-                    {{ t('Pipeline') }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                >
-                    {{ t('Your board') }}<span class="text-orange">.</span>
-                </h1>
-                <p class="text-base text-muted-foreground">
-                    {{
-                        t(
-                            'Every lead your team is working, by where it has got to. Drag a card, or pick a stage and press Move — both do the same thing.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2">
-                <Button variant="outline" as-child>
+            <template #actions>
+                <Button variant="lime" as-child>
                     <Link href="/leads">
                         <List class="size-4" />
                         {{ t('List view') }}
@@ -270,7 +257,7 @@ function removeStage(stage: PipelineStage): void {
                     class="contents"
                 >
                     <Button
-                        variant="outline"
+                        variant="hero"
                         data-test="add-stage"
                         @click="openAddStage"
                     >
@@ -278,8 +265,8 @@ function removeStage(stage: PipelineStage): void {
                         {{ t('Add a stage') }}
                     </Button>
                 </div>
-            </div>
-        </header>
+            </template>
+        </PageHero>
 
         <!-- A move takes the card out of the column the member was looking at, so what happened is
              said out loud. Always mounted, because a live region inserted with text already in it

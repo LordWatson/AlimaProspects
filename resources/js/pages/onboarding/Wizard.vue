@@ -3,6 +3,7 @@ import { Head, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, ArrowRight, Check, Loader2, Pencil } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import PageHero from '@/components/PageHero.vue';
 import ListInput from '@/components/onboarding/ListInput.vue';
 import WizardProgress from '@/components/onboarding/WizardProgress.vue';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,12 @@ import type {
     OnboardingProgressProp,
     OnboardingStepMeta,
 } from '@/types';
+
+defineOptions({
+    layout: {
+        breadcrumbs: [{ title: 'Business profile', href: '/onboarding' }],
+    },
+});
 
 const props = defineProps<{
     steps: OnboardingStepMeta[];
@@ -155,27 +162,29 @@ function finish(): void {
 <template>
     <Head :title="t('Set up your business')" />
 
-    <div class="space-y-8">
-        <header class="max-w-2xl space-y-2">
-            <p class="font-mono text-xs tracking-eyebrow text-brand uppercase">
-                {{ t('Welcome to Alima') }}
-            </p>
-            <h1
-                class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-            >
-                {{ t('Set up your business')
-                }}<span class="text-orange">.</span>
-            </h1>
-            <p class="text-base text-muted-foreground">
-                {{
-                    t(
-                        'Tell us who you are and who you serve, so Alima can find and qualify the right prospects for you. You can stop and pick up where you left off at any time.',
-                    )
-                }}
-            </p>
-        </header>
+    <div class="flex flex-col gap-8 py-2">
+        <PageHero
+            index="02"
+            :eyebrow="t('Business profile')"
+            :title="
+                progress.isComplete
+                    ? 'Who you are,|in your words.'
+                    : 'Tell us who you|are.'
+            "
+            :description="
+                t(
+                    'Tell us who you are and who you serve, so Alima can find and qualify the right prospects for you. You can stop and pick up where you left off at any time.',
+                )
+            "
+            :meta="
+                t('Step :current of :total', {
+                    current: currentIndex + 1,
+                    total: steps.length,
+                })
+            "
+        />
 
-        <div class="grid gap-8 lg:grid-cols-[13rem_1fr]">
+        <div class="grid max-w-5xl gap-8 lg:grid-cols-[13rem_1fr]">
             <WizardProgress
                 :steps="steps"
                 :current-index="currentIndex"

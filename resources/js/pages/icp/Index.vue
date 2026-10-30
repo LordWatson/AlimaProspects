@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Check, Pencil, Plus, Star, Target, Trash2 } from '@lucide/vue';
 import { ref } from 'vue';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -48,38 +49,25 @@ function destroy(icp: Icp): void {
     <Head :title="t('Ideal customers')" />
 
     <div class="flex flex-col gap-8 py-2">
-        <!-- Header -->
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <PageHero
+            index="04"
+            :eyebrow="t('Ideal customers')"
+            :title="t('Who you’re|looking for.')"
+            :description="
+                t(
+                    'Describe the businesses you want to win, and how much each signal matters. Alima uses your active profile to find and score the right prospects.',
+                )
+            "
         >
-            <div class="max-w-2xl space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-                >
-                    {{ t('Ideal customers') }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                >
-                    {{ t('Who you’re looking for')
-                    }}<span class="text-orange">.</span>
-                </h1>
-                <p class="text-base text-muted-foreground">
-                    {{
-                        t(
-                            'Describe the businesses you want to win, and how much each signal matters. Alima uses your active profile to find and score the right prospects.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <Button v-if="can.manage && icps.length" variant="brand" as-child>
-                <Link href="/icp/create" data-test="new-icp">
-                    <Plus class="size-4" />
-                    {{ t('New profile') }}
-                </Link>
-            </Button>
-        </header>
+            <template v-if="can.manage && icps.length" #actions>
+                <Button variant="lime" as-child>
+                    <Link href="/icp/create" data-test="new-icp">
+                        <Plus class="size-4" />
+                        {{ t('New profile') }}
+                    </Link>
+                </Button>
+            </template>
+        </PageHero>
 
         <!-- Empty state -->
         <EmptyState

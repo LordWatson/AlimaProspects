@@ -5,6 +5,7 @@ import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import BulkActionBar from '@/components/leads/BulkActionBar.vue';
 import LeadFilterBar from '@/components/leads/LeadFilterBar.vue';
 import SavedViewBar from '@/components/leads/SavedViewBar.vue';
+import PageHero from '@/components/PageHero.vue';
 import Pagination from '@/components/Pagination.vue';
 import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import { Badge } from '@/components/ui/badge';
@@ -203,58 +204,49 @@ const enrichmentVariant: Record<
     <Head :title="t('Leads')" />
 
     <div class="flex flex-col gap-8 py-2">
-        <!-- Header -->
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <PageHero
+            index="06"
+            :eyebrow="t('Leads')"
+            :title="t('Your|leads.')"
+            :description="
+                t(
+                    'Every company Alima has found for you, graded against your ideal customer. Filter it, save the filters you keep coming back to, and open a lead to see everything Alima knows.',
+                )
+            "
+            :stat="{
+                label: t('In your list'),
+                value: leads.meta.total,
+                caption: t('Companies Alima has found'),
+            }"
         >
-            <div class="max-w-2xl space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-                >
-                    {{ t('Leads') }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                >
-                    {{ t('Your leads') }}<span class="text-orange">.</span>
-                </h1>
-                <p class="text-base text-muted-foreground">
-                    {{
-                        t(
-                            'Every company Alima has found for you, graded against your ideal customer. Filter it, save the filters you keep coming back to, and open a lead to see everything Alima knows.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2">
-                <Button variant="outline" as-child>
+            <template #actions>
+                <Button variant="lime" as-child>
+                    <Link href="/discovery">
+                        <Radar class="size-4" />
+                        {{ t('Find more leads') }}
+                    </Link>
+                </Button>
+                <Button variant="hero" as-child>
                     <Link href="/leads/pipeline">
                         <Columns3 class="size-4" />
                         {{ t('Board view') }}
                     </Link>
                 </Button>
-                <Button v-if="can.import" variant="outline" as-child>
+                <Button v-if="can.import" variant="hero" as-child>
                     <Link href="/leads/import">
                         <Upload class="size-4" />
                         {{ t('Import') }}
                     </Link>
                 </Button>
                 <!-- A plain link, not an Inertia visit: the response is a streamed file download. -->
-                <Button v-if="can.export" variant="outline" as-child>
+                <Button v-if="can.export" variant="hero" as-child>
                     <a :href="exportUrl" data-test="export-leads">
                         <Download class="size-4" />
                         {{ t('Export') }}
                     </a>
                 </Button>
-                <Button variant="outline" as-child>
-                    <Link href="/discovery">
-                        <Radar class="size-4" />
-                        {{ t('Find more leads') }}
-                    </Link>
-                </Button>
-            </div>
-        </header>
+            </template>
+        </PageHero>
 
         <!-- Nothing at all yet: a different situation from "nothing matched" -->
         <EmptyState

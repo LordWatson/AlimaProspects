@@ -1,17 +1,27 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3';
-import { ArrowRight, Search, Send, Sparkles } from '@lucide/vue';
+import { ArrowRight, Satellite, Search, Send, Sparkles } from '@lucide/vue';
 import { computed } from 'vue';
-import PandaPeek from '@/components/PandaPeek.vue';
+import {
+    BarListChart,
+    FunnelChart,
+    GradeMixBar,
+    StatTile,
+    TrendChart,
+} from '@/components/charts';
+import PageHero from '@/components/PageHero.vue';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/composables/useI18n';
 import { dashboard } from '@/routes';
+import type { DashboardReport } from '@/types';
 
 defineOptions({
     layout: {
         breadcrumbs: [{ title: 'Dashboard', href: dashboard() }],
     },
 });
+
+const props = defineProps<{ report: DashboardReport }>();
 
 const { t } = useI18n();
 const page = usePage();
@@ -22,56 +32,50 @@ const showSetup = computed(
 );
 const hasStarted = computed(() => onboarding.value?.started ?? false);
 
+// The hero's one figure — what is waiting on the member, which is the question the reference's
+// "NEEDS ATTENTION / 14" answers. Read off the report rather than re-counted.
+const waiting = computed(
+    () =>
+        props.report.kpis.find((kpi) => kpi.key === 'signals_waiting')?.value ??
+        0,
+);
+
 const firstName = computed(
     () => (page.props.auth.user?.name ?? '').split(' ')[0] || t('there'),
 );
 
-const longDate = computed(() =>
-    new Intl.DateTimeFormat('en-GB', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-    })
-        .format(new Date())
-        .toUpperCase(),
-);
-
-// The prospecting funnel — zero-state for a new account (no fabricated data).
-const stats = [
-    {
-        label: 'Prospects sourced',
-        value: '0',
-        caption: 'From Companies House, web & Places',
-    },
-    { label: 'Qualified', value: '0', caption: 'Scored and enriched by AI' },
-    { label: 'Contacted', value: '0', caption: 'Reached in EN or Arabic' },
-    { label: 'Replies', value: '0', caption: 'Conversations started' },
-];
-
+// The explainer a team sees until it has sourced its first lead. Showing this instead of five
+// charts of zeroes is the point: a new account needs the next step, not an empty report.
 const flow = [
     {
         icon: Search,
         step: '01',
         title: 'Source',
         body: 'Find businesses that fit — from Companies House, the web and Google Places.',
+        href: '/discovery',
+        cta: 'Run a discovery',
     },
     {
         icon: Sparkles,
         step: '02',
         title: 'Qualify',
         body: 'AI scores and enriches every prospect, so you focus on the ones ready to talk.',
+        href: '/icp',
+        cta: 'Set your ideal customer',
     },
     {
         icon: Send,
         step: '03',
         title: 'Reach',
         body: 'Contact prospects in the right language, at the right moment — and track every reply.',
+        href: '/leads',
+        cta: 'Open your leads',
     },
 ];
 </script>
 
 <template>
-    <Head title="Dashboard" />
+    <Head :title="t('Dashboard')" />
 
     <div class="flex flex-col gap-5 py-2">
         <!-- First-run setup nudge (onboarding is not hard-gated) -->
@@ -101,97 +105,187 @@ const flow = [
             </Button>
         </section>
 
-        <!-- Hero ---------------------------------------------------------------->
-        <section
-            class="relative overflow-hidden rounded-3xl bg-ink p-6 text-cream sm:p-9"
+        <!-- Hero -->
+        <PageHero
+            index="01"
+            :eyebrow="t('Overview')"
+            :title="t('Good morning,')"
+            :accent="`${firstName}.`"
+            :stat="{
+                label: t('Needs attention'),
+                value: waiting,
+                caption: t('Signals waiting on you'),
+            }"
+            :description="
+                report.has_data
+                    ? t(
+                          'Where your prospecting stands — what Alima has found, how well it fits, and what is waiting on you.',
+                      )
+                    : t(
+                          'Here\'s where your prospecting stands — and what to set up next so Alima can find and reach the right businesses for you.',
+                      )
+            "
         >
-            <div
-                class="flex items-center justify-between font-mono text-xs tracking-eyebrow text-cream/60 uppercase rtl:tracking-normal"
-            >
-                <span class="flex items-center gap-2">
-                    <span
-                        class="size-2.5 rounded-sm bg-lime"
-                        aria-hidden="true"
-                    />
-                    01 — {{ t('Overview') }}
-                </span>
-                <span>{{ longDate }}</span>
-            </div>
-            <div class="mt-4 h-px w-full bg-cream/15" aria-hidden="true" />
-
-            <div
-                class="mt-8 grid gap-8 lg:grid-cols-[1.5fr_0.5fr] lg:items-center"
-            >
-                <div class="relative z-10">
-                    <h2
-                        class="text-4xl leading-[0.98] font-bold tracking-tight sm:text-5xl"
-                    >
-                        {{ t('Good morning,') }}<br />
-                        <span class="text-lime"
-                            >{{ firstName
-                            }}<span class="text-lime">.</span></span
-                        >
-                    </h2>
-                    <div
-                        class="mt-5 h-1 w-14 rounded-full bg-orange"
-                        aria-hidden="true"
-                    />
-                    <p class="mt-6 max-w-lg text-cream/70">
+            <template #actions>
+                <Button variant="lime" size="lg" as-child>
+                    <Link href="/onboarding">
                         {{
-                            t(
-                                "Here's where your prospecting stands — and what to set up next so Alima can find and reach the right businesses for you.",
-                            )
+                            showSetup
+                                ? t('Set up your business')
+                                : t('View business profile')
                         }}
-                    </p>
-                    <div class="mt-8 flex flex-wrap items-center gap-3">
-                        <Button variant="lime" size="lg" as-child>
-                            <Link href="/onboarding">
-                                {{
-                                    showSetup
-                                        ? t('Set up your business')
-                                        : t('View business profile')
-                                }}
-                                <ArrowRight class="size-4 rtl:rotate-180" />
-                            </Link>
-                        </Button>
-                        <Button
-                            size="lg"
-                            variant="inverse"
-                            as-child
-                            class="bg-transparent text-cream ring-1 ring-cream/30 ring-inset hover:bg-cream/10"
-                        >
-                            <Link href="/design">{{ t('Design system') }}</Link>
+                        <ArrowRight class="size-4 rtl:rotate-180" />
+                    </Link>
+                </Button>
+                <Button size="lg" variant="hero" as-child>
+                    <Link href="/discovery">{{ t('Find leads') }}</Link>
+                </Button>
+            </template>
+        </PageHero>
+
+        <!-- Headline KPIs -->
+        <section
+            class="grid grid-cols-1 gap-px overflow-hidden rounded-3xl border border-border bg-border sm:grid-cols-2 xl:grid-cols-4"
+            :aria-label="t('Headline numbers')"
+        >
+            <StatTile
+                v-for="(kpi, index) in report.kpis"
+                :key="kpi.key"
+                :kpi="kpi"
+                :tone="index === 1 ? 'text-chart-4' : 'text-chart-1'"
+            />
+        </section>
+
+        <!-- The funnel -->
+        <section :aria-label="t('Prospecting funnel')">
+            <FunnelChart :steps="report.funnel" />
+        </section>
+
+        <template v-if="report.has_data">
+            <!-- Trend + fit mix -->
+            <div class="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
+                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                    <TrendChart
+                        :points="report.trend"
+                        :weeks="report.trend_weeks"
+                    />
+                </section>
+                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                    <GradeMixBar :slices="report.grades" />
+                </section>
+            </div>
+
+            <!-- Breakdowns -->
+            <div class="grid gap-5 lg:grid-cols-3">
+                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p
+                                class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
+                            >
+                                {{ t('Pipeline') }}
+                            </p>
+                            <h3
+                                class="mt-2 text-xl font-semibold tracking-tight rtl:font-bold"
+                            >
+                                {{ t('Where your work sits') }}
+                            </h3>
+                        </div>
+                        <Button variant="ghost" size="sm" as-child>
+                            <Link href="/leads/pipeline">{{ t('Board') }}</Link>
                         </Button>
                     </div>
-                </div>
+                    <div class="mt-6">
+                        <BarListChart
+                            v-if="report.stages.length"
+                            :slices="report.stages"
+                            tone="bg-chart-2"
+                            show-share
+                        />
+                        <p v-else class="text-sm text-muted-foreground">
+                            {{ t('No stages yet.') }}
+                        </p>
+                    </div>
+                </section>
 
-                <PandaPeek
-                    class="relative z-0 mx-auto h-40 w-40 lg:ms-auto lg:me-0"
-                />
+                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p
+                                class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
+                            >
+                                {{ t('Sources') }}
+                            </p>
+                            <h3
+                                class="mt-2 text-xl font-semibold tracking-tight rtl:font-bold"
+                            >
+                                {{ t('Where leads came from') }}
+                            </h3>
+                        </div>
+                        <Button variant="ghost" size="sm" as-child>
+                            <Link href="/discovery">{{ t('Discover') }}</Link>
+                        </Button>
+                    </div>
+                    <div class="mt-6">
+                        <BarListChart
+                            v-if="report.sources.length"
+                            :slices="report.sources"
+                            tone="bg-chart-1"
+                            show-share
+                        />
+                        <p v-else class="text-sm text-muted-foreground">
+                            {{ t('Nothing sourced yet.') }}
+                        </p>
+                    </div>
+                </section>
+
+                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p
+                                class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
+                            >
+                                {{ t('Signals') }}
+                            </p>
+                            <h3
+                                class="mt-2 text-xl font-semibold tracking-tight rtl:font-bold"
+                            >
+                                {{ t('Trigger events found') }}
+                            </h3>
+                        </div>
+                        <Button variant="ghost" size="sm" as-child>
+                            <Link href="/signals">{{ t('Feed') }}</Link>
+                        </Button>
+                    </div>
+                    <div class="mt-6">
+                        <BarListChart
+                            v-if="report.signal_types.length"
+                            :slices="report.signal_types"
+                            tone="bg-chart-3"
+                            show-share
+                        />
+                        <div v-else class="flex flex-col items-start gap-4">
+                            <p class="text-sm text-muted-foreground">
+                                {{
+                                    t(
+                                        'No signals yet. Set up a watch and Alima will bring you funding rounds, acquisitions and relocations as they are published.',
+                                    )
+                                }}
+                            </p>
+                            <Button variant="outline" size="sm" as-child>
+                                <Link href="/signals/watches">
+                                    <Satellite class="size-4" />
+                                    {{ t('Watch settings') }}
+                                </Link>
+                            </Button>
+                        </div>
+                    </div>
+                </section>
             </div>
-        </section>
+        </template>
 
-        <!-- Funnel (zero-state) ------------------------------------------------->
-        <section
-            class="grid grid-cols-2 gap-px overflow-hidden rounded-3xl border border-border bg-border lg:grid-cols-4"
-        >
-            <div v-for="stat in stats" :key="stat.label" class="bg-card p-6">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                >
-                    {{ t(stat.label) }}
-                </p>
-                <p class="mt-3 text-5xl font-bold tracking-tight">
-                    {{ stat.value }}
-                </p>
-                <p class="mt-3 text-sm text-muted-foreground">
-                    {{ t(stat.caption) }}
-                </p>
-            </div>
-        </section>
-
-        <!-- Prospecting flow ---------------------------------------------------->
-        <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+        <!-- Zero state: how Alima works, with the next step on each card. -->
+        <section v-else class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
             <p
                 class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
             >
@@ -231,6 +325,17 @@ const flow = [
                     <p class="mt-2 leading-relaxed text-muted-foreground">
                         {{ t(item.body) }}
                     </p>
+                    <Button
+                        variant="link"
+                        size="sm"
+                        as-child
+                        class="mt-4 self-start px-0"
+                    >
+                        <Link :href="item.href">
+                            {{ t(item.cta) }}
+                            <ArrowRight class="size-4 rtl:rotate-180" />
+                        </Link>
+                    </Button>
                 </div>
             </div>
         </section>

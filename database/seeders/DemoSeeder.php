@@ -14,13 +14,25 @@ use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\ICP\Models\Icp;
+use App\Modules\LeadSourcing\Enums\LeadSource;
+use App\Modules\LeadSourcing\Enums\LeadStatus;
+use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadsWorkspace\Actions\EnsureDefaultPipelineStagesAction;
 use App\Modules\Onboarding\Enums\CompanySize;
 use App\Modules\Onboarding\Enums\OnboardingStep;
 use App\Modules\Onboarding\Enums\ServedRegion;
 use App\Modules\Onboarding\Models\BusinessProfile;
 use App\Modules\Onboarding\Models\OnboardingProgress;
+use App\Modules\Scoring\Enums\ScoreGrade;
+use App\Modules\Scoring\Models\LeadScore;
+use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Enums\SignalStatus;
+use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalWatch;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * A full, explorable demo tenancy so the app can be driven end-to-end locally.
@@ -31,6 +43,12 @@ use Illuminate\Support\Facades\DB;
  * in immediately:
  *
  *   alex@user.com  /  password   (Owner of Alima UK, Admin of Alima Gulf)
+ *
+ * Each team also gets a quarter of prospecting history — an active ICP, a graded lead list spread
+ * over the last twelve weeks, a populated pipeline, and (for the UAE team only, per ADR 0011) a
+ * watch with signals — so the **dashboard has something to report**. Since Reporting reads real
+ * rows, a demo tenancy without them lands on the first-run explainer and none of the charts can
+ * be seen.
  *
  * Everything goes through the real Actions / {@see TeamMembership} so the demo data is identical
  * in shape to what registration and invitations produce (pivot role + spatie role kept in sync,
@@ -128,6 +146,13 @@ class DemoSeeder extends Seeder
             'customer_examples' => ['Desert Rose', 'Gulf Star'],
         ]);
 
+        // --- Prospecting history, so the dashboard reports on something ------------------------
+        $this->prospecting($teamContext, $uk, 'UK growth agencies', LeadSource::CompaniesHouse, 'GB');
+        $this->prospecting($teamContext, $gulf, 'UAE hospitality', LeadSource::GooglePlaces, 'AE');
+
+        // Signals are UAE-only in v1 (ADR 0011), so only the Gulf team gets a watch and a feed.
+        $this->signals($teamContext, $gulf);
+
         $this->command?->info('DemoSeeder: seeded 5 users, 2 teams (UK/en + UAE/ar) and 3 invitations.');
         $this->command?->info('DemoSeeder: log in with  alex@user.com  /  password');
     }
@@ -164,6 +189,124 @@ class DemoSeeder extends Seeder
                 'current_step' => OnboardingStep::Review->value,
                 'completed_steps' => OnboardingStep::dataValues(),
                 'completed_at' => now(),
+            ]);
+        });
+    }
+
+    /**
+     * A quarter of prospecting for one team: an active ICP, leads spread back over the twelve weeks
+     * the dashboard trend covers, grades on most of them, and the rest of the list spread across
+     * the default pipeline.
+     *
+     * The ages are deliberate, not random — `created_at` is what the trend buckets on, so leads
+     * all created "now" would draw one spike and twelve empty weeks. The spread rises towards the
+     * present so the chart has a direction to read.
+     */
+    private function prospecting(
+        TeamContext $teamContext,
+        Team $team,
+        string $icpName,
+        LeadSource $mainSource,
+        string $country,
+    ): void {
+        /** @var list<int> $stageIds */
+        $stageIds = app(EnsureDefaultPipelineStagesAction::class)
+            ->handle($team)
+            ->pluck('id')
+            ->values()
+            ->all();
+
+        $teamContext->run($team, function () use ($team, $icpName, $mainSource, $country, $stageIds): void {
+            $icp = Icp::factory()->active()->create([
+                'team_id' => $team->getKey(),
+                'name' => $icpName,
+                'description' => 'The businesses we win most often.',
+            ]);
+
+            // Leads per week, oldest first: a quiet start, a dip, then a build.
+            $perWeek = [2, 4, 3, 6, 5, 8, 7, 11, 9, 14, 12, 16];
+
+            // Grades, in the proportion a real list tends to land in: a few strong fits, a long
+            // tail of partial ones.
+            $gradeMix = [
+                ScoreGrade::A, ScoreGrade::B, ScoreGrade::B, ScoreGrade::C,
+                ScoreGrade::C, ScoreGrade::C, ScoreGrade::D,
+            ];
+
+            $sources = [$mainSource, $mainSource, $mainSource, LeadSource::WebSearch, LeadSource::Import];
+
+            $index = 0;
+
+            foreach ($perWeek as $weeksAgo => $count) {
+                $age = count($perWeek) - 1 - $weeksAgo;
+
+                for ($i = 0; $i < $count; $i++) {
+                    $graded = $index % 3 !== 2;
+
+                    $lead = Lead::factory()->create([
+                        'team_id' => $team->getKey(),
+                        'source' => $sources[$index % count($sources)],
+                        'status' => $graded ? LeadStatus::Scored : LeadStatus::Discovered,
+                        'country' => $country,
+                        // Every fifth lead is on the board, cycling through the stages so no
+                        // column is empty and none holds the whole list.
+                        'pipeline_stage_id' => $index % 5 === 0 && $stageIds !== []
+                            ? $stageIds[intdiv($index, 5) % count($stageIds)]
+                            : null,
+                        'dedupe_key' => 'demo:'.Str::lower(Str::random(16)),
+                    ]);
+
+                    // Spread inside the week so a day-level view is not a single stack either.
+                    $lead->forceFill([
+                        'created_at' => now()->subWeeks($age)->subDays($i % 5)->subHours($i),
+                    ])->saveQuietly();
+
+                    if ($graded) {
+                        $grade = $gradeMix[$index % count($gradeMix)];
+
+                        LeadScore::factory()->create([
+                            'team_id' => $team->getKey(),
+                            'lead_id' => $lead->getKey(),
+                            'icp_id' => $icp->getKey(),
+                            'grade' => $grade,
+                            'score' => match ($grade) {
+                                ScoreGrade::A => 88,
+                                ScoreGrade::B => 71,
+                                ScoreGrade::C => 52,
+                                ScoreGrade::D => 24,
+                            },
+                        ]);
+                    }
+
+                    $index++;
+                }
+            }
+        });
+    }
+
+    /**
+     * A Dubai watch and a small feed for the UAE team — one of each event type, plus a dismissed
+     * one so the Dismissed tab (and the "undismissed only" rule the dashboard counts by) are both
+     * visible.
+     */
+    private function signals(TeamContext $teamContext, Team $team): void
+    {
+        $teamContext->run($team, function () use ($team): void {
+            $watch = SignalWatch::factory()->create([
+                'team_id' => $team->getKey(),
+                'name' => 'Dubai wealth events',
+                'last_run_at' => now()->subHours(6),
+            ]);
+
+            $shared = ['team_id' => $team->getKey(), 'signal_watch_id' => $watch->getKey()];
+
+            Signal::factory()->count(4)->create([...$shared, 'event_type' => SignalEventType::FundingRound]);
+            Signal::factory()->count(2)->create([...$shared, 'event_type' => SignalEventType::Acquisition]);
+            Signal::factory()->create([...$shared, 'event_type' => SignalEventType::Relocation]);
+            Signal::factory()->create([
+                ...$shared,
+                'event_type' => SignalEventType::Acquisition,
+                'status' => SignalStatus::Dismissed,
             ]);
         });
     }

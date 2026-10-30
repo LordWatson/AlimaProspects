@@ -5,6 +5,120 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-30 — a panda on every hero, and the EN/AR parity the heroes owed
+
+- **Every `PageHero` now carries the peek** — Soft Lilac, scaled up, set into the bottom end corner
+  and cropped by the card on two edges at about three quarters of the face, both eyes in frame. The
+  same mark, the same colour, the same placement on every screen, matching the reference screens the
+  brand owner supplied (`resources/screenshots/Dashboard1.png`, `Clients.png`). Offsets are
+  **logical**, so under RTL the peek moves to the other side with the layout while the mark itself
+  never mirrors.
+- **It does not vary per screen, and that was a correction.** The first build gave each destination
+  its own tone and crop; the brand owner's verdict was that it had been moved, recoloured and taken
+  off brand, and they were right — the app read as eight different products. §5's "one peek, one
+  colour per layout" is about the mark being consistent, not an invitation to reskin it per page. A
+  screen is told apart by its number, its statement and its figure. Recorded under §5 in
+  `brand-tokens.md`, including that the Lilac face is a third accent beside the statement's Lime and
+  the rule's Orange — a call the brand owner has made, not one to "fix" back.
+- **The eyes are never redirected.** Varying the pupils was the obvious way to make each screen's
+  panda its own, and the brand book forbids it outright — "turn the pupils" is on §4's Never list,
+  alongside stretching and rotating.
+- **A headline figure on the hero** (`stat`), as in the reference: the one number that matters on
+  that screen, set large in Lime against the end edge with a tracked label above and a line beneath.
+  Counts are zero-padded to two digits, so a team starting from nothing still gets a figure with
+  weight. Wired on the Dashboard (signals waiting), Leads (list size) and Signals (unactioned);
+  screens with no such number omit it and the statement runs wider.
+- **A hero statement is one translation key again.** Splitting the title into `title` + `accent`
+  props had quietly made every headline two keys, which forces Arabic to accept English word order.
+  It is now a single key carrying a `|` where the Lime tail starts — `t('Find your next|leads.')` —
+  and the component splits the **translated** string, so each language breaks its own line. Several
+  of the Arabic statements break in a different place from the English, which is the point.
+  `accent` survives for the one case that is data rather than copy: the dashboard's first name.
+- **73 + 6 new EN/AR keys, at parity.** The dashboard, the chart set and the heroes had shipped a
+  wall of untranslated English into an app that is bilingual by ADR. Everything the Reporting
+  module emits is a key rather than a sentence — `BuildHeadlineKpisAction` was building a caption
+  with `sprintf`, which would have put English on an Arabic screen whatever the locale, and the
+  denominator it was inlining is already on the fit-mix chart.
+- **Components take finished strings; pages call `t()`.** `PageHero` had started translating its own
+  props, which made it the odd one out and, when I mechanically converted the call sites, silently
+  turned several `EmptyState` descriptions into raw English keys. Reverted to the convention.
+- **The topbar label is translated too.** Breadcrumb titles are declared as English keys in each
+  page's `defineOptions` and were rendered raw, so an Arabic screen had one English word above an
+  Arabic hero. `AppSidebarLayout` now runs the last crumb through `t()`, and the 6 crumb titles that
+  had no bundle entry got one.
+- **Still English, and out of scope:** the public marketing pages, `Welcome.vue` and `About.vue`.
+  Their copy has never been in the bundles; translating it is a copywriting job, not a mechanical
+  one, and it is the only remaining gap the key audit reports.
+- `composer test` green (835), `composer analyse` clean (level 7), `npm run check` / `types:check` /
+  `build` green. Verified on screen in both languages: the hero, the peek placement and the chart
+  set in LTR and RTL, light and dark.
+
+### Added — 2026-10-30 — a dashboard that reports on real data, and one page hero everywhere
+
+- **New `Reporting` module** (ADR 0002; the home Phase 13 will build out). `dashboard` was a
+  `Route::inertia` stub rendering hard-coded zeroes; it is now `DashboardController` →
+  `DashboardReportBuilder` → seven focused aggregation Actions over leads, scores, the pipeline,
+  signals and AI usage. The module owns no tables — it is a read-model — and the builder is free of
+  the controller so the mobile dashboard (Phase 18) and a future `/api/v1/reports` can reuse it.
+  Authorisation is `TeamPolicy::viewReports`: any member, Read-only included, because reporting is a
+  view of work the team already owns.
+- **What the dashboard now shows.** Four KPI tiles with sparklines (leads, with a true 30-day-vs-the-
+  30-before delta; strong fits; signals waiting; AI & data spend this month); the prospecting funnel;
+  a twelve-week sourced-vs-qualified trend; the A–D fit mix; and breakdowns by pipeline stage, lead
+  source and signal event type. A team with no leads still gets the "how Alima works" explainer
+  rather than five empty frames — `has_data` decides that server-side, once.
+- **The funnel refuses to invent two of its own steps.** Outreach (Phase 11) owns contacts and
+  replies, so those steps come down `available: false` with a **null** value and render as an em
+  dash, a padlock and "Arrives with Outreach". `0` would read as "nobody replied", which is a
+  different claim from "we are not tracking this yet"; a test pins the distinction so a later change
+  cannot quietly turn them into zeroes. The two steps that do have data are a **cohort** — "of the
+  40 we found that week, 11 were worth calling" — not two unrelated series.
+- **Charts hand-built, no dependency.** `StatTile`, `SparkLine`, `TrendChart`, `FunnelChart`,
+  `GradeMixBar`, `BarListChart`, all on brand tokens and all to the `dataviz` guidance: one y-axis,
+  2px marks, a recessive grid, a legend whenever there are two series, direct labels, and an sr-only
+  table as every chart's text equivalent. The trend line has a crosshair + tooltip on hover **and**
+  on arrow keys, and mirrors correctly under RTL. Bars are plain HTML — a bar is a box of a given
+  width, and `div`s mirror for free; only the line needed SVG.
+- **The chart palette is settled** (`brand-tokens.md` §7.7 moves from PENDING to RESOLVED, with the
+  measurements). Three findings: the base accents do not work as data marks — Acid Lime is **1.3:1**
+  on Cloud Cream and base Lilac reads grey — so `--chart-*` now carries re-stepped variants;
+  `chart-1`/`chart-4` are a validated two-series pair (deutan ΔE 23.6) whose **hexes are identical in
+  both themes**, so a series never changes identity when the theme flips; and the five brand accents
+  **cannot** form a five-way categorical palette (Blue↔Lilac ΔE 2.9 under deuteranopia), so charts
+  use at most two series and everything else is single-series magnitude. A grade is a state, not a
+  series, so the fit-mix bar reuses `GradeBadge`'s status tokens — colour follows the entity.
+- **The dashboard's hero card is now every screen's header.** Extracted to `PageHero`: the Ink panel,
+  the numbered mono eyebrow matching the sidebar, the Lime accent, the one Orange rule, the lead
+  paragraph and an `actions` slot. Applied to Dashboard, Business profile, Background check, Ideal
+  customers, Lead discovery, Leads, Pipeline, Signals, Watch settings (compact) and the Design
+  System. A new `hero` Button variant gives the secondary action an outline that works **on Ink**
+  (`outline` is a cream chip on a dark panel); the peek stays on the dashboard alone, since the brand
+  allows one per layout. The shell's topbar title dropped from `<h1>` to `<p>` — the hero carries the
+  page's one level-one heading now.
+- **The business profile is part of the app again.** `onboarding/` pages fell through to a dedicated
+  chrome-less layout, so the screen a sidebar item points at had no sidebar, no breadcrumb and no
+  topbar — it read like a different product. `OnboardingLayout.vue` is **deleted** and those pages
+  use the standard shell; everything it provided (locale, appearance, logout, toasts) the shell
+  already has, and onboarding is not hard-gated, so there was nothing to protect by hiding the nav.
+- **`DemoSeeder` now seeds a quarter of prospecting** — an active ICP, a graded lead list spread back
+  over the twelve weeks the trend covers, a populated pipeline, and a Dubai watch with signals for
+  the UAE team (ADR 0011). Without rows, a demo tenancy lands on the first-run explainer and none of
+  the charts can be seen.
+- **A real bug the unit tests caught.** `WeeklyBuckets` annotated its clock as `CarbonImmutable` and
+  relied on `AppServiceProvider` having configured the Date facade that way. Against a mutable Carbon
+  — which is what a Unit test gets, since the app is not booted — `subWeeks()`/`addWeek()` rewrote the
+  same instant on every pass and the twelve buckets came out duplicated and out of order. It now
+  converts explicitly, so the chart cannot depend on a global setting being right.
+- **Tests (16):** 11 feature (funnel counts, the unavailable steps, weekly bucketing and the
+  cohort invariant, all four grades always present, source ordering, stage order, undismissed-only
+  signal counts, cross-tenant isolation, Read-only access) and 5 unit (timezone week cutting, the
+  Dubai-vs-London cut at the same instant, window bounds, the generated SQL and its bindings, row
+  reading). `composer test` green (835), `composer analyse` clean (level 7), `npm run check` /
+  `types:check` / `build` green.
+
+**Phase 13 is not done** — it is 🟡 in `mvp.md`. Date-range filters, CSV export, ICP/source performance
+and team-activity reports, fuller AI usage, and the Outreach halves of the funnel all remain.
+
 ### Fixed — 2026-10-30 — a signal with a long article URL couldn't be converted
 
 - **The crash.** `signals.source_url` has been 2048 wide since S3, but `leads.source_url` and `lead_contacts.source_url` were Laravel's default **255**. Serper answers some articles with a Google redirect rather than the publisher's own link — `https://google.com/goto?url=<opaque token>`, about 280 characters — and `ConvertSignalToLeadAction::addContact()` wrote `$signal->source_url` **raw**, bypassing the clamp the lead's own value went through. Result: `SQLSTATE[22001] Data too long for column 'source_url'`, so the signals a member most wanted were the ones that could not be converted.

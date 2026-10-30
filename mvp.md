@@ -21,7 +21,7 @@
 | 10b   | Leads Workspace — pipeline, notes, tasks, CSV | ✅ Done | 2026-10-29 |
 | 11    | Outreach (MVP)                                | ⬜      | —          |
 | 12    | Notifications                                 | ⬜      | —          |
-| 13    | Reporting & Analytics                         | ⬜      | —          |
+| 13    | Reporting & Analytics                         | 🟡      | —          |
 | 14    | AI Insights (light)                           | ⬜      | —          |
 | 15    | Compliance & Privacy features                 | ⬜      | —          |
 | 16    | Billing & Plans                               | ⬜      | —          |
@@ -363,14 +363,18 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Reporting & Analytics (`reporting-analytics.md`), `dataviz` skill.
 **Tasks:**
 
-1. [ ] Aggregation services (optional rollup tables) over leads/scores/pipeline/outreach/AI usage.
-2. [ ] Dashboard: KPIs, funnel by stage, source performance, ICP performance, team activity, AI credits.
-3. [ ] Date-range filters; **CSV export** of any report; charts per the `dataviz` guidance.
-       **Data model:** optional `report_rollups`.
-       **Tests:** aggregation correctness; date filter; CSV export; tenancy.
-       **Acceptance:** dashboard accurate + exportable; gates pass; docs updated.
-       **Dispatch prompt:** _"Execute Phase 13 of mvp.md (Reporting & Analytics). Read the module doc; load the dataviz skill for charts. Build the aggregation + dashboard + filters + CSV export, and tests."_
-       **Risks:** aggregation performance (consider rollups); chart accessibility.
+1. [~] Aggregation services (optional rollup tables) over leads/scores/pipeline/outreach/AI usage. _(2026-10-30: the `Reporting` module exists — `DashboardReportBuilder` + 7 aggregation Actions reading leads/scores/pipeline/signals/AI usage live. No rollup tables; outreach has no source of truth until Phase 11.)_
+2. [~] Dashboard: KPIs, funnel by stage, source performance, ICP performance, team activity, AI credits. _(2026-10-30: KPIs, the funnel, a 12-week sourced-vs-qualified trend, the A–D fit mix, and breakdowns by pipeline stage / lead source / signal event type. **Still open:** ICP performance, team activity, and AI usage beyond a single spend tile.)_
+3. [~] Date-range filters; **CSV export** of any report; charts per the `dataviz` guidance. _(2026-10-30: charts built to the `dataviz` guidance — hand-rolled SVG/HTML on validated `--chart-*` tokens, no dependency. **Date-range filters and CSV export are not started.**)_
+   **Data model:** optional `report_rollups`.
+   **Tests:** aggregation correctness; date filter; CSV export; tenancy.
+   **Acceptance:** dashboard accurate + exportable; gates pass; docs updated.
+   **Done so far (2026-10-30, outside a formal phase run):** the dashboard and the chart
+   component set, with tests. What remains to close the phase: date-range filters, CSV export,
+   ICP/source performance and team-activity reports, fuller AI usage, and the Outreach halves of
+   the funnel once Phase 11 lands.
+   **Dispatch prompt:** _"Execute Phase 13 of mvp.md (Reporting & Analytics). Read the module doc; load the dataviz skill for charts. Build the aggregation + dashboard + filters + CSV export, and tests."_
+   **Risks:** aggregation performance (consider rollups); chart accessibility.
 
 ---
 

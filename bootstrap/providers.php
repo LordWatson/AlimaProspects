@@ -9,6 +9,7 @@ use App\Modules\ICP\Providers\IcpServiceProvider;
 use App\Modules\LeadSourcing\Providers\LeadSourcingServiceProvider;
 use App\Modules\LeadsWorkspace\Providers\LeadsWorkspaceServiceProvider;
 use App\Modules\Onboarding\Providers\OnboardingServiceProvider;
+use App\Modules\Reporting\Providers\ReportingServiceProvider;
 use App\Modules\Scoring\Providers\ScoringServiceProvider;
 use App\Modules\Signals\Providers\SignalsServiceProvider;
 use App\Providers\AppServiceProvider;
@@ -32,4 +33,5 @@ return [
     ScoringServiceProvider::class,
     LeadsWorkspaceServiceProvider::class,
     SignalsServiceProvider::class,
+    ReportingServiceProvider::class,
 ];

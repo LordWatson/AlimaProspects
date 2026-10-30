@@ -2,6 +2,14 @@
 import { Head } from '@inertiajs/vue3';
 import { Inbox, Rocket, Sparkles } from '@lucide/vue';
 import { toast } from 'vue-sonner';
+import {
+    BarListChart,
+    FunnelChart,
+    GradeMixBar,
+    StatTile,
+    TrendChart,
+} from '@/components/charts';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,6 +49,78 @@ defineOptions({
 
 // Swatches reference brand token utilities (never raw hex in styles); the hex is
 // shown only as a label. Full literal class strings so Tailwind generates them.
+/*
+ * Sample data for the chart showcase. Invented numbers on purpose — this page documents the marks,
+ * not a team's results, and it is the one screen where made-up figures are honest.
+ */
+const demoTrend = [
+    { label: '11 Aug', starts_on: '2026-08-11', sourced: 12, qualified: 3 },
+    { label: '18 Aug', starts_on: '2026-08-18', sourced: 18, qualified: 5 },
+    { label: '25 Aug', starts_on: '2026-08-25', sourced: 9, qualified: 4 },
+    { label: '1 Sep', starts_on: '2026-09-01', sourced: 26, qualified: 9 },
+    { label: '8 Sep', starts_on: '2026-09-08', sourced: 31, qualified: 14 },
+    { label: '15 Sep', starts_on: '2026-09-15', sourced: 22, qualified: 11 },
+    { label: '22 Sep', starts_on: '2026-09-22', sourced: 35, qualified: 18 },
+    { label: '29 Sep', starts_on: '2026-09-29', sourced: 41, qualified: 19 },
+];
+
+const demoFunnel = [
+    {
+        key: 'sourced',
+        label: 'Prospects sourced',
+        caption: 'From Companies House, the web and Google Places',
+        value: 194,
+        available: true,
+    },
+    {
+        key: 'qualified',
+        label: 'Strong fits',
+        caption: 'Graded A or B against your active ideal customer',
+        value: 83,
+        available: true,
+    },
+    {
+        key: 'contacted',
+        label: 'Contacted',
+        caption: 'Arrives with Outreach',
+        value: null,
+        available: false,
+    },
+    {
+        key: 'replied',
+        label: 'Replies',
+        caption: 'Arrives with Outreach',
+        value: null,
+        available: false,
+    },
+];
+
+const demoGrades = [
+    { key: 'A', label: 'A — strong fit', value: 34, hint: null },
+    { key: 'B', label: 'B — good fit', value: 49, hint: null },
+    { key: 'C', label: 'C — partial fit', value: 61, hint: null },
+    { key: 'D', label: 'D — weak fit', value: 18, hint: null },
+];
+
+const demoSources = [
+    { key: 'companies_house', label: 'Companies House', value: 96, hint: null },
+    { key: 'google_places', label: 'Google Places', value: 58, hint: null },
+    { key: 'web_search', label: 'Web search', value: 31, hint: null },
+    { key: 'signal', label: 'Signal', value: 9, hint: null },
+];
+
+const demoKpi = {
+    key: 'leads',
+    label: 'Leads in your list',
+    value: 194,
+    caption: 'Every company Alima has found for you',
+    format: 'count' as const,
+    currency: null,
+    delta: 27,
+    delta_label: 'vs the 30 days before',
+    spark: demoTrend.map((point) => point.sourced),
+};
+
 const swatches = [
     { name: 'Deep Teal', hex: '#205557', bg: 'bg-teal', fg: 'text-cream' },
     { name: 'Midnight Ink', hex: '#181723', bg: 'bg-ink', fg: 'text-cream' },
@@ -84,22 +164,14 @@ const grades = [
 <template>
     <Head title="Design system" />
 
-    <div class="mx-auto flex w-full max-w-5xl flex-col gap-10 p-6">
-        <header class="flex flex-col gap-2">
-            <span
-                class="font-mono text-xs tracking-[0.25em] text-brand uppercase"
-            >
-                Alima brand
-            </span>
-            <h1 class="text-3xl font-semibold tracking-tight">
-                Marketing brighter together<span class="text-orange">.</span>
-            </h1>
-            <p class="max-w-prose text-muted-foreground">
-                The base component library, built on brand tokens. Lead with
-                Cloud Cream, one hero accent per layout. Signal Orange is
-                decorative only — never a status colour.
-            </p>
-        </header>
+    <div class="mx-auto flex w-full max-w-5xl flex-col gap-10 py-2">
+        <PageHero
+            index="08"
+            eyebrow="Alima brand"
+            title="Marketing brighter|together."
+            description="The base component library, built on brand tokens. Lead with Cloud Cream, one hero accent per layout. Signal Orange is decorative only — never a status colour."
+            :meta="null"
+        />
 
         <!-- Colour -->
         <section class="flex flex-col gap-4">
@@ -360,6 +432,81 @@ const grades = [
                 <Button>Let's grow</Button>
                 <Button variant="outline">See the work</Button>
             </EmptyState>
+        </section>
+
+        <!-- Charts -->
+        <section class="flex flex-col gap-4">
+            <h2
+                class="font-mono text-sm tracking-wide text-muted-foreground uppercase"
+            >
+                Charts
+            </h2>
+            <p class="max-w-prose text-sm text-muted-foreground">
+                Hand-built from the validated <code>--chart-*</code> tokens — no
+                charting dependency. One y-axis, thin marks, a recessive grid, a
+                legend whenever there are two series, and a text equivalent for
+                every chart. The base Acid Lime and Soft Lilac are re-stepped
+                for data marks (they are 1.3:1 and near-grey as fills on cream);
+                Signal Orange never encodes a value. See
+                <code>docs/brand/brand-tokens.md</code> §7.7.
+            </p>
+
+            <div
+                class="grid gap-px overflow-hidden rounded-3xl border border-border bg-border sm:grid-cols-2"
+            >
+                <StatTile :kpi="demoKpi" />
+                <StatTile
+                    :kpi="{
+                        ...demoKpi,
+                        key: 'spend',
+                        label: 'AI & data this month',
+                        value: 4215,
+                        format: 'money',
+                        currency: 'GBP',
+                        caption: 'What Alima spent finding and grading for you',
+                        delta: null,
+                        delta_label: null,
+                        spark: [],
+                    }"
+                />
+            </div>
+
+            <FunnelChart :steps="demoFunnel" />
+
+            <Card>
+                <CardContent class="pt-6">
+                    <TrendChart :points="demoTrend" :weeks="8" />
+                </CardContent>
+            </Card>
+
+            <div class="grid gap-6 lg:grid-cols-2">
+                <Card>
+                    <CardContent class="pt-6">
+                        <GradeMixBar :slices="demoGrades" />
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent class="flex flex-col gap-6 pt-6">
+                        <div>
+                            <p
+                                class="font-mono text-xs tracking-eyebrow text-brand uppercase"
+                            >
+                                Sources
+                            </p>
+                            <h3
+                                class="mt-2 text-xl font-semibold tracking-tight"
+                            >
+                                Where leads came from
+                            </h3>
+                        </div>
+                        <BarListChart
+                            :slices="demoSources"
+                            tone="bg-chart-1"
+                            show-share
+                        />
+                    </CardContent>
+                </Card>
+            </div>
         </section>
     </div>
 </template>

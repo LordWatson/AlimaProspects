@@ -200,13 +200,18 @@
     --info: #2c6cad;
     --info-foreground: #fbfaf6;
 
-    /* Charts — Blue, Teal, Lilac, Lime, Orange (orange last/decorative).
-       Accessible per-series variants are a dataviz-phase concern (§7). */
-    --chart-1: #4e91d4;
-    --chart-2: #205557;
-    --chart-3: #c9a4d8;
-    --chart-4: #d2e842;
-    --chart-5: #f03d2a;
+    /* Charts — the brand accents re-stepped for data marks (brand-tokens.md §7.7, resolved).
+       `chart-1` + `chart-4` are the validated **two-series pair** (deutan ΔE 23.6, both ≥3:1 on
+       this surface and on the dark one — the same two hexes pass in both modes, so a series never
+       changes colour with the theme). `chart-2`/`chart-3` are single-series fills. `chart-5` is
+       Signal Orange: decorative only, it never encodes a value or a state.
+       Base Lime (#d2e842) is 1.3:1 on cream and base Lilac reads grey as a mark, so both are
+       darkened/chroma-raised here — exactly the per-series variants §7.7 anticipated. */
+    --chart-1: #4e91d4; /* Blue — series 1 */
+    --chart-2: #205557; /* Teal — single-series bars (8.1:1) */
+    --chart-3: #a86fc4; /* Lilac, chroma raised so it reads as a hue, not grey */
+    --chart-4: #7e931b; /* Lime, darkened for the cream canvas — series 2 */
+    --chart-5: #f03d2a; /* Signal Orange — decorative, never data */
 
     /* Sidebar — cream surface, teal selected state */
     --sidebar: #fbfaf6;
@@ -263,11 +268,14 @@
     --info: #6fa4d8;
     --info-foreground: #181723;
 
-    --chart-1: #6fa4d8;
-    --chart-2: #759491;
-    --chart-3: #d2b4db;
-    --chart-4: #d9ea63;
-    --chart-5: #f16150;
+    /* Charts on Ink. Series 1 and 2 keep their light-mode hexes on purpose — both clear 4.6:1
+       here and stay a validated pair, so a line does not change identity when the theme flips.
+       Only the single-series fills move: brand Teal is 1.9:1 on Ink, i.e. invisible. */
+    --chart-1: #4e91d4;
+    --chart-2: #2f9e9b; /* Teal, lightened to 5.0:1 on Ink */
+    --chart-3: #a86fc4;
+    --chart-4: #7e931b;
+    --chart-5: #f16150; /* decorative, never data */
 
     --sidebar: #1e1d2a;
     --sidebar-foreground: #c9c6c1;

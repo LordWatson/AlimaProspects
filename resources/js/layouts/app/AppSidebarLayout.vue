@@ -27,7 +27,10 @@ const props = withDefaults(defineProps<{ breadcrumbs?: BreadcrumbItem[] }>(), {
     breadcrumbs: () => [],
 });
 
-const title = computed(() => props.breadcrumbs.at(-1)?.title ?? t('Dashboard'));
+// Breadcrumb titles are declared as English keys in each page's `defineOptions`, so they are
+// translated here rather than shipped raw to the topbar — the label beside an Arabic hero should
+// not be the only English word on the screen.
+const title = computed(() => t(props.breadcrumbs.at(-1)?.title ?? 'Dashboard'));
 
 const today = computed(() =>
     new Intl.DateTimeFormat('en-GB', {
@@ -77,9 +80,14 @@ const today = computed(() =>
                     </SheetContent>
                 </Sheet>
 
-                <h1 class="truncate text-lg font-semibold tracking-tight">
+                <!--
+                  A label, not a heading: every main screen opens with a `PageHero`, and that
+                  card's statement is the page's one `<h1>`. Two competing level-one headings
+                  would make the document outline lie about which is the title.
+                -->
+                <p class="truncate text-lg font-semibold tracking-tight">
                     {{ title }}
-                </h1>
+                </p>
 
                 <div class="ms-auto flex items-center gap-2 sm:gap-3">
                     <span

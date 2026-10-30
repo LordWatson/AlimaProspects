@@ -3,6 +3,7 @@ import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { Check, Radar, Search } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -125,27 +126,16 @@ onBeforeUnmount(() => {
     <Head :title="t('Lead discovery')" />
 
     <div class="flex flex-col gap-8 py-2">
-        <!-- Header -->
-        <header class="max-w-2xl space-y-2">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-            >
-                {{ t('Lead discovery') }}
-            </p>
-            <h1
-                class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-            >
-                {{ t('Find your next leads')
-                }}<span class="text-orange">.</span>
-            </h1>
-            <p class="text-base text-muted-foreground">
-                {{
-                    t(
-                        'Search public sources for companies that match your ideal customer. Alima runs the search in the background and collects the results here.',
-                    )
-                }}
-            </p>
-        </header>
+        <PageHero
+            index="05"
+            :eyebrow="t('Lead discovery')"
+            :title="t('Find your next|leads.')"
+            :description="
+                t(
+                    'Search public sources for companies that match your ideal customer. Alima runs the search in the background and collects the results here.',
+                )
+            "
+        />
 
         <!-- New discovery form -->
         <Card v-if="can.manage">

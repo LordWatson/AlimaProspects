@@ -39,6 +39,16 @@ final class TeamPolicy
     }
 
     /**
+     * See the team's dashboard and reports. Any member, Read-only included: reporting is a view of
+     * work the team already owns, and hiding the numbers from the person asked to read them would
+     * make the role useless.
+     */
+    public function viewReports(User $user, Team $team): bool
+    {
+        return $user->belongsToTeam($team);
+    }
+
+    /**
      * Invite, resend, revoke, remove members and change roles.
      */
     public function manageMembers(User $user, Team $team): bool

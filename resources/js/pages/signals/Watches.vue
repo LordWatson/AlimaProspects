@@ -3,6 +3,7 @@ import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ArrowLeft, Pause, Play, Satellite, Trash2 } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -350,33 +351,27 @@ onBeforeUnmount(() => {
     <Head :title="t('Watch settings')" />
 
     <div class="flex flex-col gap-8 py-2">
-        <!-- Header -->
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <!-- Compact: a settings screen under Signals, not a destination of its own. -->
+        <PageHero
+            index="07"
+            :eyebrow="t('Watch settings')"
+            :title="t('Tell Alima where|to look.')"
+            :description="
+                t(
+                    'A watch is a standing instruction: a place, the kinds of event that matter, and how often to check.',
+                )
+            "
+            size="compact"
         >
-            <div class="max-w-2xl space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
+            <template #actions>
+                <Button
+                    v-if="can.manage && watches.length"
+                    variant="lime"
+                    @click="openNew"
                 >
-                    {{ t('Watch settings') }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                >
-                    {{ t('Tell Alima where to look')
-                    }}<span class="text-orange">.</span>
-                </h1>
-                <p class="text-base text-muted-foreground">
-                    {{
-                        t(
-                            'A watch is a standing instruction: a place, the kinds of event that matter, and how often to check.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2">
-                <Button variant="outline" as-child>
+                    {{ t('New watch') }}
+                </Button>
+                <Button variant="hero" as-child>
                     <Link href="/signals">
                         <ArrowLeft
                             class="size-4 rtl:rotate-180"
@@ -385,11 +380,8 @@ onBeforeUnmount(() => {
                         {{ t('Back to signals') }}
                     </Link>
                 </Button>
-                <Button v-if="can.manage && watches.length" @click="openNew">
-                    {{ t('New watch') }}
-                </Button>
-            </div>
-        </header>
+            </template>
+        </PageHero>
 
         <!-- Always mounted, so a screen reader is already listening when a stage lands: a region
              that appears with its own first message is announced inconsistently. Carries the

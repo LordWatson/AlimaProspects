@@ -125,6 +125,10 @@ Lead with **Cloud Cream ~50%**, Teal ~20%, Ink ~15%, Accents ~15% (Orange 5 · B
 - **The confetti** — chunky loops/crosses/dots, heavier than the squiggle, use big. Pairs: Cream/Ink, Teal/Lilac.
 - **Pattern rules:** full-bleed/panels, crop freely, strokes ≥2mm print / ≥6px screen, two colours from an approved pair, text only on a solid panel above. Never recolour to 3+ colours, run body text over it, distort it, mix squiggle+confetti, or trace it.
 - **The peek** — panda scaled up and cropped by the frame; both eyes in frame, bleed 1–2 edges, ≥3× any nearby logo, one peek / one colour per layout.
+    - _Product application (2026-10-30), set by the brand owner against the reference screens in `resources/screenshots/`:_ every `PageHero` carries exactly one peek, and **it is the same peek on every screen** — Soft Lilac, scaled up, set into the bottom end corner, cropped by the card on the bottom and end edges at roughly three quarters of the face, both eyes in frame. One peek, one colour, one placement.
+        - Lilac on Ink is colourway 05. It makes a third accent alongside the statement's Lime and the rule's Orange, which §1.2 would otherwise hold to two; **the brand owner has made that call** for the hero specifically, and the reference screens are the record of it. Do not "fix" it back to Lime or Cream.
+        - An earlier build varied the tone and the crop per screen. It was wrong: the app read as eight different products, and §5's "one peek, one colour per layout" is about the mark being consistent, not an invitation to reskin it per page. A screen's identity comes from its number, its statement and its figure.
+        - The artwork is never touched. §4's Never list includes turning the pupils, so the eyes are not redirected to vary a screen.
 - **Icons:** rounded line icons, 24px grid, 2px stroke, round caps; base set **Lucide** (extended); one colour only; always paired with a label in UI. Feature icons = solid circle at 2× icon size.
 - **Imagery:** real people/work/light, candid over posed, bright & warm daylight, one spark of palette colour in frame, room for type, square crops / sharp rectangles. Avoid handshakes, pointing-at-screens, heavy filters, off-palette duotones, generic stock.
 
@@ -155,7 +159,26 @@ CTAs: _Let's grow · Let's talk · Start a project · See the work_. Headlines l
 4. **Confirm** whether the product UI uses Signal Orange purely decoratively (per book) given how often SaaS UIs reach for orange as a warning — we will honour the book and use `#8A5A00` for warnings.
 5. **PENDING — Warm UI neutrals (Phase 2).** shadcn/the component system needs neutral surfaces the book doesn't name. Proposed, derived warm from Cream/Ink/Teal tints: `--secondary #E9E6DC`, `--muted #ECE9DF`, `--accent #E6ECE9` (soft teal tint for hover/selected), `--border #DDD9CC`. Confirm or replace with exact book tints.
 6. **PENDING — `--info` status token.** The book defines only error/warning/success. The product needs a neutral "informational / in-progress" state; proposed `#2C6CAD` light / `#6FA4D8` dark (a blue, distinct from decorative Orange). Confirm, or restrict UI to the three book statuses.
-7. **PENDING — chart palette (Phase 2 seed, finalised at Reporting/dataviz).** Series map to Blue, Teal, Lilac, Lime, Orange (Orange last, decorative, never encodes state). Accessible per-series variants (e.g. a darker Lime for a cream canvas) are a dataviz-phase decision — the base Lime `#D2E842` is low-contrast as a mark.
+7. **SETTLED IN ENGINEERING 2026-10-30, still needs brand-owner sign-off — chart palette** (was PENDING since Phase 2; settled with the `dataviz` guidance when the dashboard was built). The per-series variants §7 anticipated now exist in `app.css` as `--chart-1…5`, validated with the `dataviz` skill's checker against the card surface in both themes:
+
+    | Token     | Light     | Dark      | Role                                            |
+    | --------- | --------- | --------- | ----------------------------------------------- |
+    | `chart-1` | `#4E91D4` | `#4E91D4` | Blue — **series 1**                             |
+    | `chart-2` | `#205557` | `#2F9E9B` | Teal — single-series fills (funnel, pipeline)   |
+    | `chart-3` | `#A86FC4` | `#A86FC4` | Lilac, chroma raised — single-series fills      |
+    | `chart-4` | `#7E931B` | `#7E931B` | Lime, darkened — **series 2**                   |
+    | `chart-5` | `#F03D2A` | `#F16150` | Signal Orange — **decorative only, never data** |
+
+    Three findings worth keeping:
+    - **The base accents do not work as data marks.** Acid Lime `#D2E842` is **1.3:1** on Cloud Cream and base Lilac reads as grey (OKLCH chroma 0.083, below the 0.10 floor). Both are re-stepped above; the brand values stay the brand values everywhere else.
+    - **`chart-1` + `chart-4` are a validated pair** — deutan ΔE 23.6, both ≥3:1 on the cream _and_ the ink surface. The same two hexes pass in both themes, so a series never changes identity when the theme flips.
+    - **The five accents cannot form a five-way categorical palette.** Blue, Teal and Lilac are all cool and sit too close under deuteranopia (Blue↔Lilac ΔE 2.9). So charts in the product use **at most two series**; everything else is single-series magnitude, where there is nothing to tell apart. Do not add a third and fourth series to one chart without re-validating — facet it or fold the tail into "Other" instead.
+    - **A grade (A–D) is a state, not a series**, so the fit-mix bar uses the `status.*` tokens that `GradeBadge` already uses — colour follows the entity. A weak fit is a neutral **Ink 60**, not `error`: a lead that does not match is nobody's fault. (Ink 40 is 2.7:1 on the card surface and fails the 3:1 non-text minimum; Ink 60 is 4.8:1 light / 3.2:1 dark.)
+
+    Two things here are **ours, not the book's**, and should go to the brand owner with everything else in this section:
+    - the re-stepped `--chart-*` values themselves, including the dark-mode Teal `#2F9E9B`; and
+    - the fit-mix bar's dependency on **`--info`** (grade B), which is still PENDING under §7.6. If `--info` is rejected, grade B needs a replacement that is distinguishable from grade A's `--success` without relying on hue alone.
+
 8. **PENDING — placeholder logo (Phase 2).** Until the master SVGs in §7.3 arrive, the app uses: (a) the **snout** element (nose + smile only, Teal tile / Cream glyph = colourway 03) as the mark, and (b) a **typeset lowercase "alima" wordmark** in Poppins SemiBold Teal — a temporary stand-in for the real wordmark (do not treat as the final logo; the lockup is forced `dir=ltr` and carries an `aria-label`). Replace both with the delivered artwork.
 9. **PENDING — fonts via Bunny CDN.** Poppins / DM Mono / Tajawal load from `fonts.bunny.net` (GDPR-friendly, EU-hosted — relevant for UK/UAE). Confirm CDN use or switch to self-hosting; Tajawal is loaded 400/500/700 (no 600 — `font-semibold` falls back).
 10. **PENDING — dark-theme deviations from §7.1.** The implemented dark theme (in `app.css`, marked PENDING) deviates slightly from the §7.1 proposal for contrast: `--muted-foreground #B4B1AD`, `--brand #759491`, `--brand-hover #A0B3AE`, `--input #514F5C`, and **`--destructive #EF9A9A`** (a red deliberately OFF the Signal Orange ramp — §7.1 had suggested an orange-adjacent value, which would violate "Orange is never a status colour"). Re-measure all for AA before launch.

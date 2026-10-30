@@ -2,6 +2,7 @@
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { AlertTriangle, Check, RefreshCw, Scan, Sparkles } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -100,41 +101,23 @@ onBeforeUnmount(() => {
     <Head :title="t('Background check')" />
 
     <div class="flex flex-col gap-8 py-2">
-        <!-- Header -->
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <PageHero
+            index="03"
+            :eyebrow="t('Background check')"
+            :title="t('What Alima learned|about you.')"
+            :description="
+                t(
+                    'Alima reads your public web presence and drafts a profile of your business. Review it, then accept to fill in your profile — and optionally seed an ideal-customer profile.',
+                )
+            "
         >
-            <div class="max-w-2xl space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-                >
-                    {{ t('Background check') }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                >
-                    {{ t('What Alima learned about you')
-                    }}<span class="text-orange">.</span>
-                </h1>
-                <p class="text-base text-muted-foreground">
-                    {{
-                        t(
-                            'Alima reads your public web presence and drafts a profile of your business. Review it, then accept to fill in your profile — and optionally seed an ideal-customer profile.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <Button
-                v-if="can.manage && report && !isRunning"
-                variant="outline"
-                data-test="rerun"
-                @click="rerun"
-            >
-                <RefreshCw class="size-4" />
-                {{ t('Run again') }}
-            </Button>
-        </header>
+            <template v-if="can.manage && report && !isRunning" #actions>
+                <Button variant="hero" data-test="rerun" @click="rerun">
+                    <RefreshCw class="size-4" />
+                    {{ t('Run again') }}
+                </Button>
+            </template>
+        </PageHero>
 
         <!-- Empty: never run -->
         <EmptyState
