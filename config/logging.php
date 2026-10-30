@@ -75,6 +75,17 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'outreach' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/outreach.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            // Longer than the others: a send is the one thing the platform does that reaches
+            // someone outside it, and "did we contact this person, and when" is a question
+            // compliance may be asked months later (docs/compliance.md §3.8).
+            'days' => (int) env('LOG_DAILY_DAYS_OUTREACH', 30),
+            'replace_placeholders' => true,
+        ],
+
         'billing' => [
             'driver' => 'daily',
             'path' => storage_path('logs/billing.log'),

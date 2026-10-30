@@ -166,7 +166,7 @@ const grades = [
 
     <div class="mx-auto flex w-full max-w-5xl flex-col gap-10 py-2">
         <PageHero
-            index="08"
+            index="09"
             eyebrow="Alima brand"
             title="Marketing brighter|together."
             description="The base component library, built on brand tokens. Lead with Cloud Cream, one hero accent per layout. Signal Orange is decorative only — never a status colour."

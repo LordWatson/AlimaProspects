@@ -7,6 +7,7 @@ export * from './leads-workspace';
 export * from './locale';
 export * from './navigation';
 export * from './onboarding';
+export * from './outreach';
 export * from './reporting';
 export * from './scoring';
 export * from './signals';

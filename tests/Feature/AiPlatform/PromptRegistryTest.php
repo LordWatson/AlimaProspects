@@ -58,8 +58,11 @@ function cannedResponses(): array
 it('seeds every prompt from docs/ai-prompts.md', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(7)
-        ->and(AiPromptTemplate::query()->pluck('key')->sort()->values()->all())->toBe([
+    // Eight **rows** for seven keys: `outreach.draft_message` has a version 2 (Phase 11), and v1
+    // stays seeded so a message that recorded `prompt_version: 1` can still be traced back to what
+    // wrote it. The registry resolves the highest active version.
+    expect(AiPromptTemplate::query()->count())->toBe(8)
+        ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.refine_suggestions',
             'insights.periodic_digest',
@@ -100,5 +103,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(7);
+    expect(AiPromptTemplate::query()->count())->toBe(8);
 });

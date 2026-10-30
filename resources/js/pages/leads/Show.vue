@@ -6,6 +6,7 @@ import {
     Mail,
     Newspaper,
     Phone,
+    Send,
     ShieldAlert,
     ShieldCheck,
     Sparkles,
@@ -149,12 +150,23 @@ const website = computed(() => {
                 </p>
             </div>
 
-            <Button variant="outline" as-child>
-                <Link href="/leads">
-                    <ArrowLeft class="size-4 rtl:rotate-180" />
-                    {{ t('All leads') }}
-                </Link>
-            </Button>
+            <div class="flex flex-wrap gap-2">
+                <!-- The primary action on this screen, and the one the whole pipeline exists to
+                     reach. Offered to anyone who may work the lead; the Outreach screen itself
+                     decides which channels are open (Phase 11). -->
+                <Button v-if="can.work" as-child>
+                    <Link :href="`/leads/${lead.id}/outreach`">
+                        <Send class="size-4 rtl:rotate-180" />
+                        {{ t('Reach out') }}
+                    </Link>
+                </Button>
+                <Button variant="outline" as-child>
+                    <Link href="/leads">
+                        <ArrowLeft class="size-4 rtl:rotate-180" />
+                        {{ t('All leads') }}
+                    </Link>
+                </Button>
+            </div>
         </header>
 
         <!-- Compliance flag: business data is preferred, personal data is surfaced not hidden -->
