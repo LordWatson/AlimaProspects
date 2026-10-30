@@ -31,7 +31,15 @@ return new class extends Migration
             $table->foreignId('team_id')->nullable()->constrained()->cascadeOnDelete();
 
             // The bell: this member's notifications in this team, newest first.
-            $table->index(['notifiable_type', 'notifiable_id', 'team_id', 'read_at']);
+            //
+            // Named explicitly, because the name Laravel would generate from four columns is 65
+            // characters and MySQL's identifier limit is 64 — which SQLite does not enforce, so
+            // the test suite is no guide here. Any composite index on this table needs a hand
+            // name for the same reason.
+            $table->index(
+                ['notifiable_type', 'notifiable_id', 'team_id', 'read_at'],
+                'notifications_bell_index',
+            );
         });
     }
 

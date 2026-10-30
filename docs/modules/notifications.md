@@ -71,6 +71,14 @@ The rows are written by **Laravel's own channel**, outside our team context — 
 
 Because of that, the member-and-team condition **is** the enforcement rather than a double-check on top of one — so it lives in exactly one place, `Notification::scopeOwnedBy()`, and both the reader and `MarkNotificationsReadAction` go through it. It was copy-pasted into three queries first; a query that forgot one predicate would fail open, and three copies is three chances to forget. `NotificationTenancyTest` pins every endpoint that touches it, including "mark all read" — the operation that would do the most damage if it ever reached across teams.
 
+### The bell index is named by hand
+
+`notifications_bell_index` covers `(notifiable_type, notifiable_id, team_id, read_at)`. The name
+Laravel would generate from those four columns is **65 characters and MySQL's limit is 64**, so it
+is given explicitly — and **the test suite is no guide here**, because it runs on SQLite
+(`phpunit.xml`), which does not enforce the limit. Any further composite index on this table needs
+a hand-written name for the same reason.
+
 ### Why `token_hash` exists
 
 MySQL cannot index 512 characters of utf8mb4 under the 3072-byte key limit, and a token is only ever matched for equality — so the unique index and every lookup use the hash, and `token` itself is `Hidden`, never logged and never returned.
