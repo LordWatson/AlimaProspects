@@ -141,21 +141,41 @@ const nav = [{ label: 'About', href: '/about' }];
             <slot />
         </main>
 
-        <footer class="mt-8">
+        <footer class="mt-8 border-t border-border">
             <div
-                class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8"
+                class="mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 py-12 sm:px-8 lg:flex-row lg:items-end lg:justify-between"
             >
-                <AppLogo />
-                <!-- The tagline is a marketing line, so it stays off the bare pages. -->
-                <p
-                    v-if="!bare"
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                <div>
+                    <AppLogo size="lg" />
+                    <!-- The tagline is a marketing line, so it stays off the bare pages. -->
+                    <p
+                        v-if="!bare"
+                        class="mt-6 max-w-xs font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    >
+                        {{ t('Marketing brighter together.') }}
+                    </p>
+                </div>
+
+                <div
+                    class="flex flex-col gap-4 text-sm sm:flex-row sm:items-center sm:gap-8 lg:justify-end"
                 >
-                    {{ t('Marketing brighter together.') }}
-                </p>
-                <p class="font-mono text-xs text-muted-foreground">
-                    © {{ new Date().getFullYear() }} Alima.
-                </p>
+                    <Link
+                        v-if="!bare"
+                        href="/about"
+                        class="rounded text-foreground/80 transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                        {{ t('About') }}
+                    </Link>
+                    <a
+                        href="/privacy"
+                        class="rounded text-foreground/80 transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                        {{ t('Privacy notice') }}
+                    </a>
+                    <p class="font-mono text-xs text-muted-foreground">
+                        © {{ new Date().getFullYear() }} Alima.
+                    </p>
+                </div>
             </div>
         </footer>
     </div>

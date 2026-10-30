@@ -5,6 +5,47 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — 2026-10-30 — The public pages, and the logo on them
+
+- **The logo was being drawn under its own minimum.** The marketing header, the footer, the sidebar
+  and the auth pages all rendered the horizontal lock-up at 32px tall. The lock-up is 3.36:1, so
+  that is **107px wide — below the 120px floor** the brand book sets for it (`brand-tokens.md` §4),
+  and it is why the mark read smaller on our pages than on the reference screens in
+  `resources/screenshots/`. `AppLogo` now has three sizes that are all legal widths, and the default
+  (`md`, 40px → 134px) is the size those screens actually show. `lg` (48px → 161px) is §2.3's
+  "logo 160px" and is what the marketing footer signs off with.
+- **The logo is drawn, not loaded.** `AppLogo` was an `<img>` pointing at one of two pre-coloured
+  SVGs, which is why a dark surface needed a second file. The master artwork now lives once in
+  `components/brand/artwork.ts` and is rendered inline through `BrandArtwork` with
+  `fill="currentColor"`, so a single component serves all eight approved colourways and the eyes
+  stay true cut-outs over whatever is behind them. `PandaFace` reads from the same module, so the
+  mark and the lock-up can no longer drift apart. The path data is byte-identical to the delivered
+  vector source — nothing was redrawn.
+- **The landing page leads with the product.** The hero is followed by `ProductShowcase`: a
+  miniature of the real workspace — the Deep Teal sidebar with its real numbering, the Midnight Ink
+  opening card — walking through four screens, Source, Qualify, Watch and Reach. It is built from
+  the same tokens as the real screens rather than being a screenshot, so it cannot drift into a look
+  the product does not have. It advances itself every six seconds, pauses while a pointer or the
+  keyboard is inside it, stops for good once somebody picks a tab, and does not move at all under
+  `prefers-reduced-motion`. The tabs are a real tablist, arrow keys and all, and every screen stays
+  in the DOM so the frame never resizes mid-cycle.
+- **Both pages say what the product is.** The landing page now covers the pipeline in four steps and
+  the system in eight capabilities, states the two markets and the compliance position, and ends on
+  a full-width invitation to About rather than a link in the nav. About answers it: why the product
+  exists, the pipeline in seven stages, the workspace grouped as Understand / Find / Reach / Learn &
+  protect, and the four decisions we would rather state than be asked about.
+- **The peeks are now peeks.** Both pages had a panda sitting inside a box with margin around it —
+  a square container letterboxes 383:278 artwork, so it never reached the edges. They are sized by
+  the artwork's own ratio and cropped by their frame, bleeding one or two edges with both eyes in
+  frame, as §5 and `PageHero` have it. One peek per page, as the book says.
+- **Arabic ends a question with "؟".** The landing page's "Ready to grow?" had the mark hard-coded
+  in the template, so the Arabic page showed a Latin "?". The mark is now its own translation key.
+  Full stops stay literal — both scripts use the same one. 142 new strings were added to `en.json`
+  and `ar.json` together; the two files keep identical key sets.
+- Sections on both pages arrive on scroll through a `Reveal` wrapper, which decides in `setup`
+  whether it may animate at all — so a reduced-motion viewer, or a browser without
+  `IntersectionObserver`, gets the finished state and never sees content flash and hide.
+
 ### Added — 2026-10-30 — Phase 15: compliance the system enforces, not the team remembers
 
 - **No recorded lawful basis, no lead discovery.** A team writes a legitimate-interest assessment —

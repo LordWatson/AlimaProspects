@@ -102,6 +102,13 @@ Lead with **Cloud Cream ~50%**, Teal ~20%, Ink ~15%, Accents ~15% (Orange 5 · B
 - EYEBROW 13/12/8pt · CAPS · tracking +25%
 - Body never below 16px mobile / 9pt print.
 
+**Punctuation across scripts (2026-10-30):** a statement's final full stop is often set in Signal
+Orange, and it is written as a literal in the template because `.` is the same mark in both
+scripts. **A question mark is not** — Arabic ends a question with `؟` — so where the orange mark is
+a question mark it goes through `t('?')` like any other string. The same applies to any mark that
+differs between the two scripts (`،` for a comma, `؛` for a semicolon) if one is ever set in accent
+colour.
+
 **Setting rules:** sentence case (caps only for tracked eyebrows); flush left / ragged right; tight headline leading 0.95–1.1 with negative tracking; statements end in a full stop (sometimes orange); one rounded orange dash/rule per layout; measure 45–75 chars, no widows. **Arabic:** set 10–15% larger than Latin, Bold headlines / Regular text, mirror layouts (never mirror the logo), never letter-space Arabic.
 
 ---
@@ -109,12 +116,30 @@ Lead with **Cloud Cream ~50%**, Teal ~20%, Ink ~15%, Accents ~15% (Orange 5 · B
 ## 4. Logo
 
 - **Primary signature:** panda mark + wordmark locked together, Deep Teal on Cloud Cream by default. Proportion 3.44:1. Master: `alima_logo_horizontal_teal.svg`.
+    - _Discrepancy, 2026-10-30:_ the book says **3.44:1**; the delivered vector is `933.51 × 277.89`, which is **3.359:1**. The artwork wins in code — §4 forbids redrawing it, and stretching it to the quoted ratio is exactly what "never stretch" rules out. Minimum **widths** are therefore what the sizes in §4.1 are derived from, not heights. **Flagged for the brand owner** to reconcile the figure in the book.
 - **Lockups:** A Horizontal (primary — web/decks/signage), B Stacked (square/tall), C Mark (avatars/app icons once known), D Wordmark (tight spaces). Choose by space, not taste.
 - **Clear space:** X = height of the wordmark's "a" (0.42 × logo height) on every side; mark alone X = one ear width.
 - **Minimum sizes:** Horizontal 120px / 30mm · Stacked 64px / 18mm · Wordmark 80px / 20mm · Mark 24px / 8mm. Favicon = 16px Teal tile.
 - **Approved colourways (8, all ≥3:1):** 01 Teal/Cream (primary) · 02 Cream/Ink · 03 Cream/Teal · 04 Ink/Lime · 05 Ink/Lilac · 06 Ink/Blue · 07 Cream/Orange · 08 Ink/Cream (mono).
 - **Icons/avatars:** app icon 1024px master (mark 70% width), avatar 800px circle (mark 64%, 2% above centre), favicon SVG + 32/16px PNG on Teal, corner radius 22.5% (OS mask wins in apps).
 - **Never:** stretch, rotate, gradient, add effects, rearrange, outline, low-contrast, Teal-on-Ink, retype the wordmark, crop the ears, turn the pupils, or animate without an approved motion file.
+
+#### 4.1 How the logo is implemented (2026-10-30)
+
+The master artwork lives **once**, in `resources/js/components/brand/artwork.ts` (`logoArtwork`,
+`markArtwork`), generated from the delivered vector source and never hand-edited. `BrandArtwork`
+draws it inline with `fill="currentColor"`; `AppLogo` is the lock-up and `PandaFace` the mark.
+
+- **Inline, not `<img>`.** A file carries a baked-in fill, so each of the eight colourways would
+  need its own. An inline path inherits the text colour of whatever it sits on, which is also what
+  keeps the eyes and the snout true cut-outs over any surface.
+- **`dir="ltr"` is forced on the element**, so the logo never mirrors in Arabic (§4's Never list).
+- **Sizes are widths, not tastes.** The lock-up is 3.36:1 and may not render under 120px wide, so
+  the three sizes are the legal heights: `sm` 36px → 121px (tight chrome, and the floor), `md`
+  40px → 134px (the default — marketing header, sidebar; the size the reference screens in
+  `resources/screenshots/` show), `lg` 48px → 161px (§2.3's "logo 160px"; the marketing footer).
+  **There is no size below `sm`** — a smaller space takes the mark (lock-up C, min 24px) or the
+  wordmark (D, min 80px), per §4's "choose by space, not taste".
 
 ---
 
@@ -125,6 +150,11 @@ Lead with **Cloud Cream ~50%**, Teal ~20%, Ink ~15%, Accents ~15% (Orange 5 · B
 - **The confetti** — chunky loops/crosses/dots, heavier than the squiggle, use big. Pairs: Cream/Ink, Teal/Lilac.
 - **Pattern rules:** full-bleed/panels, crop freely, strokes ≥2mm print / ≥6px screen, two colours from an approved pair, text only on a solid panel above. Never recolour to 3+ colours, run body text over it, distort it, mix squiggle+confetti, or trace it.
 - **The peek** — panda scaled up and cropped by the frame; both eyes in frame, bleed 1–2 edges, ≥3× any nearby logo, one peek / one colour per layout.
+    - _Implementation note (2026-10-30):_ size a peek by the artwork's own ratio —
+      `aspect-[383/278]` plus a width — inside a frame that clips it, and push it past an edge with
+      a negative offset, as `PageHero` does. A **square** container letterboxes the artwork and
+      leaves a small panda floating with margin on every side, which is not a peek; both marketing
+      pages had that until it was corrected.
     - _Product application (2026-10-30), set by the brand owner against the reference screens in `resources/screenshots/`:_ every `PageHero` carries exactly one peek, and **it is the same peek on every screen** — Soft Lilac, scaled up, set into the bottom end corner, cropped by the card on the bottom and end edges at roughly three quarters of the face, both eyes in frame. One peek, one colour, one placement.
         - Lilac on Ink is colourway 05. It makes a third accent alongside the statement's Lime and the rule's Orange, which §1.2 would otherwise hold to two; **the brand owner has made that call** for the hero specifically, and the reference screens are the record of it. Do not "fix" it back to Lime or Cream.
         - An earlier build varied the tone and the crop per screen. It was wrong: the app read as eight different products, and §5's "one peek, one colour per layout" is about the mark being consistent, not an invitation to reskin it per page. A screen's identity comes from its number, its statement and its figure.
@@ -198,6 +228,48 @@ CTAs: _Let's grow · Let's talk · Start a project · See the work_. Headlines l
     - `border.control` `#45434F`, `action.brand` `#4B7474` (Teal 80 tint for contrast on dark), `action.brand.hover` `#759491`
     - `focus.ring` `#6FA4D8`; status on dark: error `#F28576`-adjacent, warning `#D9B15A`, success `#5FB07E` — all to be re-measured for ≥4.5:1 on the dark canvas before use.
 2. **PENDING — Pantone values** are blank in the book (`PMS ____ C`); print phase must fill them.
+
+### 7c. Added 2026-10-30 (the public marketing pages)
+
+Raised by the brand review of `Welcome.vue`, `About.vue` and `ProductShowcase.vue`. Each is a
+judgement the book does not settle, so it is recorded here rather than decided in a component.
+
+- **Three accents on one marketing page.** §1.2 allows one hero accent and a second to support it.
+  Both public pages carry **Acid Lime** (the CTA and the statement tails), **Soft Lilac** (the peek,
+  and one eyebrow on Ink) and **Signal Orange** (the eyebrow dash, the opening statement's full
+  stop, and the one rule inside the showcase). This is the same three-accent combination the brand
+  owner approved for `PageHero` under §5, and it is used here for the same reason — but that
+  approval was given for the product hero, not for the marketing pages. **Needs confirming.** The
+  count was already reduced once: the mid-page section statements now close in Ink, leaving Orange
+  on the eyebrow dash, the opening statement and the one invitation.
+- **Peek placement on the marketing pages.** §5's product note fixes one placement for `PageHero`.
+  These pages are outside it: the landing page puts its peek in the bottom end corner of the Ink
+  invitation card, About puts its in the hero, cropped by the hairline rule — which is how the
+  reference About screen has it. One peek, one colour (Lilac) per page either way. **Confirm
+  whether the two should match each other.**
+- **Four weights on one layout.** §3 allows two. The pages use Regular, Medium (mono eyebrows and
+  UI labels), SemiBold (buttons, card headings) and Bold (statements) — which is what the whole
+  product already does, `PageHero` and the button variants included. Fixing it is a change to the
+  design system, not to these pages. **Needs a decision at that level.**
+- **Display sizes between the scale's steps.** The scale runs H1 64 / DISPLAY 96. The landing
+  statement tops out at 84px (`xl:text-[5.25rem]`), because 96px breaks its two-line setting at the
+  1280 container and 64px is too quiet for the opening of the site. Section headings sit at 36/48px
+  against H2 44. **Needs confirming**, or the scale needs an intermediate step.
+- **Motion longer than the tokens.** §2.2 gives `fast 150ms` and `base 250ms`, which are interaction
+  durations. The scroll reveal runs 500ms and the showcase cross-fade 300ms, both on the brand
+  easing, because a section arriving is not a button changing state. **Needs confirming**, or §2.2
+  needs a third, page-level duration.
+- **The showcase's chrome is below the type floor.** §3 sets a 16px body / 12px eyebrow floor. The
+  workspace miniature on the landing page draws its UI at 9–12px, because it is a **drawing of the
+  app at reduced scale**, not UI a visitor operates — the same reason a screenshot of the app would
+  be small. It is labelled as illustrative and marked `aria-hidden` where it is pure chrome.
+  Recorded as an accepted exception; say so if it is not.
+- **Contrast in the real sidebar.** Chasing this in the showcase surfaced it in the product:
+  `AppSidebar.vue` sets its group labels at `text-cream/45` and its item numbers at `text-cream/35`
+  on Deep Teal — about **3.0:1 and 2.4:1**, both under AA for text that size. The showcase was
+  raised to `/75` (5.0:1). **The real sidebar still has the original values** and is the thing worth
+  fixing; it is out of scope for a marketing change.
+
 3. **PENDING — favicon/app-icon source SVGs** are referenced (`/Alima_Brand_Library`) but not delivered in `docs/brand/`; need the master files before the app-shell phase.
 4. **Confirm** whether the product UI uses Signal Orange purely decoratively (per book) given how often SaaS UIs reach for orange as a warning — we will honour the book and use `#8A5A00` for warnings.
 5. **PENDING — Warm UI neutrals (Phase 2).** shadcn/the component system needs neutral surfaces the book doesn't name. Proposed, derived warm from Cream/Ink/Teal tints: `--secondary #E9E6DC`, `--muted #ECE9DF`, `--accent #E6ECE9` (soft teal tint for hover/selected), `--border #DDD9CC`. Confirm or replace with exact book tints.
@@ -222,6 +294,6 @@ CTAs: _Let's grow · Let's talk · Start a project · See the work_. Headlines l
     - the re-stepped `--chart-*` values themselves, including the dark-mode Teal `#2F9E9B`; and
     - the fit-mix bar's dependency on **`--info`** (grade B), which is still PENDING under §7.6. If `--info` is rejected, grade B needs a replacement that is distinguishable from grade A's `--success` without relying on hue alone.
 
-8. **PENDING — placeholder logo (Phase 2).** Until the master SVGs in §7.3 arrive, the app uses: (a) the **snout** element (nose + smile only, Teal tile / Cream glyph = colourway 03) as the mark, and (b) a **typeset lowercase "alima" wordmark** in Poppins SemiBold Teal — a temporary stand-in for the real wordmark (do not treat as the final logo; the lockup is forced `dir=ltr` and carries an `aria-label`). Replace both with the delivered artwork.
+8. **RESOLVED 2026-10-30 — placeholder logo (was PENDING since Phase 2).** The delivered artwork now ships: the mark and the horizontal lock-up live in `resources/js/components/brand/artwork.ts` and are drawn inline by `AppLogo` / `PandaFace` (see §4.1). The snout stand-in and the typeset wordmark described below are gone. _Original note:_ Until the master SVGs in §7.3 arrive, the app uses: (a) the **snout** element (nose + smile only, Teal tile / Cream glyph = colourway 03) as the mark, and (b) a **typeset lowercase "alima" wordmark** in Poppins SemiBold Teal — a temporary stand-in for the real wordmark (do not treat as the final logo; the lockup is forced `dir=ltr` and carries an `aria-label`). Replace both with the delivered artwork.
 9. **PENDING — fonts via Bunny CDN.** Poppins / DM Mono / Tajawal load from `fonts.bunny.net` (GDPR-friendly, EU-hosted — relevant for UK/UAE). Confirm CDN use or switch to self-hosting; Tajawal is loaded 400/500/700 (no 600 — `font-semibold` falls back).
 10. **PENDING — dark-theme deviations from §7.1.** The implemented dark theme (in `app.css`, marked PENDING) deviates slightly from the §7.1 proposal for contrast: `--muted-foreground #B4B1AD`, `--brand #759491`, `--brand-hover #A0B3AE`, `--input #514F5C`, and **`--destructive #EF9A9A`** (a red deliberately OFF the Signal Orange ramp — §7.1 had suggested an orange-adjacent value, which would violate "Orange is never a status colour"). Re-measure all for AA before launch.
