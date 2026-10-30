@@ -280,3 +280,52 @@ it('never dedupes one team’s article against another team’s signal', functio
     $total = Signal::query()->withoutGlobalScopes()->where('url_hash', sha1($link))->count();
     expect($total)->toBe(2); // one per team
 });
+
+it('tells every progress broadcast which watch it belongs to', function (): void {
+    Event::fake([SignalRunProgressed::class, SignalsDetected::class]);
+
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Acme', 'https://gulfbusiness.com/acme')]);
+    $this->fakeAi->queueStructured(aiEvents([fundingEvent()]));
+
+    runWatchFor($team, $watch);
+
+    // "Run now" redirects before the worker has opened the run it will report on, so the screen
+    // waiting for progress knows the watch and not the run. A stage without the watch id can't be
+    // routed to a card, which is the whole of the feedback.
+    $orphaned = Event::dispatched(
+        SignalRunProgressed::class,
+        fn (SignalRunProgressed $event): bool => $event->watchId !== (int) $watch->getKey(),
+    );
+
+    expect(Event::dispatched(SignalRunProgressed::class))->not->toBeEmpty()
+        ->and($orphaned)->toBeEmpty();
+});
+
+it('adopts the run that "Run now" queued instead of opening a second', function (): void {
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $queued = app(TeamContext::class)->run($team, fn (): SignalRun => SignalRun::query()->create([
+        'team_id' => $team->getKey(),
+        'signal_watch_id' => $watch->getKey(),
+        'status' => SignalRunStatus::Queued,
+    ]));
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Acme', 'https://gulfbusiness.com/acme')]);
+    $this->fakeAi->queueStructured(aiEvents([fundingEvent()]));
+
+    $run = runWatchFor($team, $watch);
+
+    // The row the member is already watching is the row that fills in — otherwise the card tracks
+    // a queued run that never moves while a second one does the work.
+    $count = app(TeamContext::class)->run($team, fn (): int => SignalRun::query()
+        ->where('signal_watch_id', $watch->getKey())
+        ->count());
+
+    expect((int) $run->getKey())->toBe((int) $queued->getKey())
+        ->and($run->status)->toBe(SignalRunStatus::Completed)
+        ->and($count)->toBe(1);
+});

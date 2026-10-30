@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Core\Concerns\BelongsToTeam;
 use App\Modules\Core\Enums\Currency;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use Database\Factories\SignalFactory;
@@ -22,12 +23,17 @@ use Illuminate\Support\Carbon;
  * never email or phone (data minimisation). Unique per team on `url_hash`. On conversion (S4) it
  * points one-way at the {@see Lead} it created. Tenant-scoped via {@see BelongsToTeam}.
  *
+ * `signal_watch_id` and `signal_run_id` are **nullable**: a converted signal is the provenance of
+ * a real lead, so deleting the watch that found it nulls the attribution rather than destroying
+ * the record (see the S6 migration and `DeleteSignalWatchAction`).
+ *
  * @property int $id
  * @property int $team_id
- * @property int $signal_watch_id
- * @property int $signal_run_id
+ * @property int|null $signal_watch_id
+ * @property int|null $signal_run_id
  * @property SignalEventType $event_type
  * @property SignalStatus $status
+ * @property SignalDismissReason|null $dismiss_reason
  * @property string $headline
  * @property string $summary
  * @property string|null $subject_person_name
@@ -67,6 +73,7 @@ class Signal extends Model
         'signal_run_id',
         'event_type',
         'status',
+        'dismiss_reason',
         'headline',
         'summary',
         'subject_person_name',
@@ -138,6 +145,7 @@ class Signal extends Model
         return [
             'event_type' => SignalEventType::class,
             'status' => SignalStatus::class,
+            'dismiss_reason' => SignalDismissReason::class,
             'amount_minor' => 'integer',
             'currency' => Currency::class,
             'confidence' => 'integer',

@@ -200,23 +200,28 @@ class AiPromptTemplateSeeder extends Seeder
                     'properties' => [
                         'events' => [
                             'type' => 'array',
+                            // Bounded so the schema is the guard rather than the downstream clamps:
+                            // a hijacked response can't return an unbounded array, and an index
+                            // outside the batch can't be returned at all (security review, S6).
+                            // One entry per item in a batch — see RunSignalWatchAction::BATCH_SIZE.
+                            'maxItems' => 10,
                             'items' => [
                                 'type' => 'object',
                                 'properties' => [
-                                    'item_index' => ['type' => 'integer', 'minimum' => 0],
+                                    'item_index' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 9],
                                     'is_event' => ['type' => 'boolean'],
                                     'event_type' => ['type' => ['string', 'null'], 'enum' => SignalEventType::values()],
-                                    'subject_person_name' => ['type' => ['string', 'null']],
-                                    'subject_person_role' => ['type' => ['string', 'null']],
-                                    'subject_company_name' => ['type' => ['string', 'null']],
-                                    'counterparty_name' => ['type' => ['string', 'null']],
+                                    'subject_person_name' => ['type' => ['string', 'null'], 'maxLength' => 255],
+                                    'subject_person_role' => ['type' => ['string', 'null'], 'maxLength' => 255],
+                                    'subject_company_name' => ['type' => ['string', 'null'], 'maxLength' => 255],
+                                    'counterparty_name' => ['type' => ['string', 'null'], 'maxLength' => 255],
                                     'amount' => ['type' => ['number', 'null']],
-                                    'currency' => ['type' => ['string', 'null']],
-                                    'location' => ['type' => ['string', 'null']],
+                                    'currency' => ['type' => ['string', 'null'], 'maxLength' => 8],
+                                    'location' => ['type' => ['string', 'null'], 'maxLength' => 255],
                                     'confidence' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 100],
                                     'relevance' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 100],
-                                    'summary' => ['type' => 'string'],
-                                    'suggested_approach' => ['type' => ['string', 'null']],
+                                    'summary' => ['type' => 'string', 'maxLength' => 500],
+                                    'suggested_approach' => ['type' => ['string', 'null'], 'maxLength' => 255],
                                 ],
                                 'required' => ['item_index', 'is_event', 'confidence', 'relevance', 'summary'],
                             ],

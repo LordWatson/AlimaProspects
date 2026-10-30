@@ -17,7 +17,10 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Sentry\Breadcrumb;
 use Throwable;
+
+use function Sentry\addBreadcrumb;
 
 /**
  * Runs one signal watch (ADR 0011, S3) via {@see RunSignalWatchAction}, inside the watch's
@@ -91,6 +94,8 @@ final class RunSignalWatchJob implements ShouldBeUnique, ShouldQueue
             'exception' => $exception::class,
         ]);
 
+        $this->breadcrumb($exception);
+
         app(TeamContext::class)->run($this->teamId, function (): void {
             $run = SignalRun::query()
                 ->where('signal_watch_id', $this->watchId)
@@ -108,7 +113,34 @@ final class RunSignalWatchJob implements ShouldBeUnique, ShouldQueue
                 'finished_at' => now(),
             ])->save();
 
-            event(new SignalRunProgressed($this->teamId, (int) $run->getKey(), SignalRunStatus::Failed, 100, 'Signals run failed'));
+            event(new SignalRunProgressed($this->teamId, $this->watchId, (int) $run->getKey(), SignalRunStatus::Failed, 100, 'Signals run failed'));
         });
+    }
+
+    /**
+     * Leave a Sentry breadcrumb for the failure, so the exception that reaches the dashboard arrives
+     * with the watch it was running attached (S6 observability).
+     *
+     * Same discipline as the log line: **ids and the exception class, never the message** — a
+     * provider failure's message can carry a query or a URL, and a breadcrumb is as persisted as a
+     * log. A no-op when Sentry isn't installed or configured, which is the local and test case.
+     */
+    private function breadcrumb(Throwable $exception): void
+    {
+        if (! function_exists('Sentry\addBreadcrumb')) {
+            return;
+        }
+
+        addBreadcrumb(
+            category: 'signals',
+            message: 'Signal watch run failed',
+            metadata: [
+                'team_id' => $this->teamId,
+                'signal_watch_id' => $this->watchId,
+                'exception' => $exception::class,
+                'attempts' => $this->attempts(),
+            ],
+            level: Breadcrumb::LEVEL_ERROR,
+        );
     }
 }

@@ -16,7 +16,9 @@ export type LeadActivityType =
     | 'assigned'
     | 'unassigned'
     | 'tags_changed'
-    | 'imported';
+    | 'imported'
+    // What the team did with a signal (Signals, S4).
+    | 'signal_converted';
 
 /**
  * One timeline entry. The server sends `type` + `properties`, never a formed sentence — the
@@ -174,4 +176,22 @@ export type LeadDiscoveryRun = {
     id: number;
     source_label: string;
     created_at: string | null;
+};
+
+/**
+ * Where a lead came from when "a provider found it" isn't the whole story — a converted signal,
+ * say. Deliberately generic: the panel shows a headline, a detail line and the two links, and
+ * knows nothing about which module filled it in (mirrors `LeadsWorkspace\Data\LeadOrigin`).
+ */
+export type LeadOrigin = {
+    /** Machine key for the origin type — the panel keys its icon and heading off this. */
+    kind: string;
+    /** Translation key, not a finished string. */
+    label: string;
+    headline: string | null;
+    detail: string | null;
+    url: string | null;
+    source_name: string | null;
+    occurred_at: string | null;
+    href: string | null;
 };

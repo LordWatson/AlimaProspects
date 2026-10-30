@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import { useI18n } from '@/composables/useI18n';
 import type {
@@ -175,21 +176,11 @@ onBeforeUnmount(() => {
                     {{ progress?.step ?? t('Starting your background check') }}
                 </p>
             </div>
-            <div
-                class="h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-accent"
-                role="progressbar"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                :aria-valuenow="progress?.percent ?? INITIAL_PERCENT"
-                :aria-label="t('Background check')"
-            >
-                <div
-                    class="h-full rounded-full bg-brand transition-all duration-300 motion-reduce:transition-none"
-                    :style="{
-                        width: `${progress?.percent ?? INITIAL_PERCENT}%`,
-                    }"
-                />
-            </div>
+            <Progress
+                :value="progress?.percent ?? INITIAL_PERCENT"
+                :label="t('Background check')"
+                class="max-w-sm"
+            />
         </section>
 
         <!-- Failed -->

@@ -20,6 +20,8 @@ enum LeadSource: string
     case WebSearch = 'web_search';
     /** Not a provider: a lead the team brought in themselves (Phase 10b CSV import). */
     case Import = 'import';
+    /** Not a provider: a lead converted from a wealth/liquidity event in the Signals feed (ADR 0011, S4). */
+    case Signal = 'signal';
 
     public function label(): string
     {
@@ -28,6 +30,7 @@ enum LeadSource: string
             self::GooglePlaces => 'Google Places',
             self::WebSearch => 'Web search',
             self::Import => 'Imported',
+            self::Signal => 'Signal',
         };
     }
 
@@ -41,18 +44,23 @@ enum LeadSource: string
             self::GooglePlaces => 'Local and small businesses by location and category (strong for the UAE).',
             self::WebSearch => 'General web discovery across the open internet.',
             self::Import => 'Leads your team brought in from a CSV.',
+            self::Signal => 'Created from a wealth/liquidity event in your Signals feed.',
         };
     }
 
     /**
      * Whether this source can be **run** as a discovery. Providers that aren't yet implemented are
      * listed (so the UI can preview what's coming) but can't be selected for a run — and
-     * {@see self::Import} never can, because it isn't a provider: it is how a team's own list gets
-     * in. It is still a perfectly good thing to *filter* a list by.
+     * {@see self::Import} and {@see self::Signal} never can, because neither is a provider: one is
+     * how a team's own list gets in, the other how a signal they chose to act on does. Both are
+     * still perfectly good things to *filter* a list by.
      */
     public function isAvailable(): bool
     {
-        return $this !== self::Import;
+        return match ($this) {
+            self::Import, self::Signal => false,
+            self::CompaniesHouse, self::GooglePlaces, self::WebSearch => true,
+        };
     }
 
     /**
@@ -66,6 +74,11 @@ enum LeadSource: string
      * discovery hit should fill in the number and the address it was missing, never rename the
      * company the team typed. That is the same "fill in, never overwrite" promise the importer
      * makes in the other direction.
+     *
+     * **A signal ranks with web search**, not with an import. The company fields on a converted
+     * signal are what a news article said and what the member typed into the convert form in a
+     * hurry — useful, but not the team's considered record — so a registry, a places listing or
+     * their own spreadsheet all outrank it and may correct it on a merge.
      */
     public function rank(): int
     {
@@ -73,7 +86,7 @@ enum LeadSource: string
             self::Import => 4,
             self::CompaniesHouse => 3,
             self::GooglePlaces => 2,
-            self::WebSearch => 1,
+            self::WebSearch, self::Signal => 1,
         };
     }
 

@@ -31,6 +31,11 @@ enum LeadActivityType: string
     case TagsChanged = 'tags_changed';
     case Imported = 'imported';
 
+    // What the team did with a signal (Signals, S4). One case, not two: converting a signal and
+    // linking it to a company the team already had are the same act with a different outcome, which
+    // the `attached` property carries — exactly how `Imported` carries `merged`.
+    case SignalConverted = 'signal_converted';
+
     public function label(): string
     {
         return match ($this) {
@@ -45,6 +50,7 @@ enum LeadActivityType: string
             self::Unassigned => 'Unassigned',
             self::TagsChanged => 'Tags changed',
             self::Imported => 'Imported',
+            self::SignalConverted => 'From a signal',
         };
     }
 
@@ -57,7 +63,8 @@ enum LeadActivityType: string
         return match ($this) {
             self::Discovered, self::Enriched, self::Scored => true,
             self::StageChanged, self::NoteAdded, self::TaskCreated, self::TaskCompleted,
-            self::Assigned, self::Unassigned, self::TagsChanged, self::Imported => false,
+            self::Assigned, self::Unassigned, self::TagsChanged, self::Imported,
+            self::SignalConverted => false,
         };
     }
 

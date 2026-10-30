@@ -47,3 +47,33 @@ it('normalises the website to a bare domain', function (): void {
         ->and(sourcedLead(['website' => 'https://sub.example.com/path'])->domain())->toBe('sub.example.com')
         ->and(sourcedLead()->domain())->toBeNull();
 });
+
+it('clamps a source URL to its own wide column, not the text one', function (): void {
+    // An article URL is routinely longer than 255 — Serper answers some articles with a Google
+    // redirect of ~280 characters — and `leads.source_url` is 2048 wide to hold it. Clamping to
+    // 255 stored a link that no longer resolves and said nothing about it.
+    $long = 'https://google.com/goto?url='.str_repeat('A', 400);
+
+    expect(sourcedLead(['sourceUrl' => $long])->toLeadAttributes()['source_url'])->toBe($long);
+
+    // Past the column, it is cut rather than allowed to throw on insert.
+    $absurd = 'https://example.com/?q='.str_repeat('B', 3000);
+
+    expect(strlen((string) sourcedLead(['sourceUrl' => $absurd])->toLeadAttributes()['source_url']))
+        ->toBe(2048);
+});
+
+it('still holds a website to the width of its own column', function (): void {
+    // `leads.website` is a homepage and stays at 255; a clamp wider than the column would throw.
+    $long = 'https://example.com/'.str_repeat('c', 400);
+
+    expect(strlen((string) sourcedLead(['website' => $long])->toLeadAttributes()['website']))
+        ->toBe(255);
+});
+
+it('drops a non-http source URL however long it is', function (): void {
+    expect(sourcedLead(['sourceUrl' => 'javascript:alert(1)'])->toLeadAttributes()['source_url'])
+        ->toBeNull()
+        ->and(sourcedLead(['sourceUrl' => 'data:text/html;base64,'.str_repeat('A', 400)])
+            ->toLeadAttributes()['source_url'])->toBeNull();
+});

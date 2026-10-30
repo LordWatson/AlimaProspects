@@ -4,7 +4,33 @@ import type { LeadContact } from './enrichment';
 import type { StageOutcome } from './leads-workspace';
 import type { LeadScoreSummary } from './scoring';
 
-export type LeadSource = 'companies_house' | 'google_places' | 'web_search';
+/**
+ * Every value `leads.source` can hold. The last two aren't providers — an import is the team's own
+ * list, a signal is an event they chose to act on — so neither appears in the discovery picker,
+ * but both are filterable and both can label a lead (mirrors `LeadSource::cases()`).
+ */
+export type LeadSource =
+    | 'companies_house'
+    | 'google_places'
+    | 'web_search'
+    | 'import'
+    | 'signal';
+
+/** A discovery provider: the subset of `LeadSource` that can actually be run. */
+export type RunnableLeadSource =
+    | 'companies_house'
+    | 'google_places'
+    | 'web_search';
+
+/** A legal limit on how a lead may be approached (ADR 0007), when one applies. */
+export type OutreachRestriction = {
+    value: string;
+    /** Translation key, not a finished string. */
+    label: string;
+    /** Translation key, not a finished string. */
+    guidance: string;
+    allows_direct_marketing: boolean;
+};
 
 export type EnrichmentStatus = 'pending' | 'enriching' | 'enriched' | 'failed';
 
@@ -36,6 +62,7 @@ export type Lead = {
     source_url: string | null;
     collected_at: string | null;
     enriched_at: string | null;
+    outreach_restriction: OutreachRestriction | null;
     has_personal_data: boolean;
     /** The grade against the active ICP, when the lead's `activeScore` was loaded (Phase 9). */
     score?: LeadScoreSummary | null;

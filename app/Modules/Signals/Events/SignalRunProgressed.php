@@ -18,6 +18,12 @@ use Illuminate\Queue\SerializesModels;
  * live status while {@see RunSignalWatchJob} works (stages: searching → analysing → saving → done).
  * Carries only non-sensitive status/step/count data — never signal records. Reuses the `teams.{id}`
  * channel already authorised in routes/channels.php, mirroring `DiscoveryRunProgressed`.
+ *
+ * **`watchId` is what makes the progress findable.** "Run now" dispatches a job and redirects; the
+ * run row doesn't exist until the worker picks the job up, so the screen that asked for the run
+ * cannot know the run id it is waiting for. Keyed by watch instead, a card shows its own progress
+ * from the first broadcast onward — and a watch has at most one live run (`ShouldBeUnique`), so the
+ * watch id is an unambiguous key.
  */
 final class SignalRunProgressed implements ShouldBroadcast
 {
@@ -27,6 +33,7 @@ final class SignalRunProgressed implements ShouldBroadcast
 
     public function __construct(
         public readonly int $teamId,
+        public readonly int $watchId,
         public readonly int $runId,
         public readonly SignalRunStatus $status,
         public readonly int $percent,
@@ -53,6 +60,7 @@ final class SignalRunProgressed implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
+            'watch_id' => $this->watchId,
             'run_id' => $this->runId,
             'status' => $this->status->value,
             'percent' => $this->percent,

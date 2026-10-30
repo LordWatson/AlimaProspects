@@ -37,6 +37,23 @@ enum Market: string
     }
 
     /**
+     * The limit this market puts on how a prospect found here may be approached, or null when the
+     * market imposes none beyond the team's own lawful basis (ADR 0007).
+     *
+     * The UK runs on a legitimate-interest basis, assessed per team (the LIA, Compliance), so there
+     * is no blanket per-lead restriction to record. The UAE does not: PDPL requires the person's
+     * **prior consent** for direct marketing, which nothing a team discovers about someone can
+     * supply — so every lead sourced from the UAE carries the restriction, and Outreach honours it.
+     */
+    public function outreachRestriction(): ?OutreachRestriction
+    {
+        return match ($this) {
+            self::Uk => null,
+            self::Uae => OutreachRestriction::UaePriorConsent,
+        };
+    }
+
+    /**
      * @return list<string>
      */
     public static function values(): array

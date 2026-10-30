@@ -14,9 +14,16 @@ use Spatie\LaravelData\Data;
  * ICP and executed by {@see SerperNewsClient}. Carries the event type it targets so extracted
  * results can be attributed, plus the Serper parameters (`gl` country, `hl` language, `tbs` recency,
  * `num` result count). Deterministic — no AI.
+ *
+ * `ignoreDomains` is the **watch's own** exclusion list (S6), carried on the query rather than read
+ * from config by the client: the client is given everything one search needs and holds no notion of
+ * which team asked, so it can't accidentally apply one team's list to another's results.
  */
 final class SignalQuery extends Data
 {
+    /**
+     * @param  list<string>  $ignoreDomains  Per-team domains to drop, merged with `signals.ignore_domains`.
+     */
     public function __construct(
         public SignalEventType $eventType,
         public string $q,
@@ -24,5 +31,6 @@ final class SignalQuery extends Data
         public string $hl,
         public string $tbs,
         public int $num,
+        public array $ignoreDomains = [],
     ) {}
 }

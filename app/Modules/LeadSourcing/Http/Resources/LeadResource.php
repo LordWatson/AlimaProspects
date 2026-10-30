@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\LeadSourcing\Http\Resources;
 
+use App\Modules\Core\Enums\OutreachRestriction;
 use App\Modules\Enrichment\Http\Resources\LeadContactResource;
 use App\Modules\LeadSourcing\Models\Lead;
 use Illuminate\Http\Request;
@@ -45,6 +46,12 @@ final class LeadResource extends JsonResource
             'collected_at' => $this->collected_at?->toIso8601String(),
             'enriched_at' => $this->enriched_at?->toIso8601String(),
             'has_personal_data' => $this->has_personal_data,
+            // A legal limit on how this company may be approached, when one applies (ADR 0007) —
+            // e.g. a lead converted from a UAE signal, where PDPL needs prior consent that a news
+            // article plainly isn't. Sent on every lead, not just the detail screen: Outreach
+            // (Phase 11) and the mobile app both have to honour it, and a flag the client has to
+            // ask for separately is a flag that gets missed.
+            'outreach_restriction' => $this->outreachRestriction($this->raw),
             // Resolved to a plain list rather than handed over as a resource collection: a nested
             // collection keeps its own `data` wrapper, which would leave the client reading
             // `lead.contacts.data` on one screen and `lead.contacts` on the next.
@@ -85,6 +92,29 @@ final class LeadResource extends JsonResource
                 'excluded' => $this->activeScore->excluded,
                 'scored_at' => $this->activeScore->scored_at?->toIso8601String(),
             ]),
+        ];
+    }
+
+    /**
+     * The restriction recorded on the lead, flattened to what a screen needs to show it. Null when
+     * the lead carries none, which is the ordinary case.
+     *
+     * @param  array<array-key, mixed>|null  $raw
+     * @return array{value: string, label: string, guidance: string, allows_direct_marketing: bool}|null
+     */
+    private function outreachRestriction(?array $raw): ?array
+    {
+        $restriction = OutreachRestriction::fromRaw($raw);
+
+        if ($restriction === null) {
+            return null;
+        }
+
+        return [
+            'value' => $restriction->value,
+            'label' => $restriction->label(),
+            'guidance' => $restriction->guidance(),
+            'allows_direct_marketing' => $restriction->allowsDirectMarketing(),
         ];
     }
 }

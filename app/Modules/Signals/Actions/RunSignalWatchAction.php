@@ -465,6 +465,14 @@ final class RunSignalWatchAction
 
     private function broadcast(SignalRun $run, SignalRunStatus $status, int $percent, string $step, int $signalsCreated = 0): void
     {
-        event(new SignalRunProgressed((int) $run->team_id, (int) $run->getKey(), $status, $percent, $step, $signalsCreated));
+        event(new SignalRunProgressed(
+            (int) $run->team_id,
+            (int) $run->signal_watch_id,
+            (int) $run->getKey(),
+            $status,
+            $percent,
+            $step,
+            $signalsCreated,
+        ));
     }
 }

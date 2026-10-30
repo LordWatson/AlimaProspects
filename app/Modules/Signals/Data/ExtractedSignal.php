@@ -118,7 +118,10 @@ final class ExtractedSignal extends Data
     {
         $text = trim((string) (is_string($value) ? $value : ''));
 
-        $banned = '/@|\be-?mails?\b|\bcold[-\s]?(call|email)|\bphone\b|\bwhatsapp\b|\b(call|text|dm|message)\s+(them|him|her)\b/i';
+        // Also bans a bare link or a messaging handle: the approach line is read by a
+        // salesperson, and an article is attacker-controlled text, so a crafted one must not be
+        // able to put a clickable-looking destination in front of them (security review, S6).
+        $banned = '/@|https?:\/\/|\bwww\.|\bt\.me\b|\bbit\.ly\b|\be-?mails?\b|\bcold[-\s]?(call|email)|\bphone\b|\bwhatsapp\b|\btelegram\b|\b(call|text|dm|message)\s+(them|him|her)\b/i';
 
         if ($text === '' || preg_match($banned, $text) === 1) {
             return self::DEFAULT_APPROACH;

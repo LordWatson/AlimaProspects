@@ -8,4 +8,5 @@ export * from './locale';
 export * from './navigation';
 export * from './onboarding';
 export * from './scoring';
+export * from './signals';
 export * from './ui';

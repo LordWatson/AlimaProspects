@@ -29,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property Market $market
  * @property string $location
  * @property list<string> $event_types
+ * @property list<string>|null $ignore_domains
  * @property SignalWatchCadence $cadence
  * @property bool $is_active
  * @property Carbon|null $last_run_at
@@ -52,6 +53,7 @@ class SignalWatch extends Model
         'market',
         'location',
         'event_types',
+        'ignore_domains',
         'cadence',
         'is_active',
         'last_run_at',
@@ -95,6 +97,7 @@ class SignalWatch extends Model
         return [
             'market' => Market::class,
             'event_types' => 'array',
+            'ignore_domains' => 'array',
             'cadence' => SignalWatchCadence::class,
             'is_active' => 'boolean',
             'last_run_at' => 'datetime',

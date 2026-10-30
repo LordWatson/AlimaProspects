@@ -30,6 +30,25 @@ enum SignalStatus: string
     }
 
     /**
+     * Whether the signal has already become a lead. Readers branch on this rather than comparing
+     * the case, because "converted" is the one status with consequences elsewhere — a converted
+     * signal can't be dismissed or restored, isn't pruned by the retention sweep, and isn't erased
+     * on its own by a data-subject request.
+     */
+    public function isConverted(): bool
+    {
+        return $this === self::Converted;
+    }
+
+    /**
+     * Whether a member can still act on it: convert it, or dismiss it (again, with a new reason).
+     */
+    public function isActionable(): bool
+    {
+        return ! $this->isConverted();
+    }
+
+    /**
      * @return list<string>
      */
     public static function values(): array

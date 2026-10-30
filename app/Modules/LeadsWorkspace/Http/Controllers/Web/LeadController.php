@@ -14,6 +14,7 @@ use App\Modules\LeadsWorkspace\Actions\EnsureDefaultPipelineStagesAction;
 use App\Modules\LeadsWorkspace\Actions\FindLeadAction;
 use App\Modules\LeadsWorkspace\Actions\ListLeadsAction;
 use App\Modules\LeadsWorkspace\Actions\ListSavedViewsAction;
+use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\Concerns\ResolvesWorkspace;
 use App\Modules\LeadsWorkspace\Http\Requests\ListLeadsRequest;
 use App\Modules\LeadsWorkspace\Http\Resources\LeadActivityResource;
@@ -92,6 +93,7 @@ final class LeadController extends Controller
         int $lead,
         FindLeadAction $find,
         EnsureDefaultPipelineStagesAction $ensureStages,
+        LeadOriginProvider $origin,
     ): Response {
         $user = $this->user($request);
         $team = $this->team($request);
@@ -111,6 +113,10 @@ final class LeadController extends Controller
             'tasks' => LeadTaskResource::collection($model->tasks)->resolve($request),
             'stages' => PipelineStageResource::collection($ensureStages->handle($team))->resolve($request),
             'members' => $this->members($team),
+            // Where the lead came from when "a provider found it" isn't the whole story — a
+            // converted signal, say. Resolved through a contract, so the workspace renders the
+            // panel without depending on whichever module created the lead.
+            'origin' => $this->teamContext->run($team, fn (): ?array => $origin->originFor($model)?->toArray()),
             'discoveryRun' => $model->discoveryRun === null ? null : [
                 'id' => $model->discoveryRun->id,
                 'source_label' => $model->discoveryRun->source->label(),

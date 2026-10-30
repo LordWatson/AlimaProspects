@@ -103,6 +103,23 @@ final class SignalsException extends DomainException
     }
 
     /**
+     * The team already has as many watches as the plan allows.
+     *
+     * A cap exists because a watch is a standing instruction to spend money: every active one runs
+     * on its cadence and every run pays for Serper queries and an AI pass. Without a ceiling, a
+     * script (or an enthusiastic member) can multiply a team's bill by creating watches rather
+     * than by running them, which the per-watch run throttle does nothing about.
+     */
+    public static function tooManyWatches(int $max): self
+    {
+        $e = new self("You can have up to {$max} watches. Pause or remove one to add another.");
+        $e->errorCode = 'signals.too_many_watches';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
      * The signal names no company to build a lead from, and none was supplied.
      */
     public static function noSubjectToConvert(): self

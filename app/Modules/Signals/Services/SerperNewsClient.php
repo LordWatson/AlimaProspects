@@ -97,8 +97,11 @@ final class SerperNewsClient implements NewsSearchClient
             throw SignalsException::newsProviderFailed();
         }
 
-        /** @var list<string> $ignore */
-        $ignore = (array) config('signals.ignore_domains', []);
+        // The global list (property portals, aggregators) plus this watch's own (S6) — a client's
+        // competitors are only knowable by that client.
+        /** @var list<string> $configured */
+        $configured = (array) config('signals.ignore_domains', []);
+        $ignore = array_values(array_unique([...$configured, ...$query->ignoreDomains]));
 
         $items = [];
         $seenHashes = [];
@@ -113,8 +116,13 @@ final class SerperNewsClient implements NewsSearchClient
                 continue;
             }
 
-            $host = parse_url($item->link, PHP_URL_HOST);
-            if (is_string($host) && $this->isIgnored(Str::replaceStart('www.', '', Str::lower($host)), $ignore)) {
+            // Normalised through the same helper the dedupe hash uses, so a trailing-dot FQDN
+            // (`bayut.com.`) or a tab-in-the-authority host (`bayut\t.com` → `bayut_.com`) can't
+            // walk past a list the team thought excluded it. An unrecognisable host is dropped
+            // outright rather than let through unchecked.
+            $host = $this->normaliser->host((string) parse_url($item->link, PHP_URL_HOST));
+
+            if ($host === null || $this->isIgnored($host, $ignore)) {
                 continue;
             }
 
@@ -141,10 +149,24 @@ final class SerperNewsClient implements NewsSearchClient
         $link = is_string($result['link'] ?? null) ? trim($result['link']) : '';
         $title = is_string($result['title'] ?? null) ? trim($result['title']) : '';
 
-        $urlHash = $this->normaliser->urlHash($link);
-        if ($urlHash === null || $title === '' || mb_strlen($link) > self::MAX_URL) {
+        // Length and title first: parsing a multi-megabyte `link` only to throw it away is work a
+        // hostile (or merely broken) provider response shouldn't be able to ask for.
+        if ($title === '' || $link === '' || mb_strlen($link) > self::MAX_URL) {
             return null;
         }
+
+        // L1: store the **canonical** URL, not the raw one. `parse_url` resolves userinfo
+        // correctly, so `https://gulfnews.com@evil.ae/x` is checked against `evil.ae` above — but
+        // the raw string would still be what we render, and a member reading the link would see a
+        // publisher they trust. The canonical form has the userinfo stripped.
+        $canonical = $this->normaliser->canonicalUrl($link);
+        $urlHash = $this->normaliser->urlHash($link);
+
+        if ($canonical === null || $urlHash === null) {
+            return null;
+        }
+
+        $link = $canonical;
 
         $snippet = is_string($result['snippet'] ?? null) ? trim($result['snippet']) : '';
         $source = is_string($result['source'] ?? null) ? trim($result['source']) : '';
@@ -192,15 +214,23 @@ final class SerperNewsClient implements NewsSearchClient
     }
 
     /**
-     * Whether a host (or any parent of it) is on the ignore list.
+     * Whether an already-normalised host (or any parent of it) is on the ignore list.
+     *
+     * The list's own entries are normalised here too — they come from config and from a team's
+     * typing, so a trailing dot or a `www.` prefix on either side must not decide the outcome.
      *
      * @param  list<string>  $ignore
      */
     private function isIgnored(string $host, array $ignore): bool
     {
         foreach ($ignore as $blocked) {
-            $blocked = Str::lower((string) $blocked);
-            if ($host === $blocked || Str::endsWith($host, '.'.$blocked)) {
+            $normalised = Str::replaceStart('www.', '', rtrim(Str::lower(trim((string) $blocked)), '.'));
+
+            if ($normalised === '') {
+                continue;
+            }
+
+            if ($host === $normalised || Str::endsWith($host, '.'.$normalised)) {
                 return true;
             }
         }

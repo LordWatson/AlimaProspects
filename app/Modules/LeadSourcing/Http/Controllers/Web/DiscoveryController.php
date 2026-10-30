@@ -113,18 +113,26 @@ final class DiscoveryController extends Controller
     }
 
     /**
-     * The lead sources shown in the picker — all of them (so upcoming providers are previewable),
-     * each flagged for whether it can be run yet.
+     * The lead sources shown in the picker: the **providers**, each flagged for whether it can be
+     * run yet, so one not yet implemented is still previewable.
+     *
+     * The non-provider cases are left out. `LeadSource` also labels how a lead arrived when nobody
+     * went looking — a CSV the team imported, a signal they converted — and offering either as a
+     * greyed-out card on a screen whose only question is "which providers shall I search?" invites
+     * a member to wait for something that is never coming.
      *
      * @return list<array<string, mixed>>
      */
     private function sources(): array
     {
-        return array_map(static fn (LeadSource $source): array => [
+        return array_values(array_map(static fn (LeadSource $source): array => [
             'value' => $source->value,
             'label' => $source->label(),
             'description' => $source->description(),
             'available' => $source->isAvailable(),
-        ], LeadSource::cases());
+        ], array_filter(
+            LeadSource::cases(),
+            static fn (LeadSource $source): bool => $source->isAvailable(),
+        )));
     }
 }

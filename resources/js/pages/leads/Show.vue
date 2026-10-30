@@ -4,8 +4,10 @@ import {
     ArrowLeft,
     ExternalLink,
     Mail,
+    Newspaper,
     Phone,
     ShieldAlert,
+    ShieldCheck,
     Sparkles,
 } from '@lucide/vue';
 import { computed } from 'vue';
@@ -23,6 +25,7 @@ import type {
     LeadActivity,
     LeadDiscoveryRun,
     LeadNote,
+    LeadOrigin,
     LeadScore,
     LeadTask,
     PipelineStage,
@@ -47,6 +50,8 @@ const props = defineProps<{
     stages: PipelineStage[];
     members: TeamMemberOption[];
     discoveryRun: LeadDiscoveryRun | null;
+    /** Where the lead came from when its `source` isn't the whole story (a converted signal). */
+    origin: LeadOrigin | null;
     can: { work: boolean };
 }>();
 
@@ -85,6 +90,13 @@ const facts = computed(() =>
 const freshness = computed(
     () => props.lead.enriched_at ?? props.lead.collected_at ?? null,
 );
+
+/**
+ * The legal limit on approaching this company, when one applies (ADR 0007). Shown, not enforced —
+ * Outreach (Phase 11) is what honours it; this is so a member reading the lead today knows before
+ * they pick up the phone.
+ */
+const restriction = computed(() => props.lead.outreach_restriction);
 
 const website = computed(() => {
     const site = props.lead.website;
@@ -168,6 +180,32 @@ const website = computed(() => {
                             'At least one contact here looks like a named person rather than a business role. Prefer the role-based contacts when you reach out.',
                         )
                     }}
+                </p>
+            </div>
+        </div>
+
+        <!-- Outreach restriction: a legal limit on how this company may be approached (ADR 0007).
+             Stated plainly rather than enforced here — Outreach honours the flag; this is so a
+             member knows before they pick up the phone. `warning`, never Signal Orange, which the
+             brand reserves as decorative (brand-tokens.md §2.1). -->
+        <div
+            v-if="restriction"
+            class="flex items-start gap-3 rounded-2xl border border-border bg-card p-5"
+            role="note"
+            data-test="outreach-restriction"
+        >
+            <span
+                class="flex size-9 shrink-0 items-center justify-center rounded-full bg-warning/12 text-warning"
+                aria-hidden="true"
+            >
+                <ShieldCheck class="size-4" />
+            </span>
+            <div class="space-y-1">
+                <h2 class="text-sm font-semibold text-foreground rtl:font-bold">
+                    {{ t(restriction.label) }}
+                </h2>
+                <p class="text-sm text-muted-foreground">
+                    {{ t(restriction.guidance) }}
                 </p>
             </div>
         </div>
@@ -411,6 +449,100 @@ const website = computed(() => {
                     :members="members"
                     :can-write="can.work"
                 />
+
+                <!-- The event: read-only. Why this lead exists at all, when "a provider found it"
+                     isn't the whole story — a converted signal and the event behind it. Named for
+                     what it shows, so it doesn't read as a second "Where this came from" (which is
+                     further down, and is about per-field provenance). The server resolves this
+                     through a contract, so the panel renders whatever module filled it in. -->
+                <section
+                    v-if="origin"
+                    class="space-y-4 rounded-2xl border border-border bg-card p-6"
+                    data-test="origin"
+                >
+                    <h2
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    >
+                        {{ t('The event') }}
+                    </h2>
+
+                    <div class="flex items-start gap-3">
+                        <span
+                            class="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-muted-foreground"
+                            aria-hidden="true"
+                        >
+                            <Newspaper class="size-4" />
+                        </span>
+                        <div class="min-w-0 space-y-1">
+                            <p
+                                class="text-sm font-semibold text-foreground rtl:font-bold"
+                            >
+                                {{ t(origin.label) }}
+                            </p>
+                            <p
+                                v-if="origin.detail"
+                                class="text-xs text-muted-foreground"
+                            >
+                                {{ t(origin.detail) }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- The article's own words, so it is read as quoted, not as Alima's copy. -->
+                    <blockquote
+                        v-if="origin.headline"
+                        class="border-s-2 border-border ps-3 text-sm text-foreground"
+                        dir="auto"
+                    >
+                        {{ origin.headline }}
+                    </blockquote>
+
+                    <dl class="space-y-3 text-sm">
+                        <div v-if="origin.source_name" class="space-y-0.5">
+                            <dt class="text-xs text-muted-foreground">
+                                {{ t('Published by') }}
+                            </dt>
+                            <dd class="text-foreground" dir="auto">
+                                {{ origin.source_name }}
+                            </dd>
+                        </div>
+
+                        <div v-if="origin.occurred_at" class="space-y-0.5">
+                            <dt class="text-xs text-muted-foreground">
+                                {{ t('Published') }}
+                            </dt>
+                            <dd class="text-foreground" dir="auto">
+                                <time :datetime="origin.occurred_at">{{
+                                    dateTime(origin.occurred_at)
+                                }}</time>
+                            </dd>
+                        </div>
+                    </dl>
+
+                    <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                        <a
+                            v-if="origin.url"
+                            :href="origin.url"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1 rounded text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        >
+                            {{ t('Read the article') }}
+                            <ExternalLink class="size-3" aria-hidden="true" />
+                            <span class="sr-only">{{
+                                t('(opens in a new tab)')
+                            }}</span>
+                        </a>
+                        <Link
+                            v-if="origin.href"
+                            :href="origin.href"
+                            class="rounded text-brand underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        >
+                            {{ t('See the signal') }}
+                        </Link>
+                    </div>
+                </section>
+
                 <!-- Fit -->
                 <section
                     class="space-y-4 rounded-2xl border border-border bg-card p-6"

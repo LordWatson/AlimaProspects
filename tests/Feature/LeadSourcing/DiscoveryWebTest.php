@@ -95,3 +95,19 @@ it('lists the team’s recent runs on the index', function (): void {
             ->component('lead-sourcing/Index')
             ->has('runs', 2));
 });
+
+it('offers only the providers in the discovery picker', function (): void {
+    $user = createUserWithTeam();
+
+    // `LeadSource` also labels how a lead arrived when nobody went looking — an imported CSV, a
+    // converted signal. Neither is something to search, so neither belongs on this screen even as
+    // a greyed-out card (ADR 0011, S4).
+    $this->actingAs($user)
+        ->get(route('lead-sourcing.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('sources', 3)
+            ->where('sources.0.value', 'companies_house')
+            ->where('sources.1.value', 'google_places')
+            ->where('sources.2.value', 'web_search'));
+});

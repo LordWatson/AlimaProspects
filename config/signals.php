@@ -54,6 +54,16 @@ return [
     // signal_runs.cost_micros. Verify against live Serper pricing.
     'cost_micros_per_request' => (int) env('SIGNALS_COST_MICROS', 1_000),
 
+    // How many "Run now" triggers one member may make per minute across all their watches (S5).
+    // Each watch is separately throttled to once per 15 minutes in `TriggerSignalWatchAction`;
+    // this is the per-member cap, because a run spends real money.
+    'run_rate_limit' => (int) env('SIGNALS_RUN_RATE_LIMIT', 10),
+
+    // How many watches one team may have (S6). A watch is a standing instruction to spend money,
+    // so the ceiling is on *creating* them, not just on running them — the per-watch run throttle
+    // doesn't help against a team with two hundred watches.
+    'max_watches_per_team' => (int) env('SIGNALS_MAX_WATCHES_PER_TEAM', 10),
+
     // AI thresholds applied in S3 (declared here so the whole feature's knobs live together): a kept
     // signal needs is_event && confidence >= min_confidence && relevance >= min_relevance.
     'min_confidence' => (int) env('SIGNALS_MIN_CONFIDENCE', 60),

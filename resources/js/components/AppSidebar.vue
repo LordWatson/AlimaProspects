@@ -6,6 +6,7 @@ import {
     LayoutGrid,
     Palette,
     Radar,
+    Satellite,
     Scan,
     Settings2,
     Target,
@@ -81,7 +82,16 @@ const workspace = computed<Item[]>(() => [
         href: '/leads',
         match: 'startsWith',
     },
-    { n: '07', title: t('Design system'), icon: Palette, href: '/design' },
+    {
+        n: '07',
+        title: t('Signals'),
+        icon: Satellite,
+        // `startsWith` so the watch-settings screen keeps the nav item lit — it is the same
+        // destination as far as a member is concerned.
+        href: '/signals',
+        match: 'startsWith',
+    },
+    { n: '08', title: t('Design system'), icon: Palette, href: '/design' },
 ]);
 
 const account = computed<Item[]>(() => [

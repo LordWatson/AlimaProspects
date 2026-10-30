@@ -54,6 +54,7 @@ flowchart TD
   AIp --> Sig[Signals]
   ICP --> Sig
   Sig -->|convert to Lead| LS
+  Sig -->|LeadOriginProvider| LW
   LW --> Out[Outreach]
   AIp --> Out
   Comp[Compliance & Privacy] --> Out

@@ -34,7 +34,7 @@
 
 Legend: ⬜ not started · 🟡 in progress · ✅ done · ⛔ blocked.
 
-> **Signals** (trigger-event prospecting, UAE v1) is planned separately in **`signals-plan.md`**, phases **S0–S6**, as a companion to this plan. S0 (decisions, docs & Serper spike) ✅ done 2026-10-29 — see `docs/modules/signals.md` and ADR 0011. It sits after Leads Workspace (10/10b) and before/alongside Outreach (11); its own status table lives in `signals-plan.md`.
+> **Signals** (trigger-event prospecting, UAE v1) is planned separately in **`signals-plan.md`**, phases **S0–S6**, as a companion to this plan. **S0–S6 ✅ complete 2026-10-29** — the module, the Serper News client, AI event extraction, convert-to-Lead (with the UAE prior-consent outreach flag), the bilingual feed and watch settings, and API v1 + retention + the DSAR hook. Two open dependencies on later phases: **Outreach (Phase 11) must honour `leads.raw.outreach_restriction`** (see `docs/modules/outreach.md`), and **Compliance (Phase 15) should call `SignalsPersonalDataExporter`**, which is built and tested but has no caller yet. A read-only admin view of `signal_runs` is deferred to **Phase 19**. See `docs/modules/signals.md` and ADR 0011. It sits after Leads Workspace (10/10b) and before/alongside Outreach (11); its own status table lives in `signals-plan.md`.
 
 ---
 

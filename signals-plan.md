@@ -5,15 +5,15 @@
 
 ## Status
 
-| Phase | Title                                              | Status | Completed |
-| ----- | -------------------------------------------------- | ------ | --------- |
-| S0    | Decisions, docs & Serper spike                     | ✅ Done | 2026-10-29 |
-| S1    | Signals module scaffold, data model & tenancy      | ✅ Done | 2026-10-29 |
-| S2    | Serper News client & ICP-driven query builder      | ✅ Done | 2026-10-29 |
-| S3    | AI event extraction & the signal watch run         | ✅ Done | 2026-10-29 |
-| S4    | Convert a signal into a standard Lead              | ⬜     | —         |
-| S5    | Signals feed & watch settings UI (EN/AR, RTL)      | ⬜     | —         |
-| S6    | API v1, retention, compliance hardening & polish   | ⬜     | —         |
+| Phase | Title                                            | Status  | Completed  |
+| ----- | ------------------------------------------------ | ------- | ---------- |
+| S0    | Decisions, docs & Serper spike                   | ✅ Done | 2026-10-29 |
+| S1    | Signals module scaffold, data model & tenancy    | ✅ Done | 2026-10-29 |
+| S2    | Serper News client & ICP-driven query builder    | ✅ Done | 2026-10-29 |
+| S3    | AI event extraction & the signal watch run       | ✅ Done | 2026-10-29 |
+| S4    | Convert a signal into a standard Lead            | ✅ Done | 2026-10-29 |
+| S5    | Signals feed & watch settings UI (EN/AR, RTL)    | ✅ Done | 2026-10-29 |
+| S6    | API v1, retention, compliance hardening & polish | ✅ Done | 2026-10-29 |
 
 ---
 
@@ -32,11 +32,11 @@
 
 ## Cost model (v1, per team per day)
 
-| Item                                 | Unit                          | ~Cost    | Per daily watch run (~8 queries, ~80 results) |
-| ------------------------------------ | ----------------------------- | -------- | ---------------------------------------------- |
-| Serper `/news`                       | per query                     | ~$0.001  | ~$0.01                                         |
-| AI extraction (cheap tier, batched)  | per batch of ≤10 results      | ~$0.003  | ~$0.03 (results already seen are skipped first) |
-| **Total**                            |                               |          | **≈ $0.04 / team / day (~$1.20 / month)**       |
+| Item                                | Unit                     | ~Cost   | Per daily watch run (~8 queries, ~80 results)   |
+| ----------------------------------- | ------------------------ | ------- | ----------------------------------------------- |
+| Serper `/news`                      | per query                | ~$0.001 | ~$0.01                                          |
+| AI extraction (cheap tier, batched) | per batch of ≤10 results | ~$0.003 | ~$0.03 (results already seen are skipped first) |
+| **Total**                           |                          |         | **≈ $0.04 / team / day (~$1.20 / month)**       |
 
 Log cost on `signal_runs.cost_micros`, as `discovery_runs` does. Verify rates against live pricing.
 
@@ -179,6 +179,7 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
 7. [x] **AI credits**: go through `AiCreditGuard`, so a team out of credit gets a clear Failed run ("AI credit exhausted") instead of a half-run.
 
 **Tests:** end-to-end with `FakeNewsSearchClient` + `FakeAiTransport`:
+
 - happy path creates the right signals;
 - re-running the same results creates 0 new signals (idempotent);
 - below-threshold items are dropped;
@@ -203,13 +204,13 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
 **Modules & docs:** Signals, LeadSourcing (`lead-sourcing.md`), Leads Workspace (`leads-workspace.md`).
 **Tasks:**
 
-1. [ ] **`LeadSource::Signal`** case in `app/Modules/LeadSourcing/Enums/LeadSource.php`:
+1. [x] **`LeadSource::Signal`** case in `app/Modules/LeadSourcing/Enums/LeadSource.php`:
     - label "Signal"; description "Created from a wealth/liquidity event in your Signals feed."
     - `isAvailable()` = **false** (it isn't a discovery provider, like `Import`).
     - `rank()` = 1, equal to web search: news-derived, so registry/places/import data wins on merge.
     - Update the enum tests and any `match` that must be exhaustive.
-2. [ ] **`ConvertSignalData`** (spatie/laravel-data): `companyName` (required; prefilled from `subject_company_name`), `website` (nullable), `personName` (prefilled), `personRole` (prefilled), `locality` (default "Dubai"), `country` (default "AE"), `pipelineStageId` (nullable), `note` (nullable). Validation lives in `ConvertSignalRequest` / the Data object only.
-3. [ ] **`ConvertSignalToLeadAction`**, in one `DB::transaction()`:
+2. [x] **`ConvertSignalData`** (spatie/laravel-data): `companyName` (required; prefilled from `subject_company_name`), `website` (nullable), `personName` (prefilled), `personRole` (prefilled), `locality` (default "Dubai"), `country` (default "AE"), `pipelineStageId` (nullable), `note` (nullable). Validation lives in `ConvertSignalRequest` / the Data object only.
+3. [x] **`ConvertSignalToLeadAction`**, in one `DB::transaction()`:
     1. Lock the signal (`lockForUpdate`). If it's already Converted, **return the existing lead** (idempotent; no error on double-click).
     2. Build the `Lead`: `source = Signal`, company fields from the DTO, `source_url = signal.source_url`, `collected_at = now()`, `raw = ['signal_id' => …, 'event_type' => …, 'headline' => …]`, `has_personal_data = true` when a person is named. Compute `dedupe_key` the same way `SourcedLead::dedupeKey()` does.
     3. **Dedupe:** run the existing `Enrichment\Services\LeadDeduplicator::deduplicate()`. If the company already exists as a lead for this team, **attach to that lead** instead of creating a duplicate ("fill in, never overwrite").
@@ -217,11 +218,12 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
     5. Record a `LeadActivity` ("Created from signal: {headline}", or "Linked to signal …" if attached) and an audit log entry.
     6. Update the signal: `status = Converted`, `lead_id`, `actioned_by`, `actioned_at`.
     7. **`afterCommit`:** queue `EnrichLeadJob` for a new lead (scoring follows via the existing `LeadEnriched` → `ScoreEnrichedLead` listener), and fire `SignalConverted`.
-4. [ ] **UAE outreach flag:** store `raw.outreach_restriction = 'uae_prior_consent'` on leads created from UAE signals, and show a badge on the lead detail page ("Approach via LinkedIn or a referral"). Phase 11 (Outreach) must read this flag. Add that requirement to `docs/modules/outreach.md`.
-5. [ ] **`DismissSignalAction`** (with an optional reason enum: `NotRelevant`, `AlreadyKnown`, `NotAnEvent`) and **`RestoreSignalAction`** (Dismissed → New). Both are transactional and audited. Store dismiss reasons for future tuning.
-6. [ ] The lead detail page shows **"Origin: Signal"** with the headline and source link (a small read-only panel in Leads Workspace that reads `raw.signal_id`; keep the dependency one-way via a Signals-provided resource or a query in Signals).
+4. [x] **UAE outreach flag:** store `raw.outreach_restriction = 'uae_prior_consent'` on leads created from UAE signals, and show a badge on the lead detail page ("Approach via LinkedIn or a referral"). Phase 11 (Outreach) must read this flag. Add that requirement to `docs/modules/outreach.md`.
+5. [x] **`DismissSignalAction`** (with an optional reason enum: `NotRelevant`, `AlreadyKnown`, `NotAnEvent`) and **`RestoreSignalAction`** (Dismissed → New). Both are transactional and audited. Store dismiss reasons for future tuning.
+6. [x] The lead detail page shows **"Origin: Signal"** with the headline and source link (a small read-only panel in Leads Workspace that reads `raw.signal_id`; keep the dependency one-way via a Signals-provided resource or a query in Signals).
 
 **Tests:**
+
 - Conversion creates a lead + contact with `source = Signal` and no email or phone.
 - Converting twice returns the same lead.
 - Converting a signal for a company that already exists attaches to it, adds the contact, and doesn't overwrite imported fields.
@@ -233,6 +235,41 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
 
 **Acceptance:** a converted signal appears in the Leads list, gets enriched and scored automatically, shows its origin, and can't be duplicated; gates pass; `signals.md`, `lead-sourcing.md` and `leads-workspace.md` updated with changelog rows.
 **Dispatch prompt:** _"Execute Phase S4 of signals-plan.md. Read docs/modules/{signals,lead-sourcing,enrichment-data-quality,leads-workspace}.md, app/Modules/LeadSourcing/Enums/LeadSource.php, app/Modules/LeadSourcing/Data/SourcedLead.php, app/Modules/Enrichment/Services/LeadDeduplicator.php and app/Modules/LeadsWorkspace/Actions/ImportLeadsAction.php for the fill-in-never-overwrite pattern. Add LeadSource::Signal, ConvertSignalToLeadAction, dismiss/restore, the UAE outreach flag and the lead origin panel, with tests."_
+**Shipped, with these deliberate deviations from the plan above:**
+
+- **The UAE flag is keyed on the watch's market, not the lead's country.** The plan says
+  "on leads created from UAE signals"; an early cut read the company's country off the
+  convert form, which silently dropped the restriction the moment a Dubai founder's lead
+  was filed under a UK holding company. It now comes from
+  `Market::outreachRestriction()` (Core), because the restriction protects the person
+  being approached, not the company they happen to own. The value lives behind
+  `Core\Enums\OutreachRestriction` rather than as a raw string, and `LeadResource`
+  sends it on **every** lead so Outreach and mobile can't miss it.
+- **The origin panel keys on `raw.signal_id` alone, not on `source = Signal`.** A signal
+  converted onto a company the team already had attaches to that lead and leaves its
+  stronger attribution intact, so a source check would have hidden the event on exactly
+  the leads where it is most interesting.
+- **One `LeadActivityType` case, not a sentence per outcome.** The plan's "Created from
+  signal: …" / "Linked to signal …" are composed at render time from
+  `SignalConverted` + an `attached` property, because the repo stores no prose on a
+  timeline row (EN/AR, ADR 0007).
+- **The lead origin is read through a `LeadOriginProvider` contract** that the Leads
+  Workspace owns and Signals binds over, so the plan's "keep the dependency one-way"
+  holds literally: the Workspace has no `use` of Signals at all.
+- **`attempts: 3` on the conversion transaction**, and the lost-insert race retried
+  _outside_ it. Found in review: this action pre-locks a row that `LeadDeduplicator`
+  then tries to lock in id order, so a concurrent enrichment can deadlock with it, and
+  catching the unique violation inside the transaction would have worked on MySQL while
+  poisoning it on other drivers.
+- **`field_sources` provenance on gap-filled columns** (ADR 0008), which the plan didn't
+  ask for and the CSV importer still doesn't do.
+- **Also fixed in passing:** the discovery picker listed every `LeadSource` case, so
+  `import` already rendered as a permanently greyed-out card and `signal` would have
+  added a second; it now lists the providers only.
+
+**Not in S4 (as planned):** the convert/dismiss/restore **endpoints and screens** are
+S5, and the API is S6 — S4 is the Actions, the data model and the lead-side surfaces.
+
 **Risks:** a relocation signal may have no company, so the conversion form must require a company name (the person's company or holding entity) and explain why. Don't invent one.
 
 ---
@@ -244,26 +281,48 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
 **Modules & docs:** Signals; `docs/brand/brand-tokens.md` (**read first**, per CLAUDE.md §2a).
 **Tasks:**
 
-1. [ ] **Routes + thin controllers** (Policy → FormRequest → one Action → Inertia):
+1. [x] **Routes + thin controllers** (Policy → FormRequest → one Action → Inertia):
     - `signals.index`, `signals.dismiss`, `signals.restore`, `signals.convert`
     - `signal-watches.index/store/update/destroy/run`
-2. [ ] **`Pages/Signals/Index.vue`, the feed:**
+2. [x] **`Pages/Signals/Index.vue`, the feed:**
     - Tabs: New / Converted / Dismissed. Filters: event type, date range, min relevance. Paginated, newest first; dates in the team timezone.
     - **Live update** on `SignalsDetected` / `SignalRunProgressed` via Reverb (toast "3 new signals").
-3. [ ] **`Components/Signals/SignalCard.vue`:**
+3. [x] **`Components/Signals/SignalCard.vue`:**
     - Event-type `Badge`; headline; AI summary; person · role · company; amount formatted from minor units in its currency; location; source name + published date; relevance meter.
     - Suggested approach line.
     - Actions: **Convert to lead** (opens the modal below), **Dismiss** (with reason), **View lead** (when converted).
     - Use **`status.*` tokens** for state, never Signal Orange (CLAUDE.md §2a).
-4. [ ] **`Components/Signals/ConvertSignalModal.vue`:** fields prefilled from the signal (company required), pipeline stage picker, note. Shows the UAE "LinkedIn / referral only" notice.
-5. [ ] **`Pages/Signals/Watches.vue`:** list and create/edit watches (name, location defaulting to the ICP's Geography, event-type checkboxes with descriptions, cadence, active toggle), **Run now** with live progress, last run stats (signals found, cost), recent run history.
-6. [ ] **`EmptyState`** for a team with no watches ("Set up your first Dubai watch", with a one-click default watch for Dubai covering all three event types) and for no signals yet.
-7. [ ] Add **Signals** to the app-shell navigation. Add EN + AR strings to `lang/`, mirror the layout in RTL (don't mirror the logo), and use Tajawal for Arabic. Copy follows the brand voice (bright, bold, clear, together).
-8. [ ] Accessibility: keyboard navigation on cards and modals, labelled controls, focus return after the modal closes, WCAG AA contrast.
+4. [x] **`Components/Signals/ConvertSignalModal.vue`:** fields prefilled from the signal (company required), pipeline stage picker, note. Shows the UAE "LinkedIn / referral only" notice.
+5. [x] **`Pages/Signals/Watches.vue`:** list and create/edit watches (name, location defaulting to the ICP's Geography, event-type checkboxes with descriptions, cadence, active toggle), **Run now** with live progress, last run stats (signals found, cost), recent run history.
+6. [x] **`EmptyState`** for a team with no watches ("Set up your first Dubai watch", with a one-click default watch for Dubai covering all three event types) and for no signals yet.
+7. [x] Add **Signals** to the app-shell navigation. Add EN + AR strings to `lang/`, mirror the layout in RTL (don't mirror the logo), and use Tajawal for Arabic. Copy follows the brand voice (bright, bold, clear, together).
+8. [x] Accessibility: keyboard navigation on cards and modals, labelled controls, focus return after the modal closes, WCAG AA contrast.
 
 **Tests:** feature tests per route (auth, validation, tenancy, happy path); Inertia props shape; Vue components type-check (`vue-tsc`); RTL snapshot or render check if the repo already has that pattern.
 **Acceptance:** the full flow works in the browser, in EN and AR: create a Dubai watch → Run now → see signals arrive live → convert one → it appears in Leads with origin "Signal". **`brand-reviewer`** passes; gates + build pass.
 **Dispatch prompt:** _"Execute Phase S5 of signals-plan.md. Read CLAUDE.md §2a, docs/brand/brand-tokens.md and docs/modules/signals.md first. Build the Signals feed, SignalCard, ConvertSignalModal, Watches page, empty states, navigation and EN/AR strings using the existing base components and brand tokens only. Then run the brand-reviewer agent and fix its findings."_
+**Shipped, with these notes:**
+
+- **The watch screen lives at `/signals/watches`**, not `/signal-watches`. The route _names_ are
+  the ones specified; the path is nested so the sidebar's `startsWith` match keeps Signals lit
+  while a member is in its settings — it is one destination as far as they are concerned.
+- **The tabs are links, not `role="tab"`** (a `brand-reviewer` blocker). Each one navigates, so it
+  is shareable and bookmarkable, and a `tablist` may not contain the Filters button. Selected
+  filter chips also gained a **tick**, because a tint alone carries meaning by colour only
+  (WCAG 1.4.1), and focus moves to the list with an always-mounted live region when a card leaves
+  it.
+- **The card is leaner than the task describes.** The same review found it over-busy — the plan's
+  own risk note — so the Converted/Dismissed badge went (the tab already says it), "found by" went
+  (it is plumbing), relevance moved into the header beside the chip and the date, and the
+  suggested-approach panel lost its tint and icon circle for a thin brand rule.
+- **Counts are phrased count-neutrally** ("New signals just landed: 3") so the Arabic needs no
+  dual or plural forms.
+- **Two base components were extracted**, `ui/native-select` and `ui/textarea`, rather than copying
+  `Input`'s class string a fifth time. ~15 older call sites across the app still hand-roll these;
+  that is a separate follow-up, recorded in `signals.md`.
+- **Reverb** reuses the S3 broadcasts rather than adding new ones: the feed offers a "show them"
+  banner on `signals.detected` instead of reordering under the member's cursor.
+
 **Risks:** an over-busy card. Lead with cream, use one accent per layout, and favour fewer colours.
 
 ---
@@ -275,21 +334,52 @@ Every phase follows `CLAUDE.md` §4, and the **definition of done** (`phase-comp
 **Modules & docs:** Signals; `docs/compliance.md`; `docs/runbooks/`.
 **Tasks:**
 
-1. [ ] **API v1** (`/api/v1`, Sanctum, per-token rate limit, API Resources only, the standard error envelope and pagination):
+1. [x] **API v1** (`/api/v1`, Sanctum, per-token rate limit, API Resources only, the standard error envelope and pagination):
     - `GET /signals`, `POST /signals/{id}/convert`, `POST /signals/{id}/dismiss`
     - `GET/POST/PATCH/DELETE /signal-watches`, `POST /signal-watches/{id}/run`
     - Covered by feature tests (auth, validation, tenancy, happy path).
-2. [ ] **Retention sweep** `signals:prune`, scheduled daily: hard-delete Dismissed signals older than `signals.retention.dismissed_days` (90) and New signals older than `signals.retention.unactioned_days` (180). Converted signals stay as long as their lead does. Idempotent, chunked, logged as counts only.
-3. [ ] **Data-subject requests (DSAR) hook:** a `SignalsPersonalDataExporter` / eraser that finds signals by `subject_person_name` for a team, ready for Phase 15 (Compliance) to call. Document it in `compliance-privacy.md`.
-4. [ ] **Per-team ignore list:** `signal_watches.ignore_domains` (json), so a client can exclude their competitors' domains. Merged with the config list in `SerperNewsClient`.
-5. [ ] **Audit log** entries for watch create/update/delete, convert, dismiss and restore (if S4/S5 didn't already add them).
-6. [ ] **Observability:** structured logs on the `signals` channel; Sentry breadcrumbs on run failures; a simple admin/Filament read-only view of `signal_runs` (cost, failures) if the admin panel exists by then, otherwise note it for Phase 19.
-7. [ ] **Demo runbook** `docs/runbooks/signals-demo.md`: how to set up a Dubai watch for the real-estate client, what a good week of signals looks like, and how to talk about compliance ("we work from published news, store no contact details, approach via LinkedIn or referrals").
-8. [ ] **Final review:** run `laravel-module-reviewer` across the Signals module and `security-review` on the prompt and URL handling; fix the findings. Update `CHANGELOG.md`, this file's status table and `mvp.md`.
+2. [x] **Retention sweep** `signals:prune`, scheduled daily: hard-delete Dismissed signals older than `signals.retention.dismissed_days` (90) and New signals older than `signals.retention.unactioned_days` (180). Converted signals stay as long as their lead does. Idempotent, chunked, logged as counts only.
+3. [x] **Data-subject requests (DSAR) hook:** a `SignalsPersonalDataExporter` / eraser that finds signals by `subject_person_name` for a team, ready for Phase 15 (Compliance) to call. Document it in `compliance-privacy.md`.
+4. [x] **Per-team ignore list:** `signal_watches.ignore_domains` (json), so a client can exclude their competitors' domains. Merged with the config list in `SerperNewsClient`.
+5. [x] **Audit log** entries for watch create/update/delete, convert, dismiss and restore (if S4/S5 didn't already add them).
+6. [x] **Observability:** structured logs on the `signals` channel; Sentry breadcrumbs on run failures; a simple admin/Filament read-only view of `signal_runs` (cost, failures) if the admin panel exists by then, otherwise note it for Phase 19.
+7. [x] **Demo runbook** `docs/runbooks/signals-demo.md`: how to set up a Dubai watch for the real-estate client, what a good week of signals looks like, and how to talk about compliance ("we work from published news, store no contact details, approach via LinkedIn or referrals").
+8. [x] **Final review:** run `laravel-module-reviewer` across the Signals module and `security-review` on the prompt and URL handling; fix the findings. Update `CHANGELOG.md`, this file's status table and `mvp.md`.
 
 **Tests:** API feature tests; the prune command deletes only eligible rows and never Converted ones; the DSAR exporter finds a named person's signals only within the team; per-team ignore domains are applied.
 **Acceptance:** API parity; retention runs; compliance doc complete; demo runbook written; all gates green; reviewers clean.
 **Dispatch prompt:** _"Execute Phase S6 of signals-plan.md. Read docs/modules/signals.md and docs/compliance.md. Add the API v1 endpoints, signals:prune, the DSAR exporter hook, per-team ignore domains, audit entries, observability and the demo runbook, then run laravel-module-reviewer and security-review and fix the findings. Finish with the phase-complete checklist."_
+**Shipped, with these notes:**
+
+- **Task 6's admin view is deferred to Phase 19**, as the task itself allowed: there is no Filament
+  panel in the app yet. Run cost and failures are visible per watch on the settings screen, and a
+  failed run leaves a Sentry breadcrumb carrying the team and watch ids.
+- **The retention windows moved into a `SignalRetention` service.** `signals:prune` and the feed's
+  "Deletes in N days" both read it, so the promise on screen and the rule that deletes the row are
+  one rule rather than two copies. The countdown itself answers the phase's own risk note
+  ("retention deleting something a team relied on").
+- **The reviews found two blockers, both now fixed and pinned by tests**
+  (`tests/Feature/Signals/SignalReviewFixesTest.php`):
+    1. **Deleting a watch cascaded to converted signals**, destroying the origin of leads the team
+       was still working — the exact opposite of what this file, `compliance.md` §5a and
+       `signals:prune` all promise. Both FKs are now `nullOnDelete` with nullable columns, so the
+       database protects provenance however a watch comes to be deleted, and the action removes
+       only the un-converted signals.
+    2. **`signals:prune` read ids and then deleted by id alone**, so a signal converted between the
+       read and the delete was removed anyway, leaving a brand-new lead pointing at nothing. The
+       delete re-applies its own status and age guards.
+- **A `max_watches_per_team` ceiling was added** (not in the plan). The per-watch run throttle does
+  nothing about a team that creates two hundred watches, and each active one spends money on its
+  cadence.
+- **The security review found no blockers but two real bugs in the ignore list this phase added:**
+  a tab or newline inside a host made `parse_url` return `bayut_.com`, and a trailing-dot FQDN
+  (`bayut.com.`) matched nothing — both walked straight past an exclusion a team had set, and
+  minted a fresh `url_hash` for the same article on every run. Hosts now go through one strict
+  normaliser. It also prompted storing the **canonical** URL (so userinfo can't dress up a link),
+  an explicit `ESCAPE` on the DSAR `LIKE` (SQLite has no default, so the tests had been validating
+  non-production behaviour), a ban on bare URLs in the suggested-approach line, and
+  `maxItems`/`maxLength` on the AI schema.
+
 **Risks:** retention deleting something a team relied on. Show "auto-deletes in N days" on dismissed signals in the UI.
 
 ---

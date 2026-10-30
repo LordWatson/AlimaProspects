@@ -46,6 +46,7 @@ final class SignalQueryBuilder
         $hl = (string) config('signals.hl', 'en');
         $tbs = (string) config('signals.recency', 'qdr:w');
         $num = max(1, min((int) config('signals.results_per_query', 20), 100));
+        $ignoreDomains = $this->resolveIgnoreDomains($watch);
 
         /** @var array<string, mixed> $templatesByType */
         $templatesByType = (array) config("signals.templates.{$market}", []);
@@ -61,12 +62,12 @@ final class SignalQueryBuilder
 
             foreach ($templates as $template) {
                 $q = $this->compose((string) $template, $location);
-                $this->push($queries, $eventType, $q, $gl, $hl, $tbs, $num);
+                $this->push($queries, $eventType, $q, $gl, $hl, $tbs, $num, $ignoreDomains);
             }
         }
 
         if ($icp instanceof Icp) {
-            $this->appendBuyingSignalQueries($watch, $icp, $watchedTypes, $location, $gl, $hl, $tbs, $num, $queries);
+            $this->appendBuyingSignalQueries($watch, $icp, $watchedTypes, $location, $gl, $hl, $tbs, $num, $queries, $ignoreDomains);
         }
 
         return array_values($queries);
@@ -105,6 +106,7 @@ final class SignalQueryBuilder
      *
      * @param  list<SignalEventType>  $watchedTypes
      * @param  array<string, SignalQuery>  $queries
+     * @param  list<string>  $ignoreDomains
      */
     private function appendBuyingSignalQueries(
         SignalWatch $watch,
@@ -116,6 +118,7 @@ final class SignalQueryBuilder
         string $tbs,
         int $num,
         array &$queries,
+        array $ignoreDomains = [],
     ): void {
         $watchedValues = array_map(static fn (SignalEventType $t): string => $t->value, $watchedTypes);
 
@@ -140,7 +143,7 @@ final class SignalQueryBuilder
             }
 
             $q = $this->compose(trim($location.' '.$signal), $location);
-            $this->push($queries, $eventType, $q, $gl, $hl, $tbs, $num);
+            $this->push($queries, $eventType, $q, $gl, $hl, $tbs, $num, $ignoreDomains);
         }
     }
 
@@ -194,7 +197,11 @@ final class SignalQueryBuilder
      *
      * @param  array<string, SignalQuery>  $queries
      */
-    private function push(array &$queries, SignalEventType $eventType, string $q, string $gl, string $hl, string $tbs, int $num): void
+    /**
+     * @param  array<string, SignalQuery>  $queries
+     * @param  list<string>  $ignoreDomains
+     */
+    private function push(array &$queries, SignalEventType $eventType, string $q, string $gl, string $hl, string $tbs, int $num, array $ignoreDomains = []): void
     {
         if ($q === '') {
             return;
@@ -213,6 +220,52 @@ final class SignalQueryBuilder
             hl: $hl,
             tbs: $tbs,
             num: $num,
+            ignoreDomains: $ignoreDomains,
         );
+    }
+
+    /**
+     * The watch's own domains to exclude (S6), normalised to bare lower-case hosts.
+     *
+     * A team types what they see — "www.Competitor.ae", or a whole URL pasted out of the address
+     * bar — so a host is extracted where there is one and `www.` is stripped, which is the form the
+     * client compares against. Blank entries are dropped and duplicates collapsed, so a sloppy
+     * list still works.
+     *
+     * @return list<string>
+     */
+    private function resolveIgnoreDomains(SignalWatch $watch): array
+    {
+        $domains = [];
+
+        foreach ($watch->ignore_domains ?? [] as $entry) {
+            $value = Str::lower(trim($entry));
+
+            if ($value === '') {
+                continue;
+            }
+
+            if (Str::contains($value, '/')) {
+                $host = parse_url(Str::startsWith($value, ['http://', 'https://']) ? $value : 'https://'.$value, PHP_URL_HOST);
+                $value = is_string($host) ? $host : $value;
+            }
+
+            // A team that types a Unicode domain would otherwise never match the punycode host
+            // the provider returns.
+            if (! mb_check_encoding($value, 'ASCII') && function_exists('idn_to_ascii')) {
+                $ascii = idn_to_ascii($value);
+                $value = is_string($ascii) && $ascii !== '' ? $ascii : $value;
+            }
+
+            // The trailing dot matters: `rival.ae.` is a valid absolute FQDN resolving to the same
+            // place, but a different string — and the comparison downstream is a string one.
+            $value = Str::replaceStart('www.', '', rtrim($value, '.'));
+
+            if ($value !== '' && ! in_array($value, $domains, strict: true)) {
+                $domains[] = $value;
+            }
+        }
+
+        return $domains;
     }
 }

@@ -6,6 +6,7 @@ import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import { useI18n } from '@/composables/useI18n';
 import type { DiscoveryRun, DiscoveryRunProgress } from '@/types';
@@ -131,21 +132,11 @@ onBeforeUnmount(() => {
                     {{ progress?.step ?? t('Starting discovery') }}
                 </p>
             </div>
-            <div
-                class="h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-accent"
-                role="progressbar"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                :aria-valuenow="progress?.percent ?? INITIAL_PERCENT"
-                :aria-label="t('Discovery run')"
-            >
-                <div
-                    class="h-full rounded-full bg-brand transition-all duration-300 motion-reduce:transition-none"
-                    :style="{
-                        width: `${progress?.percent ?? INITIAL_PERCENT}%`,
-                    }"
-                />
-            </div>
+            <Progress
+                :value="progress?.percent ?? INITIAL_PERCENT"
+                :label="t('Discovery run')"
+                class="max-w-sm"
+            />
         </section>
 
         <!-- Failed -->

@@ -22,6 +22,14 @@ final class SourcedLead extends Data
     private const int MAX_TEXT = 255;
 
     /**
+     * URL columns are wider than text ones (`leads.source_url`, `lead_contacts.source_url` and
+     * `signals.source_url` are all 2048), because an article URL routinely exceeds 255 — a Serper
+     * Google-redirect link runs to ~280. Clamping those to 255 stored a link that no longer
+     * resolves, and said nothing about it.
+     */
+    private const int MAX_URL = 2048;
+
+    /**
      * @param  array<array-key, mixed>  $address
      * @param  list<string>  $sicCodes
      * @param  array<array-key, mixed>  $raw
@@ -122,7 +130,7 @@ final class SourcedLead extends Data
             'country' => $this->country !== null ? Str::upper(Str::substr(trim($this->country), 0, 2)) : null,
             'address' => $this->address === [] ? null : $this->address,
             'sic_codes' => $this->sicCodes === [] ? null : $this->sicCodes,
-            'source_url' => $this->safeUrl($this->sourceUrl),
+            'source_url' => $this->safeUrl($this->sourceUrl, self::MAX_URL),
             'raw' => $this->raw === [] ? null : $this->raw,
             'collected_at' => now(),
             'dedupe_key' => $this->dedupeKey(),
@@ -137,10 +145,15 @@ final class SourcedLead extends Data
     }
 
     /**
-     * Accept only an http(s) URL (clamped to the column); anything else — a non-http scheme, or junk
-     * — is dropped so it can never be stored or rendered as a link.
+     * Accept only an http(s) URL (clamped to the column it is going into); anything else — a
+     * non-http scheme, or junk — is dropped so it can never be stored or rendered as a link.
+     *
+     * `$limit` is the **destination column's** width, because the two URL columns differ:
+     * `website` is a homepage and stays at 255, while `source_url` is an article address and is
+     * 2048. A clamp wider than the column throws; a clamp narrower than the column stores a link
+     * that doesn't resolve.
      */
-    private function safeUrl(?string $value): ?string
+    private function safeUrl(?string $value, int $limit = self::MAX_TEXT): ?string
     {
         $trimmed = trim((string) $value);
 
@@ -148,7 +161,7 @@ final class SourcedLead extends Data
             return null;
         }
 
-        return Str::limit($trimmed, self::MAX_TEXT, '');
+        return Str::limit($trimmed, $limit, '');
     }
 
     private function date(?string $value): ?Carbon

@@ -53,6 +53,9 @@ the **name and public role** of a named individual mentioned in a published busi
 news item (a founder, executive or company owner tied to a wealth/liquidity event).
 It is designed to the same "enforced-by-system" standard as the rest of this document.
 
+**Status: built (S1–S6, 2026-10-29).** Everything below is implemented and tested, with
+the two deviations from the original design noted inline.
+
 - **What is stored.** A signal holds the person's **name, public role and source
   URL** only, plus the AI summary, event metadata and the clamped news snippet. It
   **never** stores an email address or phone number. (Data minimisation, §3.9.)
@@ -64,22 +67,60 @@ It is designed to the same "enforced-by-system" standard as the rest of this doc
   details, person can object/erase). The LIA must be recorded before watches run,
   mirroring the discovery-run gate (§2).
 - **Outreach is gated, not performed.** Signals is **not** an outreach channel. On
-  conversion, a UAE-derived lead is flagged **`outreach_restriction =
-  'uae_prior_consent'`** and the UI shows "Approach via LinkedIn or a referral" — never
-  cold email/SMS — reflecting UAE PDPL / TDRA prior-consent expectations (ADR 0007,
-  §1–2). Outreach (Phase 11) must read this flag and block non-compliant channels.
+  conversion, a UAE-derived lead is flagged **`leads.raw.outreach_restriction =
+  'uae_prior_consent'`** and the lead screen shows "Get consent first — reach out on
+  LinkedIn or through a referral" — never cold email/SMS — reflecting UAE PDPL / TDRA
+  prior-consent expectations (ADR 0007, §1–2). Outreach (Phase 11) must read this flag
+  and block non-compliant channels; `docs/modules/outreach.md` records exactly what it
+  must do, and `LeadResource` sends the flag on **every** lead so no client can miss it.
+    - **Deviation from the original design:** the flag is keyed on the **watch's
+      market** (`Market::outreachRestriction()`, modelled by
+      `Core\Enums\OutreachRestriction`), **not** on the converted lead's country. The
+      restriction protects the person being approached, who is where the watch was
+      looking; keying it on the company's country silently dropped the restriction the
+      moment a Dubai founder's lead was filed under a UK holding company — which is
+      precisely the case it exists for. It is also **re-asserted after de-duplication**,
+      because a merge fills `raw` only when empty and would otherwise lose it. A
+      restriction may be **added** to a lead but never dropped from one.
 - **Retention.** Dismissed signals are hard-deleted after **90 days**; signals nobody
-  acts on after **180 days**; converted signals persist as long as their lead does. A
-  scheduled, chunked `signals:prune` sweep enforces this and logs counts only
-  (configurable per team, built in S6). The UI shows "auto-deletes in N days" on
-  dismissed signals.
-- **Data-subject rights.** A `SignalsPersonalDataExporter` / eraser locates signals by
-  `subject_person_name` within a team, for the Compliance module's DSAR tooling
-  (§3.5) to call (built in S6). Identity verification for non-users remains an open
-  legal question (§5).
+  acts on after **180 days**; converted signals persist as long as their lead does,
+  because they are that lead's provenance. The **`signals:prune`** command enforces
+  this — scheduled nightly at 03:20, chunked (500 rows a pass), idempotent, sweeping
+  every team, and logging **counts and windows only**. `--dry-run` reports what it
+  would delete without deleting it, because retention is irreversible. Windows are
+  configurable via `SIGNALS_RETENTION_DISMISSED_DAYS` / `_UNACTIONED_DAYS`.
+    - Measured on **`created_at`, not `published_at`**: the promise is about how long
+      Alima holds the record, and an article's own date is outside our control (and
+      sometimes a best-effort parse of "3 days ago").
+    - The feed shows **"Deletes in N days"** on every unconverted signal, computed from
+      the same window the sweep uses, so retention never removes something a team
+      assumed was kept.
+- **Data-subject rights.** `Signals\Services\SignalsPersonalDataExporter` locates
+  signals by `subject_person_name` **within one team** (case-insensitive, with `LIKE`
+  wildcards escaped so a name containing `%` searches for itself), for the Compliance
+  module's DSAR tooling (§3.5) to call. `export()` returns the whole of what Signals
+  holds — there is no email or phone to report, because the module stores neither —
+  with each row flagged `erasable`. `erase()` deletes the erasable matches and
+  reports the rest.
+    - **Deviation from the original design:** a **converted** signal is reported but
+      **not erased**. It is the provenance of a lead someone is actively working, and
+      removing it would leave the team unable to say where that lead came from — the
+      opposite of the accountability the request is exercising. `erase()` returns
+      `retained` and `retained_signal_ids` so the decision is explicit; Phase 15 decides
+      what happens to the lead, and the signal goes with that decision.
+    - Matching is **by name and therefore imprecise**; results are candidates for a human
+      to confirm, never an automatic erasure ("J. Smith" is not reliably "John Smith").
+      Names shorter than 3 characters are refused outright.
+    - Identity verification for non-users remains an open legal question (§5).
 - **Acquisition ethics.** Signals uses the **Serper News API** (ADR 0010/0011), not
   scraping, and is **snippet-only** (no full-page fetch in v1). The AI treats article
   text as **data, never instructions** (§4, AI Platform prompt-injection safety).
+  Property portals and aggregators are excluded globally, and each team can exclude
+  its own list of sources (`signal_watches.ignore_domains`).
+- **Audit trail.** Watch create/update/delete, convert, dismiss and restore all write
+  audit entries carrying **ids, enum values and counts only** — never a headline, a
+  person's name, or a team's competitor list. A watch deletion records how many signals
+  and runs went with it, since that is the only place those counts survive the cascade.
 
 ⚖️ This section forms part of the **pre-launch legal review already required by
 ADR 0007** (UK-B2B-legitimate-interest vs UAE-prior-consent, and the

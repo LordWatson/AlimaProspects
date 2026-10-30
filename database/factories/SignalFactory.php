@@ -6,6 +6,7 @@ namespace Database\Factories;
 
 use App\Modules\Core\Enums\Currency;
 use App\Modules\Core\Models\Team;
+use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
@@ -33,6 +34,7 @@ class SignalFactory extends Factory
             'signal_run_id' => SignalRun::factory(),
             'event_type' => SignalEventType::FundingRound,
             'status' => SignalStatus::New,
+            'dismiss_reason' => null,
             'headline' => 'Dubai startup closes a Series A funding round',
             'summary' => 'A Dubai-based startup has raised a Series A round led by regional investors.',
             'subject_person_name' => 'Jane Founder',
@@ -75,6 +77,7 @@ class SignalFactory extends Factory
     {
         return $this->state(fn (array $attributes): array => [
             'status' => SignalStatus::Dismissed,
+            'dismiss_reason' => SignalDismissReason::NotRelevant,
             'actioned_at' => now(),
         ]);
     }

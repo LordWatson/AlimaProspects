@@ -6,6 +6,7 @@ import {
     FileUp,
     History,
     MessageSquare,
+    Newspaper,
     Radar,
     ScanSearch,
     Sparkles,
@@ -45,6 +46,7 @@ const icons: Record<LeadActivityType, Component> = {
     unassigned: UserMinus,
     tags_changed: Tags,
     imported: FileUp,
+    signal_converted: Newspaper,
 };
 
 /** The one-line description of an entry, built from its type and properties. */
@@ -98,6 +100,15 @@ function describe(activity: LeadActivity): string {
             return p.merged
                 ? t('Imported from a CSV, into the lead you already had')
                 : t('Imported from a CSV');
+        case 'signal_converted':
+            // The headline is the article's own words, interpolated rather than translated.
+            return p.attached
+                ? t('Linked to the signal “:headline”', {
+                      headline: String(p.headline ?? ''),
+                  })
+                : t('Created from the signal “:headline”', {
+                      headline: String(p.headline ?? ''),
+                  });
         default:
             return t(activity.type_label);
     }
@@ -134,6 +145,8 @@ function sourceLabel(source: string): string {
             companies_house: 'Companies House',
             google_places: 'Google Places',
             web_search: 'Web search',
+            import: 'Imported',
+            signal: 'Signal',
         }[source] ?? source
     );
 }
