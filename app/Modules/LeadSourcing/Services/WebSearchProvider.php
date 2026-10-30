@@ -16,9 +16,18 @@ use Illuminate\Support\Str;
  * results collapse with Google Places across providers. Coarser than a registry (no company number /
  * status); Enrichment (Phase 8) can reuse this provider to fetch pages. Hardening inherited from
  * {@see AbstractHttpLeadSourceProvider}. Config: `config/lead-sourcing.php`.
+ *
+ * Alone among the providers it supports negative terms, so the query's exclusions are pushed down to
+ * the API here rather than only filtered out of the response — see {@see self::searchQuery()}.
  */
 final class WebSearchProvider extends AbstractHttpLeadSourceProvider
 {
+    /**
+     * How many of the query's negative terms become `-"..."` operators. Past a handful they stop
+     * sharpening the search and start suppressing it.
+     */
+    private const int MAX_NEGATIVE_TERMS = 5;
+
     public function source(): LeadSource
     {
         return LeadSource::WebSearch;
@@ -115,7 +124,18 @@ final class WebSearchProvider extends AbstractHttpLeadSourceProvider
     }
 
     /**
-     * Compose the search query from the ICP-shaped terms and optional location.
+     * Compose the search query from the shaped terms, the optional location, and the query's negative
+     * terms as Google `-"..."` operators.
+     *
+     * This is the one provider that can refuse the wrong companies at the API rather than after the
+     * fact, and it matters most here: a web search for the work a business does returns the businesses
+     * that do that work — its competitors — near the top, because they are the ones who write about
+     * it. Excluding them in the query buys back those result slots for actual prospects instead of
+     * spending them and discarding the results ({@see LeadCandidateFilter} still runs, as the
+     * backstop and for the other providers).
+     *
+     * Terms are quoted so a multi-word exclusion is treated as a phrase, and the negatives are capped
+     * so the operators can never crowd out the query itself.
      */
     private function searchQuery(DiscoveryQuery $query): string
     {
@@ -126,7 +146,19 @@ final class WebSearchProvider extends AbstractHttpLeadSourceProvider
             return '';
         }
 
-        return $location !== '' ? "{$terms} {$location}" : $terms;
+        $q = $location !== '' ? "{$terms} {$location}" : $terms;
+
+        foreach (array_slice($query->excludeTerms, 0, self::MAX_NEGATIVE_TERMS) as $exclude) {
+            $exclude = trim(str_replace('"', '', $exclude));
+
+            if ($exclude === '') {
+                continue;
+            }
+
+            $q .= ' -"'.$exclude.'"';
+        }
+
+        return $q;
     }
 
     /**

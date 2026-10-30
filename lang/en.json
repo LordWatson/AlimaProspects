@@ -252,7 +252,6 @@
     "Start a discovery above and your runs — and the companies they find — will appear here.": "Start a discovery above and your runs — and the companies they find — will appear here.",
     ":count leads": ":count leads",
     "Discovery run": "Discovery run",
-    "Searching for “:terms”": "Searching for “:terms”",
     "All runs": "All runs",
     "Alima is searching for leads": "Alima is searching for leads",
     "Alima is searching for leads — this only takes a moment.": "Alima is searching for leads — this only takes a moment.",
@@ -1059,5 +1058,15 @@
     "Including :names and :others others.": "Including :names and :others others.",
     "Would you rather not hear from us? :link and we will not contact you again.": "Would you rather not hear from us? :link and we will not contact you again.",
     "Would you rather not hear from us? Reply with \"unsubscribe\", or email :address, and we will not contact you again.": "Would you rather not hear from us? Reply with \"unsubscribe\", or email :address, and we will not contact you again.",
-    "Say it the way|your team says it.": "Say it the way|your team says it."
+    "Say it the way|your team says it.": "Say it the way|your team says it.",
+    "Your industry": "Your industry",
+    "Industries that buy from you": "Industries that buy from you",
+    "Who to ask for": "Who to ask for",
+    "We couldn’t tell who buys from you": "We couldn’t tell who buys from you",
+    "Without that, Alima can’t suggest an ideal-customer profile — one built from your own trade would send you looking for competitors. Run the check again, or set your ideal customer by hand.": "Without that, Alima can’t suggest an ideal-customer profile — one built from your own trade would send you looking for competitors. Run the check again, or set your ideal customer by hand.",
+    "Not available — this check didn’t find who buys from you.": "Not available — this check didn’t find who buys from you.",
+    "This is your trade, so Alima skips it when looking for leads. Businesses like yours are competitors, not customers.": "This is your trade, so Alima skips it when looking for leads. Businesses like yours are competitors, not customers.",
+    "Alima looks for leads in these industries. Spot a miss? Run the check again.": "Alima looks for leads in these industries. Spot a miss? Run the check again.",
+    "Searching for": "Searching for",
+    "Leaving out:": "Leaving out:"
 }

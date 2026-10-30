@@ -252,7 +252,6 @@
     "Start a discovery above and your runs — and the companies they find — will appear here.": "ابدأ اكتشافًا بالأعلى، وستظهر هنا عمليات التشغيل — والشركات التي تعثر عليها.",
     ":count leads": ":count عميل محتمل",
     "Discovery run": "عملية اكتشاف",
-    "Searching for “:terms”": "البحث عن ”:terms“",
     "All runs": "كل العمليات",
     "Alima is searching for leads": "تبحث أليما عن عملاء محتملين",
     "Alima is searching for leads — this only takes a moment.": "تبحث أليما عن عملاء محتملين — لن يستغرق ذلك سوى لحظات.",
@@ -1059,5 +1058,15 @@
     "Including :names and :others others.": "ومنها :names و:others آخرين.",
     "Would you rather not hear from us? :link and we will not contact you again.": "تفضّل ألّا تصلك رسائل منّا؟ :link ولن نتواصل معك مرة أخرى.",
     "Would you rather not hear from us? Reply with \"unsubscribe\", or email :address, and we will not contact you again.": "تفضّل ألّا تصلك رسائل منّا؟ ردّ بكلمة \"unsubscribe\" أو راسل :address، ولن نتواصل معك مرة أخرى.",
-    "Say it the way|your team says it.": "قُلها بالطريقة|التي يقولها فريقك."
+    "Say it the way|your team says it.": "قُلها بالطريقة|التي يقولها فريقك.",
+    "Your industry": "مجال عملك",
+    "Industries that buy from you": "القطاعات التي تشتري منك",
+    "Who to ask for": "من تسأل عنه",
+    "We couldn’t tell who buys from you": "لم نتمكن من معرفة من يشتري منك",
+    "Without that, Alima can’t suggest an ideal-customer profile — one built from your own trade would send you looking for competitors. Run the check again, or set your ideal customer by hand.": "بدون ذلك، لا تستطيع أليما اقتراح ملف عميل مثالي — فملف مبني على مجال عملك سيرسلك للبحث عن المنافسين. أعد تشغيل الفحص، أو حدد عميلك المثالي يدويًا.",
+    "Not available — this check didn’t find who buys from you.": "غير متاح — لم يجد هذا الفحص من يشتري منك.",
+    "This is your trade, so Alima skips it when looking for leads. Businesses like yours are competitors, not customers.": "هذا مجال عملك، لذلك تتجاوزه أليما عند البحث عن العملاء. الشركات الممازلة لك منافسون وليسوا عملاء.",
+    "Alima looks for leads in these industries. Spot a miss? Run the check again.": "تبحث أليما عن العملاء المحتملين في هذه القطاعات. هل ترى خطأً؟ أعد تشغيل الفحص.",
+    "Searching for": "جارٍ البحث عن",
+    "Leaving out:": "مستبعد:"
 }

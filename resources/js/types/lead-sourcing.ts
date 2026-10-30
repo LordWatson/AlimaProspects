@@ -94,6 +94,12 @@ export type DiscoveryRun = {
         limit?: number;
         icp_id?: number | null;
         industries?: string[];
+        /** Words marking a result as the wrong kind of company — the team's trade, its competitors. */
+        exclude_terms?: string[];
+        /** One line naming who this run looked for, written by the query shaper. */
+        customer_description?: string | null;
+        /** Whether an AI pass wrote the terms, or the deterministic ICP fallback did. */
+        shaped?: boolean;
     } | null;
     requested_limit: number;
     leads_found: number;

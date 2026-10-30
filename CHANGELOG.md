@@ -5,6 +5,49 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-10-30 — Lead discovery looked for the company, not its customers
+
+- **The bug, plainly.** A graphic design studio asked Alima for leads and got back graphic design
+  studios. Discovery was searching the active ICP's industry values verbatim, those values were the
+  team's **own** trade, and so every run returned the team's competition — companies that will never
+  buy from it — presented as its pipeline.
+- **One field meant two opposite things.** The AI background check returned a single
+  `suggested_industries` list with nothing in the schema saying what it was. The model read it the
+  only way the prompt's framing allowed (the industry this business _is in_) while the ICP seeder
+  read it as the industries its _customers_ are in, and wrote the same values to both. Prompt **v2**
+  names and describes the two sides separately — `own_industry` and `competitors` for the seller,
+  `customer_industries`, `target_customers` and `decision_maker_titles` for the buyer — and states
+  outright that the business being researched is the seller. v1 stays seeded, so a report that
+  recorded `prompt_version: 1` is still traceable to what produced it.
+- **A suggested ICP now only ever describes customers.** Customer industries become the industry
+  signal, decision-maker titles the job-title signal, and the team's own trade plus any named
+  competitor go in as **exclusions**. When the check cannot tell who buys, nothing is seeded and the
+  option is disabled: an ICP built from the seller's own trade is worse than no ICP, because
+  discovery and scoring both act on it without asking again.
+- **Alima now works out who buys from you before it searches.** The new
+  `lead_sourcing.shape_query` prompt takes the business profile and inverts it — a design studio
+  becomes a search for the businesses that commission design work — and phrases the result for the
+  provider that will receive it, since a company register matches registered names, a places API
+  matches categories, and a web search reads whole pages. It runs once per source before the fan-out,
+  never inside the job, so a retry cannot re-bill it. If the member typed their own terms, those win
+  untouched; if the model fails or the team is out of credits, the run falls back to the old
+  deterministic search rather than erroring, because a blunt search beats no search.
+- **"Never show me competitors" now holds for every source.** Exclusions used to apply only when
+  scoring, by which point the company was already in the workspace — enriched with paid calls,
+  counted against the allowance, and sitting there to be read. Web search now pushes them to the API
+  as negative terms, and every provider's results are filtered **before** anything is persisted.
+- **The run screen says what it did.** Each run now states who it looked for and what it left out, so
+  a run that returns fewer leads than asked for reads as a deliberate exclusion rather than a
+  failure. Costs are still metered on what the provider returned, not on what survived the filter —
+  the request was billed either way.
+- **Still a judgement call, so it is visible.** An ICP saved before this change can still name the
+  team's own trade; the query shaper is told to prefer the business profile where the two disagree,
+  but nothing rewrites stored criteria. Exclusion matching is a substring test on company name and
+  domain. It is cheap rather than clever: the name is matched on whole words, so excluding "design"
+  drops "Apex Design" but keeps "Designer Outlet", while a customer whose name genuinely contains
+  the team's trade word will still be dropped. See `docs/modules/lead-sourcing.md` → Known
+  limitations.
+
 ### Added — 2026-10-30 — Outreach: drafts you can send, and a list you cannot
 
 - **Alima writes the message.** `outreach.draft_message` v2 (reasoning tier) drafts an **email**, a

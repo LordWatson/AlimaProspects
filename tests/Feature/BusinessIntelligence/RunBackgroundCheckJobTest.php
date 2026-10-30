@@ -68,9 +68,11 @@ function readyFindings(): array
         'summary' => 'Acme Marketing is a UK agency growth partner.',
         'offering' => 'Done-for-you demand generation.',
         'positioning' => 'Premium, results-first.',
-        'target_customers' => ['Marketing Director', 'Founder'],
+        'own_industry' => 'Marketing agency',
+        'customer_industries' => ['SaaS', 'Professional services'],
+        'target_customers' => ['Early-stage SaaS companies'],
+        'decision_maker_titles' => ['Marketing Director', 'Founder'],
         'competitors' => ['Beta Agency'],
-        'suggested_industries' => ['Marketing', 'SaaS'],
         'confidence' => 0.82,
     ];
 }
@@ -88,7 +90,7 @@ it('produces a ready report with validated findings from the faked AI', function
         ->and($report->version)->toBe(1)
         ->and($report->findings['summary'])->toBe('Acme Marketing is a UK agency growth partner.')
         ->and($report->prompt_key)->toBe('business_intel.background_check')
-        ->and($report->prompt_version)->toBe(1)
+        ->and($report->prompt_version)->toBe(2)
         ->and($report->cost_micros)->toBeGreaterThan(0)
         ->and($report->completed_at)->not->toBeNull();
 });

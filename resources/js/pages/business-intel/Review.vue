@@ -54,6 +54,42 @@ const confidencePct = computed(() =>
         : null,
 );
 
+/**
+ * The team's own trade. Reports written under prompt v1 carry it in `suggested_industries`, where it
+ * was the only reading that framing allowed.
+ */
+const ownIndustry = computed(
+    () =>
+        findings.value?.own_industry ??
+        findings.value?.suggested_industries?.[0] ??
+        null,
+);
+
+/** The industries the team's customers are in — what the suggested ICP is built from. */
+const customerIndustries = computed(
+    () => findings.value?.customer_industries ?? [],
+);
+
+const targetCustomers = computed(() => findings.value?.target_customers ?? []);
+
+const decisionMakerTitles = computed(
+    () => findings.value?.decision_maker_titles ?? [],
+);
+
+const competitors = computed(() => findings.value?.competitors ?? []);
+
+/**
+ * Whether the check worked out who buys from this business. When it didn't, seeding an ICP would
+ * produce one with no customer-side signal at all, so the option is disabled and a re-run offered
+ * instead — that is the state an older v1 report lands in.
+ */
+const hasCustomerSignals = computed(
+    () =>
+        customerIndustries.value.length > 0 ||
+        targetCustomers.value.length > 0 ||
+        decisionMakerTitles.value.length > 0,
+);
+
 const acceptForm = useForm({
     apply_to_profile: true,
     seed_icp: false,
@@ -271,17 +307,43 @@ onBeforeUnmount(() => {
                 </article>
 
                 <article
-                    v-if="findings.suggested_industries.length"
+                    v-if="ownIndustry"
+                    class="space-y-2 rounded-2xl border border-border bg-card p-6"
+                >
+                    <h2
+                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    >
+                        {{ t('Your industry') }}
+                    </h2>
+                    <p class="text-foreground" dir="auto">{{ ownIndustry }}</p>
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            t(
+                                'This is your trade, so Alima skips it when looking for leads. Businesses like yours are competitors, not customers.',
+                            )
+                        }}
+                    </p>
+                </article>
+
+                <article
+                    v-if="customerIndustries.length"
                     class="space-y-3 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
                         class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
-                        {{ t('Suggested industries') }}
+                        {{ t('Industries that buy from you') }}
                     </h2>
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            t(
+                                'Alima looks for leads in these industries. Spot a miss? Run the check again.',
+                            )
+                        }}
+                    </p>
                     <ul class="flex flex-wrap gap-1.5">
                         <li
-                            v-for="item in findings.suggested_industries"
+                            v-for="item in customerIndustries"
                             :key="item"
                             class="inline-flex rounded-full bg-brand/10 px-3 py-1 text-xs text-brand"
                             dir="auto"
@@ -292,7 +354,7 @@ onBeforeUnmount(() => {
                 </article>
 
                 <article
-                    v-if="findings.target_customers.length"
+                    v-if="targetCustomers.length"
                     class="space-y-3 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
@@ -302,7 +364,7 @@ onBeforeUnmount(() => {
                     </h2>
                     <ul class="flex flex-wrap gap-1.5">
                         <li
-                            v-for="item in findings.target_customers"
+                            v-for="item in targetCustomers"
                             :key="item"
                             class="inline-flex rounded-full bg-accent px-3 py-1 text-xs text-foreground"
                             dir="auto"
@@ -313,7 +375,57 @@ onBeforeUnmount(() => {
                 </article>
 
                 <article
-                    v-if="findings.competitors.length"
+                    v-if="decisionMakerTitles.length"
+                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                >
+                    <h2
+                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    >
+                        {{ t('Who to ask for') }}
+                    </h2>
+                    <ul class="flex flex-wrap gap-1.5">
+                        <li
+                            v-for="item in decisionMakerTitles"
+                            :key="item"
+                            class="inline-flex rounded-full bg-accent px-3 py-1 text-xs text-foreground"
+                            dir="auto"
+                        >
+                            {{ item }}
+                        </li>
+                    </ul>
+                </article>
+
+                <!-- Carries its meaning with an icon and a real heading, not with the tint alone. -->
+                <article
+                    v-if="!hasCustomerSignals"
+                    class="flex items-start gap-3 rounded-2xl bg-warning/12 p-6"
+                    role="note"
+                    data-test="no-customer-signals"
+                >
+                    <span
+                        class="flex size-8 shrink-0 items-center justify-center rounded-full text-warning"
+                        aria-hidden="true"
+                    >
+                        <AlertTriangle class="size-4" />
+                    </span>
+                    <div class="space-y-1">
+                        <h2
+                            class="text-sm font-semibold text-foreground rtl:font-bold"
+                        >
+                            {{ t('We couldn’t tell who buys from you') }}
+                        </h2>
+                        <p class="text-sm text-muted-foreground">
+                            {{
+                                t(
+                                    'Without that, Alima can’t suggest an ideal-customer profile — one built from your own trade would send you looking for competitors. Run the check again, or set your ideal customer by hand.',
+                                )
+                            }}
+                        </p>
+                    </div>
+                </article>
+
+                <article
+                    v-if="competitors.length"
                     class="space-y-3 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
@@ -323,7 +435,7 @@ onBeforeUnmount(() => {
                     </h2>
                     <ul class="flex flex-wrap gap-1.5">
                         <li
-                            v-for="item in findings.competitors"
+                            v-for="item in competitors"
                             :key="item"
                             class="inline-flex rounded-full bg-accent px-3 py-1 text-xs text-foreground"
                             dir="auto"
@@ -367,18 +479,34 @@ onBeforeUnmount(() => {
                     <Checkbox
                         id="seed-icp"
                         v-model="acceptForm.seed_icp"
+                        :disabled="!hasCustomerSignals"
                         aria-describedby="seed-icp-hint"
                         data-test="seed-icp"
                     />
                     <span class="text-sm">
-                        <Label for="seed-icp" class="font-normal">{{
-                            t('Also create a suggested ideal-customer profile')
-                        }}</Label>
+                        <Label
+                            for="seed-icp"
+                            class="font-normal"
+                            :class="
+                                hasCustomerSignals
+                                    ? ''
+                                    : 'text-muted-foreground'
+                            "
+                            >{{
+                                t(
+                                    'Also create a suggested ideal-customer profile',
+                                )
+                            }}</Label
+                        >
                         <span
                             id="seed-icp-hint"
                             class="block text-muted-foreground"
                             >{{
-                                t('You can tune its weights afterwards.')
+                                hasCustomerSignals
+                                    ? t('You can tune its weights afterwards.')
+                                    : t(
+                                          'Not available — this check didn’t find who buys from you.',
+                                      )
                             }}</span
                         >
                     </span>

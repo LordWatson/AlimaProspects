@@ -15,6 +15,7 @@
 | 6     | Business Intelligence (AI background check)   | ✅ Done | 2026-10-29 |
 | 7     | Lead Sourcing — framework + Companies House   | ✅ Done | 2026-10-29 |
 | 7b    | Lead Sourcing — Google Places + web search    | ✅ Done | 2026-10-29 |
+| 7c    | Lead Sourcing — search for customers          | ✅ Done | 2026-10-30 |
 | 8     | Enrichment & Data Quality                     | ✅ Done | 2026-10-29 |
 | 9     | Scoring & Matching                            | ✅ Done | 2026-10-29 |
 | 10    | Leads Workspace — list, detail, contacts      | ✅ Done | 2026-10-29 |
@@ -239,6 +240,26 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
        **Acceptance:** three providers selectable; costs tracked; gates pass; docs updated.
        **Dispatch prompt:** _"Execute Phase 7b of mvp.md (Google Places + web search providers). Read lead-sourcing.md. Add both providers behind LeadSourceProvider, surface per-provider cost, dedupe across providers, and test with fakes."_
        **Risks:** Google Places pricing/quotas; web-search provider choice (pick in this phase, record ADR).
+
+---
+
+### Phase 7c — Lead Sourcing: search for customers, not competitors
+
+**Goal:** Stop discovery returning companies like the team. Searches were built from the active ICP's industry values, and those values were the team's **own** trade, so a graphic design studio was shown graphic design studios — its competition, dressed as its pipeline.
+**Depends on:** 5 (AI Platform), 6 (Business Intelligence), 7, 7b.
+**Modules & docs:** Lead Sourcing, Business Intelligence, ICP, `docs/ai-prompts.md`.
+**Tasks:**
+
+1. [x] **Name the two sides in the background check.** `business_intel.background_check` **v2**: `own_industry` + `competitors` describe the seller; `customer_industries` + `target_customers` + `decision_maker_titles` describe the buyer. Every field described, and the system prompt states that the business being read is the seller. v1 stays seeded so existing reports remain traceable.
+2. [x] **Stop the ICP seeder crossing them.** `AcceptBackgroundCheckAction` seeds `Industry` signals from the customer side only, `JobTitle` from decision-maker titles, and puts the team's own trade + named competitors in as `Exclusion` criteria. With no customer-side signal it seeds nothing — a wrong ICP is worse than none, because discovery and scoring act on it silently.
+3. [x] **Add the AI query-shaping step Phase 7 deferred.** `lead_sourcing.shape_query` + `DiscoveryQueryShaper`: invert seller into buyer, once per source, before the fan-out. Respects terms the member typed, skipped without a business profile or by config, and **degrades** to the deterministic `DiscoveryQuery::fromIcp()` on any AI error (including exhausted credits) rather than failing the run.
+4. [x] **Make exclusions bite at discovery, not just at scoring.** `DiscoveryQuery` carries `excludeTerms`; `WebSearchProvider` pushes them to Serper as `-"term"`; `LeadCandidateFilter` drops matching candidates for every provider **before** persistence, so an excluded company is never enriched, never counted against the allowance and never read.
+5. [x] Show the team what was searched: the run screen states who it looked for (`customer_description`) and what it left out.
+       **Data model:** none new — `discovery_runs.params` gains `exclude_terms`, `customer_description` and `shaped`; a run written before this phase reads back with the new keys absent.
+       **Tests:** the design-studio case end to end (shaped query excludes the own trade); explicit terms skip the model; AI failure degrades to the deterministic query; an empty shaped result refuses rather than searching the own trade; the filter never persists an excluded candidate; cost is still metered on what the provider returned.
+       **Acceptance:** a design studio's run returns its customers, not studios; gates pass; docs updated.
+       **Dispatch prompt:** _"Execute Phase 7c of mvp.md (search for customers, not competitors). Read lead-sourcing.md, business-intelligence.md and ai-prompts.md. Split the background check's seller/buyer fields, fix the ICP seeding, add the query-shaping prompt with a deterministic fallback, and make exclusions apply at discovery."_
+       **Risks:** one reasoning-tier call per source per run (cost); blunt substring exclusion matching can drop a good lead whose name contains the team's trade word; an ICP seeded before this phase still carries the wrong industry signal and nothing retro-fixes it.
 
 ---
 

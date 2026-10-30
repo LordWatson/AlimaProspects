@@ -12,6 +12,7 @@ use App\Modules\LeadSourcing\Events\DiscoveryRunCompleted;
 use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Services\LeadCandidateFilter;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use App\Modules\LeadSourcing\Testing\FakeLeadSourceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -71,6 +72,7 @@ it('fans out enrichment from a completed discovery run', function (): void {
     (new DiscoverLeadsJob((int) $team->getKey(), (int) $run->getKey()))->handle(
         app(LeadSourceProviderRegistry::class),
         app(TeamContext::class),
+        app(LeadCandidateFilter::class),
     );
 
     Queue::assertPushed(EnrichLeadJob::class, 1);

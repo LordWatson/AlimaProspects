@@ -10,14 +10,15 @@ use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\LeadSourcing\Contracts\LeadInterestGate;
-use App\Modules\LeadSourcing\Data\DiscoveryQuery;
 use App\Modules\LeadSourcing\Data\StartDiscoveryData;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Services\DiscoveryLimitGuard;
+use App\Modules\LeadSourcing\Services\DiscoveryQueryShaper;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
+use App\Modules\Onboarding\Models\BusinessProfile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -37,6 +38,7 @@ final class StartDiscoveryRunAction
         private readonly DiscoveryLimitGuard $limits,
         private readonly LeadInterestGate $lia,
         private readonly AuditLogger $audit,
+        private readonly DiscoveryQueryShaper $shaper,
     ) {}
 
     /**
@@ -62,11 +64,19 @@ final class StartDiscoveryRunAction
             $icp = $this->resolveIcp($team, $data->icpId);
             $limit = $this->resolveLimit($team, $data->limit);
 
-            // Build a query per source. Terms/location/limit don't vary by source, so one empty-terms
-            // check covers them all — refuse the whole fan-out rather than queue an unsearchable run.
+            // Build a query per source. Each provider accepts a different kind of query — a company
+            // register wants a trade word, a places API wants a category, a web search wants a phrase
+            // — so the shaper is asked once per source rather than once per run. This is external
+            // work and sits outside the transaction below (CLAUDE.md external-call rule).
+            //
+            // An empty `terms` is refused rather than queued: it means neither the member nor the
+            // shaper could say who we are looking for, and a run with no terms would spend a provider
+            // call to return nothing.
+            $profile = BusinessProfile::query()->where('team_id', $team->getKey())->first();
+
             $queries = [];
             foreach ($data->sources as $source) {
-                $query = DiscoveryQuery::fromIcp($source, $icp, $limit, $data->terms, $data->location);
+                $query = $this->shaper->shape($source, $profile, $icp, $limit, $data->terms, $data->location);
 
                 if (trim($query->terms) === '') {
                     throw LeadSourcingException::nothingToSearch();
@@ -94,6 +104,8 @@ final class StartDiscoveryRunAction
                         'source' => $source->value,
                         'limit' => $limit,
                         'icp_id' => $run->icp_id,
+                        'shaped' => $query->shaped,
+                        'exclusions' => count($query->excludeTerms),
                     ], $actor);
 
                     $runs->push($run);

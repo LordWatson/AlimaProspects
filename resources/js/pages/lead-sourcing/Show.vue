@@ -25,7 +25,7 @@ const props = defineProps<{
     can: { manage: boolean };
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const page = usePage();
 
 const INITIAL_PERCENT = 10;
@@ -40,6 +40,32 @@ const isRunning = computed(
     () => status.value === 'pending' || status.value === 'running',
 );
 const leads = computed(() => props.run.leads ?? []);
+
+/**
+ * The companies this run refused: the team's own trade plus any competitor they named. Worth showing
+ * — a run that returns fewer leads than asked for has usually excluded the difference, and without
+ * this the drop looks like the search simply failing.
+ */
+const excludeTerms = computed(() => props.run.params?.exclude_terms ?? []);
+
+/**
+ * The excluded terms as one readable list in the active locale. `Intl.ListFormat` is what supplies
+ * the Arabic separator (`،` and `و`) — joining on an ASCII comma put Latin punctuation inside an
+ * Arabic sentence. The rendered string is wrapped in `<bdi>` at the call site, because the terms are
+ * usually English even when the sentence around them is not, and an unisolated Latin run inside RTL
+ * text drags the sentence's punctuation to the wrong end.
+ */
+const excludeTermsList = computed(() => {
+    try {
+        return new Intl.ListFormat(locale.value, {
+            style: 'long',
+            type: 'unit',
+        }).format(excludeTerms.value);
+    } catch {
+        // An engine or locale without ListFormat still gets a readable line.
+        return excludeTerms.value.join(', ');
+    }
+});
 
 // Metered provider cost for this run (integer micro-units → major units). Free providers are 0.
 const estimatedCost = computed(() =>
@@ -96,16 +122,35 @@ onBeforeUnmount(() => {
                     {{ t('Discovery run') }}<span class="text-orange">.</span>
                 </h1>
                 <p
+                    v-if="run.params?.customer_description"
+                    class="text-base text-foreground"
+                    dir="auto"
+                >
+                    {{ run.params.customer_description }}
+                </p>
+                <!--
+                    The search terms and the excluded terms are isolated with <bdi>: they are
+                    usually English even under an Arabic UI, and an unisolated Latin run inside RTL
+                    text pulls the surrounding punctuation to the wrong end of the line.
+                -->
+                <p
                     v-if="run.params?.terms"
                     class="text-base text-muted-foreground"
                     dir="auto"
                 >
-                    {{
-                        t('Searching for “:terms”', { terms: run.params.terms })
-                    }}
+                    {{ t('Searching for') }}
+                    <bdi>“{{ run.params.terms }}”</bdi>
                     <span v-if="run.params?.location"
-                        >· {{ run.params.location }}</span
+                        >· <bdi>{{ run.params.location }}</bdi></span
                     >
+                </p>
+                <p
+                    v-if="excludeTerms.length"
+                    class="text-sm text-muted-foreground"
+                    dir="auto"
+                >
+                    {{ t('Leaving out:') }}
+                    <bdi>{{ excludeTermsList }}</bdi>
                 </p>
             </div>
 

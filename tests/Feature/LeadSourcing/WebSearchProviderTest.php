@@ -121,3 +121,56 @@ it('stores the site origin as the website and the result page as the source URL'
 it('reports zero cost for a no-op run', function (): void {
     expect(app(WebSearchProvider::class)->costMicros(0))->toBe(0);
 });
+
+it('pushes the query exclusions down to the API as negative terms', function (): void {
+    Http::fake(['google.serper.dev/*' => Http::response(['organic' => []])]);
+
+    $query = new DiscoveryQuery(
+        source: LeadSource::WebSearch,
+        terms: 'boutique hotels',
+        location: 'Manchester',
+        excludeTerms: ['graphic design', 'branding agency'],
+    );
+
+    app(WebSearchProvider::class)->discover($query);
+
+    // This is the one provider that can refuse competitors at the API rather than after the fact,
+    // which buys back the result slots they would otherwise occupy.
+    Http::assertSent(fn ($request): bool => ($request['q'] ?? '')
+        === 'boutique hotels Manchester -"graphic design" -"branding agency"');
+});
+
+it('caps the negative terms so the operators cannot crowd out the query', function (): void {
+    Http::fake(['google.serper.dev/*' => Http::response(['organic' => []])]);
+
+    $query = new DiscoveryQuery(
+        source: LeadSource::WebSearch,
+        terms: 'hotels',
+        excludeTerms: ['one', 'two', 'three', 'four', 'five', 'six', 'seven'],
+    );
+
+    app(WebSearchProvider::class)->discover($query);
+
+    Http::assertSent(function ($request): bool {
+        $q = (string) ($request['q'] ?? '');
+
+        return substr_count($q, '-"') === 5 && ! str_contains($q, '-"six"');
+    });
+});
+
+it('strips quotes from an exclusion so it cannot break out of the operator', function (): void {
+    Http::fake(['google.serper.dev/*' => Http::response(['organic' => []])]);
+
+    $query = new DiscoveryQuery(
+        source: LeadSource::WebSearch,
+        terms: 'hotels',
+        excludeTerms: ['say "design" loudly'],
+    );
+
+    app(WebSearchProvider::class)->discover($query);
+
+    // The exclusions reach here from a model response, so an unescaped quote would close the
+    // operator early and leave the rest of the term as a positive search phrase.
+    Http::assertSent(fn ($request): bool => ($request['q'] ?? '')
+        === 'hotels -"say design loudly"');
+});
