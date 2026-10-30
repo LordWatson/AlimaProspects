@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\AiPlatform\Contracts\AiTransport;
 use App\Modules\AiPlatform\Testing\FakeAiTransport;
+use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
@@ -22,6 +23,7 @@ use App\Modules\Signals\Testing\FakeNewsSearchClient;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Support\BillingFixtures as Billing;
 
 uses(RefreshDatabase::class);
 
@@ -217,7 +219,9 @@ it('bubbles a retryable provider failure so the job can retry', function (): voi
 });
 
 it('fails the run cleanly when the team is out of AI credit', function (): void {
-    config(['ai-platform.credits.monthly_default' => 0]); // no allowance → guard throws before any call
+    // No AI allowance on any plan, so the credit guard throws before any call. The allowance
+    // comes from the team's plan since Phase 16 (Billing), not from `ai-platform.credits`.
+    Billing::capAllowance(BillingMetric::AiCredits, 0);
 
     $team = Team::factory()->create();
     $watch = dubaiWatch($team);

@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import {
     Building2,
     ChevronsUpDown,
+    CreditCard,
     LayoutGrid,
     Lightbulb,
     Palette,
@@ -115,6 +116,16 @@ const workspace = computed<Item[]>(() => [
 ]);
 
 const account = computed<Item[]>(() => [
+    {
+        // Here rather than in the settings pane, and the reason is the screen: a price list of
+        // four plans beside two usage meters does not fit a 36rem column built for forms. It is
+        // also every member's to read — when discovery stops mid-afternoon, the person it stopped
+        // for should be able to see that the month's allowance is gone.
+        title: t('Plan & billing'),
+        icon: CreditCard,
+        href: '/billing',
+        match: 'startsWith',
+    },
     {
         // Administration rather than daily work, which is why it sits here and not in the numbered
         // workspace list. The do-not-contact list stays under Outreach, where a member reaches for

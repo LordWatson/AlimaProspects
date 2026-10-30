@@ -35,6 +35,13 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <!-- Billing (Phase 16). The suite must never reach Stripe: the gateway is faked, and
+             these three make sure nothing falls through to a developer's real keys. An empty
+             webhook secret also stands Cashier's signature middleware down, which is what lets the
+             webhook tests post the payload Stripe would have posted. -->
+        <env name="STRIPE_KEY" value=""/>
+        <env name="STRIPE_SECRET" value=""/>
+        <env name="STRIPE_WEBHOOK_SECRET" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

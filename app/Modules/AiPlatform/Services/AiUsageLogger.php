@@ -11,6 +11,7 @@ use App\Modules\AiPlatform\Models\AiRequest;
 use App\Modules\Core\Concerns\BelongsToTeam;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
+use DateTimeInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -98,10 +99,27 @@ final class AiUsageLogger
      */
     public function usedMicros(Team $team): int
     {
+        $start = Carbon::now('UTC')->startOfMonth();
+
+        return $this->usedMicrosBetween($team, $start, $start->copy()->addMonth());
+    }
+
+    /**
+     * Total AI spend (micro-units) for a team over an arbitrary window, `$from` inclusive and `$to`
+     * exclusive. Billing reads this to meter a period that is not necessarily the current one — a
+     * month that has just closed, for instance — without needing to know this table.
+     *
+     * The bounds must already be in **UTC**: they reach a `where` on a column written by workers in
+     * UTC, so a local-time bound would shift the window by the offset and double-count the overlap
+     * (CLAUDE.md §2).
+     */
+    public function usedMicrosBetween(Team $team, DateTimeInterface $from, DateTimeInterface $to): int
+    {
         return (int) AiRequest::query()
             ->withoutGlobalScopes()
             ->where('team_id', $team->getKey())
-            ->where('created_at', '>=', Carbon::now('UTC')->startOfMonth())
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $to)
             ->sum('cost_micros');
     }
 }

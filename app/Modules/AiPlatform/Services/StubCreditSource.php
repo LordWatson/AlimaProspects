@@ -9,10 +9,16 @@ use App\Modules\AiPlatform\Data\CreditAllowance;
 use App\Modules\Core\Models\Team;
 
 /**
- * The Phase 5 stub allowance: every team gets the same flat monthly allowance from config
+ * The fallback allowance: every team gets the same flat monthly allowance from config
  * (`ai-platform.credits`), expressed in credits and converted to cost micro-units. Usage is read
  * from the real `ai_requests` ledger, so the guard behaves correctly end-to-end; only the *limit*
- * is a placeholder. Billing (Phase 16) swaps this for a plan-aware source — no caller changes.
+ * is a placeholder.
+ *
+ * **Billing replaced this in production** (Phase 16) — `Billing\Services\PlanCreditSource` is bound
+ * over it and reports the team's plan allowance instead, with no caller changing, which is what the
+ * seam was for. It stays as the default binding so this module still works on its own: a module
+ * whose guard depends on another module being registered is a module that cannot be reasoned about
+ * alone.
  */
 final class StubCreditSource implements CreditSource
 {

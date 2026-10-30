@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Notifications\Services;
 
+use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Notifications\Data\NotificationContent;
 use App\Modules\Notifications\Enums\NotificationType;
 use Illuminate\Support\Str;
@@ -177,20 +178,31 @@ final class NotificationPresenter
     }
 
     /**
+     * The one allowance warning, for either metered thing. The payload carries a `metric`
+     * ({@see BillingMetric}) so the sentence names what has run out and what stops when it does —
+     * "scoring and drafting stop" and "new searches stop" are different pieces of news, and a
+     * message generic enough to cover both tells an Owner nothing they can act on.
+     *
+     * Defaults to AI credits when no metric is given, which is what rows stored before Phase 16
+     * carry.
+     *
      * @param  array<string, mixed>  $payload
      */
     private function creditLow(array $payload): NotificationContent
     {
         $remaining = $this->count($payload, 'remaining_percent');
+        $metric = BillingMetric::tryFrom((string) ($payload['metric'] ?? '')) ?? BillingMetric::AiCredits;
+
+        $thing = $metric === BillingMetric::Leads ? 'Your search allowance' : 'AI credit';
 
         return new NotificationContent(
             type: NotificationType::CreditLow,
-            title: $remaining === 0 ? 'AI credit has run out' : 'AI credit is running low',
+            title: $remaining === 0 ? ':thing has run out' : ':thing is running low',
             body: $remaining === 0
-                ? 'Scoring, drafting and signals have stopped until the allowance resets or the plan changes.'
-                : 'About :percent% is left. Scoring, drafting and signals stop when it runs out.',
-            params: ['percent' => $remaining],
-            url: '/settings/team',
+                ? $metric->exhaustedDescription()
+                : 'About :percent% is left. '.$metric->exhaustedDescription(),
+            params: ['percent' => $remaining, 'thing' => $thing],
+            url: '/billing',
             actionLabel: 'See the plan',
         );
     }

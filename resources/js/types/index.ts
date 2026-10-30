@@ -1,5 +1,6 @@
 export * from './ai-insights';
 export * from './auth';
+export * from './billing';
 export * from './business-intel';
 export * from './compliance';
 export * from './enrichment';

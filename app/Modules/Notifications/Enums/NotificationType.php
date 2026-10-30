@@ -57,8 +57,14 @@ enum NotificationType: string
 
     // --- AI Platform / Billing ---
     /**
-     * The team's AI allowance is nearly or fully spent, and work is about to start failing.
-     * Delivered to Owners and Admins only — it is a billing matter, not everyone's.
+     * A plan allowance — AI credits or new companies — is nearly or fully spent, and work is about
+     * to start failing. Delivered to Owners and Admins only: it is a billing matter, not
+     * everyone's.
+     *
+     * One case for both metrics, carrying a `metric` in its payload, because a member who has
+     * switched off "an allowance is running low" has said the same thing about both and would not
+     * thank us for a second switch. The value stays `credit_low` — it is written into every
+     * notification row already stored, and renaming it would orphan them (Phase 16).
      */
     case CreditLow = 'credit_low';
 
@@ -75,7 +81,7 @@ enum NotificationType: string
             self::LeadAssigned => 'A lead is assigned to me',
             self::SignalsDetected => 'New signals arrive',
             self::InsightsReady => 'The daily insights are ready',
-            self::CreditLow => 'AI credit is running low',
+            self::CreditLow => 'An allowance is running low',
             self::Digest => 'The round-up',
         };
     }
@@ -89,7 +95,7 @@ enum NotificationType: string
             self::LeadAssigned => 'When a colleague gives you a lead to work.',
             self::SignalsDetected => 'When a watch finds a new trigger event.',
             self::InsightsReady => 'Each morning: who is going cold, and who is worth a call today.',
-            self::CreditLow => 'Owners and admins only — AI work stops when the allowance runs out.',
+            self::CreditLow => 'Owners and admins only — work stops when a plan allowance runs out.',
             self::Digest => 'Everything that happened, in one message.',
         };
     }

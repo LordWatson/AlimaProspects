@@ -5,6 +5,86 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-30 — Billing & Plans (Phase 16)
+
+- **The team pays, not the person.** Laravel Cashier `^16.9`, with its customer columns on `teams`
+  and `Cashier::useCustomerModel()` pointing at `Core\Models\Team`. One person may own two teams on
+  two plans and two owners may share one subscription; a `stripe_id` on `users` breaks the moment
+  either happens (ADR 0006).
+- **Five plans, in config rather than in a table.** Free (the fallback a lapsed trial lands on),
+  Starter £49 / 1 seat, Team £129 / 3, Scale £379 / 10, Enterprise on request. A plan is a product
+  decision that ships with a release, so a price change is a reviewed diff instead of an `UPDATE`
+  nobody can find later. **The Stripe products do not exist yet** — every price id is a readable
+  placeholder, overridable per environment, and the module is tested against a fake gateway, so
+  nothing is blocked until somebody creates them.
+- **The three stubs are gone, and nothing that used them changed.** AI Platform's `CreditSource`
+  (Phase 5), Lead Sourcing's `LeadQuotaSource` (Phase 7) and a new `Auth\Contracts\SeatLimitSource`
+  are now bound to plan-backed implementations. `AiCreditGuard`, `DiscoveryLimitGuard` and every
+  caller of them are untouched, which is what those seams were built for — and why the tests go
+  through the guards rather than through Billing's own services.
+- **Enforcement is at the point of spend, not in middleware.** The phase plan called for an
+  `EnforcesPlanLimits` middleware; three of the four places a limit has to bite — a queued discovery
+  job, a scheduled signals watch, the nightly insights — have no request behind them. A middleware
+  would have guarded the one case that is cheapest to guard and missed the three that actually run
+  up a bill.
+- **A metered plan keeps working past its allowance, up to a ceiling.** The sources report the
+  _ceiling_ rather than the included allowance, because stopping a team at the point we start
+  charging is the opposite of what overage means. The ceiling — twice the allowance by default —
+  exists because an unbounded metered plan is a way to hand a customer an invoice whose first
+  warning is the invoice. A run asked for 200 companies with 40 left fetches 40 rather than failing.
+- **`usage_meters` is a record, not a counter.** The authoritative numbers already exist in
+  `ai_requests` and `discovery_runs`, and the guards read those directly, so a limit can never be
+  wrong because a worker died between doing the work and incrementing a row. The table remembers
+  what a closed period cost after the retention sweep has pruned it, and — in `reported` — how much
+  overage Stripe has already been told about.
+- **Overage is reported exactly once, and it took three things.** Stripe sums the usage events it
+  receives, so the reporter sends increments. The claim on `usage_meters.reported` is a
+  **conditional** `UPDATE` — an unconditional increment is atomic, but its _amount_ came from a row
+  read a moment earlier, so two reporters would both send the same units. The meter event carries a
+  **deterministic identifier** derived from `reported`, because Cashier stamps a fresh UUID on every
+  call and a request that times out _after_ Stripe recorded it would otherwise be billed twice on
+  retry. And an **ambiguous** failure keeps the claim, where only a definite refusal releases it: a
+  timeout may mean Stripe has the event and we never heard. So the worst case is under-billing one
+  claim, loudly, in the `billing` log — the other direction takes money from somebody who did not
+  agree to it.
+- **A closed month is sealed.** Re-syncing a settled period would overwrite what it cost with
+  whatever the ledgers still hold — less, once retention has pruned them — and overwrite its
+  allowance with that of whatever plan the team is on now. One write after the month closes captures
+  its final hour; everything after that leaves it alone.
+- **Seats are counted inside the transaction, behind a lock on the team row.** Two invitations sent
+  in the same moment would otherwise both see the last free seat and both take it.
+- **A pending invitation holds a seat, and the seat is checked again on acceptance.** Counting only
+  accepted members would let a three-seat team send ten invitations and surface the problem to the
+  tenth person, who did not cause it and cannot fix it. An invitation is valid for a week, in which
+  the team may have downgraded or filled the seat — so acceptance re-checks, and refuses rather than
+  consumes, so the invitation still works once a seat is freed.
+- **Allowances run with the calendar month, in UTC.** Not the Stripe billing cycle: anchoring them
+  to the invoice date would move the reset day whenever a plan changed and put a round trip to
+  Stripe behind every usage query. Overage is reported as it accrues, so it still lands on whatever
+  invoice is open.
+- **A failed payment does not demote a customer.** Stripe retries a card for a fortnight and then
+  cancels, at which point entitlement ends on its own. Cutting a team off on the first failed retry
+  turns an expired card into a support incident.
+- **Stripe is the source of truth, and webhooks are how it gets in.** A plan changed in the customer
+  portal never passes through this app, so a listener on Cashier's `WebhookHandled` re-reads the
+  team's entitlements, re-snapshots the meters and writes an audit row with **no actor** and
+  `source: stripe_webhook` — because "why did my plan change on the 4th" has to be answerable.
+- **`/billing`, in the sidebar's Account group.** Every member can see the plan and the usage bars:
+  when discovery stops on a Tuesday afternoon, the person it stopped for should see that the month's
+  allowance is gone rather than file a bug. Spending money stays with Owners and Admins. Cards,
+  addresses, tax numbers and invoice documents stay at Stripe, reached through its portal — a form
+  of ours collecting a card number would put this application in PCI scope to reimplement a screen
+  Stripe already maintains. The invoice fetch degrades if Stripe is unreachable, so an Owner looking
+  for their usage does not get a payment-provider error instead.
+- **`credit_low` finally has a producer.** The notification type has existed unused since Phase 12
+  because "running low" needs a usage figure and `AiCreditGuard` only knows exhausted or not. It is
+  now sent at the configured thresholds, at most once per team per metric per period per threshold,
+  and its copy is metric-aware — "new searches stop" and "scoring and drafting stop" are different
+  pieces of news.
+- **⚖️/🔑 Outstanding:** the Stripe products and prices must be created and six `STRIPE_PRICE_*` keys
+  set before a real payment is possible; the figures above are provisional; VAT (UK/UAE) stays
+  deferred. All three are listed in `docs/modules/billing-plans.md`.
+
 ### Changed — 2026-10-30 — The public pages, and the logo on them
 
 - **The logo was being drawn under its own minimum.** The marketing header, the footer, the sidebar

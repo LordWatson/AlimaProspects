@@ -76,8 +76,10 @@ flowchart TD
   Sig -->|signals detected| Notif
   Out -->|do-not-contact| Comp
   Core --> Bill[Billing & Plans]
-  Bill --> AIp
-  Bill --> LS
+  Bill -->|CreditSource| AIp
+  Bill -->|LeadQuotaSource| LS
+  Bill -->|SeatLimitSource| Auth
+  Bill -->|allowance low| Notif
   Core --> Admin[Admin internal]
   LW --> Integ[Integrations post-MVP]
   API[API v1] --> Mob[Mobile App post-MVP]
@@ -100,7 +102,7 @@ flowchart TD
 | 12  | Reporting & Analytics         | MVP (built, Phase 13)    | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | MVP (built, Phase 14)    | `modules/ai-insights.md`                 |
 | 14  | Notifications                 | MVP (built, Phase 12)    | `modules/notifications.md`               |
-| 15  | Billing & Plans               | MVP (late)               | `modules/billing-plans.md`               |
+| 15  | Billing & Plans               | MVP (built, Phase 16)    | `modules/billing-plans.md`               |
 | 16  | Compliance & Privacy          | MVP (built, Phase 15)    | `modules/compliance-privacy.md`          |
 | 17  | Admin (internal)              | MVP (minimal)            | `modules/admin.md`                       |
 | 18  | Integrations                  | Post-MVP                 | `modules/integrations.md`                |
