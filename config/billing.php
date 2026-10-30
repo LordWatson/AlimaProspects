@@ -158,18 +158,26 @@ return [
     | Metered overage. One Stripe price per metric, added to the subscription as a second item and
     | billed on the same invoice. `unit` is how many of the metric one billed unit covers — leads
     | are billed singly, credits in thousands, because a per-credit line item would be unreadable.
+    |
+    | These two have **no default on purpose**, unlike the plan prices above. A metered price has to
+    | exist in Stripe with a meter attached, and a placeholder here would be attached to every
+    | checkout session as a second line item — so setting up the three plan prices and nothing else
+    | would still fail, for a reason pointing at a price nobody has heard of. Unset, no metered item
+    | is attached, checkout works on the plan prices alone, and overage reporting no-ops (with a
+    | note in the `billing` log) until the meters exist. The multiplier still caps usage, so the
+    | margin is protected in the meantime.
     */
     'overage' => [
         'multiplier' => (float) env('BILLING_OVERAGE_MULTIPLIER', 2.0),
 
         'leads' => [
-            'stripe_price' => env('STRIPE_PRICE_OVERAGE_LEADS', 'price_alima_overage_leads_gbp'),
+            'stripe_price' => env('STRIPE_PRICE_OVERAGE_LEADS'),
             'unit' => 1,
             'amount' => (int) env('BILLING_OVERAGE_LEAD_AMOUNT', 8),
         ],
 
         'ai_credits' => [
-            'stripe_price' => env('STRIPE_PRICE_OVERAGE_CREDITS', 'price_alima_overage_credits_gbp'),
+            'stripe_price' => env('STRIPE_PRICE_OVERAGE_CREDITS'),
             'unit' => 1_000,
             'amount' => (int) env('BILLING_OVERAGE_CREDIT_AMOUNT', 120),
         ],

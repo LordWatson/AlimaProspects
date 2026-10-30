@@ -186,7 +186,7 @@ The notification type is one case for both metrics, carrying a `metric` in its p
 
 Every method catches `Throwable` and rethrows `BillingException`: Stripe's messages are written for developers, change without notice and occasionally name the merchant account, so the detail goes to the `billing` log and the member gets a sentence they can act on. The invoice fetch on the billing screen additionally **degrades** — if Stripe is unreachable the history goes missing and the rest of the page still answers the question the Owner came with.
 
-**The Stripe products do not exist yet.** Every `stripe_price` in `config/billing.php` is a readable placeholder (`price_alima_starter_monthly_gbp`), overridable per environment. See **Known limitations** for what has to be created.
+**The Stripe products do not exist yet.** The three plan prices in `config/billing.php` are readable placeholders (`price_alima_starter_monthly_gbp`), overridable per environment, so the pricing screen renders in full and only a real checkout fails. The two **metered** overage prices deliberately have no default at all: a metered price must exist in Stripe with a meter attached, and a placeholder would be attached to every checkout session as a second line item — so configuring the plan prices alone would still fail, for a reason pointing at a price nobody has heard of. Unset, no metered item is attached, checkout works on the plan prices alone, and overage is measured and capped but not yet billed. See **Known limitations** for what has to be created.
 
 ## Permissions
 
@@ -211,7 +211,7 @@ Every method catches `Throwable` and rethrows `BillingException`: Stripe's messa
 
 ## Known limitations / TODO
 
-- **🔑 The Stripe products and prices do not exist.** Before this can take a real payment somebody must create, in Stripe: three recurring GBP monthly prices (Starter £49, Team £129, Scale £379); **two metered prices with meters attached** for lead and credit overage; and set the six `STRIPE_PRICE_*` keys plus `STRIPE_WEBHOOK_SECRET` in the environment. Until then checkout fails with `billing.gateway_failed` and the `billing` log says why. Nothing else is blocked — the whole module is tested against `FakeBillingGateway`.
+- **🔑 The Stripe products and prices do not exist.** Before this can take a real payment somebody must create, in Stripe: three recurring GBP monthly prices (Starter £49, Team £129, Scale £379); **two metered prices with meters attached** for lead and credit overage; and set the `STRIPE_PRICE_*` keys in the environment (`STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are already configured in test mode). Until then checkout fails with `billing.gateway_failed` and the `billing` log says why. Nothing else is blocked — the whole module is tested against `FakeBillingGateway`.
 - **⚖️ Pricing is provisional.** The figures above are the rough intent, not a signed-off price list. They are in config precisely so changing one is a reviewed diff rather than a migration.
 - **⚖️ VAT is not handled** (UK VAT, UAE VAT), as `mvp.md` defers. Cashier supports `calculateTaxes()` with Stripe Tax; switching it on needs a decision about whether prices are tax-inclusive and whether a VAT number is collected at checkout. The portal already collects a tax id if Stripe is configured to.
 - **No annual plans, coupons or discount UI.** Post-MVP; `PlanRegistry` keyed on `PlanKey` would need a second axis for the interval.

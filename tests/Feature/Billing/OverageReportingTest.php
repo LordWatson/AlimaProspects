@@ -138,6 +138,25 @@ it('bills credits in thousands and carries the remainder to the next run', funct
     expect($gateway->reportedQuantityFor($price))->toBe(2);
 });
 
+it('no-ops instead of failing when the metered price has not been created yet', function (): void {
+    $gateway = Fixtures::fakeGateway();
+    [, $team] = Fixtures::team();
+    Fixtures::subscribe($team, PlanKey::Starter);
+
+    // The state every environment is in until somebody creates the meters in Stripe. The usage is
+    // still measured and the ceiling still caps it — only the billing of the excess waits.
+    config()->set('billing.overage.leads.stripe_price', null);
+    config()->set('billing.overage.ai_credits.stripe_price', null);
+
+    leadsFor($team, (int) config('billing.plans.starter.leads') + 30);
+
+    expect(app(OverageReporter::class)->report($team))->toBe(0)
+        ->and($gateway->callsOf('report_overage'))->toBeEmpty();
+
+    // Nothing was claimed either, so the units are still owed once the price exists.
+    expect(leadMeter($team)->unreportedOverage())->toBe(30);
+});
+
 it('reports nothing on a plan that stops instead of metering', function (): void {
     $gateway = Fixtures::fakeGateway();
     [, $team] = Fixtures::team();

@@ -81,9 +81,10 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
   now sent at the configured thresholds, at most once per team per metric per period per threshold,
   and its copy is metric-aware — "new searches stop" and "scoring and drafting stop" are different
   pieces of news.
-- **⚖️/🔑 Outstanding:** the Stripe products and prices must be created and six `STRIPE_PRICE_*` keys
-  set before a real payment is possible; the figures above are provisional; VAT (UK/UAE) stays
-  deferred. All three are listed in `docs/modules/billing-plans.md`.
+- **⚖️/🔑 Outstanding:** the Stripe products and prices must be created and the `STRIPE_PRICE_*`
+  keys set before a real payment is possible — the API keys and the webhook secret are already
+  configured in test mode. The figures above are provisional, and VAT (UK/UAE) stays deferred. All
+  three are listed in `docs/modules/billing-plans.md`.
 
 ### Changed — 2026-10-30 — The public pages, and the logo on them
 
