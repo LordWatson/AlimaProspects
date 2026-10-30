@@ -1,7 +1,7 @@
 # Graph Report - AlimaProspects  (2026-10-30)
 
 ## Corpus Check
-- 1138 files · ~428,690 words
+- 1138 files · ~428,870 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 23 file(s) not represented in the graph (top: (none) 17, .css 2, .example 1)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2c2b6bd7`
+- Built from commit: `5a3b91a5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -1009,7 +1009,7 @@ Cohesion: 0.33
 Nodes (3): {closure#1}(), {closure#2}(), {closure#3}()
 
 ## Knowledge Gaps
-- **219 isolated node(s):** `Off`, `Daily`, `Weekly`, `InApp`, `Mail` (+214 more)
+- **219 isolated node(s):** `Arabic`, `English`, `Ltr`, `Rtl`, `Consultative` (+214 more)
   These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2845 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **95 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -1017,16 +1017,16 @@ Nodes (3): {closure#1}(), {closure#2}(), {closure#3}()
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `headline()` connect `SignalQuery` to `Watches.vue`, `Notifications.vue`?**
-  _High betweenness centrality (0.251) - this node is a cross-community bridge._
+  _High betweenness centrality (0.236) - this node is a cross-community bridge._
 - **Are the 4 inferred relationships involving `TeamContext` (e.g. with `Changelog` and `Code map`) actually correct?**
   _`TeamContext` has 4 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `Off`, `Daily`, `Weekly` to the rest of the system?**
+- **What connects `Arabic`, `English`, `Ltr` to the rest of the system?**
   _219 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `vue` be split into smaller, more focused modules?**
   _Cohesion score 0.010235605017307478 - nodes in this community are weakly interconnected._
 - **Why does `TeamContext` connect `TeamContext` to `AuditLogger`, `DiscoverLeadsJob`, `Illuminate\Http\Request`, `.index`, `ClaudeAiClient`, `Web/ScoreController.php`, `LeadTask`, `createUserWithTeam`, `DiscoveryRun`, `LeadTimelineTest.php`, `Illuminate\Support\Str`, `EnrichLeadAction.php`, `SignalQuery`, `LeadDeduplicatorTest.php`, `LeadsIndexTest.php`, `Illuminate\Database\Eloquent\Model`, `.queueStructured`, `Illuminate\Foundation\Testing\RefreshDatabase`, `ConvertSignalToLeadActionTest.php`, `Icp`, `Inertia\Response`, `SignalStatus`, `SignalRun`, `SignalWatch`, `LeadsWorkspaceTenancyTest.php`, `LeadContact`, `LeadWorkApiTest.php`, `LogContactAttemptTest.php`, `ScoreLeadJob`, `RunSignalWatchActionTest.php`, `Web/SignalController.php`, `PipelineStage`, `AiPlatformServiceProvider.php`, `Web/DiscoveryController.php`, `BusinessIntelReport`, `CreateLeadTest.php`, `Illuminate\Database\Eloquent\Builder`, `LeadScore`, `createUserWithTeam`, `CriterionType`, `LeadsWorkspaceFixtures`, `LeadSignalOriginTest.php`, `BackgroundCheckReviewTest.php`, `SignalEventType`, `DashboardTest.php`, `ScoreGrade`, `Throwable`, `LeadWorkspaceFiltersTest.php`, `ScoringWebTest.php`, `LeadCsvExporter`, `SavedViewsTest.php`, `SignalsApiTest.php`, `SuppressionType`, `Lead`, `ScoringTenancyTest.php`, `EnrichLeadActionTest.php`, `LeadDetailTest.php`, `LeadCsvTest.php`, `App\Models\User`, `DiscoveryTenancyTest.php`, `Team`, `OutreachMessage`, `BusinessProfile`, `RunBackgroundCheckJobTest.php`, `CreateTeamData`, `DiscoveryApiTest.php`, `.run`, `SignalsPersonalDataTest.php`, `BulkLeadActionTest.php`, `Signal`, `PipelineStage`, `AiClient`, `OutreachTemplate`, `DashboardReportBuilder`, `OutreachScreenTest.php`, `WeeklyBuckets`, `ScoreFeedback`, `Spatie\LaravelData\Data`, `SignalPolicyTest.php`, `App\Modules\LeadsWorkspace\Http\Controllers\Web\SavedViewController`, `ScoreLeadJobTest.php`, `Web/SignalWatchController.php`, `App\Modules\LeadsWorkspace\Providers\LeadsWorkspaceServiceProvider`, `BuildLeadFunnelAction.php`?**
-  _High betweenness centrality (0.224) - this node is a cross-community bridge._
+  _High betweenness centrality (0.193) - this node is a cross-community bridge._
 - **Should `AuditLogger` be split into smaller, more focused modules?**
   _Cohesion score 0.027448588358313 - nodes in this community are weakly interconnected._
 - **Why does `Changelog` connect `SignalQuery` to `Illuminate\Http\Request`, `Web/SignalWatchController.php`, `SignalFilters`, `Illuminate\Database\Eloquent\Model`, `TeamContext`, `ConvertSignalToLeadActionTest.php`, `SignalEventType`, `SignalStatus`, `SignalRun`, `SignalWatch`, `Signal`, `RunSignalWatchActionTest.php`, `Web/SignalController.php`, `AiPlatformServiceProvider.php`, `SignalConverted`, `SourcedLeadTest.php`, `Market`, `LeadOriginProvider`, `SignalEventType`, `SignalsApiTest.php`, `Lead`?**
-  _High betweenness centrality (0.122) - this node is a cross-community bridge._
+  _High betweenness centrality (0.117) - this node is a cross-community bridge._
