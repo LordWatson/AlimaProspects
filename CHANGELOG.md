@@ -5,6 +5,26 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — 2026-10-30 — App navigation & the auth screen
+
+- **The sidebar reads as chapters.** `AppSidebar.vue` was two flat groups ("Workspace" 01–10 and
+  "Account"); it is now Dashboard on its own line, then **Business** (business profile, background
+  check, ideal customers), **Leads** (lead discovery, leads, signals), **Outreach**, **Reporting**
+  (insights) and **Settings** (account, plan & billing, compliance). The numbering stays one run,
+  01–09, in pipeline order across the chapters rather than restarting in each — the numbers are the
+  editorial device, and the marketing drawing in `ProductShowcase.vue` quotes them as the product's
+  sequence. **Design system is gone from the nav**; `/design` is still reachable by URL for
+  development. The active link now carries `aria-current="page"` and the decorative numbers are
+  `aria-hidden`.
+- **The auth split screen was recomposed to the reference screen** in `resources/screenshots/`,
+  measured against it rather than eyeballed. The statement sits in the open middle of the lime
+  panel on two lines; the oversized "alima" sets to the panel's own measure with its baseline on the
+  bottom padding line; the lilac peek moved to the bottom end corner of the cream column (one peek
+  per layout, and the panel's lower half belongs to the wordmark); and the form column gained a mono
+  sign-off on its bottom line. The copy is unchanged. The judgements this forced — a statement size
+  that is off the type scale, and the display wordmark still being **typed** rather than lock-up D
+  artwork — are recorded in `docs/brand/brand-tokens.md` §7d for the brand owner.
+
 ### Added — 2026-10-30 — Billing & Plans (Phase 16)
 
 - **The team pays, not the person.** Laravel Cashier `^16.9`, with its customer columns on `teams`

@@ -26,7 +26,7 @@ It explicitly does **not** own: card details, billing addresses, tax numbers or 
     - `Core\Models\Team` — Cashier's `Billable` trait and the `trial_ends_at` cast.
     - `Notifications` — `NotificationType::CreditLow` is now metric-aware and points at `/billing`.
 - **Routes:** `app/Modules/Billing/routes/web.php` — `billing.index`, `billing.checkout`, `billing.swap`, `billing.cancel`, `billing.resume`, `billing.portal`. Cashier registers `stripe/webhook` and `stripe/payment/{id}` itself. **No `/api/v1` surface** — see **Known limitations**.
-- **Frontend:** `resources/js/Pages/billing/Index.vue`, `resources/js/Components/billing/{PlanCard,UsageBar}.vue`, `resources/js/types/billing.ts`. A "Plan & billing" item in the sidebar's **Account** group, beside Compliance.
+- **Frontend:** `resources/js/Pages/billing/Index.vue`, `resources/js/Components/billing/{PlanCard,UsageBar}.vue`, `resources/js/types/billing.ts`. A "Plan & billing" item in the sidebar's **Settings** chapter, beside Account and Compliance.
 - **Shared:** `resources/js/types/billing.ts`, exported from `types/index.ts`.
 - **Tests:** `tests/Feature/Billing/{PlanPricingTest,PlanEnforcementTest,SeatEnforcementTest,OverageReportingTest,WebhookSyncTest,BillingScreenTest}.php` (79 tests), `tests/Support/BillingFixtures.php`.
 - **Config / env:** `config/billing.php` — `currency`, `trial.{days,plan}`, `default_plan`, `alerts.thresholds`, `sales_email`, `plans.*.{name,blurb,amount,stripe_price,seats,leads,credits,overage,features}`, `overage.{multiplier,leads,ai_credits}`. `config/cashier.php` (published; reads both `STRIPE_KEY`/`STRIPE_SECRET` and the dashboard's `STRIPE_PUBLISHABLE_KEY`/`STRIPE_SECRET_KEY`). Log channel `billing`. Every env key is documented in `.env.example`.

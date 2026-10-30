@@ -6,14 +6,13 @@ import {
     CreditCard,
     LayoutGrid,
     Lightbulb,
-    Palette,
     Radar,
     Satellite,
     Scan,
     Send,
-    Settings2,
     ShieldCheck,
     Target,
+    UserCog,
     Users,
     type LucideIcon,
 } from '@lucide/vue';
@@ -36,6 +35,12 @@ import { edit as editProfile } from '@/routes/profile';
  * Lime pill (lime is the shell's hero accent — decorative, never a status).
  * Shared by the desktop rail and the mobile drawer. Only real destinations
  * appear here. Logical properties mirror under RTL; the logo never mirrors.
+ *
+ * The rail reads as chapters, because a member thinks "my business", "my
+ * leads", "reporting" rather than one list of ten links. The numbering stays a
+ * single run (01–09) in pipeline order across the chapters rather than
+ * restarting in each: the numbers are the editorial device, and the marketing
+ * drawing in `ProductShowcase.vue` quotes them as the product's own sequence.
  */
 const { t } = useI18n();
 const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
@@ -49,97 +54,143 @@ type Item = {
     match?: 'exact' | 'startsWith';
 };
 
-const workspace = computed<Item[]>(() => [
-    { n: '01', title: t('Dashboard'), icon: LayoutGrid, href: dashboard().url },
-    {
-        n: '02',
-        title: t('Business profile'),
-        icon: Building2,
-        href: '/onboarding',
-        match: 'startsWith',
-    },
-    {
-        n: '03',
-        title: t('Background check'),
-        icon: Scan,
-        href: '/business-intel',
-        match: 'startsWith',
-    },
-    {
-        n: '04',
-        title: t('Ideal customers'),
-        icon: Target,
-        href: '/icp',
-        match: 'startsWith',
-    },
-    {
-        n: '05',
-        title: t('Lead discovery'),
-        icon: Radar,
-        href: '/discovery',
-        match: 'startsWith',
-    },
-    {
-        n: '06',
-        title: t('Leads'),
-        icon: Users,
-        href: '/leads',
-        match: 'startsWith',
-    },
-    {
-        n: '07',
-        title: t('Signals'),
-        icon: Satellite,
-        // `startsWith` so the watch-settings screen keeps the nav item lit — it is the same
-        // destination as far as a member is concerned.
-        href: '/signals',
-        match: 'startsWith',
-    },
-    {
-        n: '08',
-        title: t('Outreach'),
-        icon: Send,
-        // The per-lead draft screen is reached from the lead, not from here. What this points at
-        // is the team-level half of Outreach — the briefs and the do-not-contact list — and the
-        // second of those has to be findable without a lead in hand (docs/compliance.md §3.2).
-        href: '/outreach/templates',
-        match: 'startsWith',
-    },
-    {
-        n: '09',
-        title: t('Insights'),
-        icon: Lightbulb,
-        href: '/insights',
-        match: 'startsWith',
-    },
-    { n: '10', title: t('Design system'), icon: Palette, href: '/design' },
-]);
+/**
+ * A chapter is a group of destinations under one eyebrow. The opening chapter
+ * carries no label — the Dashboard is the rail's first line, not a section of
+ * it — and `key` exists to name the eyebrow for `aria-labelledby`.
+ */
+type Chapter = { key: string; label?: string; items: Item[] };
 
-const account = computed<Item[]>(() => [
+const chapters = computed<Chapter[]>(() => [
     {
-        // Here rather than in the settings pane, and the reason is the screen: a price list of
-        // four plans beside two usage meters does not fit a 36rem column built for forms. It is
-        // also every member's to read — when discovery stops mid-afternoon, the person it stopped
-        // for should be able to see that the month's allowance is gone.
-        title: t('Plan & billing'),
-        icon: CreditCard,
-        href: '/billing',
-        match: 'startsWith',
+        key: 'overview',
+        items: [
+            {
+                n: '01',
+                title: t('Dashboard'),
+                icon: LayoutGrid,
+                href: dashboard().url,
+            },
+        ],
     },
     {
-        // Administration rather than daily work, which is why it sits here and not in the numbered
-        // workspace list. The do-not-contact list stays under Outreach, where a member reaches for
-        // it while working a lead.
-        title: t('Compliance'),
-        icon: ShieldCheck,
-        href: '/compliance',
-        match: 'startsWith',
+        key: 'business',
+        label: t('Business'),
+        items: [
+            {
+                n: '02',
+                title: t('Business profile'),
+                icon: Building2,
+                href: '/onboarding',
+                match: 'startsWith',
+            },
+            {
+                n: '03',
+                title: t('Background check'),
+                icon: Scan,
+                href: '/business-intel',
+                match: 'startsWith',
+            },
+            {
+                n: '04',
+                title: t('Ideal customers'),
+                icon: Target,
+                href: '/icp',
+                match: 'startsWith',
+            },
+        ],
     },
     {
-        title: t('Settings'),
-        icon: Settings2,
-        href: editProfile().url,
-        match: 'startsWith',
+        key: 'leads',
+        label: t('Leads'),
+        items: [
+            {
+                n: '05',
+                title: t('Lead discovery'),
+                icon: Radar,
+                href: '/discovery',
+                match: 'startsWith',
+            },
+            {
+                n: '06',
+                title: t('Leads'),
+                icon: Users,
+                href: '/leads',
+                match: 'startsWith',
+            },
+            {
+                n: '07',
+                title: t('Signals'),
+                icon: Satellite,
+                // `startsWith` so the watch-settings screen keeps the nav item lit — it is the same
+                // destination as far as a member is concerned.
+                href: '/signals',
+                match: 'startsWith',
+            },
+        ],
+    },
+    {
+        key: 'outreach',
+        label: t('Outreach'),
+        items: [
+            {
+                n: '08',
+                title: t('Outreach'),
+                icon: Send,
+                // The per-lead draft screen is reached from the lead, not from here. What this points at
+                // is the team-level half of Outreach — the briefs and the do-not-contact list — and the
+                // second of those has to be findable without a lead in hand (docs/compliance.md §3.2).
+                href: '/outreach/templates',
+                match: 'startsWith',
+            },
+        ],
+    },
+    {
+        key: 'reporting',
+        label: t('Reporting'),
+        items: [
+            {
+                n: '09',
+                title: t('Insights'),
+                icon: Lightbulb,
+                href: '/insights',
+                match: 'startsWith',
+            },
+        ],
+    },
+    {
+        key: 'settings',
+        label: t('Settings'),
+        items: [
+            {
+                // The settings pane itself — profile, security, team, notifications, tokens,
+                // appearance. Labelled for what it holds so the item does not echo its chapter.
+                title: t('Account'),
+                icon: UserCog,
+                href: editProfile().url,
+                match: 'startsWith',
+            },
+            {
+                // Its own screen rather than a tab inside the settings pane, and the reason is the
+                // screen: a price list of four plans beside two usage meters does not fit a 36rem
+                // column built for forms. It is also every member's to read — when discovery stops
+                // mid-afternoon, the person it stopped for should be able to see that the month's
+                // allowance is gone.
+                title: t('Plan & billing'),
+                icon: CreditCard,
+                href: '/billing',
+                match: 'startsWith',
+            },
+            {
+                // Administration rather than daily work, which is why it sits here and not among the
+                // numbered chapters. The do-not-contact list stays under Outreach, where a member
+                // reaches for it while working a lead.
+                title: t('Compliance'),
+                icon: ShieldCheck,
+                href: '/compliance',
+                match: 'startsWith',
+            },
+        ],
     },
 ]);
 
@@ -174,62 +225,57 @@ const isActive = (item: Item): boolean =>
 
         <!-- Nav -->
         <nav class="flex-1 overflow-y-auto px-3 pb-4" :aria-label="t('Menu')">
-            <p
-                class="px-3 pt-2 pb-2 font-mono text-[0.625rem] tracking-eyebrow text-cream/45 uppercase rtl:tracking-normal"
+            <div
+                v-for="(chapter, index) in chapters"
+                :key="chapter.key"
+                :class="index === 0 ? 'pt-2' : 'pt-6'"
             >
-                {{ t('Workspace') }}
-            </p>
-            <ul class="space-y-0.5">
-                <li v-for="item in workspace" :key="item.title">
-                    <Link
-                        :href="item.href"
-                        class="group flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-start text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-cream focus-visible:outline-none"
-                        :class="
-                            isActive(item)
-                                ? 'bg-lime text-ink'
-                                : 'text-cream/85 hover:bg-cream/10'
-                        "
-                    >
-                        <component
-                            :is="item.icon"
-                            class="size-[18px] shrink-0"
-                        />
-                        <span class="flex-1 truncate">{{ item.title }}</span>
-                        <span
-                            class="font-mono text-[0.625rem]"
+                <p
+                    v-if="chapter.label"
+                    :id="`nav-chapter-${chapter.key}`"
+                    class="px-3 pb-2 font-mono text-[0.625rem] tracking-eyebrow text-cream/45 uppercase rtl:tracking-normal"
+                >
+                    {{ chapter.label }}
+                </p>
+                <ul
+                    class="space-y-0.5"
+                    :aria-labelledby="
+                        chapter.label ? `nav-chapter-${chapter.key}` : undefined
+                    "
+                >
+                    <li v-for="item in chapter.items" :key="item.title">
+                        <Link
+                            :href="item.href"
+                            :aria-current="isActive(item) ? 'page' : undefined"
+                            class="group flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-start text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-cream focus-visible:outline-none"
                             :class="
-                                isActive(item) ? 'text-ink/60' : 'text-cream/35'
+                                isActive(item)
+                                    ? 'bg-lime text-ink'
+                                    : 'text-cream/85 hover:bg-cream/10'
                             "
-                            >{{ item.n }}</span
                         >
-                    </Link>
-                </li>
-            </ul>
-
-            <p
-                class="px-3 pt-6 pb-2 font-mono text-[0.625rem] tracking-eyebrow text-cream/45 uppercase rtl:tracking-normal"
-            >
-                {{ t('Account') }}
-            </p>
-            <ul class="space-y-0.5">
-                <li v-for="item in account" :key="item.title">
-                    <Link
-                        :href="item.href"
-                        class="group flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-start text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-cream focus-visible:outline-none"
-                        :class="
-                            isActive(item)
-                                ? 'bg-lime text-ink'
-                                : 'text-cream/85 hover:bg-cream/10'
-                        "
-                    >
-                        <component
-                            :is="item.icon"
-                            class="size-[18px] shrink-0"
-                        />
-                        <span class="flex-1 truncate">{{ item.title }}</span>
-                    </Link>
-                </li>
-            </ul>
+                            <component
+                                :is="item.icon"
+                                class="size-[18px] shrink-0"
+                            />
+                            <span class="flex-1 truncate">{{
+                                item.title
+                            }}</span>
+                            <span
+                                v-if="item.n"
+                                aria-hidden="true"
+                                class="font-mono text-[0.625rem]"
+                                :class="
+                                    isActive(item)
+                                        ? 'text-ink/60'
+                                        : 'text-cream/35'
+                                "
+                                >{{ item.n }}</span
+                            >
+                        </Link>
+                    </li>
+                </ul>
+            </div>
         </nav>
 
         <!-- Footer: peek watermark + tagline + user -->

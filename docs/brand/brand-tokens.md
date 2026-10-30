@@ -191,8 +191,8 @@ CTAs: _Let's grow · Let's talk · Start a project · See the work_. Headlines l
     - _Phase 15 followed that reading:_ `compliance/Index.vue` is the sidebar destination and carries
       the hero; `compliance/Lia.vue` and `compliance/Dsar.vue` are reached from it and use plain
       headers. The compliance hero carries **no index number**, because the nav item sits in the
-      sidebar's Account group with Settings rather than in the numbered workspace list —
-      administration, not daily work.
+      sidebar's **Settings** chapter (the Account group before the nav was chaptered) rather than
+      among the numbered chapters — administration, not daily work.
 - **The Arabic brand name.** `lang/ar.json` renders Alima as "أليما" in running copy. The book does
   not say whether an Arabic wordmark or a transliteration is approved. **Needs confirming.** The
   logo artwork itself is never altered or mirrored either way (§4).
@@ -269,6 +269,36 @@ judgement the book does not settle, so it is recorded here rather than decided i
   on Deep Teal — about **3.0:1 and 2.4:1**, both under AA for text that size. The showcase was
   raised to `/75` (5.0:1). **The real sidebar still has the original values** and is the thing worth
   fixing; it is out of scope for a marketing change.
+
+### 7d. Added 2026-10-30 (the auth split screen)
+
+`AuthSplitLayout` was recomposed to the reference screen in `resources/screenshots/`, measured
+rather than eyeballed: the masthead rule, the statement, the strapline and the wordmark now sit
+within a point or two of the reference's proportions of the panel. Four judgements came out of it.
+
+- **The statement is 48px, which is not a step on the scale.** §3 gives H1 64 and H2 44; the
+  reference measures ~52. 48 was chosen because it is the Tailwind step closest to the reference and
+  it keeps "Marketing / brighter together." on **two** lines at the panel's measure — 64 wraps to
+  three and loses the line break the statement is built on. **Needs confirming**, or §3 needs a step
+  between H2 and H1 for panel statements.
+- **The display "alima" is typed, not the artwork.** §4's Never list includes "retype the wordmark",
+  and §7.8 records that the typeset stand-in was retired when the master artwork arrived. The lime
+  panel still **sets the word in Poppins Bold** as an oversized editorial device, and this change
+  made it bigger — it now spans the panel's measure. Either it is a display word rather than a
+  signature and the book should say so, or it should become **lock-up D** drawn from
+  `logoArtwork`. **Needs a decision**; it is the most exposed instance of the rule in the product.
+- **The wordmark's size is a formula, not a number.** `calc((50vw - 5rem) / 2.82)` — the panel is
+  half the viewport from `lg` up, and the word sets 2.82em wide at this weight and tracking, so it
+  spans the measure exactly at every width instead of leaving a different gap at each breakpoint.
+  `leading-[0.7]` puts the baseline on the bottom padding line, where the reference has it: the word
+  is **not** bled off the bottom edge.
+- **The peek moved to the cream column.** It is cropped by the bottom and end edges at about three
+  quarters of the face, both eyes in frame, sized to the reference (~176px wide). The lime panel now
+  carries none, so the layout still has **one peek in one colour** (§5) — and the panel's lower half
+  belongs to the wordmark, which a second mark was competing with.
+- **A mono sign-off on the bottom line** of the form column (`© <year> Alima. Marketing brighter
+together.`) at `text-xs`, tracked, Ink 55. It is the brand line the sidebar already carries, not
+  new copy.
 
 3. **PENDING — favicon/app-icon source SVGs** are referenced (`/Alima_Brand_Library`) but not delivered in `docs/brand/`; need the master files before the app-shell phase.
 4. **Confirm** whether the product UI uses Signal Orange purely decoratively (per book) given how often SaaS UIs reach for orange as a warning — we will honour the book and use `#8A5A00` for warnings.
