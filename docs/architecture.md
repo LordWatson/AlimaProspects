@@ -62,7 +62,10 @@ flowchart TD
   Out --> Rep
   AIp -->|usage + cost| Rep
   ICP -->|profile performance| Rep
-  Rep --> Ins[AI Insights post-MVP]
+  Rep -->|figures| Ins[AI Insights]
+  LW -->|stale + uncontacted leads| Ins
+  Out -->|may we approach?| Ins
+  Ins -->|daily insights ready| Notif
   Core --> Notif[Notifications]
   LS -->|run complete| Notif
   Sc -->|new strong matches| Notif
@@ -92,7 +95,7 @@ flowchart TD
 | 10c | Signals (trigger events)      | MVP (UAE v1, S0–S6)      | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (built, Phase 11)    | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (built, Phase 13)    | `modules/reporting-analytics.md`         |
-| 13  | AI Insights                   | Post-MVP                 | `modules/ai-insights.md`                 |
+| 13  | AI Insights                   | MVP (built, Phase 14)    | `modules/ai-insights.md`                 |
 | 14  | Notifications                 | MVP (built, Phase 12)    | `modules/notifications.md`               |
 | 15  | Billing & Plans               | MVP (late)               | `modules/billing-plans.md`               |
 | 16  | Compliance & Privacy          | MVP                      | `modules/compliance-privacy.md`          |

@@ -5,6 +5,46 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-30 — Phase 14: insights that say what to do, not what happened
+
+- **Three insights every morning, in the team's own clock.** The companies they picked up and went
+  quiet on, the strong matches nobody has approached yet, and the model's read of the week's
+  figures. `insights:generate` runs hourly and fires per team when its local clock reaches 07:00,
+  so a London team and a Dubai team both get theirs before the working day.
+- **A lead goes cold only once the team has started it.** The obvious query — any lead with no
+  recent activity — turns one week's sourcing into four hundred alerts a fortnight later, which is
+  a backlog rather than a follow-up problem. So it takes an approach, an assignment or a move off
+  the default column to put a lead in scope, and a Won or Lost stage takes it back out: silence is
+  the correct state for a closed lead.
+- **"Worth a call today" asks Outreach whether it may be.** Every candidate goes through the same
+  guard a draft and a send go through, and the answer is taken as it comes. A compliance refusal on
+  every channel drops the lead; a configuration one (nobody has verified a sender yet) does not,
+  because that changes by teatime. A suppressed or prior-consent company stays on the list marked
+  **introduction only** rather than being offered an email that would be blocked.
+- **The AI is the part that is allowed to fail.** The two SQL insights are built first and stored
+  whatever happens next, so a provider outage, an exhausted allowance or an unparseable response
+  costs the feed its commentary and not its contents.
+- **Figures only reach the model.** No company name, no member name, nothing anybody typed — which
+  keeps the prompt a few hundred tokens whatever size the team is, and makes it the one AI call in
+  the platform with no untrusted text in it to defend against. The trade is honest and written
+  down: the digest can say "your LinkedIn reply rate is three times your email rate" and cannot say
+  "chase Acme". Naming a company is the other two insights' job, and they do it from the database.
+- **One run a day, and it is the absence of insights that makes that hard.** A day with no stale
+  leads, nobody to call and a model with nothing to say writes no insights — so a sweep that asked
+  the insights table whether a team had been done would run the aggregates and the AI call again
+  every hour until midnight. `insight_runs` records the day whatever it found. On top of that, each
+  insight's dedupe key is cut on the team's local date, so a dismissal is never undone by the next
+  run, and a forced run skips the model when the day already has a digest.
+- **Dismissing is not deleting.** Cleared insights wait under their own tab, audited, until the
+  retention sweep removes them — 30 days from the dismissal, 60 from an unactioned generation. They
+  are swept harder than anything else in the platform and are the one thing that can afford it: a
+  week-old "contact these five today" is misleading rather than merely old.
+- **`InsightsReady`**, one notification per run carrying the counts, and a line in the daily
+  round-up for what is still waiting.
+- EN/AR feed at `/insights` and `/api/v1/insights` for the mobile app. Every figure on a card is a
+  label followed by a number, because Arabic's noun takes four forms depending on the count and
+  "Quiet for 1 days" is wrong in English too.
+
 ### Added — 2026-10-30 — Phase 13: reporting you can filter, read and take away
 
 - **One date filter, scoping the whole screen.** Seven presets and a custom pair, cut in the

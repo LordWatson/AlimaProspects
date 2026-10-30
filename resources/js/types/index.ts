@@ -1,3 +1,4 @@
+export * from './ai-insights';
 export * from './auth';
 export * from './business-intel';
 export * from './enrichment';

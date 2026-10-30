@@ -4,6 +4,7 @@ import {
     Building2,
     ChevronsUpDown,
     LayoutGrid,
+    Lightbulb,
     Palette,
     Radar,
     Satellite,
@@ -102,7 +103,14 @@ const workspace = computed<Item[]>(() => [
         href: '/outreach/templates',
         match: 'startsWith',
     },
-    { n: '09', title: t('Design system'), icon: Palette, href: '/design' },
+    {
+        n: '09',
+        title: t('Insights'),
+        icon: Lightbulb,
+        href: '/insights',
+        match: 'startsWith',
+    },
+    { n: '10', title: t('Design system'), icon: Palette, href: '/design' },
 ]);
 
 const account = computed<Item[]>(() => [

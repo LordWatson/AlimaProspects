@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Modules\AiInsights\Enums\InsightStatus;
+use App\Modules\AiInsights\Enums\InsightType;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Notifications\Enums\DigestFrequency;
@@ -13,6 +15,7 @@ use App\Modules\Scoring\Enums\ScoreGrade;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
+use Tests\Support\InsightFixtures;
 use Tests\Support\LeadsWorkspaceFixtures as Workspace;
 use Tests\Support\NotificationFixtures as Fixtures;
 
@@ -140,6 +143,26 @@ it('leaves out the sections the member switched off', function (): void {
     // off.
     expect($keys)->not->toContain(':count new companies found')
         ->and($keys)->toContain(':count graded a strong match');
+});
+
+it('says how many insights are waiting, and only what is still open', function (): void {
+    [$user, $team] = Workspace::team();
+
+    InsightFixtures::insight($team, InsightType::ContactToday);
+    InsightFixtures::insight($team, InsightType::StaleLeads, [
+        'status' => InsightStatus::Dismissed,
+        'dismissed_at' => now(),
+    ]);
+
+    $summary = app(DigestBuilder::class)->build($user, $team, DigestFrequency::Daily);
+
+    $line = collect($summary->lines)->firstWhere('key', ':count insights waiting for you');
+
+    // Not the ones generated in the window: a digest says what is *waiting*, and an insight the
+    // team cleared on Tuesday is not waiting. Same reasoning as the open-tasks section.
+    expect($line)->not->toBeNull()
+        ->and($line['params']['count'])->toBe(1)
+        ->and($line['url'])->toBe('/insights');
 });
 
 it('counts only what happened inside the window', function (): void {

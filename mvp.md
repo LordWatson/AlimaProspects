@@ -24,7 +24,7 @@
 | 11    | Outreach (MVP)                                | ✅ Done | 2026-10-30 |
 | 12    | Notifications                                 | ✅ Done | 2026-10-30 |
 | 13    | Reporting & Analytics                         | ✅ Done | 2026-10-30 |
-| 14    | AI Insights (light)                           | ⬜      | —          |
+| 14    | AI Insights (light)                           | ✅ Done | 2026-10-30 |
 | 15    | Compliance & Privacy features                 | ⬜      | —          |
 | 16    | Billing & Plans                               | ⬜      | —          |
 | 17    | API v1 hardening                              | ⬜      | —          |
@@ -427,14 +427,35 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** AI Insights (`ai-insights.md`).
 **Tasks:**
 
-1. [ ] `insights` table; `GeneratePeriodicInsightsJob` (scheduled) → `insights.periodic_digest`.
-2. [ ] MVP insight types: stale-lead alert, "contact today" list; feed into Notifications.
-3. [ ] Insights feed UI (dismiss); (one-click ICP apply deferred to post-MVP).
-       **Data model:** `insights`.
-       **Tests:** job generates insights (faked AI); dismiss; digest notification; tenancy.
+1. [x] `insights` table; `GeneratePeriodicInsightsJob` (scheduled) → `insights.periodic_digest`. _(Plus
+       **`insight_runs`**, which the plan didn't ask for and the feature doesn't work without: the
+       sweep has to know a team has been done even on a day that produced no insights, or it re-runs
+       — and re-pays for the aggregates and the AI call — every hour until midnight. `insights.periodic_digest`
+       v1 was refined in place and is now live; it had been seeded a phase early with no caller.)_
+2. [x] MVP insight types: stale-lead alert, "contact today" list; feed into Notifications. _(A lead
+       goes stale only once the team **started** it — approached, assigned, or moved off the default
+       column — because "any lead with no recent activity" makes four hundred alerts out of one
+       week's sourcing. "Contact today" asks `OutreachGuard` per candidate and takes the answer as it
+       comes: a suppressed or prior-consent company stays on the list marked introduction-only rather
+       than disappearing or being offered an email. `NotificationType::InsightsReady`, one per run
+       with the counts, plus a section in the notification digest.)_
+3. [x] Insights feed UI (dismiss); (one-click ICP apply deferred to post-MVP). _(EN/AR, Open and
+       Dismissed tabs, severity-first ordering, and `/api/v1/insights` for the mobile app. The
+       `applied` status is **not** in the enum: nothing can reach it until the apply action exists.)_
+       **Data model:** `insights`, `insight_runs`.
+       **Tests:** job generates insights (faked AI); dismiss; digest notification; tenancy. _(88 tests:
+       plus the policy asked directly per role and across teams, the staleness boundary an hour either
+       side of a fortnight, a forced run that doesn't pay the model twice, the quiet-week skip and the
+       collapsed-week case that must not be skipped, and the retention sweep.)_
        **Acceptance:** daily digest + stale alerts delivered and dismissable; gates pass; docs updated.
        **Dispatch prompt:** _"Execute Phase 14 of mvp.md (AI Insights light). Read the module doc. Build insights + the scheduled digest job + feed UI, wire Notifications, and test with faked AI."_
-       **Risks:** keep AI cost bounded (scheduled, cached); avoid noisy insights.
+       **Risks:** keep AI cost bounded (scheduled, cached); avoid noisy insights. _(Both landed on real
+       decisions. **Cost:** one call per team per day at most, skipped outright for a quiet week, skipped
+       again when the day already has a digest, capped at three items, and switchable off
+       (`INSIGHTS_AI_ENABLED`) without losing the feature — the deterministic insights cost nothing and
+       cannot fail, so a provider outage costs the feed its commentary, not its contents. **Noise:** the
+       stale rule excludes unworked and closed leads, the call list is five and compliance-gated, and a
+       dismissal is never resurrected by the next run.)_
 
 ---
 

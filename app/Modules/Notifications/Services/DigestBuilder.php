@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Notifications\Services;
 
 use App\Models\User;
+use App\Modules\AiInsights\Enums\InsightStatus;
+use App\Modules\AiInsights\Models\Insight;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Models\Lead;
@@ -123,6 +125,20 @@ final class DigestBuilder
                 'key' => ':count new signals waiting',
                 'params' => ['count' => $signals],
                 'url' => '/signals',
+            ];
+        }
+
+        if ($this->preferences->wants($user, $team, NotificationType::InsightsReady)) {
+            // The insights **still open**, not the ones generated in the window: a digest's job is
+            // to say what is waiting, and an insight the team cleared on Tuesday is not waiting.
+            // Same reasoning as the open tasks below.
+            $insights = Insight::query()->where('status', InsightStatus::New->value)->count();
+
+            $sections[] = [
+                'count' => $insights,
+                'key' => ':count insights waiting for you',
+                'params' => ['count' => $insights],
+                'url' => '/insights',
             ];
         }
 

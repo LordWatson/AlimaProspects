@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\AiInsights\Providers\AiInsightsServiceProvider;
 use App\Modules\AiPlatform\Providers\AiPlatformServiceProvider;
 use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
 use App\Modules\BusinessIntelligence\Providers\BusinessIntelligenceServiceProvider;
@@ -38,4 +39,5 @@ return [
     OutreachServiceProvider::class,
     NotificationsServiceProvider::class,
     ReportingServiceProvider::class,
+    AiInsightsServiceProvider::class,
 ];

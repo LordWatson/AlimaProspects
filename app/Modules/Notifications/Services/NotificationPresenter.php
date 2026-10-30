@@ -39,6 +39,7 @@ final class NotificationPresenter
             NotificationType::TaskDue => $this->taskDue($payload),
             NotificationType::LeadAssigned => $this->leadAssigned($payload),
             NotificationType::SignalsDetected => $this->signalsDetected($payload),
+            NotificationType::InsightsReady => $this->insightsReady($payload),
             NotificationType::CreditLow => $this->creditLow($payload),
             NotificationType::Digest => $this->digest($payload),
         };
@@ -141,6 +142,37 @@ final class NotificationPresenter
             params: ['count' => $count],
             url: '/signals',
             actionLabel: 'See the signals',
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function insightsReady(array $payload): NotificationContent
+    {
+        $contact = $this->count($payload, 'contact_count');
+        $stale = $this->count($payload, 'stale_count');
+
+        // Lead with the thing to do. A member reading a lock screen at eight in the morning wants
+        // "five worth a call", not "three new insights" — the count of insights is a count of
+        // cards, which is our unit and not theirs. The cold ones come second because they are a
+        // warning rather than a plan, and the generic line is only reached when the run produced
+        // nothing but the model's commentary.
+        return new NotificationContent(
+            type: NotificationType::InsightsReady,
+            title: 'Your morning read is ready',
+            body: match (true) {
+                $contact > 0 => ':contact companies are worth approaching today.',
+                $stale > 0 => ':stale companies are going cold.',
+                default => 'Alima has :count things to show you.',
+            },
+            params: [
+                'contact' => $contact,
+                'stale' => $stale,
+                'count' => $this->count($payload, 'count'),
+            ],
+            url: '/insights',
+            actionLabel: 'See the insights',
         );
     }
 

@@ -102,6 +102,16 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // AI Insights (Phase 14): what was generated for which team, and when the AI call was
+        // skipped. Counts and ids only — never a headline, a company name or a prompt.
+        'insights' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/insights.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => (int) env('LOG_DAILY_DAYS', 14),
+            'replace_placeholders' => true,
+        ],
+
         'signals' => [
             'driver' => 'daily',
             'path' => storage_path('logs/signals.log'),
