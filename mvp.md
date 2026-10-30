@@ -19,6 +19,7 @@
 | 9     | Scoring & Matching                            | ✅ Done | 2026-10-29 |
 | 10    | Leads Workspace — list, detail, contacts      | ✅ Done | 2026-10-29 |
 | 10b   | Leads Workspace — pipeline, notes, tasks, CSV | ✅ Done | 2026-10-29 |
+| 10c   | Leads Workspace — add a lead by hand          | ✅ Done | 2026-10-30 |
 | 11    | Outreach (MVP)                                | ⬜      | —          |
 | 12    | Notifications                                 | ⬜      | —          |
 | 13    | Reporting & Analytics                         | 🟡      | —          |
@@ -315,6 +316,24 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
        **Acceptance:** full CRM-lite collaboration works; gates pass; docs updated.
        **Dispatch prompt:** _"Execute Phase 10b of mvp.md (Leads Workspace pipeline/notes/tasks/CSV). Read the module doc. Build pipeline stages, tags/notes/tasks/assignment, bulk actions, CSV import/export, and tests."_
        **Risks:** CSV edge cases/encoding; kanban perf with many leads.
+
+---
+
+### Phase 10c — Leads Workspace: add a lead by hand
+
+**Goal:** A member can add one company themselves — met at an event, referred, or found somewhere Alima doesn't look — and it joins the normal Enrichment → Scoring → Workspace pipeline.
+**Depends on:** 10b.
+**Modules & docs:** Leads Workspace.
+**Tasks:**
+
+1. [x] `LeadSource::Manual` + `LeadActivityType::Created`, and `OwnLeadFields` extracted from the CSV importer. _(Manual is not a provider and ranks **with** `Import`, not above it — equal means the older record wins a tie, so adding a company by hand can never displace the team's existing one. The extraction is the point of the phase as much as the form: both ways a team supplies a company now share one identity key, so a lead typed in at a stand and the same lead in a spreadsheet collapse into one.)_
+2. [x] `CreateLeadAction` + `CreateLeadData`: attach-or-create, gaps filled and nothing overwritten, contact with email/phone stored as given and never as verified, tags unioned, note, timeline, audit, `EnrichLeadJob` from `afterCommit`. _(Deliberately **not** `LeadDeduplicator` — it deletes the loser, and a hand-added lead outranks every provider, so it could take an established lead's notes and tasks with it. Recorded in the module doc.)_
+3. [x] `LeadPolicy::create` (any member but Read-only), 2 web routes and `POST /api/v1/leads` — 201 created, 200 merged. _(With `work` rather than `import`: one lead at a time is ordinary work, a team's whole list at once is not. The API endpoint is where this mostly happens — the member with the business card is on a phone.)_
+4. [x] The `leads/Create` screen, entry points on the leads hero and empty state, EN/AR at parity. _(One required field, first on the page; the team's existing tags offered; a non-dismissible note about whose details may be typed in; a link across to the CSV import for a whole list.)_
+       **Data model:** none — no migration. `leads.source` is `string(32)` and `lead_activities.type` likewise, so both new enum cases fit.
+       **Tests:** happy path (fields, stage, tags, note, timeline, audit, queued enrichment); merge into an existing lead; a hand-added company and the same company from a CSV collapsing into one; contact flags for a named person vs a role mailbox; validation; Read-only refused and a plain member allowed; another team's stage refused; API 201/200.
+       **Acceptance:** a member can add a lead in seconds and it enriches like any other; gates pass; docs updated.
+       **Risks:** a silent merge confusing the member (answered by the toast and the timeline's `merged` flag); duplicates keyed differently, which only enrichment catches.
 
 ---
 

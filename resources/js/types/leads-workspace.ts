@@ -17,6 +17,8 @@ export type LeadActivityType =
     | 'unassigned'
     | 'tags_changed'
     | 'imported'
+    // One company a member typed in themselves (Phase 10c).
+    | 'created'
     // What the team did with a signal (Signals, S4).
     | 'signal_converted';
 
@@ -194,4 +196,29 @@ export type LeadOrigin = {
     source_name: string | null;
     occurred_at: string | null;
     href: string | null;
+};
+
+/**
+ * The form state the add-a-lead screen binds to (Phase 10c). Every field is a string because that
+ * is what an input gives back — the server normalises and clamps, so the screen doesn't have to
+ * guess at a bare domain or a two-letter country code. `tags` are names, not ids: a tag is created
+ * on first use, which is the same contract the lead's work panel uses.
+ */
+export type CreateLeadForm = {
+    company_name: string;
+    company_number: string;
+    website: string;
+    industry: string;
+    employee_range: string;
+    locality: string;
+    region: string;
+    postal_code: string;
+    country: string;
+    contact_name: string;
+    contact_title: string;
+    contact_email: string;
+    contact_phone: string;
+    tags: string[];
+    pipeline_stage_id: number | null;
+    note: string;
 };

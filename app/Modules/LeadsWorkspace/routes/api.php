@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('leads', [LeadController::class, 'index'])->name('leads.index');
 
+    // One lead, typed in by hand — the phone's version of the add-a-lead form, which is where this
+    // mostly happens: a member at an event with a business card.
+    Route::post('leads', [LeadController::class, 'store'])->name('leads.store');
+
     // The board, so a mobile stage picker knows what the columns are. Declared before
     // `leads/{lead}`, which is numeric-only, so neither can swallow the other.
     Route::get('leads/stages', [LeadWorkController::class, 'stages'])->name('leads.stages');

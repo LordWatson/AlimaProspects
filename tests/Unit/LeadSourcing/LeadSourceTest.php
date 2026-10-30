@@ -5,17 +5,19 @@ declare(strict_types=1);
 use App\Modules\LeadSourcing\Enums\LeadSource;
 
 it('lists every source a lead can have', function (): void {
-    expect(LeadSource::values())->toBe(['companies_house', 'google_places', 'web_search', 'import', 'signal']);
+    expect(LeadSource::values())->toBe(['companies_house', 'google_places', 'web_search', 'import', 'manual', 'signal']);
 });
 
-it('marks the three providers available, and the two non-providers not', function (): void {
+it('marks the three providers available, and the three non-providers not', function (): void {
     expect(LeadSource::CompaniesHouse->isAvailable())->toBeTrue()
         ->and(LeadSource::GooglePlaces->isAvailable())->toBeTrue()
         ->and(LeadSource::WebSearch->isAvailable())->toBeTrue()
-        // Neither `import` nor `signal` is a provider — one is how a team's own CSV gets in, the
-        // other how a signal they chose to act on does — so neither can ever be picked for a
-        // discovery run, even though both are perfectly good things to filter a list by.
+        // None of `import`, `manual` or `signal` is a provider — one is how a team's own CSV gets
+        // in, one how a single company they met does, the third how a signal they chose to act on
+        // does — so none can ever be picked for a discovery run, even though all three are
+        // perfectly good things to filter a list by.
         ->and(LeadSource::Import->isAvailable())->toBeFalse()
+        ->and(LeadSource::Manual->isAvailable())->toBeFalse()
         ->and(LeadSource::Signal->isAvailable())->toBeFalse()
         ->and(LeadSource::availableValues())->toBe(['companies_house', 'google_places', 'web_search']);
 });
@@ -27,6 +29,14 @@ it('ranks an import above every provider', function (): void {
     expect(LeadSource::Import->rank())->toBeGreaterThan(LeadSource::CompaniesHouse->rank())
         ->and(LeadSource::CompaniesHouse->rank())->toBeGreaterThan(LeadSource::GooglePlaces->rank())
         ->and(LeadSource::GooglePlaces->rank())->toBeGreaterThan(LeadSource::WebSearch->rank());
+});
+
+it('ranks a hand-added lead with an import, above every provider', function (): void {
+    // A member who typed a company off a business card is the same authority as the spreadsheet
+    // they would otherwise have typed it into. Equal rather than above, so that on a tie the older
+    // record wins and adding a company by hand can never displace the team's existing one.
+    expect(LeadSource::Manual->rank())->toBe(LeadSource::Import->rank())
+        ->and(LeadSource::Manual->rank())->toBeGreaterThan(LeadSource::CompaniesHouse->rank());
 });
 
 it('ranks a signal at the bottom, with web search', function (): void {

@@ -12,6 +12,11 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('leads', [LeadController::class, 'index'])->name('leads.index');
 
+    // One lead, typed in by hand — a company a member met rather than one Alima found. Any member
+    // but Read-only (`LeadPolicy::create`), unlike the bulk import below.
+    Route::get('leads/create', [LeadController::class, 'create'])->name('leads.create');
+    Route::post('leads', [LeadController::class, 'store'])->name('leads.store');
+
     // The board.
     Route::get('leads/pipeline', [PipelineController::class, 'index'])->name('leads.pipeline');
     Route::post('leads/pipeline/stages', [PipelineController::class, 'store'])->name('leads.stages.store');

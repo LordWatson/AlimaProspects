@@ -81,7 +81,14 @@ final class EmailVerifier
         return $at === false ? $email : substr($email, 0, $at);
     }
 
-    private function isRoleBased(string $email): bool
+    /**
+     * Whether an address is a role/business mailbox (`info@`, `sales@`) rather than a person's.
+     *
+     * Public, and the one part of this class that touches nothing but config: a caller that is
+     * only classifying an address — the add-a-lead form, say — can ask without triggering the DNS
+     * lookup {@see self::verify()} does, and without keeping a second copy of the role list.
+     */
+    public function isRoleBased(string $email): bool
     {
         if ($email === '') {
             return false;

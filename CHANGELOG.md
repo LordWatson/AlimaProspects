@@ -5,6 +5,102 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-30 — a lead you can add yourself
+
+- **Leads can be typed in by hand.** Until now a lead could only arrive from a discovery run, a CSV
+  import or a converted signal — so a member back from an event with a business card in their
+  pocket had nowhere to put it, and the lead was lost to a spreadsheet or to nothing at all.
+  `GET /leads/create` → `POST /leads`, plus `POST /api/v1/leads`, because that member is holding a
+  phone rather than sitting at a desk.
+- **One required field, and it is the first one on the page.** The company name. Everything else —
+  website, number, industry, size, where they are, who they spoke to, tags, stage, a note — is there
+  for when they happen to know it, and `EnrichLeadJob` is queued to fill in the rest. A form that
+  insisted on a website and a registry number would be a form people give up on halfway through,
+  which is the same as not having built it.
+- **A company the team already has is filled in, never duplicated — and the member is told.**
+  `OwnLeadFields` was **extracted** from `ImportLeadsAction` so that the add-a-lead form and the CSV
+  importer share one identity key and one set of clamps. That shared key is what makes "I added
+  Bright Bean at the expo" and "I then imported the spreadsheet that already had them" one lead
+  rather than two. Only the existing lead's **empty** columns are filled: whatever enrichment has
+  since found beats a line typed at a stand. The toast and the timeline entry both say it was a
+  merge, because the member is about to land on a lead carrying notes, tags and a stage they didn't
+  write, and a silent merge reads as a bug.
+- **`LeadSource::Manual` ranks _with_ an import, not above it.** A member who typed a company off a
+  business card is the same authority as the spreadsheet they would otherwise have typed it into —
+  so a later discovery hit fills in the number it was missing rather than renaming what they typed.
+  Equal rather than higher is the deliberate part: on a rank tie the **older** record wins, so
+  adding a company by hand can never displace the team's existing record of it.
+- **`LeadDeduplicator` is deliberately not called here.** It can collapse records keyed differently
+  — a registry number against a domain — but it does so by deleting the loser, and a hand-added lead
+  outranks every provider. Calling it on create would let a company typed in at an event win against
+  a discovered lead and take its notes and tasks down with it. The exact-key attach covers what a
+  member can actually see, and the de-duplicator still gets its say when the new lead is enriched.
+- **A hand-added contact may carry an email and a phone number**, unlike a signal's, which is a name
+  and a public role because it came off a news article. Someone handed over a card. It is stored
+  with `manual` as its provenance and **nothing is marked verified** — no MX check has happened, so
+  that is left for the normal verification to judge. A named individual (or any non-role mailbox)
+  sets `is_personal` and the lead's `has_personal_data`, which is what the compliance screens and the
+  DSAR hook read; `info@` with no name is the company's front door rather than a person, and is
+  flagged `is_role_based` instead. The form carries a non-dismissible note that the details must be
+  ones they were given or that are already public, and that the team is responsible for them.
+- **No `OutreachRestriction` is stamped.** Absent means "no restriction beyond the team's normal
+  basis", which is exactly what a company a member met is — and keying a restriction off the lead's
+  own country is the mistake Signals' conversion goes out of its way to avoid.
+- **`LeadPolicy::create` sits with `work`, not with `import`.** Any member but Read-only. The line is
+  one lead at a time versus a team's whole list at once: a business card is ordinary work, thousands
+  of rows is a different kind of act. It is its own ability rather than folded into `work` so a team
+  who later wants to stop members adding companies has somewhere to say so.
+- **`POST /api/v1/leads` answers 201 for a new lead and 200 for a merge**, so a mobile client can
+  tell the two apart without re-reading the list. The API controller now shares `ResolvesWorkspace`
+  with the rest of the module instead of keeping its own copy of the caller/team resolution.
+- **New enum cases, no migration.** `LeadSource::Manual` and `LeadActivityType::Created` (which
+  carries `merged`, exactly as `Imported` does, and renders its own line in the timeline).
+  `leads.source` and `lead_activities.type` are both `string(32)`, so both values fit what is already
+  there. `EmailVerifier::isRoleBased()` became public — it is the one part of that class that reads
+  nothing but config, so a caller only classifying an address can ask without triggering a DNS
+  lookup, and without keeping a second copy of the role list.
+- **Entry points where a member already is:** an "Add a lead" button on the leads hero and in the
+  empty state (which now offers both paths — run a discovery, or add one you already know about), and
+  a link from the add-a-lead screen across to the CSV import for anyone holding a whole list. The
+  country field is a short list from `leads-workspace.countries` with a blank "Not sure yet", rather
+  than a 250-entry picker on a phone or a two-letter code a member has to know.
+- **41 new EN/AR keys, at parity** (818 each).
+
+**Reviewed** by the `laravel-module-reviewer` and `brand-reviewer` agents. Neither found a
+correctness or tenancy defect. Actioned:
+
+- **A `www.` prefix was only stripped in lower case** — `OwnLeadFields::dedupeKey()` lower-cased the
+  host _after_ stripping, so a cell reading `WWW.brightbean.co.uk` kept its prefix and keyed as
+  `domain:www.brightbean.co.uk`: a second lead for a company the team already had. Found by a new
+  unit test on the extracted code, inherited from `ImportLeadsAction`, and now fixed for **both**
+  paths. A spreadsheet is exactly where an upper-case `WWW.` gets typed.
+- **The orange "?" on the headline was a Latin character**, so the Arabic build read
+  "قابلت أحدًا مميزًا?" — wrong punctuation, rendered mirrored. It is now the orange full stop the
+  brand actually specifies for a statement (§3), matching the sibling CSV import screen.
+- **The submit button is no longer disabled on an empty company name.** A disabled button leaves
+  the tab order, so the one member who most needed telling why could not reach it; `company_name` is
+  validated on the server, which puts the message beside the field instead.
+- **The board is resolved before the transaction opens.** Giving a team its first board is a write
+  of its own, and it had no business happening inside the create's lock window — or being re-run on
+  every retry.
+- **Accessibility and RTL:** every hint is now referenced by its control's `aria-describedby`, not
+  just the first; tag chips announce through a live region and hand focus back to the input instead
+  of dropping it on `body`; `autofocus` is gone (on a phone it opened the keyboard and scrolled past
+  the header); the postcode reads `ltr`, which is what it is in both MVP markets.
+- **Arabic copy:** the plural "you" in "Already using:" made singular like the rest of the screen,
+  and the masculine assumptions about a contact ("اسمه", "منصبه", "غير متأكد بعد") replaced with
+  neutral wording. Still wants a native-speaker review, as the whole AR bundle does.
+- **Tests:** a team-isolation case (Team B adding a company Team A already has gets its own lead and
+  leaves Team A's untouched), API cross-tenant stage and Read-only 403 cases, a direct Action test
+  for the out-of-team stage fallback, a chosen-stage case, a clamping case, and a new
+  `OwnLeadFieldsTest` pinning the shared keying contract both ways in now depend on.
+
+Deliberately not actioned, and recorded in the module doc instead: the lost-insert race is handled
+but can't be reproduced on SQLite; neither `store` route is throttled, because the team's AI
+allowance is what caps the spend; a merge into a lead already carrying 20 tags silently drops the
+typed ones (`SyncLeadTagsAction`'s cap, shared with the importer); and `InputError` announces
+nothing to a screen reader, which is every form in the app rather than this screen.
+
 ### Added — 2026-10-30 — a panda on every hero, and the EN/AR parity the heroes owed
 
 - **Every `PageHero` now carries the peek** — Soft Lilac, scaled up, set into the bottom end corner

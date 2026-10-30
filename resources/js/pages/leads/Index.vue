@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { Columns3, Download, Radar, SearchX, Upload } from '@lucide/vue';
+import { Columns3, Download, Plus, Radar, SearchX, Upload } from '@lucide/vue';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import BulkActionBar from '@/components/leads/BulkActionBar.vue';
 import LeadFilterBar from '@/components/leads/LeadFilterBar.vue';
@@ -44,6 +44,7 @@ const props = defineProps<{
     can: {
         saveView: boolean;
         work: boolean;
+        create: boolean;
         import: boolean;
         export: boolean;
     };
@@ -226,6 +227,14 @@ const enrichmentVariant: Record<
                         {{ t('Find more leads') }}
                     </Link>
                 </Button>
+                <!-- One company a member met, rather than a search Alima runs. Any member
+                     but Read-only, unlike Import below. -->
+                <Button v-if="can.create" variant="hero" as-child>
+                    <Link href="/leads/create">
+                        <Plus class="size-4" />
+                        {{ t('Add a lead') }}
+                    </Link>
+                </Button>
                 <Button variant="hero" as-child>
                     <Link href="/leads/pipeline">
                         <Columns3 class="size-4" />
@@ -255,7 +264,7 @@ const enrichmentVariant: Record<
             :title="t('No leads yet')"
             :description="
                 t(
-                    'Run a discovery and the companies Alima finds will land here, enriched and graded.',
+                    'Run a discovery and the companies Alima finds will land here, enriched and graded. Or add one you already know about.',
                 )
             "
             data-test="no-leads"
@@ -264,6 +273,12 @@ const enrichmentVariant: Record<
                 <Link href="/discovery">
                     <Radar class="size-4" />
                     {{ t('Start discovery') }}
+                </Link>
+            </Button>
+            <Button v-if="can.create" variant="outline" as-child>
+                <Link href="/leads/create">
+                    <Plus class="size-4" />
+                    {{ t('Add a lead') }}
                 </Link>
             </Button>
         </EmptyState>

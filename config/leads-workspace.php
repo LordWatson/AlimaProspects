@@ -42,6 +42,19 @@ return [
     // the `leads-bulk` rate limiter. Each is cheap to ask for and expensive to serve.
     'bulk_rate_limit' => (int) env('LEADS_BULK_RATE_LIMIT', 20),
 
+    // The countries the add-a-lead form offers, as ISO-3166-1 alpha-2 => display name. A short list
+    // on purpose: the MVP markets (ADR 0007) plus the neighbours a UK/UAE team is most likely to be
+    // working, which is the same scope `scoring.country_aliases` keeps. A lead from anywhere else is
+    // added with no country and enrichment fills it in — better than a 250-entry picker on a phone,
+    // or a two-letter code a member has to know. Extend it as markets are added.
+    'countries' => [
+        'GB' => 'United Kingdom',
+        'AE' => 'United Arab Emirates',
+        'IE' => 'Ireland',
+        'SA' => 'Saudi Arabia',
+        'US' => 'United States',
+    ],
+
     'csv' => [
         // Largest import file accepted, in kilobytes (validated on the upload).
         'max_upload_kb' => (int) env('LEADS_CSV_MAX_UPLOAD_KB', 5_120),

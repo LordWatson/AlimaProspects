@@ -20,6 +20,8 @@ enum LeadSource: string
     case WebSearch = 'web_search';
     /** Not a provider: a lead the team brought in themselves (Phase 10b CSV import). */
     case Import = 'import';
+    /** Not a provider: one company a member typed in themselves — met at an event, say (Phase 10c). */
+    case Manual = 'manual';
     /** Not a provider: a lead converted from a wealth/liquidity event in the Signals feed (ADR 0011, S4). */
     case Signal = 'signal';
 
@@ -30,6 +32,7 @@ enum LeadSource: string
             self::GooglePlaces => 'Google Places',
             self::WebSearch => 'Web search',
             self::Import => 'Imported',
+            self::Manual => 'Added by hand',
             self::Signal => 'Signal',
         };
     }
@@ -44,6 +47,7 @@ enum LeadSource: string
             self::GooglePlaces => 'Local and small businesses by location and category (strong for the UAE).',
             self::WebSearch => 'General web discovery across the open internet.',
             self::Import => 'Leads your team brought in from a CSV.',
+            self::Manual => 'A company one of your team added themselves.',
             self::Signal => 'Created from a wealth/liquidity event in your Signals feed.',
         };
     }
@@ -51,14 +55,15 @@ enum LeadSource: string
     /**
      * Whether this source can be **run** as a discovery. Providers that aren't yet implemented are
      * listed (so the UI can preview what's coming) but can't be selected for a run — and
-     * {@see self::Import} and {@see self::Signal} never can, because neither is a provider: one is
-     * how a team's own list gets in, the other how a signal they chose to act on does. Both are
-     * still perfectly good things to *filter* a list by.
+     * {@see self::Import}, {@see self::Manual} and {@see self::Signal} never can, because none of
+     * the three is a provider: one is how a team's own list gets in, one how a single company they
+     * met gets in, the third how a signal they chose to act on does. All three are still perfectly
+     * good things to *filter* a list by.
      */
     public function isAvailable(): bool
     {
         return match ($this) {
-            self::Import, self::Signal => false,
+            self::Import, self::Manual, self::Signal => false,
             self::CompaniesHouse, self::GooglePlaces, self::WebSearch => true,
         };
     }
@@ -75,6 +80,12 @@ enum LeadSource: string
      * company the team typed. That is the same "fill in, never overwrite" promise the importer
      * makes in the other direction.
      *
+     * **A hand-added lead ranks with an import**, for exactly that reason: a member who typed a
+     * company's name off a business card is the same authority as the spreadsheet they would
+     * otherwise have typed it into. Ranking equal rather than above is deliberate — on a tie the
+     * older record wins (`LeadDeduplicator::pickSurvivor()`), so adding a company by hand can
+     * never displace the team's existing record of it.
+     *
      * **A signal ranks with web search**, not with an import. The company fields on a converted
      * signal are what a news article said and what the member typed into the convert form in a
      * hurry — useful, but not the team's considered record — so a registry, a places listing or
@@ -83,7 +94,7 @@ enum LeadSource: string
     public function rank(): int
     {
         return match ($this) {
-            self::Import => 4,
+            self::Import, self::Manual => 4,
             self::CompaniesHouse => 3,
             self::GooglePlaces => 2,
             self::WebSearch, self::Signal => 1,

@@ -30,6 +30,14 @@ enum LeadActivityType: string
     case Unassigned = 'unassigned';
     case TagsChanged = 'tags_changed';
     case Imported = 'imported';
+    /**
+     * A member added this company themselves (Phase 10c). Distinct from {@see self::Imported}
+     * because "I met them at an event and typed them in" and "I uploaded my spreadsheet" are
+     * different stories about where a lead came from, and the timeline's job is to tell the right
+     * one. Carries `merged` exactly as `Imported` does, for the case where the team already had
+     * the company.
+     */
+    case Created = 'created';
 
     // What the team did with a signal (Signals, S4). One case, not two: converting a signal and
     // linking it to a company the team already had are the same act with a different outcome, which
@@ -50,6 +58,7 @@ enum LeadActivityType: string
             self::Unassigned => 'Unassigned',
             self::TagsChanged => 'Tags changed',
             self::Imported => 'Imported',
+            self::Created => 'Added by hand',
             self::SignalConverted => 'From a signal',
         };
     }
@@ -64,7 +73,7 @@ enum LeadActivityType: string
             self::Discovered, self::Enriched, self::Scored => true,
             self::StageChanged, self::NoteAdded, self::TaskCreated, self::TaskCompleted,
             self::Assigned, self::Unassigned, self::TagsChanged, self::Imported,
-            self::SignalConverted => false,
+            self::Created, self::SignalConverted => false,
         };
     }
 

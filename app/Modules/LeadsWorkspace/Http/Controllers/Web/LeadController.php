@@ -10,6 +10,7 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Http\Resources\LeadResource;
 use App\Modules\LeadSourcing\Policies\LeadPolicy;
+use App\Modules\LeadsWorkspace\Actions\CreateLeadAction;
 use App\Modules\LeadsWorkspace\Actions\EnsureDefaultPipelineStagesAction;
 use App\Modules\LeadsWorkspace\Actions\FindLeadAction;
 use App\Modules\LeadsWorkspace\Actions\ListLeadsAction;
@@ -17,6 +18,7 @@ use App\Modules\LeadsWorkspace\Actions\ListSavedViewsAction;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\Concerns\ResolvesWorkspace;
 use App\Modules\LeadsWorkspace\Http\Requests\ListLeadsRequest;
+use App\Modules\LeadsWorkspace\Http\Requests\StoreLeadRequest;
 use App\Modules\LeadsWorkspace\Http\Resources\LeadActivityResource;
 use App\Modules\LeadsWorkspace\Http\Resources\LeadNoteResource;
 use App\Modules\LeadsWorkspace\Http\Resources\LeadTagResource;
@@ -30,6 +32,7 @@ use App\Modules\LeadsWorkspace\Support\LeadFilterOptions;
 use App\Modules\Scoring\Http\Resources\LeadScoreResource;
 use App\Modules\Scoring\Models\LeadScore;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -81,11 +84,61 @@ final class LeadController extends Controller
             'can' => [
                 'saveView' => $user->can('create', $this->transientView($team, $user)),
                 'work' => $user->can('work', $this->transientLead($team)),
+                'create' => $user->can('create', $this->transientLead($team)),
                 'import' => $user->can('import', $this->transientLead($team)),
                 'export' => $user->can('export', $this->transientLead($team)),
             ],
             'maxBulk' => (int) config('leads-workspace.max_bulk_leads', 500),
         ]);
+    }
+
+    /**
+     * The add-a-lead form: one company, typed in by a member who met them.
+     */
+    public function create(Request $request, EnsureDefaultPipelineStagesAction $ensureStages): Response
+    {
+        $user = $this->user($request);
+        $team = $this->team($request);
+
+        $this->authorize('create', $this->transientLead($team));
+
+        return Inertia::render('leads/Create', [
+            'stages' => PipelineStageResource::collection($ensureStages->handle($team))->resolve($request),
+            // The tags the team already uses, so adding a lead reaches for an existing label rather
+            // than inventing a third spelling of "warm".
+            'tags' => LeadTagResource::collection($this->tags($team))->resolve($request),
+            'countries' => $this->countries(),
+            'can' => ['import' => $user->can('import', $this->transientLead($team))],
+        ]);
+    }
+
+    /**
+     * Save it, and go to the lead — the member added a company because they want to do something
+     * with it, so the next screen is the one they can do it on.
+     */
+    public function store(StoreLeadRequest $request, CreateLeadAction $create): RedirectResponse
+    {
+        $user = $this->user($request);
+        $team = $this->team($request);
+
+        $this->authorize('create', $this->transientLead($team));
+
+        $result = $create->handle($team, $user, $request->lead());
+
+        Inertia::flash('toast', [
+            // A merge is not a failure, but it is not what the member asked for either: they are
+            // about to land on a lead with history they didn't write, so the message says why.
+            'type' => $result->merged ? 'info' : 'success',
+            'message' => $result->merged
+                ? __('You already had :company — Alima added what you typed to that lead.', [
+                    'company' => $result->lead->company_name,
+                ])
+                : __(':company is in your leads. Alima is filling in the rest.', [
+                    'company' => $result->lead->company_name,
+                ]),
+        ]);
+
+        return to_route('leads.show', ['lead' => $result->lead->getKey()]);
     }
 
     public function show(
@@ -181,6 +234,25 @@ final class LeadController extends Controller
             ->all();
 
         return $members;
+    }
+
+    /**
+     * The countries the add-a-lead form offers, from config so the list is one thing rather than a
+     * hand-written `<option>` list. Names are translation keys; the client passes them through
+     * `t()`, which is why they aren't translated here.
+     *
+     * @return list<array{code: string, name: string}>
+     */
+    private function countries(): array
+    {
+        /** @var array<string, string> $countries */
+        $countries = config('leads-workspace.countries', []);
+
+        return array_map(
+            static fn (string $name, string $code): array => ['code' => $code, 'name' => $name],
+            array_values($countries),
+            array_keys($countries),
+        );
     }
 
     /**

@@ -5,15 +5,17 @@ import type { StageOutcome } from './leads-workspace';
 import type { LeadScoreSummary } from './scoring';
 
 /**
- * Every value `leads.source` can hold. The last two aren't providers — an import is the team's own
- * list, a signal is an event they chose to act on — so neither appears in the discovery picker,
- * but both are filterable and both can label a lead (mirrors `LeadSource::cases()`).
+ * Every value `leads.source` can hold. The last three aren't providers — an import is the team's
+ * own list, a manual lead one company a member typed in, a signal an event they chose to act on —
+ * so none appears in the discovery picker, but all are filterable and all can label a lead
+ * (mirrors `LeadSource::cases()`).
  */
 export type LeadSource =
     | 'companies_house'
     | 'google_places'
     | 'web_search'
     | 'import'
+    | 'manual'
     | 'signal';
 
 /** A discovery provider: the subset of `LeadSource` that can actually be run. */

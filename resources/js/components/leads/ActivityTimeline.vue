@@ -8,6 +8,7 @@ import {
     MessageSquare,
     Newspaper,
     Radar,
+    UserRoundPlus,
     ScanSearch,
     Sparkles,
     Tags,
@@ -46,6 +47,7 @@ const icons: Record<LeadActivityType, Component> = {
     unassigned: UserMinus,
     tags_changed: Tags,
     imported: FileUp,
+    created: UserRoundPlus,
     signal_converted: Newspaper,
 };
 
@@ -100,6 +102,10 @@ function describe(activity: LeadActivity): string {
             return p.merged
                 ? t('Imported from a CSV, into the lead you already had')
                 : t('Imported from a CSV');
+        case 'created':
+            return p.merged
+                ? t('Added by hand, into the lead you already had')
+                : t('Added by hand');
         case 'signal_converted':
             // The headline is the article's own words, interpolated rather than translated.
             return p.attached
@@ -146,6 +152,7 @@ function sourceLabel(source: string): string {
             google_places: 'Google Places',
             web_search: 'Web search',
             import: 'Imported',
+            manual: 'Added by hand',
             signal: 'Signal',
         }[source] ?? source
     );
