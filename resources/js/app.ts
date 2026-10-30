@@ -16,6 +16,11 @@ void createInertiaApp({
         switch (true) {
             case name === 'Welcome':
             case name === 'About':
+            // `public/` pages are reached by people who are not users — the hosted privacy notice
+            // and the unsubscribe endpoint (Compliance, Phase 15). They bring their own
+            // MarketingLayout, like the other public pages; the app shell would ask them to log in
+            // to read a privacy notice.
+            case name.startsWith('public/'):
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;

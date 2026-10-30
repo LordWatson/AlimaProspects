@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Reporting\Http\Controllers\Web\DashboardController;
+use App\Modules\Reporting\Http\Controllers\Web\ReportExportController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -11,4 +12,10 @@ use Illuminate\Support\Facades\Route;
  */
 Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
+
+    // One click here runs every aggregation on the dashboard, so it is metered by its own limiter
+    // (per member, not per IP, so a shared office doesn't throttle itself).
+    Route::get('reports/export', ReportExportController::class)
+        ->middleware('throttle:reports-export')
+        ->name('reports.export');
 });

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Outreach\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Core\Enums\OutreachRestriction;
 use App\Modules\Core\Enums\SupportedLocale;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Enrichment\Http\Resources\LeadContactResource;
@@ -14,6 +13,7 @@ use App\Modules\LeadSourcing\Http\Resources\LeadResource;
 use App\Modules\Outreach\Actions\DraftMessageAction;
 use App\Modules\Outreach\Actions\LogContactAttemptAction;
 use App\Modules\Outreach\Actions\SendOutreachEmailAction;
+use App\Modules\Outreach\Contracts\LeadRestrictionResolver;
 use App\Modules\Outreach\Data\OutreachDecision;
 use App\Modules\Outreach\Enums\ContactOutcome;
 use App\Modules\Outreach\Enums\OutreachChannel;
@@ -70,7 +70,9 @@ final class OutreachController extends Controller
             // would show the member a "no contact details" block they can't act on.
             $selected = $contacts->first(static fn (LeadContact $contact): bool => trim((string) $contact->email) !== '');
 
-            $restriction = OutreachRestriction::fromRaw($model->raw);
+            // The restriction in force, from the same resolver the guard uses — so the banner on
+            // the screen and the closed channel beside it always agree (Phase 15).
+            $restriction = app(LeadRestrictionResolver::class)->restrictionFor($team, $model);
 
             return Inertia::render('outreach/Show', [
                 'lead' => LeadResource::make($model)->resolve($request),

@@ -18,14 +18,24 @@ use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Support\ComplianceFixtures;
 
 uses(RefreshDatabase::class);
 
 /**
- * Give the team an active ICP with an industry signal, so discovery can shape a query from it.
+ * Give the team what discovery needs: an active ICP with an industry signal to shape a query from,
+ * **and a recorded legitimate-interest assessment**.
+ *
+ * The assessment is not incidental. Since Phase 15 the LIA gate is real (`LegitimateInterestGate`
+ * replaces the permit-everything stub), so a team with no basis on record cannot source at all —
+ * which is the behaviour `DiscoveryGuardsTest` asserts directly. Every test here that expects a run
+ * to start therefore needs one, and a sourcing test that passed without it would mean the gate was
+ * not wired in.
  */
 function seedActiveIcp(Team $team, string $industry = 'Marketing'): Icp
 {
+    ComplianceFixtures::activeLia($team);
+
     return app(TeamContext::class)->run($team, function () use ($team, $industry): Icp {
         $icp = Icp::query()->create(['team_id' => $team->getKey(), 'name' => 'UK '.$industry, 'is_active' => true]);
         $icp->criteria()->create([
@@ -181,6 +191,10 @@ it('cannot shape a run from another team’s ICP', function (): void {
 it('refuses to start with nothing to search for', function (): void {
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
+
+    // A lawful basis on record, so the refusal below is the one this test is about: without it the
+    // LIA gate would refuse first and the assertion would pass for the wrong reason.
+    ComplianceFixtures::activeLia($team);
 
     // No terms, and no active ICP to imply any.
     expect(fn () => app(StartDiscoveryRunAction::class)->handle(

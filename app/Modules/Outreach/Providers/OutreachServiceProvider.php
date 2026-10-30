@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Outreach\Providers;
 
 use App\Modules\ModuleServiceProvider;
+use App\Modules\Outreach\Contracts\LeadRestrictionResolver;
 use App\Modules\Outreach\Models\ContactAttempt;
 use App\Modules\Outreach\Models\OutreachMessage;
 use App\Modules\Outreach\Models\OutreachSuppression;
@@ -12,6 +13,8 @@ use App\Modules\Outreach\Models\OutreachTemplate;
 use App\Modules\Outreach\Policies\OutreachMessagePolicy;
 use App\Modules\Outreach\Policies\OutreachSuppressionPolicy;
 use App\Modules\Outreach\Policies\OutreachTemplatePolicy;
+use App\Modules\Outreach\Services\OutreachGuard;
+use App\Modules\Outreach\Services\RecordedLeadRestriction;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -46,5 +49,15 @@ final class OutreachServiceProvider extends ModuleServiceProvider
         RateLimiter::for('outreach-send', fn (Request $request): Limit => Limit::perMinute(
             max(1, (int) config('outreach.send_rate_limit', 60)),
         )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
+    }
+
+    public function register(): void
+    {
+        // What limits how a lead may be approached. Outreach's own answer is the flag recorded on
+        // the lead (Phase 11); Compliance (Phase 15) binds a market-aware resolver over it. The
+        // seam exists so {@see OutreachGuard} asks a question rather than reading a column — and so
+        // this module stands up on its own, which is what makes the default binding the right place
+        // for it.
+        $this->app->bind(LeadRestrictionResolver::class, RecordedLeadRestriction::class);
     }
 }

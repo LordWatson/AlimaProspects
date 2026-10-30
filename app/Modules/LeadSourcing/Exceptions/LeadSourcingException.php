@@ -97,6 +97,20 @@ final class LeadSourcingException extends DomainException
     }
 
     /**
+     * The team has an assessment on record, but it is past the review date they set. Separate from
+     * {@see self::interestAssessmentRequired()} because the member has to be told a different
+     * thing: re-affirm what is there, not write it from scratch.
+     */
+    public static function interestAssessmentExpired(): self
+    {
+        $e = new self('Your legitimate-interest assessment is due for review. Confirm it still holds and sourcing will reopen.');
+        $e->errorCode = 'lead_sourcing.lia_expired';
+        $e->status = 403;
+
+        return $e;
+    }
+
+    /**
      * The upstream provider failed (timeout, error, or tripped circuit breaker).
      */
     public static function providerFailed(string $source): self

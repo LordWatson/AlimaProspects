@@ -6,6 +6,7 @@ export type NotificationType =
     | 'task_due'
     | 'lead_assigned'
     | 'signals_detected'
+    | 'insights_ready'
     | 'credit_low'
     | 'digest';
 

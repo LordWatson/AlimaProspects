@@ -48,7 +48,11 @@ function cannedResponses(): array
             'subject' => 'Quick idea', 'variants' => [['channel' => 'email', 'body' => 'Hello there.']],
         ],
         'insights.periodic_digest' => [
-            'insights' => [['type' => 'stale_lead', 'title' => 'Stale leads', 'body' => '3 leads need a nudge.', 'severity' => 'warning']],
+            'insights' => [[
+                'topic' => 'outreach', 'title' => 'LinkedIn is replying and email is not',
+                'body' => 'Six of eleven LinkedIn approaches came back against one of nine emails.',
+                'severity' => 'action',
+            ]],
         ],
         'signals.extract_event' => [
             'events' => [[

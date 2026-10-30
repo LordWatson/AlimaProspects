@@ -458,29 +458,58 @@ Website: {{website}}
                 ],
             ],
             [
+                // Phase 14 is the phase that makes this one live. It was seeded a phase early as a
+                // placeholder with no caller, which is why it is refined **in place** rather than
+                // superseded by a v2: the "new version, never an edit" rule protects prompts whose
+                // outputs are already logged against their version, and no `ai_requests` row has
+                // ever referenced this one. From here on it follows the rule like the rest.
                 'key' => 'insights.periodic_digest',
                 'version' => 1,
                 'tier' => AiTier::Reasoning,
-                'description' => 'Periodic insights: best segments, ICP tweaks, stale-lead alerts, "contact today" digest.',
-                'system' => 'You turn a team\'s recent lead and pipeline activity into a short list of actionable insights. '
-                    .'Base every insight on the supplied figures; never invent numbers.',
-                'body' => "Recent activity:\n{{activity}}\n\nProduce the periodic insights.",
-                'max_tokens' => 1536,
+                'description' => 'Periodic insights: the model\'s read of one team\'s last seven days of figures.',
+                'system' => 'You turn a sales team\'s weekly prospecting figures into at most three short, specific '
+                    .'observations. You are given numbers and nothing else: no company names, no people, no free text. '
+                    .'Every observation must be grounded in the supplied figures and must quote the ones it rests on — '
+                    .'never invent, estimate or extrapolate a number, and never refer to a figure that is not in the '
+                    .'input. Prefer a comparison over a bare total (a change against the previous week, one channel '
+                    .'against another, one stage against the next) because a number without a direction is not an '
+                    .'insight. Say what to do about it when the figures support one, and say nothing when they do not: '
+                    .'returning one good observation is better than padding to three. Never recommend contacting a '
+                    .'named company — you have not been given any — and never recommend cold email as a channel. '
+                    .'Set severity to "action" only when there is something concrete to do this week, "warning" when '
+                    .'something is slipping, otherwise "info". Keep each title under 15 words and each body under 40.',
+                'body' => "This team's last seven days, as JSON. Counts are leads or attempts; "
+                    ."`*_change` is the change against the seven days before; `reply_rate_percent` is out of 100:\n"
+                    ."{{activity}}\n\n"
+                    .'Return at most three observations.',
+                'max_tokens' => 1024,
+                // Low but not zero: these are sentences a person reads, and identical phrasing
+                // every single morning reads like a broken template rather than a daily note.
                 'temperature' => 0.3,
                 'schema' => [
                     'type' => 'object',
                     'properties' => [
                         'insights' => [
                             'type' => 'array',
+                            // Bounded in the schema rather than only in the clamp downstream: a
+                            // hijacked or runaway response cannot return fifty cards, and the
+                            // lengths cannot overflow the `insights` columns (security review, S6).
+                            'maxItems' => 3,
                             'items' => [
                                 'type' => 'object',
                                 'properties' => [
-                                    'type' => ['type' => 'string'],
-                                    'title' => ['type' => 'string'],
-                                    'body' => ['type' => 'string'],
+                                    // What it is about. An enum rather than a free string so the
+                                    // value can be grouped and reported on later; the stored
+                                    // insight's own `type` is always `periodic_digest`.
+                                    'topic' => [
+                                        'type' => 'string',
+                                        'enum' => ['sourcing', 'fit', 'pipeline', 'outreach', 'activity', 'spend'],
+                                    ],
+                                    'title' => ['type' => 'string', 'maxLength' => 240],
+                                    'body' => ['type' => 'string', 'maxLength' => 1000],
                                     'severity' => ['type' => 'string', 'enum' => ['info', 'warning', 'action']],
                                 ],
-                                'required' => ['type', 'title', 'body'],
+                                'required' => ['topic', 'title', 'body', 'severity'],
                             ],
                         ],
                     ],

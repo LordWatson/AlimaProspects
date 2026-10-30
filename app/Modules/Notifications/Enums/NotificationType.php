@@ -47,10 +47,24 @@ enum NotificationType: string
     /** A watch ran and brought back new signals. */
     case SignalsDetected = 'signals_detected';
 
+    // --- AI Insights (Phase 14) ---
+    /**
+     * The day's insights are ready: what has gone cold, who is worth a call, and what Alima made
+     * of the week's figures. **Aggregated by construction** — one notification per generation run,
+     * carrying the counts, never one per insight.
+     */
+    case InsightsReady = 'insights_ready';
+
     // --- AI Platform / Billing ---
     /**
-     * The team's AI allowance is nearly or fully spent, and work is about to start failing.
-     * Delivered to Owners and Admins only — it is a billing matter, not everyone's.
+     * A plan allowance — AI credits or new companies — is nearly or fully spent, and work is about
+     * to start failing. Delivered to Owners and Admins only: it is a billing matter, not
+     * everyone's.
+     *
+     * One case for both metrics, carrying a `metric` in its payload, because a member who has
+     * switched off "an allowance is running low" has said the same thing about both and would not
+     * thank us for a second switch. The value stays `credit_low` — it is written into every
+     * notification row already stored, and renaming it would orphan them (Phase 16).
      */
     case CreditLow = 'credit_low';
 
@@ -66,7 +80,8 @@ enum NotificationType: string
             self::TaskDue => 'A task reminder comes due',
             self::LeadAssigned => 'A lead is assigned to me',
             self::SignalsDetected => 'New signals arrive',
-            self::CreditLow => 'AI credit is running low',
+            self::InsightsReady => 'The daily insights are ready',
+            self::CreditLow => 'An allowance is running low',
             self::Digest => 'The round-up',
         };
     }
@@ -79,7 +94,8 @@ enum NotificationType: string
             self::TaskDue => 'When something you asked to be reminded about is due.',
             self::LeadAssigned => 'When a colleague gives you a lead to work.',
             self::SignalsDetected => 'When a watch finds a new trigger event.',
-            self::CreditLow => 'Owners and admins only — AI work stops when the allowance runs out.',
+            self::InsightsReady => 'Each morning: who is going cold, and who is worth a call today.',
+            self::CreditLow => 'Owners and admins only — work stops when a plan allowance runs out.',
             self::Digest => 'Everything that happened, in one message.',
         };
     }
@@ -93,7 +109,9 @@ enum NotificationType: string
             self::DiscoveryComplete, self::TopLeads, self::SignalsDetected => NotificationGroup::Finding,
             self::TaskDue, self::LeadAssigned => NotificationGroup::MyWork,
             self::CreditLow => NotificationGroup::Account,
-            self::Digest => NotificationGroup::Summary,
+            // With the digest rather than with Finding: both are a round-up a member reads once a
+            // day, and both are the kind of thing somebody switches off together.
+            self::InsightsReady, self::Digest => NotificationGroup::Summary,
         };
     }
 
@@ -124,6 +142,13 @@ enum NotificationType: string
                 NotificationChannel::InApp,
                 NotificationChannel::Push,
             ],
+            // A daily email nobody asked for is the fastest way to be filtered — and then the
+            // task reminder above goes to the same folder. So the insights arrive in the app and
+            // on the phone, and a member who wants them in their inbox turns email on.
+            self::InsightsReady => [
+                NotificationChannel::InApp,
+                NotificationChannel::Push,
+            ],
         };
     }
 
@@ -136,7 +161,7 @@ enum NotificationType: string
             // Reminders and assignments are about *now*; holding one until 8am tomorrow would make
             // the reminder useless and the assignment rude.
             self::TaskDue, self::LeadAssigned, self::CreditLow, self::Digest => false,
-            self::DiscoveryComplete, self::TopLeads, self::SignalsDetected => true,
+            self::DiscoveryComplete, self::TopLeads, self::SignalsDetected, self::InsightsReady => true,
         };
     }
 

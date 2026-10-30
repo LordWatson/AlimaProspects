@@ -53,7 +53,11 @@ final class ExportLeadsAction
             fwrite($handle, "\u{FEFF}");
 
             foreach ($rows as $row) {
-                fputcsv($handle, $row);
+                // `escape: ''` disables PHP's non-standard escaping, which is deprecated as a
+                // default from 8.4 and was never what a CSV reader expects: RFC 4180 doubles a
+                // quote inside a quoted field, and the legacy backslash behaviour could corrupt a
+                // cell ending in one.
+                fputcsv($handle, $row, escape: '');
             }
 
             fclose($handle);

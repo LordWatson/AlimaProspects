@@ -17,6 +17,8 @@ use App\Modules\LeadsWorkspace\Models\LeadNote;
 use App\Modules\LeadsWorkspace\Models\LeadTag;
 use App\Modules\LeadsWorkspace\Models\LeadTask;
 use App\Modules\LeadsWorkspace\Models\PipelineStage;
+use App\Modules\Outreach\Models\ContactAttempt;
+use App\Modules\Outreach\Models\OutreachMessage;
 use App\Modules\Scoring\Models\LeadScore;
 use Database\Factories\LeadFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -64,6 +66,7 @@ use Illuminate\Support\Str;
  * @property array<string, mixed>|null $raw
  * @property array<string, SourcedValue> $field_sources
  * @property bool $has_personal_data
+ * @property Carbon|null $anonymised_at
  * @property string $dedupe_key
  * @property-read int|null $contacts_count
  * @property Carbon|null $created_at
@@ -216,6 +219,29 @@ class Lead extends Model
     }
 
     /**
+     * Every recorded approach to this company (Phase 11), newest first — the email Alima sent, the
+     * LinkedIn message a member pasted, the call they made. Ordered by when the approach *happened*
+     * rather than when the row was written, because a member logs yesterday's call today.
+     *
+     * @return HasMany<ContactAttempt, $this>
+     */
+    public function contactAttempts(): HasMany
+    {
+        return $this->hasMany(ContactAttempt::class)->latest('occurred_at');
+    }
+
+    /**
+     * Messages drafted for this company (Phase 11), newest first. A draft is not an approach —
+     * {@see self::contactAttempts()} is the record of what actually went out.
+     *
+     * @return HasMany<OutreachMessage, $this>
+     */
+    public function outreachMessages(): HasMany
+    {
+        return $this->hasMany(OutreachMessage::class)->latest('id');
+    }
+
+    /**
      * The score against the team's **active** ICP — the one a list or badge should show. Eager-load
      * this (rather than all `scores`) wherever only the current grade is needed.
      *
@@ -269,6 +295,10 @@ class Lead extends Model
             'raw' => 'array',
             'field_sources' => SourcedValueMap::class,
             'has_personal_data' => 'boolean',
+            // Set by the Compliance retention sweep when the lead's personal data was stripped
+            // (docs/compliance.md §3.4). Not fillable: nothing but that sweep and the DSAR erasure
+            // may claim a lead has been anonymised, and both set it with `forceFill`.
+            'anonymised_at' => 'datetime',
         ];
     }
 

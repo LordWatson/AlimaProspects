@@ -80,6 +80,24 @@ enum ContactOutcome: string
     }
 
     /**
+     * Whether the prospect came back to us at all, whatever they said — the funnel's "Replies"
+     * step in Reporting (Phase 13).
+     *
+     * "Asked us to stop" counts: it is a reply, and a painful one, and a funnel that hid it would
+     * flatter the team's reply rate by dropping exactly the responses worth learning from. A
+     * **bounce** does not — nobody read it. Branching here rather than in Reporting means a new
+     * outcome has to answer "and is this a reply?" before it can exist.
+     */
+    public function isResponse(): bool
+    {
+        return match ($this) {
+            self::Replied, self::Interested, self::NotInterested,
+            self::MeetingBooked, self::OptedOut => true,
+            self::Pending, self::NoAnswer, self::Bounced => false,
+        };
+    }
+
+    /**
      * Whether the outcome is a positive one, for the funnel in Reporting (Phase 13).
      */
     public function isPositive(): bool

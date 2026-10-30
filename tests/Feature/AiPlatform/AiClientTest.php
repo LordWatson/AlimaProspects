@@ -13,9 +13,11 @@ use App\Modules\AiPlatform\Models\AiPromptTemplate;
 use App\Modules\AiPlatform\Models\AiRequest;
 use App\Modules\AiPlatform\Support\UntrustedContent;
 use App\Modules\AiPlatform\Testing\FakeAiTransport;
+use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\BillingFixtures as Billing;
 
 uses(RefreshDatabase::class);
 
@@ -212,7 +214,9 @@ it('does not share a cached result across teams', function (): void {
 
 it('blocks the call when the team is over its credit allowance, before any transport call', function (): void {
     summaryTemplate();
-    config(['ai-platform.credits.monthly_default' => 0]); // zero allowance → exhausted
+    // Zero AI credits on every plan, so whichever one the team is on, it has nothing left.
+    // Since Phase 16 the allowance is the plan's, not `ai-platform.credits`.
+    Billing::capAllowance(BillingMetric::AiCredits, 0);
     [$client, $fake] = bootAi();
 
     $fake->queueStructured(['summary' => 'should never run']);

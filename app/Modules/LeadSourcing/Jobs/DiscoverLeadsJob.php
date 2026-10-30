@@ -132,6 +132,14 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
 
             $created = $this->persistLeads($run, $leads);
 
+            // Recorded the moment the leads exist, not only on completion. Billing meters a team's
+            // lead allowance from this column, and a run that dies between persisting and settling
+            // would otherwise have given the team its companies for nothing — `failed()` keeps
+            // whatever is here, so writing it now is what makes the allowance honest.
+            DB::transaction(static function () use ($run, $leads, $created): void {
+                $run->forceFill(['leads_found' => count($leads), 'leads_created' => $created])->save();
+            });
+
             DB::transaction(function () use ($run, $leads, $created, $provider, $returned): void {
                 $run->forceFill([
                     'status' => DiscoveryRunStatus::Completed,

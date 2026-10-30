@@ -12,6 +12,8 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Mail\Mailables\Headers;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\URL;
 
 /**
  * One outreach email, sent on a team's behalf (Phase 11).
@@ -66,6 +68,7 @@ final class OutreachMessageMail extends Mailable
                 'senderName' => $this->sender->senderName,
                 'senderWebsite' => $this->sender->senderWebsite,
                 'optOutAddress' => $this->sender->optOutAddress,
+                'unsubscribeUrl' => $this->unsubscribeUrl(),
                 'privacyNoticeUrl' => $this->sender->privacyNoticeUrl,
                 'isRtl' => $this->message->locale->direction()->value === 'rtl',
                 'lang' => $this->message->locale->value,
@@ -79,18 +82,51 @@ final class OutreachMessageMail extends Mailable
      * reach for "report spam" — which protects the deliverability of every other team on the
      * platform, not just this one.
      *
-     * **`List-Unsubscribe-Post` is deliberately not sent.** RFC 8058 one-click requires an **HTTPS**
-     * target, and advertising it alongside a `mailto:`-only `List-Unsubscribe` is worse than not
-     * advertising it at all: Gmail and Yahoo either ignore the mismatch or treat it as a bad signal.
-     * The header goes in with the hosted unsubscribe endpoint, which is deferred alongside the
-     * hosted privacy notice (docs/compliance.md §3.7).
+     * **`List-Unsubscribe-Post` goes in only when there is an HTTPS target** (Compliance, Phase 15).
+     * RFC 8058 one-click requires one, and advertising it alongside a `mailto:`-only
+     * `List-Unsubscribe` is worse than not advertising it at all: Gmail and Yahoo either ignore the
+     * mismatch or treat it as a bad signal. Both routes are offered when the endpoint is on — the
+     * HTTPS one first, because that is the one a client acts on.
      */
     public function headers(): Headers
     {
+        $mailto = '<mailto:'.$this->sender->optOutAddress.'?subject=unsubscribe>';
+        $url = $this->unsubscribeUrl();
+
+        if ($url === null) {
+            return new Headers(text: ['List-Unsubscribe' => $mailto]);
+        }
+
         return new Headers(
             text: [
-                'List-Unsubscribe' => '<mailto:'.$this->sender->optOutAddress.'?subject=unsubscribe>',
+                'List-Unsubscribe' => '<'.$url.'>, '.$mailto,
+                'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click',
             ],
         );
+    }
+
+    /**
+     * The one-click unsubscribe URL for *this* message, or null when the endpoint is switched off
+     * or not registered.
+     *
+     * A **signed, expiring URL carrying the message id and nothing else**: it cannot be guessed,
+     * reversed into an address, or walked to find other recipients. The lifetime is deliberately
+     * long — somebody may unsubscribe from a year-old email in their archive, and that is the worst
+     * possible moment to tell them the link has expired.
+     *
+     * `Route::has()` rather than a dependency on the Compliance module: Outreach stands up on its
+     * own, and a missing route means the Phase 11 `mailto:` footer, which is what PECR accepts.
+     */
+    private function unsubscribeUrl(): ?string
+    {
+        if (! (bool) config('outreach.unsubscribe.enabled', true) || ! Route::has('unsubscribe.show')) {
+            return null;
+        }
+
+        $days = max(1, (int) config('outreach.unsubscribe.link_days', 400));
+
+        return URL::temporarySignedRoute('unsubscribe.show', now()->addDays($days), [
+            'message' => $this->message->getKey(),
+        ]);
     }
 }

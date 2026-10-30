@@ -7,10 +7,12 @@ use App\Modules\AiPlatform\Models\AiRequest;
 use App\Modules\AiPlatform\Services\AiCreditGuard;
 use App\Modules\AiPlatform\Services\AiUsageLogger;
 use App\Modules\AiPlatform\Services\StubCreditSource;
+use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Tests\Support\BillingFixtures as Billing;
 
 uses(RefreshDatabase::class);
 
@@ -49,10 +51,20 @@ it('reports the configured allowance and real usage via the stub credit source',
 });
 
 it('blocks only the team that is over allowance', function (): void {
-    config(['ai-platform.credits.monthly_default' => 5, 'ai-platform.credits.micros_per_credit' => 1_000]); // 5_000 limit
+    // Five credits a month, on whatever plan either team is on. Since Phase 16 the guard reads the
+    // *plan's* allowance through Billing's `CreditSource`, not `ai-platform.credits` — that config
+    // is still what converts credits to the ledger's micro-units, which is why it is set too.
+    config(['ai-platform.credits.micros_per_credit' => 1_000]);
+    Billing::capAllowance(BillingMetric::AiCredits, 5); // 5_000 micros
 
     $overTeam = Team::factory()->create();
     $underTeam = Team::factory()->create();
+
+    // On a plan that stops at its allowance rather than metering past it. A new team is on the
+    // trial plan, which *does* meter — five credits there means work continues to the overage
+    // ceiling, and "over allowance" would not yet mean "blocked".
+    Billing::onFreePlan($overTeam);
+    Billing::onFreePlan($underTeam);
 
     AiRequest::factory()->for($overTeam)->create(['cost_micros' => 5_000]);  // exhausted
     AiRequest::factory()->for($underTeam)->create(['cost_micros' => 1_000]); // under

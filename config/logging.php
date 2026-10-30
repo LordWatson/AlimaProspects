@@ -102,11 +102,37 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // AI Insights (Phase 14): what was generated for which team, and when the AI call was
+        // skipped. Counts and ids only — never a headline, a company name or a prompt.
+        'insights' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/insights.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => (int) env('LOG_DAILY_DAYS', 14),
+            'replace_placeholders' => true,
+        ],
+
         'signals' => [
             'driver' => 'daily',
             'path' => storage_path('logs/signals.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => (int) env('LOG_DAILY_DAYS', 14),
+            'replace_placeholders' => true,
+        ],
+
+        // Compliance & Privacy (Phase 15): retention sweeps, data-subject requests, team exports
+        // and opt-outs. Counts, ids and windows only — never a name, an address or a hash, because
+        // a log of who asked to be erased is the record the erasure was supposed to remove
+        // (docs/compliance.md §3.9).
+        //
+        // Kept the longest of any channel. "Did you honour the erasure, and when" is a question an
+        // authority may ask a year later, and the audit log answers it for the action while this
+        // answers it for the sweep that had no actor.
+        'compliance' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/compliance.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => (int) env('LOG_DAILY_DAYS_COMPLIANCE', 90),
             'replace_placeholders' => true,
         ],
 

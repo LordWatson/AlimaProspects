@@ -1,19 +1,26 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { ArrowRight, Satellite, Search, Send, Sparkles } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import {
     BarListChart,
     FunnelChart,
     GradeMixBar,
+    ReportTableView,
     StatTile,
     TrendChart,
 } from '@/components/charts';
 import PageHero from '@/components/PageHero.vue';
+import ReportExportMenu from '@/components/reporting/ReportExportMenu.vue';
+import ReportRangeFilter from '@/components/reporting/ReportRangeFilter.vue';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/composables/useI18n';
 import { dashboard } from '@/routes';
-import type { DashboardReport } from '@/types';
+import type {
+    DashboardReport,
+    ReportFilterOptions,
+    ReportFilterState,
+} from '@/types';
 
 defineOptions({
     layout: {
@@ -21,7 +28,11 @@ defineOptions({
     },
 });
 
-const props = defineProps<{ report: DashboardReport }>();
+const props = defineProps<{
+    report: DashboardReport;
+    filters: ReportFilterState;
+    options: ReportFilterOptions;
+}>();
 
 const { t } = useI18n();
 const page = usePage();
@@ -42,6 +53,16 @@ const waiting = computed(
 
 const firstName = computed(
     () => (page.props.auth.user?.name ?? '').split(' ')[0] || t('there'),
+);
+
+// The performance section's open tab. Local state on purpose: which table a member is reading is
+// not worth a server round trip, and `preserveState` on the filter keeps the choice across a
+// window change so they can compare the same table across two periods.
+const openTable = ref(0);
+
+const activeTable = computed(
+    () =>
+        props.report.tables[openTable.value] ?? props.report.tables[0] ?? null,
 );
 
 // The explainer a team sees until it has sourced its first lead. Showing this instead of five
@@ -117,7 +138,7 @@ const flow = [
                 caption: t('Signals waiting on you'),
             }"
             :description="
-                report.has_data
+                report.has_ever_sourced
                     ? t(
                           'Where your prospecting stands — what Alima has found, how well it fits, and what is waiting on you.',
                       )
@@ -143,6 +164,23 @@ const flow = [
             </template>
         </PageHero>
 
+        <!--
+          Filters: one row, above the content they scope, never inside a chart card. Everything
+          below re-renders against the same window, so the numbers always agree.
+        -->
+        <section
+            class="flex flex-wrap items-center justify-between gap-3"
+            :aria-label="t('Report period')"
+        >
+            <ReportRangeFilter
+                :filters="filters"
+                :options="options"
+                :from="report.range_from"
+                :to="report.range_to"
+            />
+            <ReportExportMenu :filters="filters" :reports="options.reports" />
+        </section>
+
         <!-- Headline KPIs -->
         <section
             class="grid grid-cols-1 gap-px overflow-hidden rounded-3xl border border-border bg-border sm:grid-cols-2 xl:grid-cols-4"
@@ -167,7 +205,7 @@ const flow = [
                 <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
                     <TrendChart
                         :points="report.trend"
-                        :weeks="report.trend_weeks"
+                        :granularity="report.trend_granularity"
                     />
                 </section>
                 <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
@@ -282,7 +320,105 @@ const flow = [
                     </div>
                 </section>
             </div>
+
+            <!--
+              The performance reports. Tabs rather than four stacked tables: each carries seven or
+              eight measures per row, and the question is "how is X doing", not "how do these four
+              compare" — so one at a time, with the others a click away.
+            -->
+            <section
+                v-if="activeTable"
+                class="rounded-3xl bg-card p-6 shadow-sm sm:p-8"
+                :aria-label="t('Performance')"
+            >
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <p
+                        class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
+                    >
+                        {{ t('Performance') }}
+                    </p>
+                    <!--
+                      Deliberately **not** `role="tablist"`. That role promises a `tabpanel`, a
+                      roving `tabindex` and arrow-key movement between tabs; announcing "tab 1 of
+                      4" and then doing none of it is worse for a screen-reader user than plain
+                      buttons, which already work. `aria-current` says which report is showing,
+                      and the underline says it again without relying on the background tint —
+                      a `secondary` wash alone would not clear 3:1 against the card.
+                    -->
+                    <div
+                        class="flex flex-wrap gap-1"
+                        role="group"
+                        :aria-label="t('Performance reports')"
+                    >
+                        <Button
+                            v-for="(table, index) in report.tables"
+                            :key="table.key"
+                            :variant="
+                                index === openTable ? 'secondary' : 'ghost'
+                            "
+                            size="sm"
+                            :class="
+                                index === openTable
+                                    ? 'font-semibold underline decoration-brand decoration-2 underline-offset-4'
+                                    : ''
+                            "
+                            :aria-current="
+                                index === openTable ? 'true' : undefined
+                            "
+                            :data-test="`report-tab-${table.key}`"
+                            @click="openTable = index"
+                        >
+                            {{ t(table.title) }}
+                        </Button>
+                    </div>
+                </div>
+
+                <div class="mt-6">
+                    <ReportTableView :table="activeTable" />
+                </div>
+            </section>
         </template>
+
+        <!--
+          An empty **window**: the team has leads, just not in the period it asked for. It needs a
+          way back to a period that has some — not the first-run explainer, which would tell a team
+          with a thousand leads that it had never started.
+        -->
+        <section
+            v-else-if="report.has_ever_sourced"
+            class="rounded-3xl bg-card p-6 shadow-sm sm:p-8"
+        >
+            <p
+                class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
+            >
+                {{ t('Nothing in this period') }}
+            </p>
+            <h3
+                class="mt-2 text-2xl font-semibold tracking-tight rtl:font-bold"
+            >
+                {{ t('No prospects were sourced in this period.') }}
+            </h3>
+            <p class="mt-2 max-w-prose leading-relaxed text-muted-foreground">
+                {{
+                    t(
+                        'Your leads, scores and outreach are all still here — widen the period above to see them, or go and find some more.',
+                    )
+                }}
+            </p>
+            <div class="mt-6 flex flex-wrap gap-3">
+                <Button variant="outline" size="sm" as-child>
+                    <Link
+                        :href="dashboard()"
+                        data-test="dashboard-clear-period"
+                    >
+                        {{ t('Show all time') }}
+                    </Link>
+                </Button>
+                <Button variant="lime" size="sm" as-child>
+                    <Link href="/discovery">{{ t('Find leads') }}</Link>
+                </Button>
+            </div>
+        </section>
 
         <!-- Zero state: how Alima works, with the next step on each card. -->
         <section v-else class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">

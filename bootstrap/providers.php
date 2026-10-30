@@ -1,8 +1,11 @@
 <?php
 
+use App\Modules\AiInsights\Providers\AiInsightsServiceProvider;
 use App\Modules\AiPlatform\Providers\AiPlatformServiceProvider;
 use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
+use App\Modules\Billing\Providers\BillingServiceProvider;
 use App\Modules\BusinessIntelligence\Providers\BusinessIntelligenceServiceProvider;
+use App\Modules\Compliance\Providers\ComplianceServiceProvider;
 use App\Modules\Core\Providers\CoreServiceProvider;
 use App\Modules\Enrichment\Providers\EnrichmentServiceProvider;
 use App\Modules\ICP\Providers\IcpServiceProvider;
@@ -38,4 +41,11 @@ return [
     OutreachServiceProvider::class,
     NotificationsServiceProvider::class,
     ReportingServiceProvider::class,
+    AiInsightsServiceProvider::class,
+    // Last on purpose: it replaces Lead Sourcing's LIA stub and Outreach's restriction resolver
+    // with the real ones, so it must register after both (ADR 0002 / docs/compliance.md §6).
+    ComplianceServiceProvider::class,
+    // Also last, and for the same reason: it replaces AI Platform's credit stub, Lead Sourcing's
+    // lead-quota stub and Auth's seat stub with plan-backed sources (Phase 16).
+    BillingServiceProvider::class,
 ];

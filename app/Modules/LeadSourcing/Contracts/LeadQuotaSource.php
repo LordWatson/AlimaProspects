@@ -10,10 +10,10 @@ use App\Modules\LeadSourcing\Services\DiscoveryLimitGuard;
 use App\Modules\LeadSourcing\Services\StubLeadQuotaSource;
 
 /**
- * Reports a team's lead-discovery allowance for the current period. The MVP binding is an unlimited
- * stub ({@see StubLeadQuotaSource}); Billing (Phase 16) swaps in
- * a plan-backed source so {@see DiscoveryLimitGuard} enforces real
- * limits without any caller change. Mirrors AI Platform's `CreditSource` seam.
+ * Reports a team's lead-discovery allowance for the current period. The default binding is an
+ * unlimited stub ({@see StubLeadQuotaSource}); Billing (Phase 16) binds a plan-backed source over
+ * it, so {@see DiscoveryLimitGuard} enforces real limits with no caller change. Mirrors AI
+ * Platform's `CreditSource` seam.
  */
 interface LeadQuotaSource
 {

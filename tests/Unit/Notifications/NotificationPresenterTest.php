@@ -117,7 +117,33 @@ it('distinguishes a spent allowance from a low one', function (): void {
     $presenter = new NotificationPresenter;
 
     expect($presenter->present(NotificationType::CreditLow, ['remaining_percent' => 0])->title)
-        ->toBe('AI credit has run out')
+        ->toBe(':thing has run out')
         ->and($presenter->present(NotificationType::CreditLow, ['remaining_percent' => 8])->title)
-        ->toBe('AI credit is running low');
+        ->toBe(':thing is running low');
+});
+
+it('names the allowance that has run out, not just "an allowance"', function (): void {
+    // One notification type covers both metered things (Phase 16), because a member who switched
+    // off "an allowance is running low" meant both. What differs is the *consequence*, and that is
+    // the part an Owner can act on: "new searches stop" and "scoring and drafting stop" are
+    // different pieces of news.
+    $presenter = new NotificationPresenter;
+
+    $leads = $presenter->present(NotificationType::CreditLow, [
+        'metric' => 'leads',
+        'remaining_percent' => 0,
+    ]);
+
+    $credits = $presenter->present(NotificationType::CreditLow, [
+        'metric' => 'ai_credits',
+        'remaining_percent' => 0,
+    ]);
+
+    expect($leads->params['thing'])->toBe('Your search allowance')
+        ->and($leads->body)->toContain('New searches stop')
+        ->and($credits->params['thing'])->toBe('AI credit')
+        ->and($credits->body)->toContain('Scoring, drafting and insights stop')
+        // A row stored before Phase 16 carries no metric at all and must still read correctly.
+        ->and($presenter->present(NotificationType::CreditLow, ['remaining_percent' => 4])->params['thing'])
+        ->toBe('AI credit');
 });

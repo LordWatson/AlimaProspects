@@ -9,9 +9,12 @@ use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\LeadSourcing\Data\LeadQuota;
 
 /**
- * The MVP lead-quota source: every team is unlimited until Billing (Phase 16) replaces this binding
- * with a plan-backed source. Mirrors AI Platform's `StubCreditSource`. Keeping the seam real now
- * means {@see DiscoveryLimitGuard} and its callers never change when real limits arrive.
+ * The fallback lead-quota source: unlimited.
+ *
+ * **Billing replaced this in production** (Phase 16) — `Billing\Services\PlanLeadQuotaSource` is
+ * bound over it and reports the team's plan allowance, and neither {@see DiscoveryLimitGuard} nor
+ * any of its callers changed, which is exactly what the seam was built for in Phase 7. It stays as
+ * the default binding so this module still works without Billing registered.
  */
 final class StubLeadQuotaSource implements LeadQuotaSource
 {

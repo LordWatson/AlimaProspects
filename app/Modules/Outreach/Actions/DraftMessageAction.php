@@ -12,6 +12,7 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Onboarding\Models\BusinessProfile;
+use App\Modules\Outreach\Contracts\LeadRestrictionResolver;
 use App\Modules\Outreach\Data\DraftMessageData;
 use App\Modules\Outreach\Data\DraftResult;
 use App\Modules\Outreach\Data\MessageDraft;
@@ -48,6 +49,7 @@ final class DraftMessageAction
         private readonly AiClient $ai,
         private readonly OutreachGuard $guard,
         private readonly OutreachPayloadBuilder $payload,
+        private readonly LeadRestrictionResolver $restrictions,
     ) {}
 
     /**
@@ -65,7 +67,10 @@ final class DraftMessageAction
         $this->guard->assertCompliance($team, $lead, $data->channel, $contact);
 
         $template = $this->template($data->templateId, $data);
-        $restriction = OutreachRestriction::fromRaw($lead->raw);
+        // The restriction in force, not merely the one stamped on the row: the prompt is told to
+        // keep its suggested next step to an introduction, and a UAE-sourced lead that nothing
+        // flagged would otherwise be written to as if cold email were open (Phase 15).
+        $restriction = $this->restrictions->restrictionFor($team, $lead);
 
         // --- External work, outside any transaction ---
         $draft = $this->write($team, $lead, $contact, $data, $template, $restriction);

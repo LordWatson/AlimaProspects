@@ -34,7 +34,9 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
 
     public function register(): void
     {
-        // Compliance + billing seams — unlimited/allow-all stubs until Phases 15 and 16 swap them.
+        // Compliance + billing seams. These are the *defaults*, so this module works on its own;
+        // Compliance (Phase 15) and Billing (Phase 16) bind the real gate and the real quota source
+        // over them, which is why neither name appears anywhere in this module.
         $this->app->bind(LeadQuotaSource::class, StubLeadQuotaSource::class);
         $this->app->bind(LeadInterestGate::class, AllowAllLeadInterestGate::class);
 

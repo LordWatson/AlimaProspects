@@ -34,9 +34,13 @@
             The opt-out. Unambiguous, and **one whole sentence with a :link placeholder** rather
             than a link glued to a fragment: a fragment forces English word order and punctuation
             on the translator, and the plain-text part had already drifted to a different key.
+
+            The link is the hosted one-click endpoint when it is switched on (Compliance,
+            Phase 15) and a `mailto:` otherwise. One sentence either way: a recipient should not
+            have to notice which, and the key must not change with the deployment's configuration.
         --}}
         {!! __('Would you rather not hear from us? :link and we will not contact you again.', [
-            'link' => '<a href="mailto:'.e($optOutAddress).'?subject=unsubscribe" style="color:#6b6977;">'.e(__('Unsubscribe')).'</a>',
+            'link' => '<a href="'.e($unsubscribeUrl ?? 'mailto:'.$optOutAddress.'?subject=unsubscribe').'" style="color:#6b6977;">'.e(__('Unsubscribe')).'</a>',
         ]) !!}
         @if ($privacyNoticeUrl)
             <a href="{{ $privacyNoticeUrl }}" style="color:#6b6977;">{{ __('Privacy notice') }}</a>.

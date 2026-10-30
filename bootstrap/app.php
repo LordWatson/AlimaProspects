@@ -24,6 +24,13 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'locale']);
 
+        // RFC 8058 one-click unsubscribe (Compliance, Phase 15). A mail client posting
+        // `List-Unsubscribe=One-Click` has no session and no CSRF token, so the route cannot
+        // require one. Its authorisation is the **signed URL** instead: the link carries a
+        // signature over the message id, so a request without one is rejected before the
+        // controller, and anybody holding a valid link already holds the recipient's email.
+        $middleware->validateCsrfTokens(except: ['unsubscribe/*']);
+
         $middleware->web(append: [
             HandleAppearance::class,
             // Resolve the active locale before Inertia shares props, so shared

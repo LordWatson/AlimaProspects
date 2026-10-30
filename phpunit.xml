@@ -35,6 +35,18 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <!-- Billing (Phase 16). The suite must never reach Stripe: the gateway is faked, and
+             these three make sure nothing falls through to a developer's real keys. An empty
+             webhook secret also stands Cashier's signature middleware down, which is what lets the
+             webhook tests post the payload Stripe would have posted. -->
+        <env name="STRIPE_KEY" value=""/>
+        <env name="STRIPE_SECRET" value=""/>
+        <env name="STRIPE_WEBHOOK_SECRET" value=""/>
+        <!-- The metered overage prices have no config default (a placeholder would be attached to
+             every real checkout), so the suite supplies its own — otherwise the overage tests would
+             be exercising the unconfigured no-op path and quietly asserting nothing. -->
+        <env name="STRIPE_PRICE_OVERAGE_LEADS" value="price_test_overage_leads"/>
+        <env name="STRIPE_PRICE_OVERAGE_CREDITS" value="price_test_overage_credits"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

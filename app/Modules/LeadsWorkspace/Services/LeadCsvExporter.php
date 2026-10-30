@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\LeadsWorkspace\Services;
 
 use App\Modules\Core\Models\Team;
+use App\Modules\Core\Support\CsvCell;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\LeadSourcing\Models\Lead;
@@ -13,7 +14,6 @@ use App\Modules\LeadsWorkspace\Models\PipelineStage;
 use DateTimeInterface;
 use Generator;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Str;
 
 /**
  * Writes a team's leads out as CSV (Phase 10b), honouring whatever the leads list is currently
@@ -119,26 +119,12 @@ final class LeadCsvExporter
      */
     private function row(Lead $lead, ?string $defaultStage): array
     {
+        // Shared with the report exporter: a cell a spreadsheet would read as a formula is the
+        // same hazard wherever it is written (see {@see CsvCell}).
         return array_map(
-            fn (string $cell): string => $this->neutralise($cell),
+            static fn (string $cell): string => CsvCell::neutralise($cell),
             $this->cells($lead, $defaultStage),
         );
-    }
-
-    /**
-     * Stop a spreadsheet treating a cell as a formula.
-     *
-     * This matters more here than it looks: a lead's company name can come from a web-search result
-     * or from a CSV the team was sent, so a company called `=HYPERLINK("http://evil.test","Click")`
-     * is a cell an Owner or Admin then opens in Excel. Prefixing an apostrophe makes it text; Excel
-     * and LibreOffice both hide the prefix, and {@see LeadCsvImporter} strips it on the way back in,
-     * so a round trip is unaffected.
-     */
-    private function neutralise(string $cell): string
-    {
-        return Str::startsWith($cell, ['=', '+', '-', '@', "\t", "\r"])
-            ? "'".$cell
-            : $cell;
     }
 
     /**

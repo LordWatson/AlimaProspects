@@ -14,10 +14,19 @@ import { useI18n } from '@/composables/useI18n';
 import { dashboard, home, login, register } from '@/routes';
 
 /*
- * Public marketing shell (landing + about). Leads with Cloud Cream, Deep Teal
- * structure, Midnight Ink text and a single dark pill CTA ("Let's talk").
- * Fully bilingual (EN/AR + RTL) via logical properties; the logo never mirrors.
+ * Public shell. Leads with Cloud Cream, Deep Teal structure, Midnight Ink text and a single dark
+ * pill CTA ("Let's talk"). Fully bilingual (EN/AR + RTL) via logical properties; the logo never
+ * mirrors.
+ *
+ * **`bare` drops the selling.** The landing and About pages are marketing and want the nav and the
+ * CTA. The compliance pages that share this shell — the privacy notice and the unsubscribe page —
+ * are read by somebody who has just been cold-emailed, and "Let's talk" beside an opt-out button is
+ * both a second primary CTA on one view (brand-tokens.md §2.3) and the wrong thing to say. It is
+ * also a compliance smell: marketing on the page where somebody asks you to stop. Bare keeps the
+ * logo, the language switch and the legal line, and nothing that asks for anything.
  */
+const { bare = false } = defineProps<{ bare?: boolean }>();
+
 const { t } = useI18n();
 const page = usePage();
 
@@ -39,6 +48,7 @@ const nav = [{ label: 'About', href: '/about' }];
 
                 <div class="ms-auto flex items-center gap-2 sm:gap-6">
                     <nav
+                        v-if="!bare"
                         class="hidden items-center gap-6 md:flex"
                         :aria-label="t('Menu')"
                     >
@@ -61,19 +71,25 @@ const nav = [{ label: 'About', href: '/about' }];
 
                     <LocaleToggle />
 
-                    <Button
-                        v-if="page.props.auth.user"
-                        as-child
-                        class="hidden sm:inline-flex"
-                    >
-                        <Link :href="dashboard()">{{ t('Dashboard') }}</Link>
-                    </Button>
-                    <Button v-else as-child class="hidden sm:inline-flex">
-                        <Link :href="register()">{{ t("Let's talk") }}</Link>
-                    </Button>
+                    <template v-if="!bare">
+                        <Button
+                            v-if="page.props.auth.user"
+                            as-child
+                            class="hidden sm:inline-flex"
+                        >
+                            <Link :href="dashboard()">{{
+                                t('Dashboard')
+                            }}</Link>
+                        </Button>
+                        <Button v-else as-child class="hidden sm:inline-flex">
+                            <Link :href="register()">{{
+                                t("Let's talk")
+                            }}</Link>
+                        </Button>
+                    </template>
 
                     <!-- Compact menu on small screens -->
-                    <DropdownMenu>
+                    <DropdownMenu v-if="!bare">
                         <DropdownMenuTrigger as-child>
                             <Button
                                 variant="ghost"
@@ -125,19 +141,41 @@ const nav = [{ label: 'About', href: '/about' }];
             <slot />
         </main>
 
-        <footer class="mt-8">
+        <footer class="mt-8 border-t border-border">
             <div
-                class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8"
+                class="mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 py-12 sm:px-8 lg:flex-row lg:items-end lg:justify-between"
             >
-                <AppLogo />
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                <div>
+                    <AppLogo size="lg" />
+                    <!-- The tagline is a marketing line, so it stays off the bare pages. -->
+                    <p
+                        v-if="!bare"
+                        class="mt-6 max-w-xs font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    >
+                        {{ t('Marketing brighter together.') }}
+                    </p>
+                </div>
+
+                <div
+                    class="flex flex-col gap-4 text-sm sm:flex-row sm:items-center sm:gap-8 lg:justify-end"
                 >
-                    {{ t('Marketing brighter together.') }}
-                </p>
-                <p class="font-mono text-xs text-muted-foreground">
-                    © {{ new Date().getFullYear() }} Alima.
-                </p>
+                    <Link
+                        v-if="!bare"
+                        href="/about"
+                        class="rounded text-foreground/80 transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                        {{ t('About') }}
+                    </Link>
+                    <a
+                        href="/privacy"
+                        class="rounded text-foreground/80 transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                        {{ t('Privacy notice') }}
+                    </a>
+                    <p class="font-mono text-xs text-muted-foreground">
+                        © {{ new Date().getFullYear() }} Alima.
+                    </p>
+                </div>
             </div>
         </footer>
     </div>

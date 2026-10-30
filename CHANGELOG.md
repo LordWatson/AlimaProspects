@@ -5,6 +5,330 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — 2026-10-30 — App navigation & the auth screen
+
+- **The sidebar reads as chapters.** `AppSidebar.vue` was two flat groups ("Workspace" 01–10 and
+  "Account"); it is now Dashboard on its own line, then **Business** (business profile, background
+  check, ideal customers), **Leads** (lead discovery, leads, signals), **Outreach**, **Reporting**
+  (insights) and **Settings** (account, plan & billing, compliance). The numbering stays one run,
+  01–09, in pipeline order across the chapters rather than restarting in each — the numbers are the
+  editorial device, and the marketing drawing in `ProductShowcase.vue` quotes them as the product's
+  sequence. **Design system is gone from the nav**; `/design` is still reachable by URL for
+  development. The active link now carries `aria-current="page"` and the decorative numbers are
+  `aria-hidden`.
+- **The auth split screen was recomposed to the reference screen** in `resources/screenshots/`,
+  measured against it rather than eyeballed. The statement sits in the open middle of the lime
+  panel on two lines; the oversized "alima" sets to the panel's own measure with its baseline on the
+  bottom padding line; the lilac peek moved to the bottom end corner of the cream column (one peek
+  per layout, and the panel's lower half belongs to the wordmark); and the form column gained a mono
+  sign-off on its bottom line. The copy is unchanged. The judgements this forced — a statement size
+  that is off the type scale, and the display wordmark still being **typed** rather than lock-up D
+  artwork — are recorded in `docs/brand/brand-tokens.md` §7d for the brand owner.
+
+### Added — 2026-10-30 — Billing & Plans (Phase 16)
+
+- **The team pays, not the person.** Laravel Cashier `^16.9`, with its customer columns on `teams`
+  and `Cashier::useCustomerModel()` pointing at `Core\Models\Team`. One person may own two teams on
+  two plans and two owners may share one subscription; a `stripe_id` on `users` breaks the moment
+  either happens (ADR 0006).
+- **Five plans, in config rather than in a table.** Free (the fallback a lapsed trial lands on),
+  Starter £49 / 1 seat, Team £129 / 3, Scale £379 / 10, Enterprise on request. A plan is a product
+  decision that ships with a release, so a price change is a reviewed diff instead of an `UPDATE`
+  nobody can find later. **The Stripe products do not exist yet** — every price id is a readable
+  placeholder, overridable per environment, and the module is tested against a fake gateway, so
+  nothing is blocked until somebody creates them.
+- **The three stubs are gone, and nothing that used them changed.** AI Platform's `CreditSource`
+  (Phase 5), Lead Sourcing's `LeadQuotaSource` (Phase 7) and a new `Auth\Contracts\SeatLimitSource`
+  are now bound to plan-backed implementations. `AiCreditGuard`, `DiscoveryLimitGuard` and every
+  caller of them are untouched, which is what those seams were built for — and why the tests go
+  through the guards rather than through Billing's own services.
+- **Enforcement is at the point of spend, not in middleware.** The phase plan called for an
+  `EnforcesPlanLimits` middleware; three of the four places a limit has to bite — a queued discovery
+  job, a scheduled signals watch, the nightly insights — have no request behind them. A middleware
+  would have guarded the one case that is cheapest to guard and missed the three that actually run
+  up a bill.
+- **A metered plan keeps working past its allowance, up to a ceiling.** The sources report the
+  _ceiling_ rather than the included allowance, because stopping a team at the point we start
+  charging is the opposite of what overage means. The ceiling — twice the allowance by default —
+  exists because an unbounded metered plan is a way to hand a customer an invoice whose first
+  warning is the invoice. A run asked for 200 companies with 40 left fetches 40 rather than failing.
+- **`usage_meters` is a record, not a counter.** The authoritative numbers already exist in
+  `ai_requests` and `discovery_runs`, and the guards read those directly, so a limit can never be
+  wrong because a worker died between doing the work and incrementing a row. The table remembers
+  what a closed period cost after the retention sweep has pruned it, and — in `reported` — how much
+  overage Stripe has already been told about.
+- **Overage is reported exactly once, and it took three things.** Stripe sums the usage events it
+  receives, so the reporter sends increments. The claim on `usage_meters.reported` is a
+  **conditional** `UPDATE` — an unconditional increment is atomic, but its _amount_ came from a row
+  read a moment earlier, so two reporters would both send the same units. The meter event carries a
+  **deterministic identifier** derived from `reported`, because Cashier stamps a fresh UUID on every
+  call and a request that times out _after_ Stripe recorded it would otherwise be billed twice on
+  retry. And an **ambiguous** failure keeps the claim, where only a definite refusal releases it: a
+  timeout may mean Stripe has the event and we never heard. So the worst case is under-billing one
+  claim, loudly, in the `billing` log — the other direction takes money from somebody who did not
+  agree to it.
+- **A closed month is sealed.** Re-syncing a settled period would overwrite what it cost with
+  whatever the ledgers still hold — less, once retention has pruned them — and overwrite its
+  allowance with that of whatever plan the team is on now. One write after the month closes captures
+  its final hour; everything after that leaves it alone.
+- **Seats are counted inside the transaction, behind a lock on the team row.** Two invitations sent
+  in the same moment would otherwise both see the last free seat and both take it.
+- **A pending invitation holds a seat, and the seat is checked again on acceptance.** Counting only
+  accepted members would let a three-seat team send ten invitations and surface the problem to the
+  tenth person, who did not cause it and cannot fix it. An invitation is valid for a week, in which
+  the team may have downgraded or filled the seat — so acceptance re-checks, and refuses rather than
+  consumes, so the invitation still works once a seat is freed.
+- **Allowances run with the calendar month, in UTC.** Not the Stripe billing cycle: anchoring them
+  to the invoice date would move the reset day whenever a plan changed and put a round trip to
+  Stripe behind every usage query. Overage is reported as it accrues, so it still lands on whatever
+  invoice is open.
+- **A failed payment does not demote a customer.** Stripe retries a card for a fortnight and then
+  cancels, at which point entitlement ends on its own. Cutting a team off on the first failed retry
+  turns an expired card into a support incident.
+- **Stripe is the source of truth, and webhooks are how it gets in.** A plan changed in the customer
+  portal never passes through this app, so a listener on Cashier's `WebhookHandled` re-reads the
+  team's entitlements, re-snapshots the meters and writes an audit row with **no actor** and
+  `source: stripe_webhook` — because "why did my plan change on the 4th" has to be answerable.
+- **`/billing`, in the sidebar's Account group.** Every member can see the plan and the usage bars:
+  when discovery stops on a Tuesday afternoon, the person it stopped for should see that the month's
+  allowance is gone rather than file a bug. Spending money stays with Owners and Admins. Cards,
+  addresses, tax numbers and invoice documents stay at Stripe, reached through its portal — a form
+  of ours collecting a card number would put this application in PCI scope to reimplement a screen
+  Stripe already maintains. The invoice fetch degrades if Stripe is unreachable, so an Owner looking
+  for their usage does not get a payment-provider error instead.
+- **`credit_low` finally has a producer.** The notification type has existed unused since Phase 12
+  because "running low" needs a usage figure and `AiCreditGuard` only knows exhausted or not. It is
+  now sent at the configured thresholds, at most once per team per metric per period per threshold,
+  and its copy is metric-aware — "new searches stop" and "scoring and drafting stop" are different
+  pieces of news.
+- **⚖️/🔑 Outstanding:** the Stripe products and prices must be created and the `STRIPE_PRICE_*`
+  keys set before a real payment is possible — the API keys and the webhook secret are already
+  configured in test mode. The figures above are provisional, and VAT (UK/UAE) stays deferred. All
+  three are listed in `docs/modules/billing-plans.md`.
+
+### Changed — 2026-10-30 — The public pages, and the logo on them
+
+- **The logo was being drawn under its own minimum.** The marketing header, the footer, the sidebar
+  and the auth pages all rendered the horizontal lock-up at 32px tall. The lock-up is 3.36:1, so
+  that is **107px wide — below the 120px floor** the brand book sets for it (`brand-tokens.md` §4),
+  and it is why the mark read smaller on our pages than on the reference screens in
+  `resources/screenshots/`. `AppLogo` now has three sizes that are all legal widths, and the default
+  (`md`, 40px → 134px) is the size those screens actually show. `lg` (48px → 161px) is §2.3's
+  "logo 160px" and is what the marketing footer signs off with.
+- **The logo is drawn, not loaded.** `AppLogo` was an `<img>` pointing at one of two pre-coloured
+  SVGs, which is why a dark surface needed a second file. The master artwork now lives once in
+  `components/brand/artwork.ts` and is rendered inline through `BrandArtwork` with
+  `fill="currentColor"`, so a single component serves all eight approved colourways and the eyes
+  stay true cut-outs over whatever is behind them. `PandaFace` reads from the same module, so the
+  mark and the lock-up can no longer drift apart. The path data is byte-identical to the delivered
+  vector source — nothing was redrawn.
+- **The landing page leads with the product.** The hero is followed by `ProductShowcase`: a
+  miniature of the real workspace — the Deep Teal sidebar with its real numbering, the Midnight Ink
+  opening card — walking through four screens, Source, Qualify, Watch and Reach. It is built from
+  the same tokens as the real screens rather than being a screenshot, so it cannot drift into a look
+  the product does not have. It advances itself every six seconds, pauses while a pointer or the
+  keyboard is inside it, stops for good once somebody picks a tab, and does not move at all under
+  `prefers-reduced-motion`. The tabs are a real tablist, arrow keys and all, and every screen stays
+  in the DOM so the frame never resizes mid-cycle.
+- **Both pages say what the product is.** The landing page now covers the pipeline in four steps and
+  the system in eight capabilities, states the two markets and the compliance position, and ends on
+  a full-width invitation to About rather than a link in the nav. About answers it: why the product
+  exists, the pipeline in seven stages, the workspace grouped as Understand / Find / Reach / Learn &
+  protect, and the four decisions we would rather state than be asked about.
+- **The peeks are now peeks.** Both pages had a panda sitting inside a box with margin around it —
+  a square container letterboxes 383:278 artwork, so it never reached the edges. They are sized by
+  the artwork's own ratio and cropped by their frame, bleeding one or two edges with both eyes in
+  frame, as §5 and `PageHero` have it. One peek per page, as the book says.
+- **Arabic ends a question with "؟".** The landing page's "Ready to grow?" had the mark hard-coded
+  in the template, so the Arabic page showed a Latin "?". The mark is now its own translation key.
+  Full stops stay literal — both scripts use the same one. 142 new strings were added to `en.json`
+  and `ar.json` together; the two files keep identical key sets.
+- Sections on both pages arrive on scroll through a `Reveal` wrapper, which decides in `setup`
+  whether it may animate at all — so a reduced-motion viewer, or a browser without
+  `IntersectionObserver`, gets the finished state and never sees content flash and hide.
+
+### Added — 2026-10-30 — Phase 15: compliance the system enforces, not the team remembers
+
+- **No recorded lawful basis, no lead discovery.** A team writes a legitimate-interest assessment —
+  purpose, necessity, balancing test, in the regulator's own order — and signs it off with their
+  name and the date. Until they do, sourcing is refused. Lead Sourcing already called the gate
+  through a contract, so this phase only swapped the permit-everything stub for the real one. Saving
+  and signing are two buttons, because a lawful basis that can be affirmed over three empty boxes
+  records nothing; and the assessment **expires** after twelve months, because it is a judgement
+  about a balance that moves. One per market: the UK runs on legitimate interest and the UAE expects
+  prior consent, and one assessment cannot honestly cover both.
+- **The consent gate now reads the prospect's own jurisdiction, not just the flag on the lead.**
+  This closed a real hole. Signals stamped its converted leads with a prior-consent restriction, but
+  a company sourced from a UAE business listing by Lead Sourcing carried **nothing** — so a team
+  could cold email a Dubai prospect that UAE PDPL requires prior consent to approach. The guard now
+  asks a resolver that takes the strictest of the recorded flag, the lead's country and the team's
+  market, and can only ever make the answer stricter. A known UK country never _lifts_ a
+  restriction, which is the mistake Signals' own deviation note already warned about.
+- **Two retention branches, and the split is the policy.** Every night, a lead **nobody ever
+  touched** — no approach, no draft, no note, no task, no owner, still in the first column — is
+  deleted. Everything else is **anonymised** once it has gone quiet: the contacts, the message text
+  and recipient, the attempt notes, the notes and tasks, the free text in timeline entries and the
+  converted news signals all go; the company, its score, its stage and one row per approach with the
+  channel, outcome and date all stay. That residue is the team's own evidence of who they contacted
+  and when — the accountability the retention rule sits beside, not something to trade for a tidier
+  database. The two branches are exact negations of one another, so no lead falls between them and
+  is kept for ever while nothing fails.
+- **The outreach restriction survives the sweep.** It lives in the provider payload, which
+  anonymising empties — and clearing it wholesale would quietly reopen cold email on a lead that
+  must never have it. A restriction may be added to a lead but never dropped from one.
+- **Signals attached to a swept lead are deleted, not scrubbed.** The foreign key nulls on delete
+  and the signals sweep never touches a converted signal, so one left behind would outlive its lead
+  with a named individual still on it and nothing would ever remove it.
+- **A data-subject request is answered per team, and a name match is a guess.** Searching finds
+  contact records, companies named after a person, drafted and sent messages, logged approaches,
+  news signals and the do-not-contact entry. An address or a number is exact; a **name** returns
+  candidates, and the erasure takes only the rows the member ticked — "John" matches people the
+  request was never about, and erasing one of those would be its own data-protection failure. This
+  is also the first caller of the Signals exporter built back in S6, closing that module's last open
+  dependency.
+- **An erasure suppresses the identity, in the same transaction.** The part that is easy to leave
+  out and makes the rest pointless: without it the next discovery run re-sources the same company,
+  AI re-derives the same address, and the person who asked to be forgotten hears from us again. The
+  entry holds a one-way hash and a mask, and cannot be lifted. A do-not-contact entry, by contrast,
+  is **reported and never erased** — a subject asking for it gone is asking for something that works
+  against them, and the screen says so beside the row.
+- **One-click unsubscribe, hosted.** The footer's opt-out was a `mailto:` honoured by somebody
+  reading a mailbox and remembering to log it. It is now an HTTPS endpoint with
+  `List-Unsubscribe-Post` beside the header, so a mail client's own unsubscribe button works — and a
+  recipient who uses it instead of reaching for "report spam" protects every other team's
+  deliverability. The link is a signed, expiring URL carrying a message id and nothing else, and
+  **the GET deliberately does nothing**: mail clients and security gateways fetch every URL in an
+  email, so an endpoint that acted on GET would unsubscribe people who never clicked. The POST
+  suppresses the address and the phone number globally, and audits it with no actor, because the
+  recipient is not a user of ours.
+- **A hosted privacy notice, written for the person who was cold-emailed.** Public, bilingual, and
+  in the order they actually care about: who has your details, where they came from, how to make it
+  stop. It names Alima as the processor and the business that made contact as the controller, and
+  the outreach footer links it automatically when no notice is configured. The public pages drop the
+  marketing shell's "Let's talk" pill — a sales call to action beside an opt-out button is both a
+  second primary CTA on one view and the wrong thing to say.
+- **A team can take its data out**: a zip of twelve CSVs plus a README, formula-neutralised and
+  BOM'd so Arabic reads in a spreadsheet, with the do-not-contact list masked because that table
+  holds a hash rather than an address. Audited before the file is sent, and metered.
+- **Fixed, found by review: `LIKE ... ESCAPE` with a backslash is an unterminated string in MySQL.**
+  It passes every SQLite test and fails every production query — exactly the trap this repo's own
+  `LeadQueryBuilder` switched to `!` to avoid. The Signals exporter had shipped with it in S6 and
+  had no caller until now; both are corrected, and tested with a name containing a wildcard.
+- 1369 tests (6090 assertions), Larastan level 7 clean, `npm run check` + `types:check` + `build`
+  green. ⚖️ The privacy-notice wording, the retention defaults, whether an erasure's suppression
+  should bind every team, DSAR identity verification for non-users, and what evidence could lift a
+  UAE prior-consent restriction per lead all still need counsel — they are listed in
+  `docs/modules/compliance-privacy.md`.
+
+### Added — 2026-10-30 — Phase 14: insights that say what to do, not what happened
+
+- **Three insights every morning, in the team's own clock.** The companies they picked up and went
+  quiet on, the strong matches nobody has approached yet, and the model's read of the week's
+  figures. `insights:generate` runs hourly and fires per team when its local clock reaches 07:00,
+  so a London team and a Dubai team both get theirs before the working day.
+- **A lead goes cold only once the team has started it.** The obvious query — any lead with no
+  recent activity — turns one week's sourcing into four hundred alerts a fortnight later, which is
+  a backlog rather than a follow-up problem. So it takes an approach, an assignment or a move off
+  the default column to put a lead in scope, and a Won or Lost stage takes it back out: silence is
+  the correct state for a closed lead.
+- **"Worth a call today" asks Outreach whether it may be.** Every candidate goes through the same
+  guard a draft and a send go through, and the answer is taken as it comes. A compliance refusal on
+  every channel drops the lead; a configuration one (nobody has verified a sender yet) does not,
+  because that changes by teatime. A suppressed or prior-consent company stays on the list marked
+  **introduction only** rather than being offered an email that would be blocked.
+- **The AI is the part that is allowed to fail.** The two SQL insights are built first and stored
+  whatever happens next, so a provider outage, an exhausted allowance or an unparseable response
+  costs the feed its commentary and not its contents.
+- **Figures only reach the model.** No company name, no member name, nothing anybody typed — which
+  keeps the prompt a few hundred tokens whatever size the team is, and makes it the one AI call in
+  the platform with no untrusted text in it to defend against. The trade is honest and written
+  down: the digest can say "your LinkedIn reply rate is three times your email rate" and cannot say
+  "chase Acme". Naming a company is the other two insights' job, and they do it from the database.
+- **One run a day, and it is the absence of insights that makes that hard.** A day with no stale
+  leads, nobody to call and a model with nothing to say writes no insights — so a sweep that asked
+  the insights table whether a team had been done would run the aggregates and the AI call again
+  every hour until midnight. `insight_runs` records the day whatever it found. On top of that, each
+  insight's dedupe key is cut on the team's local date, so a dismissal is never undone by the next
+  run, and a forced run skips the model when the day already has a digest.
+- **Dismissing is not deleting.** Cleared insights wait under their own tab, audited, until the
+  retention sweep removes them — 30 days from the dismissal, 60 from an unactioned generation. They
+  are swept harder than anything else in the platform and are the one thing that can afford it: a
+  week-old "contact these five today" is misleading rather than merely old.
+- **`InsightsReady`**, one notification per run carrying the counts, and a line in the daily
+  round-up for what is still waiting.
+- EN/AR feed at `/insights` and `/api/v1/insights` for the mobile app. Every figure on a card is a
+  label followed by a number, because Arabic's noun takes four forms depending on the count and
+  "Quiet for 1 days" is wrong in English too.
+
+### Added — 2026-10-30 — Phase 13: reporting you can filter, read and take away
+
+- **One date filter, scoping the whole screen.** Seven presets and a custom pair, cut in the
+  **team's** timezone and never running past now. Server-driven like the leads list, so a shared URL
+  reproduces exactly what the sender saw and a download carries the same window.
+- **The window picks a cohort, and every chart reports on it.** "Contacted" means _of the prospects
+  sourced in this window, how many have we approached_ — not how many approaches we made — so the
+  funnel narrows the way a funnel must. Reports that are about activity rather than about leads (AI
+  usage, team activity, outreach performance) are scoped by their own event time instead, and each
+  says so. A dashboard whose charts disagree is worse than no dashboard.
+- **A delta that is actually a comparison.** The previous window is equal in length and butts up
+  against where the current one opens, so "this month so far" is measured against the same number of
+  days before it rather than against the whole of last month. All time has no window before it, so
+  it carries no delta at all instead of a flattering one.
+- **The funnel's bottom half is real.** "Contacted" and "Replies" used to come down unavailable with
+  an em dash and "arrives with Outreach"; they are counts off `contact_attempts` now. An opt-out
+  counts as a reply — it is a reply, and a painful one, and hiding it would flatter the reply rate by
+  dropping exactly the responses worth learning from. A bounce does not: nobody read it.
+- **Four new reports.** How each **ideal customer profile** is doing at picking companies out
+  (retired profiles included and marked, because "the last one was better" is the most useful thing
+  that table can say); **outreach performance** by channel with reply rates; **team activity** per
+  member, read off the lead timeline; and **AI & data usage** per prompt, with the cache-hit rate
+  beside the cost — a falling hit rate is the first sign a bill is about to grow.
+- **CSV export of any report.** All eleven of them, through one writer: a report is a table, so a new
+  chart cannot ship unexportable. The file is what a spreadsheet wants rather than what a screen
+  wants — money in major units, rates as numbers with the unit in the header, dates in ISO-8601 —
+  with a UTF-8 BOM so Excel reads Arabic, every cell neutralised so a spreadsheet cannot run a
+  company name as a formula, and headers translated into the member's own language. Exports are
+  audited (who, which report, which window, how many rows) and the numbers are **not** copied into
+  the trail.
+- **The trend chart follows the filter.** Bars are days under a short window, weeks under a medium
+  one and months under a long one, and the first and last bucket are clamped to the window so the
+  bars add up to the same total the funnel reports.
+- **An empty cell is not a zero.** A reply rate over no attempts, an average with nothing to average:
+  the screen draws an em dash and the CSV leaves the cell blank. `0%` where we meant "nobody was
+  asked" is the one lie this whole module is built to avoid.
+- Read-only members can filter and export, same as they could always read. An export is the report in
+  a different window; gating the file behind a stricter role than the chart would stop the person
+  asked to read the numbers taking them to a meeting.
+
+### Fixed — 2026-10-30 — Reporting, after review
+
+- **A Dubai team's dashboard was four hours out.** The window's bounds were built on the team's
+  clock and handed straight to the query, and Laravel binds a date by formatting it without
+  converting — so team wall-clock time was compared against UTC columns. Every figure shifted at
+  both ends, the trend and the funnel disagreed about the same window, and a UTC-only test suite
+  could not see any of it. The bounds are converted now, and there is a non-UTC test that fails
+  without the conversion.
+- **A negative number in a CSV arrived as text.** Formula-neutralisation prefixes an apostrophe to
+  anything starting `-`, which is right for a company name and wrong for a KPI delta of `-2`: the
+  column the member wanted to sum could not be summed. Only cells that hold words are neutralised
+  now.
+- **An empty period looked like an empty account.** Filtering to a quiet week showed a team with a
+  thousand leads the first-run "here's how Alima works" explainer. An empty window now says so and
+  offers a way back to one that has something in it.
+- **A year-long window could lose its oldest bar.** A weekly window opening mid-week spans one more
+  bucket than its length suggests, and the 53rd was being dropped — putting leads in the funnel that
+  the chart never drew. The weekly ceiling allows for the overlap, and a window wholly in the future
+  no longer resolves to an inverted one.
+- The trend chart's geometry now mirrors properly in Arabic: hover, arrow keys, axis labels and the
+  tooltip had been disagreeing with where the line was actually drawn. A monthly bar is labelled as
+  a month rather than as the first of it, and arrowing along the chart is announced rather than only
+  drawn.
+- The report switcher dropped a half-built ARIA tab pattern — announcing "tab 1 of 4" and then not
+  behaving like one is worse for a screen-reader user than plain buttons — and the active period in
+  the filter is announced, not only ticked.
+- `fputcsv` is called with an explicit empty escape in both exporters: PHP's non-standard escaping
+  is deprecated as a default from 8.4 and could corrupt a cell ending in a backslash.
+
 ### Fixed — 2026-10-30 — Lead discovery looked for the company, not its customers
 
 - **The bug, plainly.** A graphic design studio asked Alima for leads and got back graphic design

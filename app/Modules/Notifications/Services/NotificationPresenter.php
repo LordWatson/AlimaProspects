@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Notifications\Services;
 
+use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Notifications\Data\NotificationContent;
 use App\Modules\Notifications\Enums\NotificationType;
 use Illuminate\Support\Str;
@@ -39,6 +40,7 @@ final class NotificationPresenter
             NotificationType::TaskDue => $this->taskDue($payload),
             NotificationType::LeadAssigned => $this->leadAssigned($payload),
             NotificationType::SignalsDetected => $this->signalsDetected($payload),
+            NotificationType::InsightsReady => $this->insightsReady($payload),
             NotificationType::CreditLow => $this->creditLow($payload),
             NotificationType::Digest => $this->digest($payload),
         };
@@ -147,18 +149,60 @@ final class NotificationPresenter
     /**
      * @param  array<string, mixed>  $payload
      */
+    private function insightsReady(array $payload): NotificationContent
+    {
+        $contact = $this->count($payload, 'contact_count');
+        $stale = $this->count($payload, 'stale_count');
+
+        // Lead with the thing to do. A member reading a lock screen at eight in the morning wants
+        // "five worth a call", not "three new insights" — the count of insights is a count of
+        // cards, which is our unit and not theirs. The cold ones come second because they are a
+        // warning rather than a plan, and the generic line is only reached when the run produced
+        // nothing but the model's commentary.
+        return new NotificationContent(
+            type: NotificationType::InsightsReady,
+            title: 'Your morning read is ready',
+            body: match (true) {
+                $contact > 0 => ':contact companies are worth approaching today.',
+                $stale > 0 => ':stale companies are going cold.',
+                default => 'Alima has :count things to show you.',
+            },
+            params: [
+                'contact' => $contact,
+                'stale' => $stale,
+                'count' => $this->count($payload, 'count'),
+            ],
+            url: '/insights',
+            actionLabel: 'See the insights',
+        );
+    }
+
+    /**
+     * The one allowance warning, for either metered thing. The payload carries a `metric`
+     * ({@see BillingMetric}) so the sentence names what has run out and what stops when it does —
+     * "scoring and drafting stop" and "new searches stop" are different pieces of news, and a
+     * message generic enough to cover both tells an Owner nothing they can act on.
+     *
+     * Defaults to AI credits when no metric is given, which is what rows stored before Phase 16
+     * carry.
+     *
+     * @param  array<string, mixed>  $payload
+     */
     private function creditLow(array $payload): NotificationContent
     {
         $remaining = $this->count($payload, 'remaining_percent');
+        $metric = BillingMetric::tryFrom((string) ($payload['metric'] ?? '')) ?? BillingMetric::AiCredits;
+
+        $thing = $metric === BillingMetric::Leads ? 'Your search allowance' : 'AI credit';
 
         return new NotificationContent(
             type: NotificationType::CreditLow,
-            title: $remaining === 0 ? 'AI credit has run out' : 'AI credit is running low',
+            title: $remaining === 0 ? ':thing has run out' : ':thing is running low',
             body: $remaining === 0
-                ? 'Scoring, drafting and signals have stopped until the allowance resets or the plan changes.'
-                : 'About :percent% is left. Scoring, drafting and signals stop when it runs out.',
-            params: ['percent' => $remaining],
-            url: '/settings/team',
+                ? $metric->exhaustedDescription()
+                : 'About :percent% is left. '.$metric->exhaustedDescription(),
+            params: ['percent' => $remaining, 'thing' => $thing],
+            url: '/billing',
             actionLabel: 'See the plan',
         );
     }
