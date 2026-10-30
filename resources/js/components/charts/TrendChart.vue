@@ -374,27 +374,34 @@ const totals = computed(() => ({
             </div>
         </div>
 
-        <!-- The chart's text equivalent. -->
-        <table class="sr-only">
-            <caption>
-                {{
-                    t('Leads sourced and qualified by week')
-                }}
-            </caption>
-            <thead>
-                <tr>
-                    <th scope="col">{{ t('Week beginning') }}</th>
-                    <th scope="col">{{ t('Sourced') }}</th>
-                    <th scope="col">{{ t('Strong fits') }}</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="point in points" :key="point.starts_on">
-                    <th scope="row">{{ date(point.starts_on) }}</th>
-                    <td>{{ number(point.sourced) }}</td>
-                    <td>{{ number(point.qualified) }}</td>
-                </tr>
-            </tbody>
-        </table>
+        <!--
+          The chart's text equivalent. `sr-only` goes on a wrapping div, never on the `<table>`
+          itself: a table element hands `position` and `margin` to its wrapper box but `width`,
+          `height`, `overflow` and `clip-path` to the grid box, so the `<caption>` escapes the clip
+          and prints at full size, out of flow, over whatever is laid out around the card.
+        -->
+        <div class="sr-only">
+            <table>
+                <caption>
+                    {{
+                        t('Leads sourced and qualified by week')
+                    }}
+                </caption>
+                <thead>
+                    <tr>
+                        <th scope="col">{{ t('Week beginning') }}</th>
+                        <th scope="col">{{ t('Sourced') }}</th>
+                        <th scope="col">{{ t('Strong fits') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="point in points" :key="point.starts_on">
+                        <th scope="row">{{ date(point.starts_on) }}</th>
+                        <td>{{ number(point.sourced) }}</td>
+                        <td>{{ number(point.qualified) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </figure>
 </template>
