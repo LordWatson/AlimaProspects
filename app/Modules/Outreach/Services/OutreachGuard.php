@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Outreach\Services;
 
 use App\Models\User;
-use App\Modules\Core\Enums\OutreachRestriction;
 use App\Modules\Core\Models\Team;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\Outreach\Contracts\LeadRestrictionResolver;
 use App\Modules\Outreach\Data\OutreachDecision;
 use App\Modules\Outreach\Enums\OutreachBlockReason;
 use App\Modules\Outreach\Enums\OutreachChannel;
@@ -25,11 +25,17 @@ use App\Modules\Outreach\Exceptions\OutreachBlockedException;
  *
  * What it enforces, in order:
  *
- * 1. **The lead's own restriction.** `leads.raw.outreach_restriction`, read through
- *    {@see OutreachRestriction::fromRaw()} and branched on `allowsDirectMarketing()` rather than on
- *    the case — so a restriction added in a later market can't be missed by a `match` that still
- *    compiles (see docs/modules/outreach.md). This blocks drafting as well as sending: the
- *    restriction is the basis on which the lead was allowed to exist, not a warning to click past.
+ * 1. **The lead's own restriction**, from {@see LeadRestrictionResolver} and branched on
+ *    `allowsDirectMarketing()` rather than on the case — so a restriction added in a later market
+ *    can't be missed by a `match` that still compiles (see docs/modules/outreach.md). This blocks
+ *    drafting as well as sending: the restriction is the basis on which the lead was allowed to
+ *    exist, not a warning to click past.
+ *
+ *    The resolver is asked rather than `leads.raw.outreach_restriction` read directly, because
+ *    *which* restriction applies is a compliance judgement: the recorded flag is only set by the
+ *    module that created the lead, so Lead Sourcing's UAE leads carry none. Compliance (Phase 15)
+ *    binds a market-aware resolver over Outreach's own; either way the answer can only get
+ *    stricter than the flag, never looser.
  * 2. **Suppression.** The address and its domain, against the global list and the team's own.
  * 3. **Something to send to**, and **someone to send it from** — the configuration checks, which
  *    only apply to a channel Alima actually transmits.
@@ -45,6 +51,7 @@ final class OutreachGuard
     public function __construct(
         private readonly SuppressionList $suppressions,
         private readonly SenderIdentityResolver $senderIdentity,
+        private readonly LeadRestrictionResolver $restrictions,
     ) {}
 
     /**
@@ -66,7 +73,7 @@ final class OutreachGuard
 
         // 1. The lead's own restriction. Applies to every direct-marketing channel, drafting
         //    included.
-        $restriction = OutreachRestriction::fromRaw($lead->raw);
+        $restriction = $this->restrictions->restrictionFor($team, $lead);
 
         if ($channel->isDirectMarketing() && $restriction !== null && ! $restriction->allowsDirectMarketing()) {
             $reasons[] = OutreachBlockReason::Restricted;

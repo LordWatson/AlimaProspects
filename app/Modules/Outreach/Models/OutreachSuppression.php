@@ -83,12 +83,17 @@ class OutreachSuppression extends Model
     }
 
     /**
-     * Whether this entry may be lifted from the product. A global opt-out may not: removing it
-     * would let a tenant overrule a person's stated wish with a button.
+     * Whether this entry may be lifted from the product.
+     *
+     * Two conditions, because scope alone is not enough. A **global** entry may never be lifted:
+     * removing it would let a tenant overrule a person's stated wish with a button. And a
+     * team-scoped entry recorded as an **erasure** may not either (Phase 15) — it is the safeguard
+     * that stops the next discovery run re-sourcing somebody who asked to be forgotten, so a
+     * removable one would be no safeguard at all.
      */
     public function isRemovable(): bool
     {
-        return $this->scope->isTeamManaged();
+        return $this->scope->isTeamManaged() && $this->reason->isLiftable();
     }
 
     /**

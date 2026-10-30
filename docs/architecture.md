@@ -57,7 +57,10 @@ flowchart TD
   Sig -->|LeadOriginProvider| LW
   LW --> Out[Outreach]
   AIp --> Out
-  Comp[Compliance & Privacy] --> Out
+  Comp[Compliance & Privacy] -->|LeadRestrictionResolver| Out
+  Comp -->|LeadInterestGate| LS
+  Comp -->|retention + DSAR| LW
+  Sig -->|SignalsPersonalDataExporter| Comp
   LW --> Rep[Reporting & Analytics]
   Out --> Rep
   AIp -->|usage + cost| Rep
@@ -98,7 +101,7 @@ flowchart TD
 | 13  | AI Insights                   | MVP (built, Phase 14)    | `modules/ai-insights.md`                 |
 | 14  | Notifications                 | MVP (built, Phase 12)    | `modules/notifications.md`               |
 | 15  | Billing & Plans               | MVP (late)               | `modules/billing-plans.md`               |
-| 16  | Compliance & Privacy          | MVP                      | `modules/compliance-privacy.md`          |
+| 16  | Compliance & Privacy          | MVP (built, Phase 15)    | `modules/compliance-privacy.md`          |
 | 17  | Admin (internal)              | MVP (minimal)            | `modules/admin.md`                       |
 | 18  | Integrations                  | Post-MVP                 | `modules/integrations.md`                |
 | 19  | Mobile App                    | Post-MVP (API v1 is MVP) | `modules/mobile-app.md`                  |
@@ -113,8 +116,8 @@ flowchart TD
 - **A hero statement is one translation key**, with a `|` marking where the Lime tail begins (`t('Find your next|leads.')`). Two keys would force every language to accept English word order; a translator moves the `|`. Components take finished strings — pages call `t()` — which is the convention across the app.
 - **Charts:** hand-built in `resources/js/components/charts/`, no charting dependency, on the validated `--chart-*` tokens (brand-tokens.md §7.7) and the `dataviz` guidance. At most two series per chart; everything else is single-series magnitude.
 - **AI safety:** scraped/web content is **data, never instructions**; structured JSON output validated; per-team cost/credit logging (AI Platform).
-- **Compliance:** suppression/opt-out/retention/DSAR enforced by the system (Compliance & Privacy + `docs/compliance.md`).
-- **Observability:** structured logs with `team_id`/`user_id`/`request_id`; channels `ai`, `lead_sourcing`, `billing`; Sentry + Pulse.
+- **Compliance:** suppression/opt-out/retention/DSAR enforced by the system (Compliance & Privacy + `docs/compliance.md`). **Built in Phase 15**, and it reaches other modules through three seams rather than by them knowing about it: `LeadSourcingContractsLeadInterestGate` (no recorded lawful basis, no discovery), `OutreachContractsLeadRestrictionResolver` (how a prospect may be approached, from their jurisdiction as well as any flag on the lead), and `SignalsServicesSignalsPersonalDataExporter` (which Signals answers a data-subject request with). The do-not-contact table stays in Outreach — see that module's doc for why.
+- **Observability:** structured logs with `team_id`/`user_id`/`request_id`; channels `ai`, `lead_sourcing`, `outreach`, `notifications`, `insights`, `signals`, `compliance`, `billing`; Sentry + Pulse. `compliance` is kept for 90 days, the longest of any channel: "did you honour the erasure, and when" is a question an authority may ask a year later.
 
 ## 6. Environments
 

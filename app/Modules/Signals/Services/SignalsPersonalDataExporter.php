@@ -6,6 +6,7 @@ namespace App\Modules\Signals\Services;
 
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\LeadsWorkspace\Services\LeadQueryBuilder;
 use App\Modules\Signals\Models\Signal;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
@@ -38,6 +39,18 @@ final class SignalsPersonalDataExporter
 {
     /** The shortest name worth matching — a one- or two-letter query would match half the feed. */
     private const int MIN_NAME = 3;
+
+    /**
+     * The `LIKE ... ESCAPE` character, and **not a backslash** — corrected in Phase 15, when the
+     * Compliance module became this class's first caller.
+     *
+     * SQLite has no default escape character, so the clause has to be written out; but in **MySQL**
+     * the literal `'\'` is an unterminated string, because the backslash escapes the closing quote.
+     * A backslash therefore passes every SQLite test and fails every production query. `!` is the
+     * character {@see LeadQueryBuilder} settled on for the
+     * same reason.
+     */
+    private const string LIKE_ESCAPE = '!';
 
     public function __construct(private readonly TeamContext $teamContext) {}
 
@@ -148,7 +161,7 @@ final class SignalsPersonalDataExporter
     {
         return Signal::query()
             ->where('team_id', $team->getKey())
-            ->whereRaw("LOWER(subject_person_name) LIKE ? ESCAPE '\\'", ['%'.$this->escapeLike(Str::lower($name)).'%'])
+            ->whereRaw("LOWER(subject_person_name) LIKE ? ESCAPE '".self::LIKE_ESCAPE."'", ['%'.$this->escapeLike(Str::lower($name)).'%'])
             ->orderBy('id')
             ->get();
     }
@@ -157,12 +170,16 @@ final class SignalsPersonalDataExporter
      * Neutralise the `LIKE` wildcards in a value that is being searched *for*, so a subject named
      * with an underscore doesn't match every single character in its place.
      *
-     * The query declares `ESCAPE '\'` explicitly rather than relying on the driver's default:
-     * MySQL happens to use backslash, SQLite has **no** default escape character, and without the
-     * clause the tests would be validating behaviour that differs from production.
+     * See {@see self::LIKE_ESCAPE} for why the escape character is not a backslash.
      */
     private function escapeLike(string $value): string
     {
-        return str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $value);
+        $escape = self::LIKE_ESCAPE;
+
+        return str_replace(
+            [$escape, '%', '_'],
+            [$escape.$escape, $escape.'%', $escape.'_'],
+            $value,
+        );
     }
 }

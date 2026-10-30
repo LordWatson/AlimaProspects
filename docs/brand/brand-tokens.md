@@ -158,6 +158,11 @@ CTAs: _Let's grow · Let's talk · Start a project · See the work_. Headlines l
   `outreach/Show.vue`, `outreach/Suppressions.vue` and `notifications/Index.vue` follow it.
   Settings screens have the settings layout's own `Heading` instead. **Needs confirming**, and the
   answer belongs here rather than being decided per screen.
+    - _Phase 15 followed that reading:_ `compliance/Index.vue` is the sidebar destination and carries
+      the hero; `compliance/Lia.vue` and `compliance/Dsar.vue` are reached from it and use plain
+      headers. The compliance hero carries **no index number**, because the nav item sits in the
+      sidebar's Account group with Settings rather than in the numbered workspace list —
+      administration, not daily work.
 - **The Arabic brand name.** `lang/ar.json` renders Alima as "أليما" in running copy. The book does
   not say whether an Arabic wordmark or a transliteration is approved. **Needs confirming.** The
   logo artwork itself is never altered or mirrored either way (§4).
@@ -170,6 +175,22 @@ CTAs: _Let's grow · Let's talk · Start a project · See the work_. Headlines l
   carries no Alima chrome at all**: it is the tenant speaking, and Alima branding on it would
   misattribute the sender, which is what sender-identification law exists to prevent (see
   `docs/modules/outreach.md`). The only brand rule applied there is the Arabic one.
+
+### 7b. Added 2026-10-30 (Phase 15)
+
+- **A bare public shell for the compliance pages.** `MarketingLayout` takes a `bare` prop, and the
+  hosted privacy notice and unsubscribe page use it. The marketing shell's "Let's talk" pill would
+  otherwise sit beside the opt-out button: a **second primary CTA on one view** (§2.3), the wrong
+  thing to say to somebody who has just asked to be left alone, and marketing on the page where
+  they ask. Bare keeps the logo, the language switch and the legal line. **Recorded rather than
+  invented** — the rule it follows is §2.3's one-CTA rule; confirm the reduced shell is the look you
+  want for pages a stranger lands on.
+- **Literal hex in the outreach email footer.** `#181723` (Ink) and `#6b6977` (`text.muted`, 5.4:1
+  on white) are written out in `emails/outreach/message.blade.php`, because a mail client has no CSS
+  variables. The rule hairline is `#dddbd4` and the body background `#ffffff`, neither of which is a
+  token: the white is deliberate under §7a (an outreach message is the **tenant** speaking and
+  carries no Alima chrome), and the hairline should move to the pending `--border` value when §7.5
+  is confirmed. **Needs confirming** along with that token.
 
 1. **PENDING APPROVAL — Dark mode palette.** The book defines only `bg.inverse` (#181723) sections, not a full dark theme. Proposed dark tokens (to be confirmed):
     - `bg.canvas` `#181723`, `bg.surface` `#211F2E`, `bg.inverse` `#F5F2E8`

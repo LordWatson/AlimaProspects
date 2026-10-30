@@ -60,6 +60,14 @@ class HandleInertiaRequests extends Middleware
                 'translations' => fn (): array => Locale::messages($locale),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // For the handful of places that need a **real browser form POST** rather than an
+            // Inertia visit — a file download, where an XHR response cannot reach the user's disk
+            // (Compliance's team export, Phase 15). Inertia's own visits carry the token in a
+            // header and never read this.
+            //
+            // Lazy, like `translations`: it is sent on a full page load and omitted from partial
+            // reloads, and a public page with no session never touches the session at all.
+            'csrfToken' => fn (): ?string => $request->hasSession() ? $request->session()->token() : null,
         ];
     }
 

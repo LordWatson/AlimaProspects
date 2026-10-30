@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Core\Models\Team;
 use App\Modules\Onboarding\Models\BusinessProfile;
 use App\Modules\Outreach\Data\SenderIdentity;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
 /**
@@ -72,8 +73,22 @@ final class SenderIdentityResolver
             // opt-out has to reach the global suppression list, so it must not be routed to a
             // tenant mailbox that may never forward it.
             optOutAddress: $this->configured('outreach.opt_out.address') ?? $fromAddress,
-            privacyNoticeUrl: $this->configured('outreach.privacy_notice_url'),
+            privacyNoticeUrl: $this->configured('outreach.privacy_notice_url') ?? $this->hostedNotice(),
         );
+    }
+
+    /**
+     * The platform's own hosted privacy notice (Compliance, Phase 15), used when no notice is
+     * configured — so a deployment has a working one without setting a variable, and the footer's
+     * link is never missing.
+     *
+     * Checked with `Route::has()` rather than by depending on the Compliance module: Outreach has
+     * to stand up on its own, and a route that is not registered simply means no link, which is the
+     * Phase 11 behaviour.
+     */
+    private function hostedNotice(): ?string
+    {
+        return Route::has('privacy-notice') ? route('privacy-notice') : null;
     }
 
     /**

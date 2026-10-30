@@ -14,11 +14,18 @@ use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Support\ComplianceFixtures;
 
 uses(RefreshDatabase::class);
 
+/**
+ * What discovery needs over the API: an active ICP, and the recorded legitimate-interest assessment
+ * the Phase 15 gate requires (see `StartDiscoveryRunTest::seedActiveIcp`).
+ */
 function seedApiIcp(Team $team): void
 {
+    ComplianceFixtures::activeLia($team);
+
     app(TeamContext::class)->run($team, function () use ($team): void {
         $icp = Icp::query()->create(['team_id' => $team->getKey(), 'name' => 'UK Marketing', 'is_active' => true]);
         $icp->criteria()->create(['team_id' => $team->getKey(), 'type' => CriterionType::Industry, 'value' => 'Marketing', 'weight' => 80, 'position' => 0]);

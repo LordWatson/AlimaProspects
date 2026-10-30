@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\LeadSourcing\Http\Resources;
 
 use App\Modules\Core\Enums\OutreachRestriction;
+use App\Modules\Core\Support\TeamContext;
 use App\Modules\Enrichment\Http\Resources\LeadContactResource;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\Outreach\Contracts\LeadRestrictionResolver;
+use App\Modules\Outreach\Services\OutreachGuard;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -51,7 +54,7 @@ final class LeadResource extends JsonResource
             // article plainly isn't. Sent on every lead, not just the detail screen: Outreach
             // (Phase 11) and the mobile app both have to honour it, and a flag the client has to
             // ask for separately is a flag that gets missed.
-            'outreach_restriction' => $this->outreachRestriction($this->raw),
+            'outreach_restriction' => $this->outreachRestriction(),
             // Resolved to a plain list rather than handed over as a resource collection: a nested
             // collection keeps its own `data` wrapper, which would leave the client reading
             // `lead.contacts.data` on one screen and `lead.contacts` on the next.
@@ -96,15 +99,29 @@ final class LeadResource extends JsonResource
     }
 
     /**
-     * The restriction recorded on the lead, flattened to what a screen needs to show it. Null when
-     * the lead carries none, which is the ordinary case.
+     * The restriction in force for this lead, flattened to what a screen needs to show it. Null
+     * when it carries none, which is the ordinary case.
      *
-     * @param  array<array-key, mixed>|null  $raw
+     * Asked of {@see LeadRestrictionResolver} rather than read off `raw`, so the flag a client is
+     * sent is the same answer {@see OutreachGuard} will give it. Compliance (Phase 15) binds a
+     * market-aware resolver, which means a UAE-sourced company carries the prior-consent
+     * restriction here even though nothing stamped it on the row — and a screen that said
+     * otherwise would promise an email the guard then refuses.
+     *
+     * The team comes from the active {@see TeamContext}, which costs one query per request however
+     * many leads a page serialises. Without a team in context — a console render, a test building
+     * a resource by hand — the resolver is skipped and the recorded flag is reported, which is the
+     * answer that needs no tenant to compute.
+     *
      * @return array{value: string, label: string, guidance: string, allows_direct_marketing: bool}|null
      */
-    private function outreachRestriction(?array $raw): ?array
+    private function outreachRestriction(): ?array
     {
-        $restriction = OutreachRestriction::fromRaw($raw);
+        $team = app(TeamContext::class)->team();
+
+        $restriction = $team === null
+            ? OutreachRestriction::fromRaw($this->raw)
+            : app(LeadRestrictionResolver::class)->restrictionFor($team, $this->resource);
 
         if ($restriction === null) {
             return null;

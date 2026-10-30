@@ -1,6 +1,7 @@
 export * from './ai-insights';
 export * from './auth';
 export * from './business-intel';
+export * from './compliance';
 export * from './enrichment';
 export * from './icp';
 export * from './lead-sourcing';

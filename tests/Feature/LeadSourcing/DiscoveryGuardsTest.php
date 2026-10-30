@@ -14,11 +14,16 @@ use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Services\CompaniesHouseProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Tests\Support\ComplianceFixtures;
 
 uses(RefreshDatabase::class);
 
 it('refuses a run and returns a 429 envelope when the lead allowance is exhausted', function (): void {
     $user = createUserWithTeam();
+
+    // A lawful basis on record. The LIA gate runs *before* the allowance check, so without this the
+    // request would be refused with a 403 and this test would be asserting the wrong refusal.
+    ComplianceFixtures::activeLia($user->currentTeam()->firstOrFail());
 
     app()->instance(LeadQuotaSource::class, new class implements LeadQuotaSource
     {

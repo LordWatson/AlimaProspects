@@ -5,6 +5,79 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-30 — Phase 15: compliance the system enforces, not the team remembers
+
+- **No recorded lawful basis, no lead discovery.** A team writes a legitimate-interest assessment —
+  purpose, necessity, balancing test, in the regulator's own order — and signs it off with their
+  name and the date. Until they do, sourcing is refused. Lead Sourcing already called the gate
+  through a contract, so this phase only swapped the permit-everything stub for the real one. Saving
+  and signing are two buttons, because a lawful basis that can be affirmed over three empty boxes
+  records nothing; and the assessment **expires** after twelve months, because it is a judgement
+  about a balance that moves. One per market: the UK runs on legitimate interest and the UAE expects
+  prior consent, and one assessment cannot honestly cover both.
+- **The consent gate now reads the prospect's own jurisdiction, not just the flag on the lead.**
+  This closed a real hole. Signals stamped its converted leads with a prior-consent restriction, but
+  a company sourced from a UAE business listing by Lead Sourcing carried **nothing** — so a team
+  could cold email a Dubai prospect that UAE PDPL requires prior consent to approach. The guard now
+  asks a resolver that takes the strictest of the recorded flag, the lead's country and the team's
+  market, and can only ever make the answer stricter. A known UK country never _lifts_ a
+  restriction, which is the mistake Signals' own deviation note already warned about.
+- **Two retention branches, and the split is the policy.** Every night, a lead **nobody ever
+  touched** — no approach, no draft, no note, no task, no owner, still in the first column — is
+  deleted. Everything else is **anonymised** once it has gone quiet: the contacts, the message text
+  and recipient, the attempt notes, the notes and tasks, the free text in timeline entries and the
+  converted news signals all go; the company, its score, its stage and one row per approach with the
+  channel, outcome and date all stay. That residue is the team's own evidence of who they contacted
+  and when — the accountability the retention rule sits beside, not something to trade for a tidier
+  database. The two branches are exact negations of one another, so no lead falls between them and
+  is kept for ever while nothing fails.
+- **The outreach restriction survives the sweep.** It lives in the provider payload, which
+  anonymising empties — and clearing it wholesale would quietly reopen cold email on a lead that
+  must never have it. A restriction may be added to a lead but never dropped from one.
+- **Signals attached to a swept lead are deleted, not scrubbed.** The foreign key nulls on delete
+  and the signals sweep never touches a converted signal, so one left behind would outlive its lead
+  with a named individual still on it and nothing would ever remove it.
+- **A data-subject request is answered per team, and a name match is a guess.** Searching finds
+  contact records, companies named after a person, drafted and sent messages, logged approaches,
+  news signals and the do-not-contact entry. An address or a number is exact; a **name** returns
+  candidates, and the erasure takes only the rows the member ticked — "John" matches people the
+  request was never about, and erasing one of those would be its own data-protection failure. This
+  is also the first caller of the Signals exporter built back in S6, closing that module's last open
+  dependency.
+- **An erasure suppresses the identity, in the same transaction.** The part that is easy to leave
+  out and makes the rest pointless: without it the next discovery run re-sources the same company,
+  AI re-derives the same address, and the person who asked to be forgotten hears from us again. The
+  entry holds a one-way hash and a mask, and cannot be lifted. A do-not-contact entry, by contrast,
+  is **reported and never erased** — a subject asking for it gone is asking for something that works
+  against them, and the screen says so beside the row.
+- **One-click unsubscribe, hosted.** The footer's opt-out was a `mailto:` honoured by somebody
+  reading a mailbox and remembering to log it. It is now an HTTPS endpoint with
+  `List-Unsubscribe-Post` beside the header, so a mail client's own unsubscribe button works — and a
+  recipient who uses it instead of reaching for "report spam" protects every other team's
+  deliverability. The link is a signed, expiring URL carrying a message id and nothing else, and
+  **the GET deliberately does nothing**: mail clients and security gateways fetch every URL in an
+  email, so an endpoint that acted on GET would unsubscribe people who never clicked. The POST
+  suppresses the address and the phone number globally, and audits it with no actor, because the
+  recipient is not a user of ours.
+- **A hosted privacy notice, written for the person who was cold-emailed.** Public, bilingual, and
+  in the order they actually care about: who has your details, where they came from, how to make it
+  stop. It names Alima as the processor and the business that made contact as the controller, and
+  the outreach footer links it automatically when no notice is configured. The public pages drop the
+  marketing shell's "Let's talk" pill — a sales call to action beside an opt-out button is both a
+  second primary CTA on one view and the wrong thing to say.
+- **A team can take its data out**: a zip of twelve CSVs plus a README, formula-neutralised and
+  BOM'd so Arabic reads in a spreadsheet, with the do-not-contact list masked because that table
+  holds a hash rather than an address. Audited before the file is sent, and metered.
+- **Fixed, found by review: `LIKE ... ESCAPE` with a backslash is an unterminated string in MySQL.**
+  It passes every SQLite test and fails every production query — exactly the trap this repo's own
+  `LeadQueryBuilder` switched to `!` to avoid. The Signals exporter had shipped with it in S6 and
+  had no caller until now; both are corrected, and tested with a name containing a wildcard.
+- 1369 tests (6090 assertions), Larastan level 7 clean, `npm run check` + `types:check` + `build`
+  green. ⚖️ The privacy-notice wording, the retention defaults, whether an erasure's suppression
+  should bind every team, DSAR identity verification for non-users, and what evidence could lift a
+  UAE prior-consent restriction per lead all still need counsel — they are listed in
+  `docs/modules/compliance-privacy.md`.
+
 ### Added — 2026-10-30 — Phase 14: insights that say what to do, not what happened
 
 - **Three insights every morning, in the team's own clock.** The companies they picked up and went

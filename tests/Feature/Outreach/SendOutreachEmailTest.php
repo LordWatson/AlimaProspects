@@ -368,8 +368,20 @@ it('identifies the sender and offers an unambiguous opt-out', function (): void 
         // (docs/compliance.md §3.3, UAE TDRA).
         expect($rendered)->toContain('Alima Test Co')
             ->and($rendered)->toContain('Sent via Alima on behalf of')
-            // An unambiguous opt-out, and the header a mail client turns into its own button.
-            ->and($rendered)->toContain('unsubscribe@alima.test');
+            // An unambiguous opt-out. Since Phase 15 the footer's link is the **hosted** one-click
+            // endpoint (docs/compliance.md §3.3) rather than a `mailto:`, so the thing to assert is
+            // that a signed unsubscribe URL is in the body — the `mailto:` route survives in the
+            // header, which the headers assertion below covers.
+            ->and($rendered)->toContain('/unsubscribe/')
+            ->and($rendered)->toContain('signature=');
+
+        $headers = $mail->headers();
+
+        // Both routes offered, HTTPS first, with `List-Unsubscribe-Post` beside it — which is what
+        // makes a mail client's own one-click button work (RFC 8058).
+        expect($headers->text['List-Unsubscribe'] ?? '')->toContain('/unsubscribe/')
+            ->and($headers->text['List-Unsubscribe'] ?? '')->toContain('mailto:unsubscribe@alima.test')
+            ->and($headers->text['List-Unsubscribe-Post'] ?? '')->toBe('List-Unsubscribe=One-Click');
 
         $envelope = $mail->envelope();
 

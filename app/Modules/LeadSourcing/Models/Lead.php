@@ -66,6 +66,7 @@ use Illuminate\Support\Str;
  * @property array<string, mixed>|null $raw
  * @property array<string, SourcedValue> $field_sources
  * @property bool $has_personal_data
+ * @property Carbon|null $anonymised_at
  * @property string $dedupe_key
  * @property-read int|null $contacts_count
  * @property Carbon|null $created_at
@@ -294,6 +295,10 @@ class Lead extends Model
             'raw' => 'array',
             'field_sources' => SourcedValueMap::class,
             'has_personal_data' => 'boolean',
+            // Set by the Compliance retention sweep when the lead's personal data was stripped
+            // (docs/compliance.md §3.4). Not fillable: nothing but that sweep and the DSAR erasure
+            // may claim a lead has been anonymised, and both set it with `forceFill`.
+            'anonymised_at' => 'datetime',
         ];
     }
 

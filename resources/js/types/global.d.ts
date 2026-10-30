@@ -27,6 +27,12 @@ declare module '@inertiajs/core' {
             /** The bell, shared on every page — it is part of the app shell (Phase 12). */
             notifications: NotificationBell | null;
             sidebarOpen: boolean;
+            /**
+             * For the handful of places that need a real browser form POST rather than an Inertia
+             * visit — a file download, where an XHR response cannot reach the user's disk. Inertia
+             * visits carry the token in a header and never read this.
+             */
+            csrfToken: string | null;
             [key: string]: unknown;
         };
     }

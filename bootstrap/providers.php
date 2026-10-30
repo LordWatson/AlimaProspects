@@ -4,6 +4,7 @@ use App\Modules\AiInsights\Providers\AiInsightsServiceProvider;
 use App\Modules\AiPlatform\Providers\AiPlatformServiceProvider;
 use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
 use App\Modules\BusinessIntelligence\Providers\BusinessIntelligenceServiceProvider;
+use App\Modules\Compliance\Providers\ComplianceServiceProvider;
 use App\Modules\Core\Providers\CoreServiceProvider;
 use App\Modules\Enrichment\Providers\EnrichmentServiceProvider;
 use App\Modules\ICP\Providers\IcpServiceProvider;
@@ -40,4 +41,7 @@ return [
     NotificationsServiceProvider::class,
     ReportingServiceProvider::class,
     AiInsightsServiceProvider::class,
+    // Last on purpose: it replaces Lead Sourcing's LIA stub and Outreach's restriction resolver
+    // with the real ones, so it must register after both (ADR 0002 / docs/compliance.md §6).
+    ComplianceServiceProvider::class,
 ];

@@ -11,6 +11,7 @@ import {
     Scan,
     Send,
     Settings2,
+    ShieldCheck,
     Target,
     Users,
     type LucideIcon,
@@ -114,6 +115,15 @@ const workspace = computed<Item[]>(() => [
 ]);
 
 const account = computed<Item[]>(() => [
+    {
+        // Administration rather than daily work, which is why it sits here and not in the numbered
+        // workspace list. The do-not-contact list stays under Outreach, where a member reaches for
+        // it while working a lead.
+        title: t('Compliance'),
+        icon: ShieldCheck,
+        href: '/compliance',
+        match: 'startsWith',
+    },
     {
         title: t('Settings'),
         icon: Settings2,
