@@ -60,6 +60,8 @@ flowchart TD
   Comp[Compliance & Privacy] --> Out
   LW --> Rep[Reporting & Analytics]
   Out --> Rep
+  AIp -->|usage + cost| Rep
+  ICP -->|profile performance| Rep
   Rep --> Ins[AI Insights post-MVP]
   Core --> Notif[Notifications]
   LS -->|run complete| Notif
@@ -89,7 +91,7 @@ flowchart TD
 | 10  | Leads Workspace               | MVP                      | `modules/leads-workspace.md`             |
 | 10c | Signals (trigger events)      | MVP (UAE v1, S0–S6)      | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (built, Phase 11)    | `modules/outreach.md`                    |
-| 12  | Reporting & Analytics         | MVP (dashboard built)    | `modules/reporting-analytics.md`         |
+| 12  | Reporting & Analytics         | MVP (built, Phase 13)    | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | Post-MVP                 | `modules/ai-insights.md`                 |
 | 14  | Notifications                 | MVP (built, Phase 12)    | `modules/notifications.md`               |
 | 15  | Billing & Plans               | MVP (late)               | `modules/billing-plans.md`               |

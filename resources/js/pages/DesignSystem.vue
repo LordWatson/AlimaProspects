@@ -6,6 +6,7 @@ import {
     BarListChart,
     FunnelChart,
     GradeMixBar,
+    ReportTableView,
     StatTile,
     TrendChart,
 } from '@/components/charts';
@@ -82,14 +83,24 @@ const demoFunnel = [
     {
         key: 'contacted',
         label: 'Contacted',
-        caption: 'Arrives with Outreach',
-        value: null,
-        available: false,
+        caption: 'Prospects somebody has approached at least once',
+        value: 41,
+        available: true,
     },
     {
         key: 'replied',
         label: 'Replies',
-        caption: 'Arrives with Outreach',
+        caption: 'Prospects who came back to us, however they answered',
+        value: 12,
+        available: true,
+    },
+    // Kept in the sample so the unavailable treatment stays documented: a step with no source of
+    // truth draws an em dash and a padlock, never a zero. Nothing on the dashboard is in this
+    // state today — a future step that arrives before its data will be.
+    {
+        key: 'meetings',
+        label: 'Meetings',
+        caption: 'Arrives with Integrations',
         value: null,
         available: false,
     },
@@ -119,6 +130,86 @@ const demoKpi = {
     delta: 27,
     delta_label: 'vs the 30 days before',
     spark: demoTrend.map((point) => point.sourced),
+};
+
+/*
+ * A sample report table — the shape every report crosses the wire in, so this one entry documents
+ * all eleven of them. Note the nulls: an em dash is "we did not ask anyone", which is not 0%.
+ */
+const demoTable = {
+    key: 'outreach' as const,
+    title: 'Outreach performance',
+    caption: 'How the approaches made in this period went, by channel.',
+    empty_message: 'Nobody has been approached in this period.',
+    columns: [
+        {
+            key: 'channel',
+            label: 'Channel',
+            format: 'text' as const,
+            translated: true,
+            currency: null,
+        },
+        {
+            key: 'attempts',
+            label: 'Approaches',
+            format: 'count' as const,
+            translated: false,
+            currency: null,
+        },
+        {
+            key: 'reply_rate',
+            label: 'Reply rate',
+            format: 'percent' as const,
+            translated: false,
+            currency: null,
+        },
+        {
+            key: 'cost',
+            label: 'Cost',
+            format: 'money' as const,
+            translated: false,
+            currency: 'GBP',
+        },
+        {
+            key: 'last_active',
+            label: 'Last approach',
+            format: 'date' as const,
+            translated: false,
+            currency: null,
+        },
+    ],
+    rows: [
+        {
+            key: 'email',
+            cells: {
+                channel: 'Email',
+                attempts: 86,
+                reply_rate: 0.1395,
+                cost: 412,
+                last_active: '2026-10-28T09:12:00+00:00',
+            },
+        },
+        {
+            key: 'linkedin',
+            cells: {
+                channel: 'LinkedIn',
+                attempts: 24,
+                reply_rate: 0.25,
+                cost: 0,
+                last_active: '2026-10-27T15:40:00+00:00',
+            },
+        },
+        {
+            key: 'call',
+            cells: {
+                channel: 'Call',
+                attempts: 0,
+                reply_rate: null,
+                cost: 0,
+                last_active: null,
+            },
+        },
+    ],
 };
 
 const swatches = [
@@ -475,7 +566,7 @@ const grades = [
 
             <Card>
                 <CardContent class="pt-6">
-                    <TrendChart :points="demoTrend" :weeks="8" />
+                    <TrendChart :points="demoTrend" granularity="week" />
                 </CardContent>
             </Card>
 
@@ -507,6 +598,12 @@ const grades = [
                     </CardContent>
                 </Card>
             </div>
+
+            <Card>
+                <CardContent class="pt-6">
+                    <ReportTableView :table="demoTable" />
+                </CardContent>
+            </Card>
         </section>
     </div>
 </template>

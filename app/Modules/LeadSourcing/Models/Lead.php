@@ -17,6 +17,8 @@ use App\Modules\LeadsWorkspace\Models\LeadNote;
 use App\Modules\LeadsWorkspace\Models\LeadTag;
 use App\Modules\LeadsWorkspace\Models\LeadTask;
 use App\Modules\LeadsWorkspace\Models\PipelineStage;
+use App\Modules\Outreach\Models\ContactAttempt;
+use App\Modules\Outreach\Models\OutreachMessage;
 use App\Modules\Scoring\Models\LeadScore;
 use Database\Factories\LeadFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -213,6 +215,29 @@ class Lead extends Model
     public function assignments(): HasMany
     {
         return $this->hasMany(LeadAssignment::class);
+    }
+
+    /**
+     * Every recorded approach to this company (Phase 11), newest first — the email Alima sent, the
+     * LinkedIn message a member pasted, the call they made. Ordered by when the approach *happened*
+     * rather than when the row was written, because a member logs yesterday's call today.
+     *
+     * @return HasMany<ContactAttempt, $this>
+     */
+    public function contactAttempts(): HasMany
+    {
+        return $this->hasMany(ContactAttempt::class)->latest('occurred_at');
+    }
+
+    /**
+     * Messages drafted for this company (Phase 11), newest first. A draft is not an approach —
+     * {@see self::contactAttempts()} is the record of what actually went out.
+     *
+     * @return HasMany<OutreachMessage, $this>
+     */
+    public function outreachMessages(): HasMany
+    {
+        return $this->hasMany(OutreachMessage::class)->latest('id');
     }
 
     /**

@@ -9,9 +9,11 @@ use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Reporting\Data\BreakdownSlice;
+use App\Modules\Reporting\Support\DateRange;
 
 /**
- * Where the team's leads came from, busiest source first.
+ * Where the team's leads came from, busiest source first — over the cohort sourced in the selected
+ * window.
  *
  * Unlike the grade mix, a source with nothing in it is dropped: the list of providers is Alima's,
  * not the team's, and a UK-only team has no reason to see "Google Places — 0" every day. The
@@ -24,12 +26,14 @@ final readonly class BuildSourceBreakdownAction
     /**
      * @return list<BreakdownSlice>
      */
-    public function handle(Team $team): array
+    public function handle(Team $team, DateRange $range): array
     {
-        $counts = $this->teamContext->run($team, function () use ($team): array {
+        $counts = $this->teamContext->run($team, function () use ($team, $range): array {
             /** @var array<string, int> $counts */
-            $counts = Lead::query()
-                ->where('leads.team_id', $team->getKey())
+            $counts = $range->constrain(
+                Lead::query()->where('leads.team_id', $team->getKey()),
+                'leads.created_at',
+            )
                 ->selectRaw('source, count(*) as aggregate')
                 ->groupBy('source')
                 ->pluck('aggregate', 'source')

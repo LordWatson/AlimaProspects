@@ -8,31 +8,35 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Reporting\Data\TrendPoint;
-use App\Modules\Reporting\Support\WeeklyBuckets;
+use App\Modules\Reporting\Support\DateRange;
+use App\Modules\Reporting\Support\TrendBuckets;
 use App\Modules\Scoring\Enums\ScoreGrade;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Leads sourced per week against how many of them turned out to be a strong fit (Reporting).
+ * Leads sourced per bucket against how many of them turned out to be a strong fit (Reporting).
  *
- * It is a **cohort** read, not two unrelated series: both numbers key off the week the lead
- * arrived, so a bar says "of the 40 we found that week, 11 were worth calling" rather than mixing
- * arrival dates with scoring dates. That is the question a prospecting team actually asks, and it
- * keeps the second series bounded by the first — which is what makes the chart readable.
+ * It is a **cohort** read, not two unrelated series: both numbers key off the bucket the lead
+ * arrived in, so a bar says "of the 40 we found that week, 11 were worth calling" rather than
+ * mixing arrival dates with scoring dates. That is the question a prospecting team actually asks,
+ * and it keeps the second series bounded by the first — which is what makes the chart readable.
  *
- * Two queries, each bucketing in SQL (see {@see WeeklyBuckets}); no per-week round trips and no
- * unbounded row fetch.
+ * Bucket width comes from the selected window (see {@see TrendBuckets}), so the chart is daily
+ * under a short filter and monthly under a long one without anything here changing.
+ *
+ * Two queries, each bucketing in SQL; no per-bucket round trips and no unbounded row fetch.
  */
 final readonly class BuildLeadTrendAction
 {
     public function __construct(private TeamContext $teamContext) {}
 
     /**
+     * @param  int  $fallbackPeriods  Buckets to show when the window is open-ended (all time).
      * @return list<TrendPoint>
      */
-    public function handle(Team $team, int $weeks = 12): array
+    public function handle(Team $team, DateRange $range, int $fallbackPeriods = 12): array
     {
-        $buckets = WeeklyBuckets::lastWeeks($weeks, (string) $team->timezone);
+        $buckets = TrendBuckets::forRange($range, $fallbackPeriods);
 
         return $this->teamContext->run($team, function () use ($team, $buckets): array {
             $sourced = $buckets->readRow($this->row($this->leads($team), $buckets));
@@ -73,11 +77,19 @@ final readonly class BuildLeadTrendAction
      * @param  Builder<Lead>  $query
      * @return array<string, mixed>
      */
-    private function row(Builder $query, WeeklyBuckets $buckets): array
+    private function row(Builder $query, TrendBuckets $buckets): array
     {
         /** @var object|null $row */
         $row = $query
-            ->where('leads.created_at', '>=', $buckets->from())
+            // The buckets already carry the window, so this is only a floor for the planner — it
+            // keeps the scan off rows older than the first bar.
+            //
+            // `->utc()` for the same reason {@see DateRange::constrain()} does it: the bucket start
+            // is a team-timezone instant, and Laravel binds a date by formatting it without
+            // converting. An unconverted floor here would cut the first bar short for any team
+            // east of UTC while the funnel still counted those leads — the two figures would
+            // disagree about the same window.
+            ->where('leads.created_at', '>=', $buckets->from()->utc())
             ->selectRaw($buckets->countSelect('leads.created_at'), $buckets->bindings())
             ->toBase()
             ->first();

@@ -3,11 +3,17 @@ import { useElementSize } from '@vueuse/core';
 import { computed, ref, useTemplateRef } from 'vue';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
-import type { TrendPoint } from '@/types';
+import type { TrendGranularity, TrendPoint } from '@/types';
 
 /*
- * Leads sourced per week against how many of them graded A or B — the dashboard's one
+ * Leads sourced per period against how many of them graded A or B — the dashboard's one
  * change-over-time chart.
+ *
+ * The bucket width follows the dashboard's date filter rather than being fixed at a week: the
+ * server picks it from the length of the window (daily under a short filter, monthly under a long
+ * one) and this chart only has to say which it got. Everything a reader sees that names the unit —
+ * the eyebrow, the heading, the tooltip, the screen-reader table — comes off one map below, so the
+ * chart cannot call a month a week.
  *
  * Built to the dataviz guidance: one y-axis (never a second scale), 2px lines, a recessive grid, a
  * legend plus a tooltip so the two series are never told apart by colour alone, and a crosshair on
@@ -20,7 +26,7 @@ import type { TrendPoint } from '@/types';
  */
 const props = defineProps<{
     points: TrendPoint[];
-    weeks: number;
+    granularity: TrendGranularity;
 }>();
 
 const { t, isRtl } = useI18n();
@@ -30,17 +36,24 @@ const frame = useTemplateRef<HTMLElement>('frame');
 const { width } = useElementSize(frame);
 
 const HEIGHT = 240;
-const PAD = { top: 16, right: 16, bottom: 30, left: 40 };
+/*
+ * Padding in **logical** terms: `start` is the side the axis labels sit on and the first bucket
+ * opens from, which is the left in English and the right in Arabic. An SVG does not mirror itself
+ * under `dir="rtl"` the way a `div` does, so the mirroring has to be arithmetic — see `xAt`.
+ */
+const PAD = { top: 16, bottom: 30, start: 40, end: 16 };
 
 // Falls back to a sensible width for the first paint, before the observer reports.
 const chartWidth = computed(() => Math.max(width.value || 640, 320));
 
+const axisPad = computed(() => (isRtl.value ? PAD.end : PAD.start));
+
 const plot = computed(() => ({
-    left: PAD.left,
-    right: chartWidth.value - PAD.right,
+    left: axisPad.value,
+    right: chartWidth.value - (isRtl.value ? PAD.start : PAD.end),
     top: PAD.top,
     bottom: HEIGHT - PAD.bottom,
-    width: chartWidth.value - PAD.left - PAD.right,
+    width: chartWidth.value - PAD.start - PAD.end,
     height: HEIGHT - PAD.top - PAD.bottom,
 }));
 
@@ -72,14 +85,34 @@ const max = computed(() => {
 
 const ticks = computed(() => [0, max.value / 2, max.value]);
 
+/*
+ * The physical x of a bucket. **The one place that knows which way time runs**, so the line, the
+ * crosshair, the hover maths, the arrow keys and the tooltip cannot disagree about it: under RTL
+ * the oldest bucket is on the right, the same way the text reads. Everything else works in
+ * bucket indexes and asks here.
+ */
 const xAt = (index: number): number => {
+    const count = props.points.length;
+    const fraction = count <= 1 ? 0.5 : index / (count - 1);
+
+    return (
+        plot.value.left +
+        (isRtl.value ? 1 - fraction : fraction) * plot.value.width
+    );
+};
+
+/** The inverse of {@see xAt} — a physical x back to the nearest bucket index. */
+const indexAt = (x: number): number => {
     const count = props.points.length;
 
     if (count <= 1) {
-        return plot.value.left + plot.value.width / 2;
+        return 0;
     }
 
-    return plot.value.left + (index / (count - 1)) * plot.value.width;
+    const fraction = (x - plot.value.left) / Math.max(1, plot.value.width);
+    const along = isRtl.value ? 1 - fraction : fraction;
+
+    return Math.min(count - 1, Math.max(0, Math.round(along * (count - 1))));
 };
 
 const yAt = (value: number): number =>
@@ -132,16 +165,8 @@ function track(event: MouseEvent): void {
         return;
     }
 
-    // Logical, not physical: under RTL the first week sits on the right.
-    const offset = isRtl.value
-        ? box.right - event.clientX
-        : event.clientX - box.left;
-    const ratio = (offset - PAD.left) / Math.max(1, plot.value.width);
-
-    active.value = Math.min(
-        props.points.length - 1,
-        Math.max(0, Math.round(ratio * (props.points.length - 1))),
-    );
+    // Always the physical offset from the left edge — `indexAt` is what knows about direction.
+    active.value = indexAt(event.clientX - box.left);
 }
 
 function step(delta: number): void {
@@ -155,23 +180,103 @@ function step(delta: number): void {
     active.value = Math.min(count - 1, Math.max(0, next));
 }
 
-/** Tooltip offset in px, clamped so the card never hangs off either edge. */
+/**
+ * Tooltip offset in px, clamped so the card never hangs off either edge.
+ *
+ * It is set as `inset-inline-start`, which the browser measures from the **right** edge under RTL —
+ * so the physical x from `xAt` has to be flipped to match, or the card lands on the mirror image of
+ * the point it is describing.
+ */
 const TOOLTIP_WIDTH = 160; // `w-40`
 const tooltipOffset = computed(() => {
     if (active.value === null) {
         return 0;
     }
 
+    const x = xAt(active.value);
+    const fromInlineStart = isRtl.value ? chartWidth.value - x : x;
+
     return Math.min(
         Math.max(0, chartWidth.value - TOOLTIP_WIDTH),
-        Math.max(0, xAt(active.value) - TOOLTIP_WIDTH / 2),
+        Math.max(0, fromInlineStart - TOOLTIP_WIDTH / 2),
     );
 });
+
+/*
+ * Every piece of wording that names the bucket, in one place. Each entry is a translation key, so
+ * the chart reads correctly in Arabic too (ADR 0007).
+ */
+const WORDING: Record<
+    TrendGranularity,
+    {
+        eyebrow: string;
+        heading: string;
+        tooltip: string;
+        column: string;
+        summary: string;
+    }
+> = {
+    day: {
+        eyebrow: 'Day by day',
+        heading: 'What Alima found, day by day',
+        tooltip: ':date',
+        column: 'Day',
+        summary: 'Leads sourced and qualified by day',
+    },
+    week: {
+        eyebrow: 'Week by week',
+        heading: 'What Alima found, week by week',
+        tooltip: 'Week of :date',
+        column: 'Week beginning',
+        summary: 'Leads sourced and qualified by week',
+    },
+    month: {
+        eyebrow: 'Month by month',
+        heading: 'What Alima found, month by month',
+        tooltip: 'Month of :date',
+        column: 'Month',
+        summary: 'Leads sourced and qualified by month',
+    },
+};
+
+const wording = computed(() => WORDING[props.granularity]);
+
+/**
+ * A bucket's start, formatted at the bucket's own precision.
+ *
+ * A monthly bar covers October, not 1 October — printing the day would invite a reader to think the
+ * bar was about that date. Days and weeks do open on a date, so they keep one.
+ */
+const bucketDate = (startsOn: string): string =>
+    props.granularity === 'month'
+        ? date(startsOn, { year: 'numeric', month: 'long' })
+        : date(startsOn);
 
 const series = computed(() => [
     { key: 'sourced', label: t('Sourced'), tone: 'bg-chart-1' },
     { key: 'qualified', label: t('Strong fits'), tone: 'bg-chart-4' },
 ]);
+
+/**
+ * What the keyboard reader hears when they arrow onto a bucket.
+ *
+ * The chart promises "use the arrow keys to read each period" in its label, and a `role=application`
+ * region with an `aria-hidden` SVG has no other way to keep that promise: moving the crosshair
+ * changes pixels, which announces nothing. This sentence goes in a polite live region instead.
+ */
+const activeSummary = computed(() => {
+    const point = activePoint.value;
+
+    if (point === null) {
+        return '';
+    }
+
+    return t(':date — sourced :sourced, strong fits :qualified', {
+        date: bucketDate(point.starts_on),
+        sourced: number(point.sourced),
+        qualified: number(point.qualified),
+    });
+});
 
 const totals = computed(() => ({
     sourced: props.points.reduce((sum, point) => sum + point.sourced, 0),
@@ -186,12 +291,12 @@ const totals = computed(() => ({
                 <p
                     class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
                 >
-                    {{ t('Last :weeks weeks', { weeks }) }}
+                    {{ t(wording.eyebrow) }}
                 </p>
                 <h3
                     class="mt-2 text-xl font-semibold tracking-tight rtl:font-bold"
                 >
-                    {{ t('What Alima found, week by week') }}
+                    {{ t(wording.heading) }}
                 </h3>
                 <p class="mt-1 text-sm text-muted-foreground">
                     {{
@@ -226,9 +331,9 @@ const totals = computed(() => ({
             tabindex="0"
             role="application"
             :aria-label="
-                t(
-                    'Leads sourced and qualified by week — use the arrow keys to read each week',
-                )
+                t(':summary — use the arrow keys to read each period', {
+                    summary: t(wording.summary),
+                })
             "
             @mousemove="track"
             @mouseleave="active = null"
@@ -255,10 +360,14 @@ const totals = computed(() => ({
                             class="stroke-border"
                             stroke-width="1"
                         />
+                        <!--
+                          The axis labels sit outside the plot on whichever side it starts, so
+                          under RTL they move to the right of it and anchor the other way.
+                        -->
                         <text
-                            :x="plot.left - 8"
+                            :x="isRtl ? plot.right + 8 : plot.left - 8"
                             :y="yAt(tick) + 4"
-                            text-anchor="end"
+                            :text-anchor="isRtl ? 'start' : 'end'"
                             class="fill-muted-foreground font-mono text-xs"
                         >
                             {{ number(tick) }}
@@ -333,6 +442,12 @@ const totals = computed(() => ({
                 </g>
             </svg>
 
+            <!--
+              The spoken half of the crosshair. Polite, so it waits for a gap rather than cutting
+              across whatever the reader is already hearing.
+            -->
+            <p class="sr-only" aria-live="polite">{{ activeSummary }}</p>
+
             <div
                 v-if="activePoint"
                 class="pointer-events-none absolute top-0 w-40 rounded-xl border border-border bg-popover p-3 text-xs shadow-md"
@@ -340,8 +455,8 @@ const totals = computed(() => ({
             >
                 <p class="font-mono text-xs text-muted-foreground">
                     {{
-                        t('Week of :date', {
-                            date: date(activePoint.starts_on),
+                        t(wording.tooltip, {
+                            date: bucketDate(activePoint.starts_on),
                         })
                     }}
                 </p>
@@ -384,19 +499,21 @@ const totals = computed(() => ({
             <table>
                 <caption>
                     {{
-                        t('Leads sourced and qualified by week')
+                        t(wording.summary)
                     }}
                 </caption>
                 <thead>
                     <tr>
-                        <th scope="col">{{ t('Week beginning') }}</th>
+                        <th scope="col">{{ t(wording.column) }}</th>
                         <th scope="col">{{ t('Sourced') }}</th>
                         <th scope="col">{{ t('Strong fits') }}</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="point in points" :key="point.starts_on">
-                        <th scope="row">{{ date(point.starts_on) }}</th>
+                        <th scope="row">
+                            {{ bucketDate(point.starts_on) }}
+                        </th>
                         <td>{{ number(point.sourced) }}</td>
                         <td>{{ number(point.qualified) }}</td>
                     </tr>

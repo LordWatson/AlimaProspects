@@ -5,6 +5,75 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-30 — Phase 13: reporting you can filter, read and take away
+
+- **One date filter, scoping the whole screen.** Seven presets and a custom pair, cut in the
+  **team's** timezone and never running past now. Server-driven like the leads list, so a shared URL
+  reproduces exactly what the sender saw and a download carries the same window.
+- **The window picks a cohort, and every chart reports on it.** "Contacted" means _of the prospects
+  sourced in this window, how many have we approached_ — not how many approaches we made — so the
+  funnel narrows the way a funnel must. Reports that are about activity rather than about leads (AI
+  usage, team activity, outreach performance) are scoped by their own event time instead, and each
+  says so. A dashboard whose charts disagree is worse than no dashboard.
+- **A delta that is actually a comparison.** The previous window is equal in length and butts up
+  against where the current one opens, so "this month so far" is measured against the same number of
+  days before it rather than against the whole of last month. All time has no window before it, so
+  it carries no delta at all instead of a flattering one.
+- **The funnel's bottom half is real.** "Contacted" and "Replies" used to come down unavailable with
+  an em dash and "arrives with Outreach"; they are counts off `contact_attempts` now. An opt-out
+  counts as a reply — it is a reply, and a painful one, and hiding it would flatter the reply rate by
+  dropping exactly the responses worth learning from. A bounce does not: nobody read it.
+- **Four new reports.** How each **ideal customer profile** is doing at picking companies out
+  (retired profiles included and marked, because "the last one was better" is the most useful thing
+  that table can say); **outreach performance** by channel with reply rates; **team activity** per
+  member, read off the lead timeline; and **AI & data usage** per prompt, with the cache-hit rate
+  beside the cost — a falling hit rate is the first sign a bill is about to grow.
+- **CSV export of any report.** All eleven of them, through one writer: a report is a table, so a new
+  chart cannot ship unexportable. The file is what a spreadsheet wants rather than what a screen
+  wants — money in major units, rates as numbers with the unit in the header, dates in ISO-8601 —
+  with a UTF-8 BOM so Excel reads Arabic, every cell neutralised so a spreadsheet cannot run a
+  company name as a formula, and headers translated into the member's own language. Exports are
+  audited (who, which report, which window, how many rows) and the numbers are **not** copied into
+  the trail.
+- **The trend chart follows the filter.** Bars are days under a short window, weeks under a medium
+  one and months under a long one, and the first and last bucket are clamped to the window so the
+  bars add up to the same total the funnel reports.
+- **An empty cell is not a zero.** A reply rate over no attempts, an average with nothing to average:
+  the screen draws an em dash and the CSV leaves the cell blank. `0%` where we meant "nobody was
+  asked" is the one lie this whole module is built to avoid.
+- Read-only members can filter and export, same as they could always read. An export is the report in
+  a different window; gating the file behind a stricter role than the chart would stop the person
+  asked to read the numbers taking them to a meeting.
+
+### Fixed — 2026-10-30 — Reporting, after review
+
+- **A Dubai team's dashboard was four hours out.** The window's bounds were built on the team's
+  clock and handed straight to the query, and Laravel binds a date by formatting it without
+  converting — so team wall-clock time was compared against UTC columns. Every figure shifted at
+  both ends, the trend and the funnel disagreed about the same window, and a UTC-only test suite
+  could not see any of it. The bounds are converted now, and there is a non-UTC test that fails
+  without the conversion.
+- **A negative number in a CSV arrived as text.** Formula-neutralisation prefixes an apostrophe to
+  anything starting `-`, which is right for a company name and wrong for a KPI delta of `-2`: the
+  column the member wanted to sum could not be summed. Only cells that hold words are neutralised
+  now.
+- **An empty period looked like an empty account.** Filtering to a quiet week showed a team with a
+  thousand leads the first-run "here's how Alima works" explainer. An empty window now says so and
+  offers a way back to one that has something in it.
+- **A year-long window could lose its oldest bar.** A weekly window opening mid-week spans one more
+  bucket than its length suggests, and the 53rd was being dropped — putting leads in the funnel that
+  the chart never drew. The weekly ceiling allows for the overlap, and a window wholly in the future
+  no longer resolves to an inverted one.
+- The trend chart's geometry now mirrors properly in Arabic: hover, arrow keys, axis labels and the
+  tooltip had been disagreeing with where the line was actually drawn. A monthly bar is labelled as
+  a month rather than as the first of it, and arrowing along the chart is announced rather than only
+  drawn.
+- The report switcher dropped a half-built ARIA tab pattern — announcing "tab 1 of 4" and then not
+  behaving like one is worse for a screen-reader user than plain buttons — and the active period in
+  the filter is announced, not only ticked.
+- `fputcsv` is called with an explicit empty escape in both exporters: PHP's non-standard escaping
+  is deprecated as a default from 8.4 and could corrupt a cell ending in a backslash.
+
 ### Fixed — 2026-10-30 — Lead discovery looked for the company, not its customers
 
 - **The bug, plainly.** A graphic design studio asked Alima for leads and got back graphic design

@@ -23,7 +23,7 @@
 | 10c   | Leads Workspace — add a lead by hand          | ✅ Done | 2026-10-30 |
 | 11    | Outreach (MVP)                                | ✅ Done | 2026-10-30 |
 | 12    | Notifications                                 | ✅ Done | 2026-10-30 |
-| 13    | Reporting & Analytics                         | 🟡      | —          |
+| 13    | Reporting & Analytics                         | ✅ Done | 2026-10-30 |
 | 14    | AI Insights (light)                           | ⬜      | —          |
 | 15    | Compliance & Privacy features                 | ⬜      | —          |
 | 16    | Billing & Plans                               | ⬜      | —          |
@@ -403,19 +403,20 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Reporting & Analytics (`reporting-analytics.md`), `dataviz` skill.
 **Tasks:**
 
-1. [~] Aggregation services (optional rollup tables) over leads/scores/pipeline/outreach/AI usage. _(2026-10-30: the `Reporting` module exists — `DashboardReportBuilder` + 7 aggregation Actions reading leads/scores/pipeline/signals/AI usage live. No rollup tables. **Outreach now has a source of truth** (`outreach_messages`, `contact_attempts`) — the funnel's contacted and replied halves are available to wire.)_
-2. [~] Dashboard: KPIs, funnel by stage, source performance, ICP performance, team activity, AI credits. _(2026-10-30: KPIs, the funnel, a 12-week sourced-vs-qualified trend, the A–D fit mix, and breakdowns by pipeline stage / lead source / signal event type. **Still open:** ICP performance, team activity, and AI usage beyond a single spend tile.)_
-3. [~] Date-range filters; **CSV export** of any report; charts per the `dataviz` guidance. _(2026-10-30: charts built to the `dataviz` guidance — hand-rolled SVG/HTML on validated `--chart-*` tokens, no dependency. **Date-range filters and CSV export are not started.**)_
-   **Data model:** optional `report_rollups`.
-   **Tests:** aggregation correctness; date filter; CSV export; tenancy.
-   **Acceptance:** dashboard accurate + exportable; gates pass; docs updated.
-   **Done so far (2026-10-30, outside a formal phase run):** the dashboard and the chart
-   component set, with tests. What remains to close the phase: date-range filters, CSV export,
-   ICP/source performance and team-activity reports, fuller AI usage, and the Outreach halves of
-   the funnel, which Phase 11 has now made available (`contact_attempts` carries the channel,
-   the outcome and when).
-   **Dispatch prompt:** _"Execute Phase 13 of mvp.md (Reporting & Analytics). Read the module doc; load the dataviz skill for charts. Build the aggregation + dashboard + filters + CSV export, and tests."_
-   **Risks:** aggregation performance (consider rollups); chart accessibility.
+1. [x] Aggregation services (optional rollup tables) over leads/scores/pipeline/outreach/AI usage. _(2026-10-30: `DashboardReportBuilder` + **11** aggregation Actions reading leads/scores/pipeline/signals/outreach/the lead timeline/AI usage live. **No rollup tables** — live aggregation is fine at MVP volumes and `report_rollups` stays the documented escape hatch; nothing above the builder would change to add it.)_
+2. [x] Dashboard: KPIs, funnel by stage, source performance, ICP performance, team activity, AI credits. _(2026-10-30: KPIs, the funnel — now with its **contacted and replied** halves off `contact_attempts` — an adaptive sourced-vs-qualified trend, the A–D fit mix, breakdowns by pipeline stage / lead source / signal event type, and four tabular reports in a tabbed Performance section: **ICP performance**, **outreach performance** (by channel, with reply rates), **team activity** (per member, off the lead timeline) and **AI & data usage** (per prompt, with cache-hit rate and cost).)_
+3. [x] Date-range filters; **CSV export** of any report; charts per the `dataviz` guidance. _(2026-10-30: one date filter scoping the whole screen — seven presets plus a custom pair, cut in the team's timezone, server-driven so a shared URL reproduces what the sender saw; the trend's bucket width follows the window (daily/weekly/monthly). CSV export of **all eleven** reports through one writer, because `ReportKey` is a closed set and every report must project to a `ReportTable` — audited, rate-limited, BOM'd for Excel, formula-neutralised, translated.)_
+       **Data model:** optional `report_rollups` — **not added** (see task 1).
+       **Tests:** aggregation correctness; date filter; CSV export; tenancy. _(36 Reporting tests: window resolution, DST and the previous-window comparison, bucket clamping, the cohort rule, contacted-counts-leads-not-attempts, an opt-out counting as a reply, a null rate never rendering as zero, every report exporting, the audit entry, Read-only access, Arabic headers, and cross-tenant isolation per report.)_
+       **Acceptance:** ✅ dashboard accurate + exportable; gates pass (Pint, Larastan 7, 1162 Pest tests, `npm run check` + `types:check` + `build`); docs updated.
+       **Dispatch prompt:** _"Execute Phase 13 of mvp.md (Reporting & Analytics). Read the module doc; load the dataviz skill for charts. Build the aggregation + dashboard + filters + CSV export, and tests."_
+       **Risks:** _(Both addressed. **Aggregation performance:** an export deliberately runs the whole dashboard so the download cannot disagree with the screen, which makes it the first thing that will feel slow — it is metered by a per-member `reports-export` limiter, and `report_rollups` is the documented next step. **Chart accessibility:** every chart keeps its screen-reader table, the new report tables use a real `<th scope="row">` per row, the trend is keyboard-navigable, and the filter marks its active preset with a tick as well as a highlight, so nothing is colour-alone.)_
+       **One judgement worth recording:** the window selects a **cohort of leads**, and every
+       lead-derived figure reports on that cohort (so "contacted" is _of the prospects sourced in this
+       window, how many have we approached_, and the funnel stays monotonic). Activity reports — AI
+       usage, team activity, outreach performance — are scoped by their own event time instead. One
+       rule with its exceptions written down, because a dashboard whose charts disagree is worse than
+       no dashboard. See `docs/modules/reporting-analytics.md` → Key flows.
 
 ---
 
