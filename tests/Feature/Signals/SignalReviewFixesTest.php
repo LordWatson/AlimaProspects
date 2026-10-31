@@ -207,7 +207,7 @@ it('reports the ceiling through the API envelope', function (): void {
         'team_id' => $team->getKey(),
     ]));
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signal-watches.store'), [
         'name' => 'Nope', 'location' => 'Dubai', 'event_types' => ['acquisition'], 'cadence' => 'daily',

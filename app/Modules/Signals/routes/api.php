@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Auth\Enums\TokenAbility;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalWatchController;
 use Illuminate\Support\Facades\Route;
@@ -15,33 +16,46 @@ use Illuminate\Support\Facades\Route;
  * easier to loop than a button.
  */
 Route::middleware('auth:sanctum')->group(function (): void {
-    Route::get('signals', [SignalController::class, 'index'])->name('signals.index');
+    Route::get('signals', [SignalController::class, 'index'])
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signals.index');
     Route::get('signals/{signal}', [SignalController::class, 'show'])
         ->whereNumber('signal')
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
         ->name('signals.show');
     Route::post('signals/{signal}/convert', [SignalController::class, 'convert'])
         ->whereNumber('signal')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signals.convert');
     Route::post('signals/{signal}/dismiss', [SignalController::class, 'dismiss'])
         ->whereNumber('signal')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signals.dismiss');
     Route::post('signals/{signal}/restore', [SignalController::class, 'restore'])
         ->whereNumber('signal')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signals.restore');
 
-    Route::get('signal-watches', [SignalWatchController::class, 'index'])->name('signal-watches.index');
-    Route::post('signal-watches', [SignalWatchController::class, 'store'])->name('signal-watches.store');
+    Route::get('signal-watches', [SignalWatchController::class, 'index'])
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-watches.index');
+    Route::post('signal-watches', [SignalWatchController::class, 'store'])
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-watches.store');
     Route::get('signal-watches/{watch}', [SignalWatchController::class, 'show'])
         ->whereNumber('watch')
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
         ->name('signal-watches.show');
     Route::patch('signal-watches/{watch}', [SignalWatchController::class, 'update'])
         ->whereNumber('watch')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signal-watches.update');
     Route::delete('signal-watches/{watch}', [SignalWatchController::class, 'destroy'])
         ->whereNumber('watch')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signal-watches.destroy');
     Route::post('signal-watches/{watch}/run', [SignalWatchController::class, 'run'])
         ->whereNumber('watch')
-        ->middleware('throttle:signals-run')
+        ->middleware(['throttle:signals-run', 'ability:'.TokenAbility::SignalsWrite->value])
         ->name('signal-watches.run');
 });

@@ -38,7 +38,7 @@ it('reports which channels a lead may be approached on, and why not', function (
     [$user, $team] = Fixtures::team();
     [$lead] = Fixtures::restrictedLead($team, contactEmail: 'dana@acme.test');
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $response = $this->getJson(route('api.v1.outreach.decisions', $lead->getKey()))->assertOk();
 
@@ -59,7 +59,7 @@ it('drafts over the API and returns 201', function (): void {
 
     Fixtures::fakeAi()->queueStructured(Fixtures::aiDraft());
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.outreach.draft', $lead->getKey()), [
         'channel' => 'email',
@@ -80,7 +80,7 @@ it('returns a compliance error envelope when the guard refuses a draft', functio
     [$user, $team] = Fixtures::team();
     [$lead, $contact] = Fixtures::restrictedLead($team);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.outreach.draft', $lead->getKey()), [
         'channel' => 'email',
@@ -108,7 +108,7 @@ it('lists a lead\'s messages and attempts', function (): void {
         ]);
     });
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.outreach.messages.index', $lead->getKey()))
         ->assertOk()
@@ -123,7 +123,7 @@ it('logs an attempt and records its outcome', function (): void {
     [$user, $team] = Fixtures::team();
     [$lead, $contact] = Fixtures::lead($team);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $created = $this->postJson(route('api.v1.outreach.attempts.store', $lead->getKey()), [
         'channel' => 'call',
@@ -150,7 +150,7 @@ it('sends over the API', function (): void {
         'lead_contact_id' => $contact->getKey(),
     ]));
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.outreach.messages.send', $message->getKey()))
         ->assertOk()
@@ -162,7 +162,7 @@ it('sends over the API', function (): void {
 it('manages briefs over the API', function (): void {
     [$user] = Fixtures::team();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $created = $this->postJson(route('api.v1.outreach.templates.store'), [
         'name' => 'First touch',
@@ -197,7 +197,7 @@ it('lists the do-not-contact entries with a masked preview and no hash', functio
         ->forTeam((int) $team->getKey())
         ->create();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $response = $this->getJson(route('api.v1.outreach.suppressions.index'))
         ->assertOk()
@@ -216,7 +216,7 @@ it('lists the do-not-contact entries with a masked preview and no hash', functio
 it('adds and lifts a team entry, and refuses to lift a global opt-out', function (): void {
     [$user, $team] = Fixtures::team();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $created = $this->postJson(route('api.v1.outreach.suppressions.store'), [
         'type' => 'domain',
@@ -244,7 +244,7 @@ it('adds and lifts a team entry, and refuses to lift a global opt-out', function
 it('refuses an unusable suppression value with a readable reason', function (): void {
     [$user] = Fixtures::team();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.outreach.suppressions.store'), [
         'type' => 'email',
@@ -271,7 +271,7 @@ it('cannot reach another team\'s lead, message or attempt', function (): void {
             'lead_contact_id' => $otherContact->getKey(),
         ]));
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     // A 404 before any policy runs: the global scope hides the row, so the request can't even
     // learn that it exists.

@@ -78,7 +78,7 @@ it('honours per_page and caps it', function (): void {
     $this->actingAs($user, 'sanctum')
         ->getJson(route('api.v1.leads.index', ['per_page' => 5_000]))
         ->assertStatus(422)
-        ->assertJsonValidationErrors('per_page');
+        ->assertApiValidationErrors('per_page');
 });
 
 it('returns the lead, its score and its timeline in one response', function (): void {

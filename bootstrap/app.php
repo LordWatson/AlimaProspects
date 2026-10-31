@@ -2,6 +2,8 @@
 
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Modules\Auth\Http\Middleware\EnsureTokenAbility;
+use App\Modules\Core\Exceptions\ApiExceptionRenderer;
 use App\Modules\Core\Exceptions\DomainException;
 use App\Modules\Core\Http\Middleware\LogContext;
 use App\Modules\Core\Http\Middleware\SetLocale;
@@ -46,6 +48,13 @@ return Application::configure(basePath: dirname(__DIR__))
             SetLocale::class,
             LogContext::class,
         ]);
+
+        // Token scopes on /api/v1 (Phase 17). `ability:leads:read,leads:write` passes if the
+        // acting token carries any one of them; a first-party session caller carries no token and
+        // is let through at the web app's trust level. See EnsureTokenAbility.
+        $middleware->alias([
+            'ability' => EnsureTokenAbility::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
@@ -64,4 +73,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return back();
         });
+
+        // Everything else on `api/*` — a failed validation, a 404, a throttle, an unhandled
+        // throwable — answers with the same envelope as a domain exception, so a client has one
+        // error shape to parse rather than three. Scoped by path, not by `expectsJson()`: the web
+        // forms depend on Laravel's native 422 for their error bags.
+        $exceptions->render(
+            fn (Throwable $e, Request $request) => app(ApiExceptionRenderer::class)->render($e, $request),
+        );
     })->create();

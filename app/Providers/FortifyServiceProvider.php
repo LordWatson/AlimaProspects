@@ -13,6 +13,7 @@ use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -97,9 +98,19 @@ class FortifyServiceProvider extends ServiceProvider
             );
         });
 
-        // Global /api/v1 limiter — per authenticated token, else per IP.
+        // Global /api/v1 limiter — per acting token where there is one, else per user, else per
+        // IP. Per *token* rather than per user deliberately (CLAUDE.md §2): a member's phone and a
+        // long-running integration are different callers, and letting a script's retry loop
+        // exhaust the allowance the phone in their pocket is using would take the app down for the
+        // person, not for the script.
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(60)->by($request->user()?->getAuthIdentifier() ?: $request->ip());
+            $token = $request->user()?->currentAccessToken();
+
+            $key = $token instanceof PersonalAccessToken
+                ? 'token:'.$token->getKey()
+                : ($request->user()?->getAuthIdentifier() ?: $request->ip());
+
+            return Limit::perMinute(60)->by((string) $key);
         });
 
         // Hard limit on credential → token exchange to resist brute force.

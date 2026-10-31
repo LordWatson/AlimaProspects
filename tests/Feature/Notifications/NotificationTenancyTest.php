@@ -51,7 +51,7 @@ it('cannot mark another member\'s notification read over the API', function (): 
     app(NotificationDispatcher::class)->send($team, $owner, NotificationType::TopLeads, ['count' => 1]);
     $theirs = Notification::query()->sole();
 
-    Sanctum::actingAs($colleague);
+    Sanctum::actingAs($colleague, ['*']);
 
     // A 404, not a 403: they have no business learning it exists.
     $this->postJson(route('api.v1.notifications.read', $theirs->id))->assertNotFound();
@@ -69,7 +69,7 @@ it('cannot reach a notification from another team over the API', function (): vo
     app(NotificationDispatcher::class)->send($teamB, $user, NotificationType::TopLeads, ['count' => 1]);
     $inB = Notification::query()->forTeam($teamB)->sole();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.notifications.index'))->assertOk()->assertJsonCount(0, 'data');
     $this->getJson(route('api.v1.notifications.unread'))->assertOk()->assertJsonPath('data.unread', 0);
@@ -88,7 +88,7 @@ it('does not clear another team\'s notifications on read-all over the API', func
     app(NotificationDispatcher::class)->send($teamA, $user, NotificationType::TopLeads, ['count' => 1]);
     app(NotificationDispatcher::class)->send($teamB, $user, NotificationType::TopLeads, ['count' => 1]);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.notifications.read-all'))->assertOk()->assertJsonPath('data.cleared', 1);
 

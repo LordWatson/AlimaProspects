@@ -69,7 +69,7 @@ it('404s on another team’s insight over the API, for reads and writes alike', 
 
     $foreign = InsightFixtures::insight($otherTeam, InsightType::StaleLeads);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson("/api/v1/insights/{$foreign->getKey()}")->assertNotFound();
     $this->postJson("/api/v1/insights/{$foreign->getKey()}/dismiss")->assertNotFound();

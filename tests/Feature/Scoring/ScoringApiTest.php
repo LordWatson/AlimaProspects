@@ -138,5 +138,5 @@ it('validates the verdict', function (): void {
     $this->actingAs($user, 'sanctum')
         ->postJson(route('api.v1.scoring.feedback', ['lead' => $lead->getKey()]), [])
         ->assertStatus(422)
-        ->assertJsonValidationErrors('rating');
+        ->assertApiValidationErrors('rating');
 });

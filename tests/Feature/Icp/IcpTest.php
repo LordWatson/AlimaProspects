@@ -406,7 +406,7 @@ it('returns a validation envelope over the API', function (): void {
     $this->actingAs($user, 'sanctum')
         ->postJson(route('api.v1.icps.store'), icpPayload(['name' => '']))
         ->assertStatus(422)
-        ->assertJsonValidationErrors('name');
+        ->assertApiValidationErrors('name');
 });
 
 // --- Auth & role enforcement -------------------------------------------------------------------

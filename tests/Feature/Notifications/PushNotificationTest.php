@@ -36,7 +36,7 @@ it('lists only the member\'s own devices, without tokens', function (): void {
     Fixtures::device($owner, 'fcm-'.str_repeat('o', 140));
     Fixtures::device($stranger, 'fcm-'.str_repeat('s', 140));
 
-    Sanctum::actingAs($owner);
+    Sanctum::actingAs($owner, ['*']);
 
     $response = $this->getJson(route('api.v1.push-devices.index'))
         ->assertOk()
@@ -50,7 +50,7 @@ it('lists only the member\'s own devices, without tokens', function (): void {
 it('registers a device and never hands the token back', function (): void {
     [$user] = Fixtures::team();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $token = 'fcm-'.str_repeat('x', 140);
 
@@ -68,7 +68,7 @@ it('registers a device and never hands the token back', function (): void {
 it('re-registers the same token in place rather than duplicating it', function (): void {
     [$user] = Fixtures::team();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $token = 'fcm-'.str_repeat('y', 140);
 
@@ -92,7 +92,7 @@ it('re-assigns a token that turns up for a different member', function (): void 
 
     // A handset passed on, or a shared tablet. Leaving the old owner on it would send the new
     // owner's notifications to the previous one.
-    Sanctum::actingAs($second);
+    Sanctum::actingAs($second, ['*']);
     $this->postJson(route('api.v1.push-devices.store'), ['token' => $token, 'platform' => 'ios'])
         ->assertOk();
 
@@ -106,13 +106,13 @@ it('unregisters a device, and refuses to unregister somebody else\'s', function 
 
     [, $token] = Fixtures::device($owner);
 
-    Sanctum::actingAs($stranger);
+    Sanctum::actingAs($stranger, ['*']);
     $this->deleteJson(route('api.v1.push-devices.destroy'), ['token' => $token, 'platform' => 'ios'])
         ->assertNotFound();
 
     expect(PushDevice::query()->count())->toBe(1);
 
-    Sanctum::actingAs($owner);
+    Sanctum::actingAs($owner, ['*']);
     $this->deleteJson(route('api.v1.push-devices.destroy'), ['token' => $token, 'platform' => 'ios'])
         ->assertNoContent();
 

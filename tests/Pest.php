@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Modules\Auth\Actions\CreatePersonalTeamAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\ApiAssertions;
 use Tests\TestCase;
 
 /*
@@ -34,6 +35,10 @@ pest()->extend(TestCase::class)
 expect()->extend('toBeOne', function () {
     return $this->toBe(1);
 });
+
+// `/api/v1` contract assertions as TestResponse macros - assertApiError(),
+// assertApiValidationErrors(), assertApiVersion(). See Tests\Support\ApiAssertions.
+ApiAssertions::register();
 
 /*
 |--------------------------------------------------------------------------

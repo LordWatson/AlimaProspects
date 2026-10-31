@@ -41,7 +41,7 @@ it('cannot read, change or delete another team\'s brief over the API', function 
     $foreign = app(TeamContext::class)->run($otherTeam, fn (): OutreachTemplate => OutreachTemplate::factory()
         ->create(['team_id' => $otherTeam->getKey(), 'body' => 'Their angle.']));
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     // A 404 before any policy runs: the global scope hides the row, so the request cannot even
     // learn that it exists.
@@ -64,7 +64,7 @@ it('does not list another team\'s briefs', function (): void {
     app(TeamContext::class)->run($team, fn () => OutreachTemplate::factory()->create(['team_id' => $team->getKey()]));
     app(TeamContext::class)->run($otherTeam, fn () => OutreachTemplate::factory()->create(['team_id' => $otherTeam->getKey()]));
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.outreach.templates.index'))->assertOk()->assertJsonCount(1, 'data');
 });
@@ -83,7 +83,7 @@ it('does not leak another team\'s do-not-contact list, and shows every global en
         ->forTeam((int) $otherTeam->getKey())
         ->create();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $previews = collect($this->getJson(route('api.v1.outreach.suppressions.index'))
         ->assertOk()
@@ -106,7 +106,7 @@ it('cannot lift another team\'s do-not-contact entry over the API', function ():
         ->forTeam((int) $otherTeam->getKey())
         ->create();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     // The `scope_key` filter is the only thing standing here — this model has no tenant global
     // scope, by design, because a global opt-out must be visible to every team.
@@ -120,7 +120,7 @@ it('cannot draft, log or read messages against another team\'s lead over the API
     [, $otherTeam] = Fixtures::team('Other Co');
     [$otherLead, $otherContact] = Fixtures::lead($otherTeam);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.outreach.draft', $otherLead->getKey()), [
         'channel' => 'linkedin',
@@ -138,7 +138,7 @@ it('cannot draft, log or read messages against another team\'s lead over the API
     $this->postJson(route('api.v1.outreach.attempts.store', $otherLead->getKey()), [
         'channel' => 'call',
         'lead_contact_id' => $otherContact->getKey(),
-    ])->assertStatus(422)->assertJsonValidationErrors('lead_contact_id');
+    ])->assertStatus(422)->assertApiValidationErrors('lead_contact_id');
 
     expect(OutreachMessage::withoutGlobalScopes()->count())->toBe(0)
         ->and(ContactAttempt::withoutGlobalScopes()->count())->toBe(0);
@@ -156,7 +156,7 @@ it('cannot edit or delete another team\'s draft over the API', function (): void
             'body' => 'Their words.',
         ]));
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->patchJson(route('api.v1.outreach.messages.update', $foreign->getKey()), [
         'body' => 'Mine now.',

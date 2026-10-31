@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Auth\Enums\TokenAbility;
 use App\Modules\Notifications\Http\Controllers\Api\V1\NotificationController;
 use App\Modules\Notifications\Http\Controllers\Api\V1\PushDeviceController;
 use Illuminate\Support\Facades\Route;
@@ -13,18 +14,30 @@ use Illuminate\Support\Facades\Route;
  * a count is a fraction of the cost.
  *
  * The push-device routes are API-only: a registration token comes from the mobile app's runtime and
- * there is nothing for a web form to post.
+ * there is nothing for a web form to post. Registering a handset is a *write* on the member's
+ * notification settings, which is why it carries the write scope rather than a scope of its own.
  */
 Route::middleware('auth:sanctum')->group(function (): void {
-    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('notifications', [NotificationController::class, 'index'])
+        ->middleware('ability:'.TokenAbility::NotificationsRead->value)
+        ->name('notifications.index');
     Route::get('notifications/unread', [NotificationController::class, 'unread'])
+        ->middleware('ability:'.TokenAbility::NotificationsRead->value)
         ->name('notifications.unread');
     Route::post('notifications/read-all', [NotificationController::class, 'readAll'])
+        ->middleware('ability:'.TokenAbility::NotificationsWrite->value)
         ->name('notifications.read-all');
     Route::post('notifications/{notification}/read', [NotificationController::class, 'read'])
+        ->middleware('ability:'.TokenAbility::NotificationsWrite->value)
         ->name('notifications.read');
 
-    Route::get('push-devices', [PushDeviceController::class, 'index'])->name('push-devices.index');
-    Route::post('push-devices', [PushDeviceController::class, 'store'])->name('push-devices.store');
-    Route::delete('push-devices', [PushDeviceController::class, 'destroy'])->name('push-devices.destroy');
+    Route::get('push-devices', [PushDeviceController::class, 'index'])
+        ->middleware('ability:'.TokenAbility::NotificationsRead->value)
+        ->name('push-devices.index');
+    Route::post('push-devices', [PushDeviceController::class, 'store'])
+        ->middleware('ability:'.TokenAbility::NotificationsWrite->value)
+        ->name('push-devices.store');
+    Route::delete('push-devices', [PushDeviceController::class, 'destroy'])
+        ->middleware('ability:'.TokenAbility::NotificationsWrite->value)
+        ->name('push-devices.destroy');
 });

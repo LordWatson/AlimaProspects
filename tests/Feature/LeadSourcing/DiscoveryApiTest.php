@@ -113,7 +113,7 @@ it('returns a validation envelope for a bad source', function (): void {
     $this->actingAs($user, 'sanctum')
         ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['apollo']])
         ->assertStatus(422)
-        ->assertJsonValidationErrors('sources.0');
+        ->assertApiValidationErrors('sources.0');
 });
 
 it('never leaks another team’s run across the API', function (): void {
