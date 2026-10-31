@@ -68,6 +68,38 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
   committed specification. A per-endpoint test only covers the endpoints somebody remembered to write
   one for; this is what catches the next route that forgets.
 
+### Fixed — 2026-10-31 — Phase 17 review round
+
+From `laravel-module-reviewer` and `brand-reviewer` at the end of the phase. The full list, with
+what was accepted as-is and why, is `docs/api/README.md` §9.
+
+- **An exception carrying its own response became a 500.** `HttpResponseException` is not an
+  `HttpExceptionInterface`, so the new renderer took it as unhandled and threw away a deliberate
+  answer — an `abort($response)`, a FormRequest overriding `failedValidation`, a vendor package.
+  Latent, since nothing in `app/` throws one today; covered by a test now.
+- **An unmapped status answered `server_error`.** A 415 or a 419 told the client the fault was ours
+  and the request was worth retrying, which is the one conclusion it must not draw.
+- **A 5xx message reached the client verbatim**, debug or not. `abort(503, 'redis pool exhausted')`
+  is for the logs, not for a prospect's phone.
+- **The scope check read the bearer header** and treated its absence as first-party. No live bypass,
+  but the fail-open case sat on the common path, and every scope exercised through
+  `Sanctum::actingAs()` — which sets a token and sends no header — passed without being checked. It
+  now asks the credential, which answers correctly for all three things Sanctum hands over.
+- **Listing and revoking the account's other tokens was unscoped**, grouped in with identity. A token
+  issued to read leads could enumerate every integration on the account and switch them all off; it
+  needs `tokens:manage` now, while identity and a token retiring _itself_ stay unscopable.
+- **The scope picker could issue the opposite of what it was asked for.** With the limit on and
+  nothing ticked the form posted no `abilities[]`, which the server reads as "no scope asked for" —
+  a full-access token. Closed on both sides: the button is disabled in that state, and an explicitly
+  empty `abilities` array is a `422`.
+- **The per-token rate limit was one anybody could multiply** by minting another token; a per-user
+  ceiling sits over it now.
+- **The picker's layout and tab order.** `Label` is a flex row, so every scope string sat beside its
+  label instead of under it, and the Create button came before the fieldset, so a keyboard user met
+  it before seeing the choice. Plus `aria-describedby` on the hint, the app's own `tracking-eyebrow`
+  idiom on the group headings, and `dir="ltr"` on every mono scope string — `leads:read` is an
+  identifier and must not reorder under Arabic.
+
 ### Removed — 2026-10-31
 
 - **`GET /api/user`**, the starter kit's leftover closure. Unversioned, outside the error envelope,

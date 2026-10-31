@@ -82,18 +82,52 @@ it('lets a wildcard token do everything', function (): void {
     $this->withToken($token)->getJson(route('api.v1.notifications.unread'))->assertOk();
 });
 
-it('never scopes away identity or a token\'s own lifecycle', function (): void {
+it('never scopes away identity or a token retiring itself', function (): void {
     [$user] = Fixtures::team();
 
-    // A token with the narrowest scope there is must still be able to say who it belongs to, list
-    // its siblings and revoke itself — otherwise it is a credential nobody can clean up.
+    // A token with the narrowest scope there is must still be able to say who it belongs to and
+    // stand itself down — otherwise a wiped handset leaves a credential nobody can retire.
     $token = tokenFor($user, [TokenAbility::ReportsRead->value]);
 
     $this->withToken($token)->getJson(route('api.v1.user.show'))->assertOk();
-    $this->withToken($token)->getJson(route('api.v1.auth.tokens.index'))->assertOk();
     $this->withToken($token)->deleteJson(route('api.v1.auth.token.current'))->assertNoContent();
 
     expect($user->tokens()->count())->toBe(0);
+});
+
+it('refuses a narrow token the other tokens on the account', function (): void {
+    [$user] = Fixtures::team();
+
+    $narrow = tokenFor($user, [TokenAbility::LeadsRead->value]);
+    $other = $user->tokens()->firstOrFail();
+
+    // Listing every integration on an account and switching them off is a different power from
+    // retiring yourself, so it is scoped: a token issued to read leads cannot do either.
+    $this->withToken($narrow)
+        ->getJson(route('api.v1.auth.tokens.index'))
+        ->assertApiError(ApiErrorCode::InsufficientTokenAbility, 403);
+
+    $this->withToken($narrow)
+        ->deleteJson(route('api.v1.auth.tokens.destroy', ['token' => $other->getKey()]))
+        ->assertApiError(ApiErrorCode::InsufficientTokenAbility, 403);
+
+    expect($user->tokens()->count())->toBe(1);
+});
+
+it('lets a tokens:manage token read them', function (): void {
+    [$user] = Fixtures::team();
+
+    $manager = tokenFor($user, [TokenAbility::TokensManage->value]);
+    tokenFor($user, [TokenAbility::LeadsRead->value]);
+
+    $this->withToken($manager)
+        ->getJson(route('api.v1.auth.tokens.index'))
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        // Names and scopes, never a token value — the list is for auditing credentials, not for
+        // handing one out a second time.
+        ->assertJsonStructure(['data' => [['id', 'name', 'abilities']]])
+        ->assertJsonMissingPath('data.0.token');
 });
 
 it('answers a revoked token with unauthenticated, not forbidden', function (): void {

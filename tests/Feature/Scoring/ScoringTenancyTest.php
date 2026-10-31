@@ -83,7 +83,7 @@ it('404s when a member asks for another team’s lead score', function (): void 
         ->get(route('scoring.show', ['lead' => $foreignLead->getKey()]))
         ->assertNotFound();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.scoring.show', ['lead' => $foreignLead->getKey()]))
         ->assertNotFound();
 });

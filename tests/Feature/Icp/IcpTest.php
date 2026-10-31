@@ -255,14 +255,14 @@ it('requires authentication for the ICP API', function (): void {
 it('lists and creates ICPs over the API', function (): void {
     $user = createUserWithTeam();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.icps.store'), icpPayload())
         ->assertCreated()
         ->assertJsonPath('data.name', 'UK growth agencies')
         ->assertJsonPath('data.is_active', true)
         ->assertJsonCount(3, 'data.criteria');
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.icps.index'))
         ->assertOk()
         ->assertJsonCount(1, 'data')
@@ -271,22 +271,22 @@ it('lists and creates ICPs over the API', function (): void {
 
 it('updates, activates and deletes an ICP over the API', function (): void {
     $user = createUserWithTeam();
-    $this->actingAs($user, 'sanctum')->postJson(route('api.v1.icps.store'), icpPayload(['name' => 'One']))->assertCreated();
-    $this->actingAs($user, 'sanctum')->postJson(route('api.v1.icps.store'), icpPayload(['name' => 'Two']))->assertCreated();
+    $this->actingAs($user)->postJson(route('api.v1.icps.store'), icpPayload(['name' => 'One']))->assertCreated();
+    $this->actingAs($user)->postJson(route('api.v1.icps.store'), icpPayload(['name' => 'Two']))->assertCreated();
 
     $two = Icp::query()->where('name', 'Two')->firstOrFail();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->putJson(route('api.v1.icps.update', ['icp' => $two->id]), icpPayload(['name' => 'Two Renamed']))
         ->assertOk()
         ->assertJsonPath('data.name', 'Two Renamed');
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.icps.activate', ['icp' => $two->id]))
         ->assertOk()
         ->assertJsonPath('data.is_active', true);
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->deleteJson(route('api.v1.icps.destroy', ['icp' => $two->id]))
         ->assertNoContent();
 
@@ -295,10 +295,10 @@ it('updates, activates and deletes an ICP over the API', function (): void {
 
 it('shows a single ICP over the API', function (): void {
     $user = createUserWithTeam();
-    $this->actingAs($user, 'sanctum')->postJson(route('api.v1.icps.store'), icpPayload())->assertCreated();
+    $this->actingAs($user)->postJson(route('api.v1.icps.store'), icpPayload())->assertCreated();
     $icp = Icp::query()->firstOrFail();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.icps.show', ['icp' => $icp->id]))
         ->assertOk()
         ->assertJsonPath('data.id', $icp->id)
@@ -403,7 +403,7 @@ it('nulls a weight supplied on an exclusion and defaults a blank signal weight t
 it('returns a validation envelope over the API', function (): void {
     $user = createUserWithTeam();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.icps.store'), icpPayload(['name' => '']))
         ->assertStatus(422)
         ->assertApiValidationErrors('name');
@@ -427,10 +427,10 @@ it('forbids a read-only member from the write API routes', function (): void {
     $member->forceFill(['current_team_id' => $team->getKey()])->save();
     $member->refresh();
 
-    $this->actingAs($member, 'sanctum')->postJson(route('api.v1.icps.store'), icpPayload())->assertForbidden();
-    $this->actingAs($member, 'sanctum')->putJson(route('api.v1.icps.update', ['icp' => $icp->id]), icpPayload())->assertForbidden();
-    $this->actingAs($member, 'sanctum')->postJson(route('api.v1.icps.activate', ['icp' => $icp->id]))->assertForbidden();
-    $this->actingAs($member, 'sanctum')->deleteJson(route('api.v1.icps.destroy', ['icp' => $icp->id]))->assertForbidden();
+    $this->actingAs($member)->postJson(route('api.v1.icps.store'), icpPayload())->assertForbidden();
+    $this->actingAs($member)->putJson(route('api.v1.icps.update', ['icp' => $icp->id]), icpPayload())->assertForbidden();
+    $this->actingAs($member)->postJson(route('api.v1.icps.activate', ['icp' => $icp->id]))->assertForbidden();
+    $this->actingAs($member)->deleteJson(route('api.v1.icps.destroy', ['icp' => $icp->id]))->assertForbidden();
 });
 
 // --- Cross-tenant isolation --------------------------------------------------------------------
@@ -442,10 +442,10 @@ it('never leaks or mutates another team’s ICP across web and API routes', func
     $otherIcp = app(TeamContext::class)->run($otherTeam, fn (): Icp => Icp::query()->create(['name' => 'Theirs', 'is_active' => true]));
 
     // API: read/update/activate/delete all 404 (scoped away), row unchanged.
-    $this->actingAs($user, 'sanctum')->getJson(route('api.v1.icps.show', ['icp' => $otherIcp->id]))->assertNotFound();
-    $this->actingAs($user, 'sanctum')->putJson(route('api.v1.icps.update', ['icp' => $otherIcp->id]), icpPayload(['name' => 'Hacked']))->assertNotFound();
-    $this->actingAs($user, 'sanctum')->postJson(route('api.v1.icps.activate', ['icp' => $otherIcp->id]))->assertNotFound();
-    $this->actingAs($user, 'sanctum')->deleteJson(route('api.v1.icps.destroy', ['icp' => $otherIcp->id]))->assertNotFound();
+    $this->actingAs($user)->getJson(route('api.v1.icps.show', ['icp' => $otherIcp->id]))->assertNotFound();
+    $this->actingAs($user)->putJson(route('api.v1.icps.update', ['icp' => $otherIcp->id]), icpPayload(['name' => 'Hacked']))->assertNotFound();
+    $this->actingAs($user)->postJson(route('api.v1.icps.activate', ['icp' => $otherIcp->id]))->assertNotFound();
+    $this->actingAs($user)->deleteJson(route('api.v1.icps.destroy', ['icp' => $otherIcp->id]))->assertNotFound();
 
     // Web: edit/update/activate/destroy 404.
     $this->actingAs($user)->put(route('icp.update', ['icp' => $otherIcp->id]), icpPayload())->assertNotFound();
@@ -466,7 +466,7 @@ it('does not list another team’s ICPs in the web index or the API', function (
         ->get(route('icp.index'))
         ->assertInertia(fn ($page) => $page->has('icps', 1)->where('icps.0.name', 'Mine'));
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.icps.index'))
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.name', 'Mine');

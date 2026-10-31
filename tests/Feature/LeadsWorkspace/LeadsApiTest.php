@@ -24,7 +24,7 @@ it('returns a paginated page of leads as resources', function (): void {
     Fixtures::lead($team, ['company_name' => 'Bright Bean Coffee'], $icp, ScoreGrade::A, 88);
     Fixtures::lead($team, ['company_name' => 'Second Ltd', 'dedupe_key' => 'no:second']);
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.index'))
         ->assertOk()
         ->assertJsonCount(2, 'data')
@@ -48,13 +48,13 @@ it('applies the same filters as the web list', function (): void {
         'source' => LeadSource::WebSearch,
     ], $icp, ScoreGrade::D, 10);
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.index', ['grades' => ['A']]))
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.company_name', 'Strong fit');
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.index', ['sources' => ['web_search']]))
         ->assertOk()
         ->assertJsonCount(1, 'data')
@@ -68,14 +68,14 @@ it('honours per_page and caps it', function (): void {
         Fixtures::lead($team, ['company_name' => 'Acme '.$i, 'dedupe_key' => 'no:acme-'.$i]);
     }
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.index', ['per_page' => 2]))
         ->assertOk()
         ->assertJsonCount(2, 'data')
         ->assertJsonPath('meta.total', 3);
 
     // Asking for the whole table is a validation error, not a slow response.
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.index', ['per_page' => 5_000]))
         ->assertStatus(422)
         ->assertApiValidationErrors('per_page');
@@ -99,7 +99,7 @@ it('returns the lead, its score and its timeline in one response', function (): 
         ]);
     });
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.show', ['lead' => $lead->getKey()]))
         ->assertOk()
         ->assertJsonPath('data.lead.company_name', 'Bright Bean Coffee')
@@ -115,7 +115,7 @@ it('returns an ungraded lead with a null score rather than erroring', function (
 
     $lead = Fixtures::lead($team);
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.show', ['lead' => $lead->getKey()]))
         ->assertOk()
         ->assertJsonPath('data.score', null)
@@ -125,7 +125,7 @@ it('returns an ungraded lead with a null score rather than erroring', function (
 it('404s on a lead that does not exist', function (): void {
     [$user] = Fixtures::team();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.show', ['lead' => 999_999]))
         ->assertNotFound();
 });

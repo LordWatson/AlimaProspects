@@ -70,9 +70,17 @@ A token without the ability gets `403 insufficient_token_ability`, with what wou
 in `error.details.required_abilities` — so a client can say "reissue this token with `leads:write`"
 instead of sending someone round the sign-in loop for a problem signing in cannot fix.
 
-**Two kinds of route carry no scope, deliberately.** `GET /user` and `auth/tokens*`: a credential
-that cannot say who it belongs to, list its siblings or revoke itself is one nobody can audit or
-clean up, and withholding that would scope away the safety mechanism rather than any data.
+**Two routes carry no scope, deliberately**, and the line is narrow. `GET /user` and
+`DELETE /auth/token` — identity, and a token retiring **itself**: a credential that cannot say who it
+belongs to, or stand itself down when a handset is wiped, is one nobody can clean up, and
+withholding that scopes away the safety mechanism rather than any data. Listing the account's
+**other** tokens and revoking **them** is a different power — it would let a token issued to read
+leads enumerate every integration on the account and switch them all off — so `GET /auth/tokens` and
+`DELETE /auth/tokens/{id}` need `tokens:manage`.
+
+**Asking for a scope and naming none is an error, not a shortcut.** Omitting `abilities` issues a
+full-access token; sending `"abilities": []` is a `422`. The two requests mean opposite things, and
+collapsing them would hand full access to the caller who was trying to avoid it.
 
 Tokens are minted and revoked from **Settings → API tokens** in the web app, where the scope picker
 is built from the same enum.
@@ -123,9 +131,11 @@ which is which, and `tests/Feature/Api/V1/VersionAndPaginationTest.php` pins the
 
 ## 6. Rate limits
 
-- **60 requests a minute per token** (per user on a session, per IP before sign-in). Per _token_ on
-  purpose: a member's phone and a long-running integration are different callers, and a script's
-  retry loop should not take the app down for the person.
+- **60 requests a minute per token** (per user on a session, per IP before sign-in), **and 180 a
+  minute per user** over the top. Per _token_ because a member's phone and a long-running
+  integration are different callers, and a script's retry loop should not take the app down for the
+  person; per _user_ as well because anyone can mint another token from the settings screen, and a
+  per-token limit alone is one anybody can multiply.
 - **`POST /auth/token`: 5 a minute** per email + IP.
 - Tighter limits on the endpoints that spend money: `outreach-draft`, `outreach-send`, `scoring`,
   `signals-run`, `reports-export`, `leads-bulk`, `compliance-export`.
@@ -170,3 +180,57 @@ Scramble is a **dev dependency**: the document is a build artefact, so productio
 generator nor the `/docs/api` route. `config/scramble.php` therefore references no Scramble class —
 every config file is loaded on boot, and a class constant from a package that isn't installed is a
 fatal error rather than a missing feature.
+
+## 9. Review (2026-10-31)
+
+Reviewed at the end of Phase 17 by `laravel-module-reviewer` (backend) and `brand-reviewer` (the
+token settings screen). Fixed from their findings:
+
+- **`HttpResponseException` on `api/*` became a 500.** The renderer's `match` had no arm for it, and
+  it is not an `HttpExceptionInterface`, so an exception carrying its own finished response — an
+  `abort($response)`, a FormRequest overriding `failedValidation`, a vendor package — had that
+  response thrown away. Latent (nothing in `app/` throws one today), now covered by a test that
+  throws one on an `api/v1` route.
+- **Any unmapped status answered `server_error`.** A 415 or a 419 told the client the fault was ours
+  and the request was worth retrying, which is the one conclusion it must not draw. `fromStatus()`
+  now maps 400, 410 and 415 by name and falls back by status class.
+- **A 5xx message reached the client verbatim**, debug or not: `abort(503, 'redis pool exhausted')`
+  is for the logs, not for a prospect's phone. 5xx now answers with the code's own prose.
+- **The scope check read the bearer header** and treated its absence as first-party. There was no
+  live bypass, but it put the fail-open case on the common path, and it made any scope exercised
+  through `Sanctum::actingAs()` — which sets a token and sends no header — pass without being
+  checked. It now asks the credential (`tokenCan()`), which answers correctly for all three things
+  Sanctum hands over: a stored token's abilities decide, a session's `TransientToken` passes, and no
+  credential is refused.
+- **`tokens:manage`** was added for the two routes above, which had been left unscoped along with
+  identity.
+- **The per-token rate limit was a limit anyone could multiply** by minting another token. A
+  per-user ceiling now sits over it.
+- **The scope picker could issue the opposite of what it was asked for.** With the limit on and
+  nothing ticked, the form posted no `abilities[]` at all, which the server reads as "no scope
+  asked for" — a full-access token. Closed on both sides: the submit button is disabled in that
+  state, and an explicitly empty `abilities` array is now a `422`.
+- **The picker's layout and tab order.** `Label` is a flex row, so each scope string sat _beside_
+  its label rather than under it; and the Create button came before the fieldset in the DOM, so a
+  keyboard user met it before seeing the choice. Also: the hint is now tied to its checkbox with
+  `aria-describedby`, the group headings use the app's own `tracking-eyebrow` idiom with
+  `rtl:tracking-normal`, and every mono scope string is `dir="ltr"` — `leads:read` is an identifier
+  and must not reorder under Arabic.
+
+Accepted as-is, with reasons:
+
+- **A token's abilities cannot be edited after issue** (Sanctum stores them on the row): narrowing
+  one means revoking and minting another.
+- **A token row with `NULL` abilities would raise a `TypeError` inside Sanctum's `can()`.** The only
+  writer is `IssueApiTokenAction`, which always stores at least `['*']`, so this needs a
+  hand-written row; and the failure is a logged 500 with a generic message, not a bypass.
+- **Existing tokens carrying abilities outside the catalogue** would now be refused everywhere. The
+  validation is at issue time only, and nothing has shipped, so there is nothing in the field to
+  break — noted because that stops being true after Phase 21.
+- **The settings screens are hard-coded English**, this one included. That is consistent with
+  Profile, Security, Team and Appearance; only `settings/Notifications.vue` uses `useI18n`. A
+  settings-wide translation pass is a job of its own (and would want the `TokenAbility` labels
+  translated server-side at the same time), not a Phase 17 change that would make one screen the
+  odd one out.
+- **`Checkbox`'s focus ring is `ring-ring/50`**, under the 3:1 the brand intends. Pre-existing in the
+  base component; a design-system follow-up, not this diff's to fix.

@@ -7,6 +7,7 @@ namespace App\Modules\Core\Exceptions;
 use App\Modules\Core\Enums\ApiErrorCode;
 use App\Modules\Core\Http\Responses\ApiError;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -41,6 +42,11 @@ final class ApiExceptionRenderer
         return match (true) {
             // A domain exception renders itself through the same envelope; leave it alone.
             $e instanceof DomainException => null,
+            // Carries its own finished response (`abort($response)`, a FormRequest overriding
+            // `failedValidation`, a vendor package). The handler returns it one `match` arm later;
+            // taking it as "unhandled" would throw away a deliberate answer and send a 500 in its
+            // place.
+            $e instanceof HttpResponseException => null,
             $e instanceof ValidationException => $this->validation($e),
             $e instanceof AuthenticationException => ApiError::response(
                 ApiErrorCode::Unauthenticated,
@@ -77,9 +83,11 @@ final class ApiExceptionRenderer
         $code = ApiErrorCode::fromStatus($status);
         $message = trim($e->getMessage());
 
-        // A Symfony HttpException built by `abort()` with no message, or one whose message is an
-        // internal grumble about a malformed request, is not something to show a caller.
-        if ($message === '' || $e instanceof RequestExceptionInterface) {
+        // Three messages not to pass on: the empty one from an `abort()` with no text, an internal
+        // grumble about a malformed request, and **anything on a 5xx**. A server-side failure's
+        // message describes our internals — `abort(503, 'redis pool exhausted')` is for the logs,
+        // not for a prospect's phone — and the status already told the client what to do.
+        if ($message === '' || $status >= 500 || $e instanceof RequestExceptionInterface) {
             $message = $code->message();
         }
 

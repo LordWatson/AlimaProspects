@@ -8,7 +8,10 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Models\Lead;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 use Tests\Support\LeadsWorkspaceFixtures as Fixtures;
 
 /*
@@ -150,4 +153,53 @@ it('keeps a domain exception in the same envelope', function (): void {
     expect($response->json())->toHaveKey('error.code');
     expect($response->json('error.code'))->toBeString();
     expect($team->getKey())->toBeInt();
+});
+
+it('hands back a response an exception carried, instead of a 500', function (): void {
+    [$user] = Fixtures::team();
+
+    // `HttpResponseException` carries a finished response (an `abort($response)`, a FormRequest
+    // overriding `failedValidation`, a vendor package). The handler returns it one `match` arm
+    // after the render callbacks, so a renderer that treats it as unhandled throws away a
+    // deliberate answer and sends a 500 in its place.
+    Route::middleware(['api', 'auth:sanctum'])->get('api/v1/testing/carried-response', function (): never {
+        throw new HttpResponseException(new JsonResponse(['carried' => true], 418));
+    });
+
+    $this->actingAs($user)
+        ->getJson('api/v1/testing/carried-response')
+        ->assertStatus(418)
+        ->assertExactJson(['carried' => true]);
+});
+
+it('does not read an unmapped client error as a server error', function (): void {
+    [$user] = Fixtures::team();
+
+    // `server_error` tells a client the fault was ours and the request is worth retrying. For a
+    // 415 it is neither, and `code` is what a client branches on.
+    Route::middleware(['api', 'auth:sanctum'])->get('api/v1/testing/unsupported-type', function (): never {
+        abort(415);
+    });
+
+    $this->actingAs($user)
+        ->getJson('api/v1/testing/unsupported-type')
+        ->assertApiError(ApiErrorCode::UnsupportedMediaType, 415);
+});
+
+it('keeps the internals of a server error out of the response', function (): void {
+    [$user] = Fixtures::team();
+
+    // A 5xx message describes our internals. It belongs in the logs and in Sentry, not on a
+    // prospect's phone — and the status has already told the client what to do.
+    Route::middleware(['api', 'auth:sanctum'])->get('api/v1/testing/leaky-failure', function (): never {
+        abort(503, 'redis pool exhausted on worker-3');
+    });
+
+    $response = $this->actingAs($user)->getJson('api/v1/testing/leaky-failure');
+
+    $response->assertStatus(503)->assertApiError(ApiErrorCode::ServiceUnavailable);
+
+    expect($response->json('error.message'))
+        ->toBe(ApiErrorCode::ServiceUnavailable->message())
+        ->not->toContain('worker-3');
 });

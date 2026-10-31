@@ -236,7 +236,7 @@ it('requires authentication for the read-only API', function (): void {
 it('returns a null profile over the API before onboarding starts', function (): void {
     $user = createUserWithTeam();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.onboarding.show'))
         ->assertOk()
         ->assertJsonPath('data.profile', null)
@@ -249,7 +249,7 @@ it('exposes the profile and progress over the read-only API', function (): void 
     completeAllSteps($this);
     $this->post(route('onboarding.complete'))->assertRedirect();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.onboarding.show'))
         ->assertOk()
         ->assertJsonPath('data.profile.company_name', 'Acme')

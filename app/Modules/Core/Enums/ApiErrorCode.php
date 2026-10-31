@@ -18,13 +18,16 @@ use Symfony\Component\HttpFoundation\Response;
  */
 enum ApiErrorCode: string
 {
+    case BadRequest = 'bad_request';
     case Unauthenticated = 'unauthenticated';
     case Forbidden = 'forbidden';
     case InsufficientTokenAbility = 'insufficient_token_ability';
     case NotFound = 'not_found';
     case MethodNotAllowed = 'method_not_allowed';
+    case Gone = 'gone';
     case Conflict = 'conflict';
     case PayloadTooLarge = 'payload_too_large';
+    case UnsupportedMediaType = 'unsupported_media_type';
     case ValidationFailed = 'validation_failed';
     case Locked = 'locked';
     case TooManyRequests = 'too_many_requests';
@@ -39,17 +42,24 @@ enum ApiErrorCode: string
     public static function fromStatus(int $status): self
     {
         return match ($status) {
+            Response::HTTP_BAD_REQUEST => self::BadRequest,
             Response::HTTP_UNAUTHORIZED => self::Unauthenticated,
             Response::HTTP_FORBIDDEN => self::Forbidden,
             Response::HTTP_NOT_FOUND => self::NotFound,
             Response::HTTP_METHOD_NOT_ALLOWED => self::MethodNotAllowed,
+            Response::HTTP_GONE => self::Gone,
             Response::HTTP_CONFLICT => self::Conflict,
             Response::HTTP_REQUEST_ENTITY_TOO_LARGE => self::PayloadTooLarge,
+            Response::HTTP_UNSUPPORTED_MEDIA_TYPE => self::UnsupportedMediaType,
             Response::HTTP_UNPROCESSABLE_ENTITY => self::ValidationFailed,
             Response::HTTP_LOCKED => self::Locked,
             Response::HTTP_TOO_MANY_REQUESTS => self::TooManyRequests,
             Response::HTTP_SERVICE_UNAVAILABLE => self::ServiceUnavailable,
-            default => self::ServerError,
+            // An unmapped status still has to answer with an honest code. Falling back to
+            // `server_error` for anything unrecognised would tell a client that its own malformed
+            // request — a 415, a 418, a 419 — was our fault and worth retrying, which is the one
+            // conclusion it must not draw.
+            default => $status >= 500 ? self::ServerError : self::BadRequest,
         };
     }
 
@@ -59,13 +69,16 @@ enum ApiErrorCode: string
     public function message(): string
     {
         return match ($this) {
+            self::BadRequest => __('We could not make sense of that request.'),
             self::Unauthenticated => __('Sign in to continue.'),
             self::Forbidden => __('You do not have permission to do that.'),
             self::InsufficientTokenAbility => __('This token is not allowed to do that.'),
             self::NotFound => __('We could not find that.'),
             self::MethodNotAllowed => __('That method is not allowed on this endpoint.'),
+            self::Gone => __('That is no longer available.'),
             self::Conflict => __('That conflicts with something that already exists.'),
             self::PayloadTooLarge => __('That request was too large.'),
+            self::UnsupportedMediaType => __('We cannot read that format.'),
             self::ValidationFailed => __('Some of those details need another look.'),
             self::Locked => __('That is locked.'),
             self::TooManyRequests => __('Too many requests — try again shortly.'),

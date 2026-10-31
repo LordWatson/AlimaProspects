@@ -13,7 +13,6 @@ use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
-use Laravel\Sanctum\PersonalAccessToken;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -98,19 +97,36 @@ class FortifyServiceProvider extends ServiceProvider
             );
         });
 
-        // Global /api/v1 limiter — per acting token where there is one, else per user, else per
-        // IP. Per *token* rather than per user deliberately (CLAUDE.md §2): a member's phone and a
-        // long-running integration are different callers, and letting a script's retry loop
-        // exhaust the allowance the phone in their pocket is using would take the app down for the
-        // person, not for the script.
+        // Global /api/v1 limiter — **two** limits, both of which have to hold.
+        //
+        // Per *token*, because a member's phone and a long-running integration are different
+        // callers (CLAUDE.md §2): letting a script's retry loop exhaust the allowance the phone in
+        // their pocket is using would take the app down for the person, not for the script.
+        //
+        // And per *user* over the top, because a person can mint as many tokens as they like from
+        // the settings screen — a per-token limit alone is a per-token limit anyone can multiply by
+        // asking for another token. The ceiling is three tokens' worth: generous for a phone plus a
+        // couple of integrations, and still a bound on what one account can do to the database.
         RateLimiter::for('api', function (Request $request) {
-            $token = $request->user()?->currentAccessToken();
+            $user = $request->user();
 
-            $key = $token instanceof PersonalAccessToken
-                ? 'token:'.$token->getKey()
-                : ($request->user()?->getAuthIdentifier() ?: $request->ip());
+            if ($user === null) {
+                return Limit::perMinute(60)->by((string) $request->ip());
+            }
 
-            return Limit::perMinute(60)->by((string) $key);
+            // Keyed off the presented credential rather than the resolved token model: a hash of
+            // the bearer value is stable per token, needs no second lookup, and keeps the
+            // credential itself out of the cache key. No bearer value means a first-party session.
+            $bearer = (string) $request->bearerToken();
+
+            $callerKey = $bearer === ''
+                ? 'session:'.$user->getAuthIdentifier()
+                : 'token:'.hash('xxh128', $bearer);
+
+            return [
+                Limit::perMinute(60)->by($callerKey),
+                Limit::perMinute(180)->by('user:'.$user->getAuthIdentifier()),
+            ];
         });
 
         // Hard limit on credential → token exchange to resist brute force.

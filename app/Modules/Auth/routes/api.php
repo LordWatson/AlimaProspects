@@ -16,15 +16,22 @@ Route::post('auth/token', [ApiTokenController::class, 'issue'])
     ->name('auth.token.issue');
 
 Route::middleware('auth:sanctum')->group(function (): void {
-    // Identity and the token's own lifecycle carry **no scope**, deliberately (Phase 17): a token
-    // that cannot say who it belongs to, list its siblings or revoke itself is a credential nobody
-    // can audit or clean up, and withholding that would scope away the safety mechanism rather
-    // than any data. Everything else on /api/v1 declares an ability.
+    // Identity, and a token retiring **itself**, carry no scope deliberately (Phase 17): a
+    // credential that cannot say who it belongs to, or stand itself down when the handset is
+    // wiped, is one nobody can clean up, and withholding that scopes away the safety mechanism
+    // rather than any data.
     Route::get('user', [UserController::class, 'show'])->name('user.show');
-
-    Route::get('auth/tokens', [ApiTokenController::class, 'index'])->name('auth.tokens.index');
-    Route::delete('auth/tokens/{token}', [ApiTokenController::class, 'destroy'])->name('auth.tokens.destroy');
     Route::delete('auth/token', [ApiTokenController::class, 'destroyCurrent'])->name('auth.token.current');
+
+    // Reading and revoking the person's **other** tokens is a different power, and is scoped:
+    // without this, a token issued to read leads could enumerate every integration on the account
+    // and switch them all off.
+    Route::get('auth/tokens', [ApiTokenController::class, 'index'])
+        ->middleware('ability:'.TokenAbility::TokensManage->value)
+        ->name('auth.tokens.index');
+    Route::delete('auth/tokens/{token}', [ApiTokenController::class, 'destroy'])
+        ->middleware('ability:'.TokenAbility::TokensManage->value)
+        ->name('auth.tokens.destroy');
 
     Route::get('teams', [TeamController::class, 'index'])
         ->middleware('ability:'.TokenAbility::TeamRead->value)

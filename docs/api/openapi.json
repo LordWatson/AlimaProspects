@@ -6530,7 +6530,7 @@
                         "properties": {
                             "code": {
                                 "type": "string",
-                                "description": "Stable, machine-readable. Framework-level codes are one of `unauthenticated`, `forbidden`, `insufficient_token_ability`, `not_found`, `method_not_allowed`, `conflict`, `payload_too_large`, `validation_failed`, `locked`, `too_many_requests`, `unsupported_api_version`, `server_error`, `service_unavailable`; a module raises its own, e.g. `outreach.suppressed`. Branch on this, never on the message."
+                                "description": "Stable, machine-readable. Framework-level codes are one of `bad_request`, `unauthenticated`, `forbidden`, `insufficient_token_ability`, `not_found`, `method_not_allowed`, `gone`, `conflict`, `payload_too_large`, `unsupported_media_type`, `validation_failed`, `locked`, `too_many_requests`, `unsupported_api_version`, `server_error`, `service_unavailable`; a module raises its own, e.g. `outreach.suppressed`. Branch on this, never on the message."
                             },
                             "message": {
                                 "type": "string",
@@ -7585,7 +7585,7 @@
                     },
                     "abilities": {
                         "type": "array",
-                        "description": "Checked against the catalogue, not merely \"a string\": an ability nothing enforces\nis a scope that reads as a restriction and isn't one (Phase 17). Omit the key\nentirely for a full-access token.",
+                        "description": "Checked against the catalogue, not merely \"a string\": an ability nothing enforces\nis a scope that reads as a restriction and isn't one (Phase 17). `min:1` matters more than it looks. An **absent** key means \"no scope asked for\" and\nissues a full-access token, which is the right default; an **empty array** is a\ncaller that meant to limit the token and named nothing, and silently handing that\nrequest full access would be the opposite of what it asked for. So the two are told\napart here rather than collapsed.",
                         "items": {
                             "type": "string",
                             "enum": [
@@ -7608,9 +7608,11 @@
                                 "notifications:write",
                                 "reports:read",
                                 "team:read",
-                                "team:write"
+                                "team:write",
+                                "tokens:manage"
                             ]
-                        }
+                        },
+                        "minItems": 1
                     }
                 },
                 "required": [

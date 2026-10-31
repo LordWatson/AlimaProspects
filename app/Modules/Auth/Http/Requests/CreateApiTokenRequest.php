@@ -26,9 +26,14 @@ final class CreateApiTokenRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             // Checked against the catalogue, not merely "a string": an ability nothing enforces
-            // is a scope that reads as a restriction and isn't one (Phase 17). Omit the key
-            // entirely for a full-access token.
-            'abilities' => ['sometimes', 'array'],
+            // is a scope that reads as a restriction and isn't one (Phase 17).
+            //
+            // `min:1` matters more than it looks. An **absent** key means "no scope asked for" and
+            // issues a full-access token, which is the right default; an **empty array** is a
+            // caller that meant to limit the token and named nothing, and silently handing that
+            // request full access would be the opposite of what it asked for. So the two are told
+            // apart here rather than collapsed.
+            'abilities' => ['sometimes', 'array', 'min:1'],
             'abilities.*' => ['string', Rule::in(TokenAbility::issuable())],
         ];
     }

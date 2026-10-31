@@ -86,13 +86,13 @@ it('throttles and version-stamps every route', function (): void {
 });
 
 it('declares a token scope on every route that handles team data', function (): void {
-    // The exceptions, and why: identity and a token's own lifecycle cannot be scoped away without
-    // creating credentials nobody can audit or revoke, and the token exchange has no token yet.
+    // The three exceptions, and why: the token exchange has no token yet, and a credential that
+    // cannot say who it belongs to (`user.show`) or stand itself down (`auth.token.current`) is one
+    // nobody can clean up. Listing or revoking a person's *other* tokens is not on this list — it
+    // needs `tokens:manage`.
     $unscopable = [
         'api.v1.auth.token.issue',
         'api.v1.auth.token.current',
-        'api.v1.auth.tokens.index',
-        'api.v1.auth.tokens.destroy',
         'api.v1.user.show',
     ];
 

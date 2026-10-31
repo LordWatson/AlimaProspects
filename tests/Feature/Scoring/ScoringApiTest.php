@@ -54,7 +54,7 @@ it('requires authentication', function (): void {
 it('returns the score as a resource', function (): void {
     [$user, , $lead] = apiScoredLead();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.scoring.show', ['lead' => $lead->getKey()]))
         ->assertOk()
         ->assertJsonPath('data.lead_id', (int) $lead->getKey())
@@ -80,7 +80,7 @@ it('404s with the error envelope when the lead has no score', function (): void 
         'team_id' => $team->getKey(),
     ]));
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.scoring.show', ['lead' => $lead->getKey()]))
         ->assertStatus(404)
         ->assertJsonPath('error.code', 'scoring.not_scored');
@@ -91,7 +91,7 @@ it('queues a re-score and answers 202', function (): void {
 
     [$user, $team, $lead] = apiScoredLead();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.scoring.store', ['lead' => $lead->getKey()]))
         ->assertStatus(202)
         ->assertJsonPath('data.status', 'queued');
@@ -110,7 +110,7 @@ it('refuses a re-score for a read-only member', function (): void {
     app(TeamMembership::class)->add($readOnly, $team, TeamRole::ReadOnly);
     $readOnly->forceFill(['current_team_id' => $team->getKey()])->save();
 
-    $this->actingAs($readOnly, 'sanctum')
+    $this->actingAs($readOnly)
         ->postJson(route('api.v1.scoring.store', ['lead' => $lead->getKey()]))
         ->assertForbidden();
 
@@ -120,7 +120,7 @@ it('refuses a re-score for a read-only member', function (): void {
 it('records a verdict and returns the score carrying it', function (): void {
     [$user, , $lead] = apiScoredLead();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.scoring.feedback', ['lead' => $lead->getKey()]), [
             'rating' => 'bad',
             'comment' => 'Too generous.',
@@ -135,7 +135,7 @@ it('records a verdict and returns the score carrying it', function (): void {
 it('validates the verdict', function (): void {
     [$user, , $lead] = apiScoredLead();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.scoring.feedback', ['lead' => $lead->getKey()]), [])
         ->assertStatus(422)
         ->assertApiValidationErrors('rating');

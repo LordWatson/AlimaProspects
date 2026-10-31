@@ -139,3 +139,16 @@ it('refuses an ability the API does not enforce', function (): void {
 
     expect($user->tokens()->count())->toBe(0);
 });
+
+it('refuses a token that meant to be limited and named nothing', function (): void {
+    $user = createUserWithTeam();
+
+    // An empty `abilities` array is not the same request as no `abilities` at all. The first is a
+    // caller that meant to scope the token and named nothing; handing it full access would be the
+    // opposite of what it asked for, so it is a 422.
+    $this->actingAs($user)
+        ->post(route('api-tokens.store'), ['name' => 'Scoped to nothing', 'abilities' => []])
+        ->assertSessionHasErrors('abilities');
+
+    expect($user->tokens()->count())->toBe(0);
+});

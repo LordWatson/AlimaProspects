@@ -30,7 +30,7 @@ it('refuses an unauthenticated caller', function (): void {
 it('returns the team’s board, creating it if this is the first time', function (): void {
     [$user] = Fixtures::team();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.stages'))
         ->assertOk()
         ->assertJsonCount(5, 'data')
@@ -46,14 +46,14 @@ it('moves a lead and returns it with its new stage', function (): void {
 
     $lead = Fixtures::lead($team);
 
-    $stages = $this->actingAs($user, 'sanctum')
+    $stages = $this->actingAs($user)
         ->getJson(route('api.v1.leads.stages'))
         ->assertOk()
         ->json('data');
 
     $working = collect($stages)->firstWhere('slug', 'working');
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->putJson(route('api.v1.leads.stage.move', ['lead' => $lead->getKey()]), [
             'pipeline_stage_id' => $working['id'],
         ])
@@ -70,7 +70,7 @@ it('writes a note and returns it, 201', function (): void {
 
     $lead = Fixtures::lead($team);
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.leads.notes.store', ['lead' => $lead->getKey()]), [
             'body' => 'Rang them from the car.',
         ])
@@ -87,7 +87,7 @@ it('adds a task and returns it, 201', function (): void {
 
     $lead = Fixtures::lead($team);
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.leads.tasks.store', ['lead' => $lead->getKey()]), [
             'title' => 'Call them back',
             'assigned_to' => $user->getKey(),
@@ -109,7 +109,7 @@ it('ticks a task off and returns its new state', function (): void {
         'lead_id' => $lead->getKey(),
     ]));
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->putJson(route('api.v1.leads.tasks.complete', ['task' => $task->getKey()]), ['done' => true])
         ->assertOk()
         ->assertJsonPath('data.status', 'done');
@@ -122,7 +122,7 @@ it('sets a lead’s tags and returns the whole set', function (): void {
 
     $lead = Fixtures::lead($team);
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->putJson(route('api.v1.leads.tags.sync', ['lead' => $lead->getKey()]), [
             'tags' => ['warm', 'uk'],
         ])
@@ -137,7 +137,7 @@ it('sets who is working a lead and returns the lead', function (): void {
     $colleague = Fixtures::member($team, TeamRole::Member);
     $lead = Fixtures::lead($team);
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->putJson(route('api.v1.leads.assignees.set', ['lead' => $lead->getKey()]), [
             'user_ids' => [$colleague->getKey()],
         ])
@@ -154,7 +154,7 @@ it('refuses a write from a read-only member', function (): void {
     $readOnly = Fixtures::member($team, TeamRole::ReadOnly);
     $lead = Fixtures::lead($team);
 
-    $this->actingAs($readOnly, 'sanctum')
+    $this->actingAs($readOnly)
         ->postJson(route('api.v1.leads.notes.store', ['lead' => $lead->getKey()]), ['body' => 'nope'])
         ->assertForbidden();
 
@@ -170,11 +170,11 @@ it('404s rather than touching another team’s lead or task', function (): void 
         'lead_id' => $foreignLead->getKey(),
     ]));
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.leads.notes.store', ['lead' => $foreignLead->getKey()]), ['body' => 'sneaky'])
         ->assertNotFound();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->putJson(route('api.v1.leads.tasks.complete', ['task' => $foreignTask->getKey()]), ['done' => true])
         ->assertNotFound();
 
@@ -187,11 +187,11 @@ it('carries the workspace fields on a lead from the list and detail endpoints', 
 
     $lead = Fixtures::lead($team);
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->putJson(route('api.v1.leads.tags.sync', ['lead' => $lead->getKey()]), ['tags' => ['warm']])
         ->assertOk();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.index'))
         ->assertOk()
         ->assertJsonPath('data.0.tags.0.name', 'warm')

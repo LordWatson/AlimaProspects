@@ -41,7 +41,7 @@ it('lists the team’s discovery runs', function (): void {
     $team = $user->currentTeam()->firstOrFail();
     app(TeamContext::class)->run($team, fn () => DiscoveryRun::factory()->completed()->count(2)->create(['team_id' => $team->getKey()]));
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.lead-sourcing.runs.index'))
         ->assertOk()
         ->assertJsonCount(2, 'data')
@@ -54,7 +54,7 @@ it('starts a run over the API', function (): void {
     $user = createUserWithTeam();
     seedApiIcp($user->currentTeam()->firstOrFail());
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['companies_house']])
         ->assertCreated()
         ->assertJsonCount(1, 'data')
@@ -71,7 +71,7 @@ it('fans out to one run per source over the API', function (): void {
     $user = createUserWithTeam();
     seedApiIcp($user->currentTeam()->firstOrFail());
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['companies_house', 'google_places']])
         ->assertCreated()
         ->assertJsonCount(2, 'data');
@@ -96,7 +96,7 @@ it('shows a single run with its leads', function (): void {
         return $run;
     });
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.lead-sourcing.runs.show', ['run' => $run->getKey()]))
         ->assertOk()
         ->assertJsonPath('data.id', $run->getKey())
@@ -110,7 +110,7 @@ it('shows a single run with its leads', function (): void {
 it('returns a validation envelope for a bad source', function (): void {
     $user = createUserWithTeam();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['apollo']])
         ->assertStatus(422)
         ->assertApiValidationErrors('sources.0');
@@ -122,7 +122,7 @@ it('never leaks another team’s run across the API', function (): void {
     $otherTeam = Team::factory()->create();
     $otherRun = app(TeamContext::class)->run($otherTeam, fn (): DiscoveryRun => DiscoveryRun::factory()->create(['team_id' => $otherTeam->getKey()]));
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.lead-sourcing.runs.show', ['run' => $otherRun->getKey()]))
         ->assertNotFound();
 });
@@ -136,7 +136,7 @@ it('forbids a read-only member from starting a run over the API', function (): v
     app(TeamMembership::class)->add($member, $team, TeamRole::ReadOnly);
     $member->forceFill(['current_team_id' => $team->getKey()])->save();
 
-    $this->actingAs($member->refresh(), 'sanctum')
+    $this->actingAs($member->refresh())
         ->postJson(route('api.v1.lead-sourcing.runs.store'), ['sources' => ['companies_house']])
         ->assertForbidden();
 });

@@ -11,36 +11,38 @@ use App\Modules\Core\Http\Responses\ApiError;
 use Closure;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Request;
-use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Requires the bearer token behind the request to carry **at least one** of the given abilities
+ * Requires the credential behind the request to carry **at least one** of the given abilities
  * (Phase 17), aliased as `ability` and declared per route:
  *
  * ```php
  * Route::get('leads', ...)->middleware('ability:'.TokenAbility::LeadsRead->value);
  * ```
  *
- * **Scopes are a property of the bearer credential, not of the person.** A first-party caller —
- * a session cookie, which is how the web app and the Inertia screens reach anything — presents no
- * bearer token, and is let through: the browser session is already trusted at the full trust level
- * of an app that has no scopes at all, so refusing it here would make the same member *less*
- * trusted through `/api/v1` than through a page. What a session may do is decided where it has
- * always been decided, by the policies the controllers call.
+ * **The decision is the credential's, and it is `tokenCan()` that asks it.** Sanctum hands the
+ * user one of exactly three things, and that one call gives each the right answer:
  *
- * Whether a token was presented is read the way Sanctum itself reads it, through
- * `Sanctum::$accessTokenRetrievalCallback`, so a deployment that customises where the token comes
- * from cannot end up with a guard that looks somewhere else.
+ * - a stored **personal access token** — the case scopes exist for, so its own abilities decide
+ *   (and a token issued with `*` satisfies everything);
+ * - a **`TransientToken`** — a first-party session, which is how the web app and the Inertia
+ *   screens reach anything. It answers `true`, which is correct: a browser session is already
+ *   trusted at the full trust level of an app that has no scopes at all, so refusing it here would
+ *   make the same member *less* trusted through `/api/v1` than through a page. What a session may
+ *   do is decided where it has always been decided, by the policies the controllers call;
+ * - **nothing at all** — no credential, so no trust, and `tokenCan()` answers `false`.
+ *
+ * An earlier cut read the bearer header instead and treated its absence as first-party. It had no
+ * live bypass, but it put the fail-open case on the common path, and it made every scope exercised
+ * through `Sanctum::actingAs()` — which sets a token object and sends no header — pass untested.
+ * Asking the credential closes both: a test that means to exercise a scope either names it in
+ * `Sanctum::actingAs($user, [...])` or sends a real token, and a test that just means "a signed-in
+ * member" uses `actingAs($user)`, which is the session path the web app actually takes.
  *
  * Sanctum ships `CheckForAnyAbility`, which this deliberately replaces: it rejects the
- * cookie-authenticated caller outright, and it aborts with a bare 403 outside the error envelope
+ * session-authenticated caller outright, and it aborts with a bare 403 outside the error envelope
  * every client is written against ({@see ApiError}).
- *
- * **Testing a scope needs a real token.** `Sanctum::actingAs()` sets a token object on the user but
- * sends no credential with the request, so it reads as first-party here; a test that means to
- * exercise a scope issues a token and sends it as `Authorization: Bearer …`
- * (see `tests/Feature/Api/V1/TokenAbilityTest.php`).
  */
 final class EnsureTokenAbility
 {
@@ -57,10 +59,6 @@ final class EnsureTokenAbility
             throw new AuthenticationException;
         }
 
-        if ($this->presentedToken($request) === '') {
-            return $next($request);
-        }
-
         foreach ($abilities as $ability) {
             if ($user->tokenCan($ability)) {
                 return $next($request);
@@ -68,18 +66,5 @@ final class EnsureTokenAbility
         }
 
         throw TokenAbilityException::missing(array_values($abilities));
-    }
-
-    /**
-     * The bearer credential on this request, read exactly as Sanctum's guard reads it. Empty
-     * string when there is none.
-     */
-    private function presentedToken(Request $request): string
-    {
-        if (is_callable(Sanctum::$accessTokenRetrievalCallback)) {
-            return (string) (Sanctum::$accessTokenRetrievalCallback)($request);
-        }
-
-        return (string) $request->bearerToken();
     }
 }

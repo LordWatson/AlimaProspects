@@ -76,7 +76,7 @@ it('folds unplaced leads into the default stage on the API too', function (): vo
 
     // The fold is resolved inside the query, not by the controller, so every caller gets it —
     // the API used to miss it and silently drop every lead nobody had placed yet.
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.index', ['stages' => [$default->getKey()]]))
         ->assertOk()
         ->assertJsonCount(1, 'data')

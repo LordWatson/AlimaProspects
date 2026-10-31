@@ -18,9 +18,12 @@ use App\Modules\Auth\Http\Middleware\EnsureTokenAbility;
  * new endpoint a breaking change for existing tokens; a scope per resource group is the unit a
  * person can reason about ("let it read my leads, not send my email").
  *
- * Two kinds of route carry **no** ability. Identity (`GET user`) and a token's own management
- * (`auth/tokens*`) are not scopable: a token that cannot say who it belongs to or revoke itself is
- * a token nobody can clean up safely.
+ * Two routes carry **no** ability, and the line between them and the rest is narrow on purpose.
+ * Identity (`GET user`) and revoking **itself** (`DELETE auth/token`) are not scopable: a token that
+ * cannot say who it belongs to, or retire itself when a phone is wiped, is a credential nobody can
+ * clean up safely. Listing a person's *other* tokens and revoking *them* is a different power — it
+ * would let a token scoped to read leads enumerate every integration the account has and switch
+ * them all off — so that needs `tokens:manage`.
  */
 enum TokenAbility: string
 {
@@ -43,6 +46,7 @@ enum TokenAbility: string
     case ReportsRead = 'reports:read';
     case TeamRead = 'team:read';
     case TeamWrite = 'team:write';
+    case TokensManage = 'tokens:manage';
 
     /**
      * The wildcard Sanctum issues by default, and what an unscoped token carries.
@@ -92,6 +96,7 @@ enum TokenAbility: string
             self::ReportsRead => __('Read the dashboard and reports'),
             self::TeamRead => __('Read teams and setup state'),
             self::TeamWrite => __('Create teams and switch the current one'),
+            self::TokensManage => __('List and revoke your other API tokens'),
         };
     }
 
@@ -140,6 +145,7 @@ enum TokenAbility: string
             'notifications' => __('Notifications'),
             'reports' => __('Reports'),
             'team' => __('Team'),
+            'tokens' => __('API tokens'),
             default => $group,
         };
     }

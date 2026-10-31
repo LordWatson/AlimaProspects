@@ -61,6 +61,15 @@ const abilities = computed<string[]>(() =>
     limited.value ? selected.value : ['*'],
 );
 
+/**
+ * The limit is on and nothing is ticked. Worth its own name because it is the one state the form
+ * must not submit: with no `abilities[]` inputs the server reads "no scope asked for" and issues a
+ * full-access token — the opposite of what was being asked for.
+ */
+const nothingChosen = computed<boolean>(
+    () => limited.value && selected.value.length === 0,
+);
+
 function toggle(ability: string, checked: boolean): void {
     selected.value = checked
         ? [...selected.value, ability]
@@ -131,21 +140,15 @@ function copy(value: string): void {
             reset-on-success
             v-slot="{ errors, processing }"
         >
-            <div class="flex flex-wrap items-end gap-3">
-                <div class="grid flex-1 gap-2" style="min-width: 16rem">
-                    <Label for="token-name">Token name</Label>
-                    <Input
-                        id="token-name"
-                        name="name"
-                        placeholder="e.g. My iPhone"
-                        required
-                    />
-                    <InputError :message="errors.name" />
-                </div>
-                <Button :disabled="processing" data-test="create-token-button">
-                    <KeyRound class="size-4" />
-                    Create token
-                </Button>
+            <div class="grid gap-2" style="max-width: 24rem">
+                <Label for="token-name">Token name</Label>
+                <Input
+                    id="token-name"
+                    name="name"
+                    placeholder="e.g. My iPhone"
+                    required
+                />
+                <InputError :message="errors.name" />
             </div>
 
             <!--
@@ -162,13 +165,17 @@ function copy(value: string): void {
                     <Checkbox
                         id="limit-scope"
                         v-model="limited"
+                        aria-describedby="limit-scope-hint"
                         data-test="limit-scope"
                     />
                     <span class="text-sm">
                         <Label for="limit-scope" class="font-normal"
                             >Limit this token to certain things</Label
                         >
-                        <span class="mt-1 block text-muted-foreground">
+                        <span
+                            id="limit-scope-hint"
+                            class="mt-1 block text-muted-foreground"
+                        >
                             Leave this off and the token can do anything you
                             can. Turn it on for a script or an integration that
                             only needs part of Alima.
@@ -187,7 +194,7 @@ function copy(value: string): void {
                         class="space-y-2"
                     >
                         <p
-                            class="font-mono text-xs tracking-wide text-muted-foreground uppercase"
+                            class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                         >
                             {{ group.title }}
                         </p>
@@ -204,13 +211,20 @@ function copy(value: string): void {
                                         toggle(ability.value, checked === true)
                                 "
                             />
+                            <!--
+                                `flex-col`: Label is a row by default, which would set the scope
+                                string beside its own label instead of under it. And `dir="ltr"` on
+                                the string, because `leads:read` is an API identifier and must not
+                                reorder under Arabic.
+                            -->
                             <Label
                                 :for="`ability-${ability.value}`"
-                                class="text-sm font-normal"
+                                class="flex-col items-start gap-0.5 text-sm leading-snug font-normal"
                             >
                                 {{ ability.label }}
                                 <span
-                                    class="mt-0.5 block font-mono text-xs text-muted-foreground"
+                                    dir="ltr"
+                                    class="block font-mono text-xs text-muted-foreground"
                                     >{{ ability.value }}</span
                                 >
                             </Label>
@@ -219,7 +233,8 @@ function copy(value: string): void {
                 </div>
 
                 <p
-                    v-if="limited && selected.length === 0"
+                    v-if="nothingChosen"
+                    role="status"
                     class="text-sm text-muted-foreground"
                     data-test="no-abilities"
                 >
@@ -234,8 +249,24 @@ function copy(value: string): void {
                     name="abilities[]"
                     :value="ability"
                 />
-                <InputError :message="errors['abilities.0']" />
+                <InputError
+                    :message="errors.abilities ?? errors['abilities.0']"
+                />
             </fieldset>
+
+            <!--
+                Last, and after the scope: a keyboard user who met the button first would submit
+                before seeing the choice at all. Disabled while the limit is on with nothing
+                chosen, which is not a nicety — that form sends no `abilities[]`, an absent scope
+                means *full access*, and full access is the one thing the person was avoiding.
+            -->
+            <Button
+                :disabled="processing || nothingChosen"
+                data-test="create-token-button"
+            >
+                <KeyRound class="size-4" />
+                Create token
+            </Button>
         </Form>
 
         <Card v-if="tokens.length > 0">
@@ -266,6 +297,7 @@ function copy(value: string): void {
                                 :variant="
                                     ability === '*' ? 'secondary' : 'outline'
                                 "
+                                :dir="ability === '*' ? undefined : 'ltr'"
                                 class="font-mono"
                             >
                                 {{ abilityLabel(ability) }}
