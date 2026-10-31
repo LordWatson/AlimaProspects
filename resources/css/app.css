@@ -5,6 +5,20 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
+/*
+  The mobile app is not a Tailwind project, and Tailwind v4 auto-detects its
+  sources from the repository root — so without this it scans `mobile/src` and
+  emits any utility it finds there into *this* stylesheet.
+
+  That is worse than the wasted bytes it sounds like. There is no Tailwind in
+  `/mobile`'s build pipeline at all (it is Ionic variables plus scoped CSS), so a
+  utility class written in a mobile view does nothing on the handset while
+  silently adding dead CSS to the web bundle — a class that appears to work
+  because it compiled somewhere else. Excluding the directory makes the mobile
+  app's own styling rules the only ones in play there.
+*/
+@source not '../../mobile';
+
 @custom-variant dark (&:is(.dark *));
 
 /*
