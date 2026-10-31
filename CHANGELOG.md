@@ -5,6 +5,87 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-31 — API v1 hardening (Phase 17)
+
+- **One error shape, for everything.** `{error: {code, message, details?}}` was already the contract
+  for domain exceptions, and only for those: a failed validation came back as Laravel's
+  `{message, errors}`, and a 401, 404, 405 or 429 as a bare `{message}`. Three shapes, and which one
+  you got depended on which layer refused — the thing a client can least afford to guess at, since
+  it only finds out on the error path. `Core\Http\Responses\ApiError` is now the single definition
+  and both callers go through it: `DomainException::render()` and the new `ApiExceptionRenderer`,
+  registered centrally for everything the framework raises. Scoped to `api/*` **by path, not by
+  `expectsJson()`** — Inertia requests also expect JSON and every form in the app reads its error
+  bag from the native 422, so widening it would have broken all of them silently.
+- **Token scopes that actually bite.** Sanctum has stored abilities on every token since Phase 1 and
+  nothing ever checked one, so every token was effectively `*` and "scope this integration to
+  read-only" was a promise the API could not keep. `Auth\Enums\TokenAbility` defines the scopes —
+  one read/write pair per resource group, coarse on purpose so a person can reason about them and so
+  a new endpoint isn't a breaking change for existing tokens — and `EnsureTokenAbility` enforces
+  them per route. A refusal is a **403** naming what was missing, never a 401: re-authenticating
+  cannot widen a scope, and sending a client round the sign-in loop for it is a loop it never
+  leaves. A first-party session caller presents no bearer credential and is let through, because the
+  web app it stands in for has no scopes at all — refusing it would make the same member less
+  trusted through the API than through a page.
+- **A scope picker, because enforcement without one means nothing.** Settings → API tokens now
+  offers the catalogue (built from the enum, so a new ability appears in the UI by existing), shows
+  each token's scope, and both token requests validate against it: an ability nothing enforces is a
+  scope that reads as a restriction and isn't one. Leaving the limit off still issues `*` — the
+  permissive default on purpose, since a token that silently came out able to do nothing would fail
+  on first use with no clue why.
+- **A version policy, written down and enforced.** `X-Api-Version` on every response, errors
+  included. The version changes only for a change that would break a client already in the field;
+  everything additive ships inside it, which holds only if clients tolerate fields they do not
+  recognise — the one thing asked of them in return. A client may pin itself by sending the header,
+  and a mismatch is a `400` rather than a best-effort answer from the wrong contract.
+- **The dashboard reached the API.** `GET /api/v1/reports/dashboard` — Reporting had no API at all,
+  which would have stopped the mobile home screen dead. Same FormRequest, same Service, same figures
+  as the web screen, and the whole report rather than a lighter mobile subset: one window, one set of
+  numbers, and no second place for the cohort rules to drift.
+- **Pagination means one thing.** `per_page` is defined once with one ceiling
+  (`PaginatedIndexRequest`, 100). The two genuinely unbounded lists are now paged — discovery runs,
+  and the do-not-contact list, which only ever grows because every opt-out stays for as long as the
+  promise it records has to hold. The notification list stopped ignoring `per_page`. The handful of
+  lists bounded by a business rule still answer with `data` alone, and which are which is written
+  down rather than left to be discovered.
+- **The contract is generated, not described.** `docs/api/openapi.json`, built from the routes,
+  FormRequests and Resources themselves by `composer api:docs` (dedoc/scramble as a dev dependency —
+  the document is a build artefact, so production has neither the generator nor the `/docs/api`
+  route). `docs/api/README.md` is the prose beside it. A transformer writes in the two things the
+  generator cannot see: the error envelope, which lives in middleware rather than in any return
+  type, and a relative server URL, so the committed file doesn't carry whichever machine generated
+  it.
+- **Shared TypeScript the mobile app can import.** The API payload types moved from
+  `resources/js/types/` to `resources/js/shared/types/` — moved rather than duplicated by a
+  generator, because the hand-written set carries what a specification cannot express (which `label`
+  fields are translation keys, which unions are discriminated), and two sets would drift. `@/types`
+  re-exports them, so nothing in the web app changed. Beside them, `resources/js/shared/api/` adds
+  the envelope and pagination shapes and a small `fetch` client that sends the token, pins the
+  version, reads the envelope instead of guessing, and surfaces a 429 as something a caller can wait
+  on.
+- **The audit is a test, not a document.** `RouteContractTest` asserts over the whole route table
+  that every endpoint is versioned, named, behind Sanctum, throttled, version-stamped, scoped with an
+  ability the enum defines, handled by a controller rather than a closure, and present in the
+  committed specification. A per-endpoint test only covers the endpoints somebody remembered to write
+  one for; this is what catches the next route that forgets.
+
+### Removed — 2026-10-31
+
+- **`GET /api/user`**, the starter kit's leftover closure. Unversioned, outside the error envelope,
+  outside the scopes, and it returned the raw `User` model — the one thing the API rules forbid.
+  `GET /api/v1/user` already did the job properly. `routes/api.php` is now deliberately empty: every
+  route belongs to the module that owns the domain.
+
+### Fixed — 2026-10-31
+
+- **Error responses carried no `X-Api-Version`.** The middleware sets the header on the way back out
+  and an exception never comes back out through it, so the one kind of response a client most needs
+  the header on was the one without it. Stamped in `ApiError`, the builder they all share.
+- **The `/api/v1` rate limiter keyed on the user, not the token**, despite the comment saying
+  otherwise. A member's phone and a long-running integration are different callers; a script's retry
+  loop could exhaust the allowance the phone in their pocket was using.
+- A stray indentation in `docs/brand/brand-tokens.md` that had `npm run check` failing before this
+  phase started.
+
 ### Changed — 2026-10-30 — App navigation & the auth screen
 
 - **The sidebar reads as chapters.** `AppSidebar.vue` was two flat groups ("Workspace" 01–10 and
