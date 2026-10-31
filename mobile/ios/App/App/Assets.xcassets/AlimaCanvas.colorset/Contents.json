@@ -1,0 +1,39 @@
+{
+  "comment" : "Cloud Cream, the app canvas (brand-tokens.md §2.1 bg.canvas). The dark value is Midnight Ink and is PENDING BRAND-OWNER APPROVAL (§7.1), matching mobile/src/theme/brand.css.",
+  "colors" : [
+    {
+      "color" : {
+        "color-space" : "srgb",
+        "components" : {
+          "alpha" : "1.000",
+          "blue" : "0xE8",
+          "green" : "0xF2",
+          "red" : "0xF5"
+        }
+      },
+      "idiom" : "universal"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "color" : {
+        "color-space" : "srgb",
+        "components" : {
+          "alpha" : "1.000",
+          "blue" : "0x23",
+          "green" : "0x17",
+          "red" : "0x18"
+        }
+      },
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

@@ -53,6 +53,12 @@ export default defineConfig({
             'resources/js/components/ui/*',
             'resources/js/routes/**',
             'resources/js/wayfinder/**',
+            // The mobile app (Phase 18) is its own Vite project with its own oxlint and oxfmt
+            // configuration — `mobile/.oxlintrc.json` and `mobile/.oxfmtrc.json`, set to the same
+            // rules and the same style as these. It is excluded here rather than linted twice,
+            // because this pass would also reach its committed native projects: Gradle files,
+            // Xcode asset catalogues and a `project.pbxproj`, none of which are ours to format.
+            'mobile/**',
         ],
         options: {
             denyWarnings: true,
@@ -81,6 +87,9 @@ export default defineConfig({
             // Published vendor views: Laravel's own markup, deliberately kept diffable against
             // upstream. The brand lives in the theme stylesheet beside them.
             'resources/views/vendor/mail/**',
+            // See the lint note above: `mobile/` formats itself, and its native projects are
+            // written by Xcode and the Capacitor CLI.
+            'mobile/**',
         ],
         sortTailwindcss: {
             functions: ['clsx', 'cn', 'cva'],

@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Modules\Auth\Actions\CreatePersonalTeamAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
 use Tests\Support\ApiAssertions;
 use Tests\TestCase;
 
@@ -54,6 +55,37 @@ ApiAssertions::register();
 function something()
 {
     // ..
+}
+
+/**
+ * Swap Fortify's TOTP provider for one that accepts exactly `$code`.
+ *
+ * The real provider derives the code from the clock and the stored secret, so a test cannot know
+ * what it would accept without reimplementing it — and a test that reimplemented it would pass
+ * whether or not the app consulted the provider at all. Faking the seam instead keeps the
+ * assertion on *our* flow: that the code reached the provider and that its verdict decided.
+ */
+function fakeTwoFactorCode(string $code): void
+{
+    app()->instance(TwoFactorAuthenticationProvider::class, new class($code) implements TwoFactorAuthenticationProvider
+    {
+        public function __construct(private readonly string $expected) {}
+
+        public function generateSecretKey(): string
+        {
+            return 'secret';
+        }
+
+        public function qrCodeUrl($companyName, $companyEmail, $secret): string
+        {
+            return 'otpauth://totp/fake';
+        }
+
+        public function verify($secret, $code): bool
+        {
+            return $code === $this->expected;
+        }
+    });
 }
 
 /**

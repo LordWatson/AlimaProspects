@@ -1,0 +1,48 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+    // The mobile app's lint rules.
+    //
+    // The root project lints through vite-plus (`vp check`, ADR 0003) with warnings denied and
+    // type-aware rules on. This project is a plain Vite app, so it runs oxlint — the same engine
+    // vite-plus uses — directly, at the equivalent strictness. `npm run types:check` (vue-tsc)
+    // covers what the type-aware pass would.
+    "plugins": ["typescript", "unicorn", "oxc", "promise", "vue", "vitest"],
+
+    "categories": {
+        "correctness": "error",
+        "suspicious": "error",
+        "perf": "error",
+        "pedantic": "warn"
+    },
+
+    "rules": {
+        "eqeqeq": "error",
+        "no-console": "error",
+        "typescript/consistent-type-imports": "error",
+        "typescript/no-explicit-any": "error",
+        "typescript/no-non-null-assertion": "warn",
+
+        // Vue single-file components are PascalCase by convention and the lib modules
+        // camelCase; one rule cannot describe both, and the layout is consistent without it.
+        "unicorn/filename-case": "off"
+    },
+
+    "overrides": [
+        {
+            "files": ["**/*.test.ts"],
+            "rules": {
+                // A `describe` block is one function as far as the linter is concerned, and a
+                // suite split to satisfy a line count is a suite that reads worse.
+                "max-lines-per-function": "off",
+
+                // The mocks here stand in for `fetch`, whose type the call site already asserts
+                // on the way into `ApiClient`. Typing `vi.fn` as well would restate it, less
+                // precisely, in the place where it matters least.
+                "vitest/require-mock-type-parameters": "off"
+            }
+        }
+    ],
+
+    "ignorePatterns": ["dist/**", "android/**", "ios/**", "node_modules/**"]
+}

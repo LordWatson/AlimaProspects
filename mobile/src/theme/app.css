@@ -1,0 +1,338 @@
+/*
+ * App-level styles on top of Ionic's own: the few utilities the screens share, the Arabic type
+ * treatment, and the accessibility floors the brand sets (CLAUDE.md §2a: WCAG AA, keyboard nav,
+ * EN/AR + RTL).
+ *
+ * Deliberately small. Anything that looks like a component belongs in `src/components/`, and
+ * anything that looks like a brand value belongs in `brand.css`.
+ */
+
+/* ---- Type ----------------------------------------------------------------------------------
+   Arabic is set in Tajawal and ~10% larger (brand-tokens.md §3). The font token is redefined
+   under [dir='rtl'] rather than set on `body`, so every component that resolves
+   var(--alima-font-sans) follows — including Ionic's shadow DOM, which a `body` rule cannot
+   reach. DM Mono has no Arabic glyphs, so mono labels fall back to Tajawal too.
+
+   Arabic is NEVER letter-spaced: tracking would break Tajawal's joined letterforms, so the
+   eyebrow token is neutralised and any stray tracking stripped.                               */
+html[dir='rtl'] {
+    font-size: 110%;
+    --alima-font-sans: 'Tajawal', 'Arial', ui-sans-serif, system-ui, sans-serif;
+    --alima-font-mono: 'Tajawal', 'Arial', ui-sans-serif, system-ui, sans-serif;
+    --alima-tracking-eyebrow: 0;
+}
+
+html[dir='rtl'] .alima-eyebrow,
+html[dir='rtl'] .alima-mono {
+    letter-spacing: 0;
+}
+
+body {
+    font-family: var(--alima-font-sans);
+    background: var(--alima-bg-canvas);
+    color: var(--alima-text-primary);
+}
+
+/* A tracked, capitalised label — the app's own eyebrow idiom, matching the web app's
+   `tracking-eyebrow`. */
+.alima-eyebrow {
+    font-family: var(--alima-font-mono);
+    /* 12px — brand-tokens.md §3's eyebrow size, scaled from the desktop 13px. */
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: var(--alima-tracking-eyebrow);
+    color: var(--alima-text-muted);
+}
+
+/* An identifier — a score, a scope string, a company number. Always LTR: `leads:read` and
+   `SC123456` are identifiers and must not reorder under Arabic. */
+.alima-mono {
+    font-family: var(--alima-font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.alima-ltr {
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+.alima-h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    margin: 0;
+    color: var(--alima-text-primary);
+}
+
+html[dir='rtl'] .alima-h1 {
+    letter-spacing: 0;
+}
+
+.alima-h2 {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 0;
+    color: var(--alima-text-primary);
+}
+
+/* Secondary prose. 14px is the floor used throughout the app for anything that is a
+   sentence; captions and metadata that are a word or a number sit at 13px, recorded as an
+   accepted exception in brand-tokens.md §7. */
+.alima-muted {
+    color: var(--alima-text-muted);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+/* A native control. 16px is not a style choice: iOS Safari zooms the whole page when a form
+   field under 16px takes focus, and a WebView does the same — so a 14px select makes the app
+   jump every time someone opens one. 44px is the minimum touch target. */
+.alima-select {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 10px;
+    border: 1px solid var(--alima-border-control);
+    border-radius: var(--alima-radius-sm);
+    background: var(--alima-bg-surface);
+    color: var(--alima-text-primary);
+    font: inherit;
+    font-size: 1rem;
+}
+
+/*
+ * A chip that is a choice — a stage, a tone, a channel, an outcome.
+ *
+ * A real `<button>` rather than an `ion-chip` with a click handler, because `ion-chip` renders
+ * no role, no tabindex and no pressed state: it is reachable by a mouse and a finger and by
+ * nothing else. These are the app's main write interaction, so keyboard and switch access are
+ * not optional (WCAG 2.1.1, 4.1.2), and `aria-pressed` is what makes the selected one audible
+ * rather than merely a different fill.
+ */
+.alima-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--alima-border-control);
+    border-radius: var(--alima-radius-pill);
+    background: transparent;
+    color: var(--alima-text-secondary);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.alima-choice[aria-pressed='true'] {
+    background: var(--alima-teal);
+    border-color: var(--alima-teal);
+    color: var(--alima-cream);
+}
+
+.alima-dark .alima-choice[aria-pressed='true'] {
+    background: var(--alima-teal-60);
+    border-color: var(--alima-teal-60);
+    color: var(--alima-ink);
+}
+
+.alima-choice:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Marks a choice that cannot be taken back — the two outcomes that suppress a contact. The
+   sentence beside it says what it means; the dash is what survives being read without colour. */
+.alima-choice--grave {
+    border-style: dashed;
+}
+
+.alima-choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* ---- Layout -------------------------------------------------------------------------------- */
+
+/* The page gutter. 20px matches the brand's mobile grid margin (brand-tokens.md §6), and the
+   safe-area inset keeps content clear of a rounded screen's corners in landscape. */
+.alima-page {
+    padding: 16px calc(20px + var(--ion-safe-area-left, 0px)) 24px
+        calc(20px + var(--ion-safe-area-right, 0px));
+}
+
+.alima-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.alima-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.alima-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+/* ---- Surfaces ------------------------------------------------------------------------------ */
+
+.alima-card {
+    background: var(--alima-bg-surface);
+    border: 1px solid var(--alima-border);
+    border-radius: var(--alima-radius-md);
+    padding: 16px;
+    box-shadow: var(--alima-shadow-sm);
+}
+
+.alima-section-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+/* ---- Accessibility -------------------------------------------------------------------------
+   A visible focus ring on every keyboard-reachable thing. Ionic's own ring is faint, and the
+   brand asks for a 3:1 indicator — a Bluetooth keyboard on a tablet is a real way to use this
+   app, and so is switch control.                                                              */
+:focus-visible {
+    /* 3px, which is the `focus.ring` token's own width (brand-tokens.md §2.1) — Ionic's default
+       is both thinner and fainter. */
+    outline: 3px solid var(--alima-focus-ring);
+    outline-offset: 2px;
+}
+
+/* Content hidden from sight but not from a screen reader. */
+.alima-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ---- Ionic overrides ----------------------------------------------------------------------- */
+
+/* Pill buttons and chips (brand-tokens.md §2.2 / §5: chips and buttons are pill, cards 8–24). */
+ion-button {
+    --border-radius: var(--alima-radius-pill);
+    --box-shadow: none;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+ion-chip {
+    --background: var(--alima-cream-sunken);
+    --color: var(--alima-text-secondary);
+    border-radius: var(--alima-radius-pill);
+    font-weight: 500;
+}
+
+/*
+ * Arabic, ~10% larger (brand-tokens.md §3).
+ *
+ * The `font-size: 110%` on the root above scales everything sized in `rem`, which is all of this
+ * app's own CSS — but Ionic sizes its own components in `px`, inside shadow DOM, so the chrome a
+ * member touches most would have stayed at Latin size. These are the component-level variables
+ * Ionic exposes for exactly that, so the bump reaches the toolbar, the tabs, the buttons and the
+ * segments too.
+ */
+html[dir='rtl'] {
+    --alima-ionic-scale: 1.1;
+}
+
+html[dir='rtl'] ion-title {
+    font-size: calc(1.0625rem * var(--alima-ionic-scale));
+}
+
+html[dir='rtl'] ion-button {
+    --padding-start: 1.1em;
+    --padding-end: 1.1em;
+    font-size: calc(1rem * var(--alima-ionic-scale));
+}
+
+html[dir='rtl'] ion-tab-button,
+html[dir='rtl'] ion-segment-button,
+html[dir='rtl'] ion-chip,
+html[dir='rtl'] ion-badge,
+html[dir='rtl'] ion-note,
+html[dir='rtl'] ion-label,
+html[dir='rtl'] ion-input,
+html[dir='rtl'] ion-textarea,
+html[dir='rtl'] ion-toast,
+html[dir='rtl'] ion-alert {
+    font-size: calc(1rem * var(--alima-ionic-scale));
+}
+
+ion-card {
+    border-radius: var(--alima-radius-md);
+    box-shadow: var(--alima-shadow-sm);
+    border: 1px solid var(--alima-border);
+    margin-inline: 0;
+}
+
+ion-toolbar {
+    --border-color: var(--alima-border);
+    --min-height: 52px;
+}
+
+ion-title {
+    font-weight: 600;
+}
+
+/* The tab bar is the app's one piece of persistent chrome; keep it on a surface rather than the
+   canvas so it reads as chrome and not as content that has run out. */
+ion-tab-bar {
+    --background: var(--alima-bg-surface);
+    --border: 1px solid var(--alima-border);
+    --color: var(--alima-text-muted);
+    --color-selected: var(--alima-teal);
+}
+
+.alima-dark ion-tab-bar {
+    --color-selected: var(--alima-teal-60);
+}
+
+ion-item {
+    --border-color: var(--alima-border);
+    --padding-start: 16px;
+    --inner-padding-end: 16px;
+}
+
+/* Inputs get the brand's control border (3.1:1) rather than Ionic's hairline. */
+ion-input,
+ion-textarea,
+ion-select {
+    --border-color: var(--alima-border-control);
+    --highlight-color-focused: var(--alima-focus-ring);
+}
+
+ion-refresher-content {
+    --color: var(--alima-teal);
+}

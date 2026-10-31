@@ -20,7 +20,8 @@
         "/auth/token": {
             "post": {
                 "operationId": "v1.auth.token.issue",
-                "summary": "Exchange email + password for a personal access token (guest, throttled)",
+                "description": "Two-factor accounts are answered in one request rather than Fortify's session-backed dance\n(Phase 18): a client posts the credentials, gets a `423 auth.two_factor_required` naming\nwhat it may send, and posts the lot again with `code` or `recovery_code`. See\n{@see TwoFactorChallenge} for why that is the safe shape for a caller with no session, and\n{@see ExchangeCredentialsForTokenAction} for why the challenge and the mint share one\ntransaction.",
+                "summary": "Exchange email + password \u2014 and a second factor, where the account has one \u2014 for a personal\naccess token (guest, throttled)",
                 "tags": [
                     "ApiToken"
                 ],
@@ -58,28 +59,6 @@
                             }
                         }
                     },
-                    "423": {
-                        "description": "An error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "description": "Error overview.",
-                                            "examples": [
-                                                "Two-factor is enabled on this account. Create a token from the web app."
-                                            ]
-                                        }
-                                    },
-                                    "required": [
-                                        "message"
-                                    ]
-                                }
-                            }
-                        }
-                    },
                     "422": {
                         "description": "Validation failed. `error.details` is keyed by input name.",
                         "content": {
@@ -112,6 +91,16 @@
                     },
                     "429": {
                         "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "423": {
+                        "description": "The password was right and the account has two-factor authentication on, so it is not enough on its own. `error.code` is `auth.two_factor_required` and `error.details.methods` lists what to send next (`code`, `recovery_code`). Re-post the same credentials with one of them.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -7613,6 +7602,21 @@
                             ]
                         },
                         "minItems": 1
+                    },
+                    "code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "The second factor, when the account has one (Phase 18). Both are optional here\nbecause a client cannot know whether this account needs one until it has asked: a\nfirst post without either gets a 423 naming what to send next, and whether what\ncame back is enough is the TwoFactorChallenge service's answer, not a rule's.\nConstraining `code` to six digits would also refuse a recovery code typed into the\nwrong box with the wrong sentence.",
+                        "maxLength": 64
+                    },
+                    "recovery_code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
                     }
                 },
                 "required": [

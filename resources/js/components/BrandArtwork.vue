@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue';
-import type { Artwork } from '@/components/brand/artwork';
+import type { Artwork } from '@/shared/brand/artwork';
 
 /*
  * Renders one piece of Alima master artwork as an inline, single-colour SVG that inherits

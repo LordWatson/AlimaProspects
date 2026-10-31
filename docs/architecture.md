@@ -10,8 +10,8 @@ A multi-tenant SaaS that helps businesses find, qualify and contact prospects wi
 
 - **Backend:** Laravel 13, PHP 8.5, MySQL 8 (utf8mb4). Redis + Horizon (queues), Reverb (realtime), Pennant (flags), Sanctum + Fortify (auth), spatie/laravel-permission (team-scoped roles), spatie/laravel-data (DTOs), Cashier/Stripe (billing, later), `laravel/ai` behind our `AiClient` (AI).
 - **Web:** Inertia v2 + Vue 3 (`<script setup>`) + TypeScript + Tailwind v4 (official Vue starter kit; `vite-plus` toolchain).
-- **Mobile:** Capacitor + Ionic Vue + TS in `/mobile`, consuming `/api/v1` with Sanctum tokens.
-- **Shared FE:** `resources/js/shared/` for web + mobile — `types/` (the API payload types, moved here in Phase 17 and re-exported by `@/types`), `api/` (the error envelope, pagination shapes and a typed `fetch` client), and `tokens.ts` (brand tokens).
+- **Mobile:** Capacitor + Ionic Vue + TS in `/mobile` (its own npm project; **built in Phase 18**), consuming `/api/v1` with a scoped Sanctum token. A field companion rather than a second web app — see `modules/mobile-app.md` for what it deliberately leaves on the web, and `runbooks/mobile-dev.md` for how to run it.
+- **Shared FE:** `resources/js/shared/` for web + mobile — `types/` (the API payload types, moved here in Phase 17 and re-exported by `@/types`), `api/` (the error envelope, pagination shapes and a typed `fetch` client), `tokens.ts` (brand tokens), and `brand/artwork.ts` (the master logo path data, moved here in Phase 18 so one mark serves both apps and the native icons). The mobile project reaches it by Vite alias (`@shared`), never by copy; `lang/` is shared the same way (`@lang`).
 - **Obs:** Sentry (BE/FE/mobile), Pulse (ops). **CI:** GitHub Actions (Pint, Larastan L7, Pest, vue-tsc, build).
 
 ## 3. Request → logic → response
@@ -82,36 +82,36 @@ flowchart TD
   Bill -->|allowance low| Notif
   Core --> Admin[Admin internal]
   LW --> Integ[Integrations post-MVP]
-  API[API v1] --> Mob[Mobile App post-MVP]
+  API[API v1] --> Mob[Mobile App iOS + Android]
 ```
 
-| #   | Module                        | Status                   | Doc                                      |
-| --- | ----------------------------- | ------------------------ | ---------------------------------------- |
-| 1   | Core                          | MVP                      | `modules/core.md`                        |
-| 2   | Auth & Users                  | MVP                      | `modules/auth-users.md`                  |
-| 3   | Onboarding & Business Profile | MVP                      | `modules/onboarding-business-profile.md` |
-| 4   | ICP                           | MVP                      | `modules/icp.md`                         |
-| 5   | Business Intelligence         | MVP                      | `modules/business-intelligence.md`       |
-| 6   | AI Platform                   | MVP                      | `modules/ai-platform.md`                 |
-| 7   | Lead Sourcing                 | MVP                      | `modules/lead-sourcing.md`               |
-| 8   | Enrichment & Data Quality     | MVP                      | `modules/enrichment-data-quality.md`     |
-| 9   | Scoring & Matching            | MVP                      | `modules/scoring-matching.md`            |
-| 10  | Leads Workspace               | MVP                      | `modules/leads-workspace.md`             |
-| 10c | Signals (trigger events)      | MVP (UAE v1, S0–S6)      | `modules/signals.md`                     |
-| 11  | Outreach                      | MVP (built, Phase 11)    | `modules/outreach.md`                    |
-| 12  | Reporting & Analytics         | MVP (built, Phase 13)    | `modules/reporting-analytics.md`         |
-| 13  | AI Insights                   | MVP (built, Phase 14)    | `modules/ai-insights.md`                 |
-| 14  | Notifications                 | MVP (built, Phase 12)    | `modules/notifications.md`               |
-| 15  | Billing & Plans               | MVP (built, Phase 16)    | `modules/billing-plans.md`               |
-| 16  | Compliance & Privacy          | MVP (built, Phase 15)    | `modules/compliance-privacy.md`          |
-| 17  | Admin (internal)              | MVP (minimal)            | `modules/admin.md`                       |
-| 18  | Integrations                  | Post-MVP                 | `modules/integrations.md`                |
-| 19  | Mobile App                    | Post-MVP (API v1 is MVP) | `modules/mobile-app.md`                  |
+| #   | Module                        | Status                | Doc                                      |
+| --- | ----------------------------- | --------------------- | ---------------------------------------- |
+| 1   | Core                          | MVP                   | `modules/core.md`                        |
+| 2   | Auth & Users                  | MVP                   | `modules/auth-users.md`                  |
+| 3   | Onboarding & Business Profile | MVP                   | `modules/onboarding-business-profile.md` |
+| 4   | ICP                           | MVP                   | `modules/icp.md`                         |
+| 5   | Business Intelligence         | MVP                   | `modules/business-intelligence.md`       |
+| 6   | AI Platform                   | MVP                   | `modules/ai-platform.md`                 |
+| 7   | Lead Sourcing                 | MVP                   | `modules/lead-sourcing.md`               |
+| 8   | Enrichment & Data Quality     | MVP                   | `modules/enrichment-data-quality.md`     |
+| 9   | Scoring & Matching            | MVP                   | `modules/scoring-matching.md`            |
+| 10  | Leads Workspace               | MVP                   | `modules/leads-workspace.md`             |
+| 10c | Signals (trigger events)      | MVP (UAE v1, S0–S6)   | `modules/signals.md`                     |
+| 11  | Outreach                      | MVP (built, Phase 11) | `modules/outreach.md`                    |
+| 12  | Reporting & Analytics         | MVP (built, Phase 13) | `modules/reporting-analytics.md`         |
+| 13  | AI Insights                   | MVP (built, Phase 14) | `modules/ai-insights.md`                 |
+| 14  | Notifications                 | MVP (built, Phase 12) | `modules/notifications.md`               |
+| 15  | Billing & Plans               | MVP (built, Phase 16) | `modules/billing-plans.md`               |
+| 16  | Compliance & Privacy          | MVP (built, Phase 15) | `modules/compliance-privacy.md`          |
+| 17  | Admin (internal)              | MVP (minimal)         | `modules/admin.md`                       |
+| 18  | Integrations                  | Post-MVP              | `modules/integrations.md`                |
+| 19  | Mobile App                    | Built (Phase 18)      | `modules/mobile-app.md`                  |
 
 ## 5. Cross-cutting concerns
 
 - **Tenancy (Core):** single DB, `team_id` on every tenant table, `BelongsToTeam` global scope + policy double-check, multi-team membership with an active team (ADR 0006).
-- **The API (`/api/v1`)** — see `docs/api/README.md`, `docs/api/openapi.json` for the generated contract, and **ADR 0013** for why it is shaped this way. Six properties hold of _every_ endpoint, asserted over the whole route table in `tests/Feature/Api/V1/RouteContractTest.php` rather than endpoint by endpoint: it is versioned (there is no unversioned surface; `routes/api.php` is empty and each module declares its own), behind Sanctum (bar the token exchange), scoped by a token ability (`Auth\Enums\TokenAbility`, bar identity and a token's own lifecycle), answering with an API Resource and never a model, failing in the one envelope (`Core\Http\Responses\ApiError`), and throttled per token. Hardened in **Phase 17**; the mobile app (Phase 18) is its first full consumer.
+- **The API (`/api/v1`)** — see `docs/api/README.md`, `docs/api/openapi.json` for the generated contract, and **ADR 0013** for why it is shaped this way. Six properties hold of _every_ endpoint, asserted over the whole route table in `tests/Feature/Api/V1/RouteContractTest.php` rather than endpoint by endpoint: it is versioned (there is no unversioned surface; `routes/api.php` is empty and each module declares its own), behind Sanctum (bar the token exchange), scoped by a token ability (`Auth\Enums\TokenAbility`, bar identity and a token's own lifecycle), answering with an API Resource and never a model, failing in the one envelope (`Core\Http\Responses\ApiError`), and throttled per token. Hardened in **Phase 17**; the mobile app (Phase 18) is its first full consumer, and the first caller that is not same-origin — which is what `config/cors.php` exists for (§6a of the API README: `exposed_headers`, or the client cannot read the version pin or a 429's `Retry-After` at all).
 - **i18n / RTL (ADR 0007):** EN + AR, RTL-aware components and brand tokens from the design-system phase.
 - **Page chrome:** every authenticated screen renders in `AppLayout` (teal rail + cream surface) and opens with **`PageHero`** — the Ink card carrying the screen's sidebar number, its statement with an Acid Lime tail, the one Orange rule, the screen's actions (`hero` Button variant for secondaries on Ink) and **one panda peek**. The hero carries the page's single `<h1>`; the shell topbar's title is a label.
 - **The peek is the same on every screen** — Soft Lilac, set into the bottom end corner of the hero and cropped by the card on two edges, matching the reference screens in `resources/screenshots/`. It does not vary by page: a screen is told apart by its number, its statement and its headline figure, not by moving the panda. Offsets are logical, so the peek sits on the reading-end side and the **layout** mirrors under RTL while the mark never does. The artwork is never altered — §4's "Never" list includes turning the pupils.

@@ -8,6 +8,9 @@
  * Holding the artwork here rather than in `public/brand/*.svg` is what lets one lock-up serve all
  * eight approved colourways (§4): an `<img>` carries a baked-in fill and so needs a file per
  * colour, while an inline path simply inherits the text colour of whatever it sits on.
+ *
+ * Under `shared/` since Phase 18 so the mobile app draws the same mark from the same path data —
+ * a logo that exists twice is a logo that drifts.
  */
 export type Artwork = {
     viewBox: string;

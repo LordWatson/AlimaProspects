@@ -56,6 +56,25 @@ POST /api/v1/auth/token
 → 201 { "token": "…", "user": { … } }
 ```
 
+**Two-factor accounts settle in the same request** (Phase 18). A first post with the credentials
+alone answers `423` with code `auth.two_factor_required` and `details.methods`, naming what it will
+accept next; the client then posts **the same credentials again** plus `code` (six digits from the
+authenticator app) or `recovery_code`. A wrong one is a `422` on that field, not another `423` — the
+client already asked, and what came back was wrong.
+
+```http
+POST /api/v1/auth/token
+{ "email": "…", "password": "…", "device_name": "Nadia's iPhone", "code": "123456" }
+```
+
+Three properties of that shape, because they are the reasons it is safe for a caller with no
+session. The password is checked **before** anything reveals that the account has a second factor,
+so a `423` is never a way to probe which accounts have it switched on. Nothing is parked
+server-side between the two requests, so possession of a half-finished challenge is not itself a
+credential. And a recovery code is spent on use and replaced, exactly as the web challenge spends
+it. `Auth\Services\TwoFactorChallenge` does the verifying, through Fortify's own provider and
+encrypter — what counts as a valid code is not reimplemented here.
+
 Then `Authorization: Bearer <token>` on everything. Omit `abilities` for a full-access (`*`) token.
 A first-party browser **session** is also accepted — that is how the web app's own screens reach
 these endpoints — and carries no scopes, because the app it stands in for has none.
@@ -143,6 +162,20 @@ which is which, and `tests/Feature/Api/V1/VersionAndPaginationTest.php` pins the
 A `429` carries `Retry-After`. Plan allowances are a separate matter and are enforced in the guards,
 not here (ADR 0012): exhausting a team's AI credit or lead allowance is a domain error with its own
 code, not a throttle.
+
+## 6a. Cross-origin callers
+
+The API is same-origin for the web app and cross-origin for everything else — the mobile app's
+WebView serves its bundle from `capacitor://localhost` (iOS) or `https://localhost` (Android), and
+`npm run dev` in `/mobile` from the Vite dev server. `config/cors.php` is scoped to `api/*`, allows
+any origin, and keeps **credentials off**: the token is what authorises a call, so allowing cookies
+cross-origin would open a CSRF surface for a caller that has no use for it.
+
+`exposed_headers` names `X-Api-Version` and `Retry-After`, and that line is load-bearing. A browser
+hides every response header a cross-origin response did not explicitly expose, so without it those
+two come back **empty rather than wrong**: the version pin cannot be checked, and a `429` arrives
+with nothing to wait on. Pinned by `tests/Feature/Api/V1/CorsTest.php`, because it is a fault that
+can only ever appear on a non-same-origin caller.
 
 ## 7. Conventions
 

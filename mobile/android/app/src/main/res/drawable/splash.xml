@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The launch screen: the panda mark on Cloud Cream.
+
+    All vector, and composed from the same master artwork the icon and the app
+    screens use, so there is nothing to re-export per density and nothing that
+    can drift from the logo (brand-tokens.md §4). It replaces the density-split
+    splash.png files Capacitor scaffolds, which were its own placeholder
+    artwork.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/alima_window_background" />
+    <item
+        android:drawable="@drawable/splash_mark"
+        android:gravity="center" />
+</layer-list>

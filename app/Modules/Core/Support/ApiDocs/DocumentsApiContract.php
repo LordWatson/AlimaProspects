@@ -25,6 +25,8 @@ use Symfony\Component\HttpFoundation\Response as Status;
  * - **The error envelope.** What every endpoint returns when it fails lives in one middleware and
  *   one renderer, not in any return type, so nothing infers it. A spec that describes only the
  *   happy path produces a generated client that treats every failure as a parse error.
+ * - **The two-factor challenge.** `POST /auth/token` answers `423` from an exception raised two
+ *   layers down, which no controller signature mentions.
  * - **A stable server URL.** Scramble resolves the server through `url()`, which bakes the
  *   generating machine's `APP_URL` into the document. The specification is committed, so that
  *   would make it differ per developer and turn every regeneration into a spurious diff. A
@@ -58,8 +60,38 @@ final class DocumentsApiContract
 
             foreach ($path->operations as $operation) {
                 $this->document($operation, $envelope, $hasParameters);
+                $this->documentTwoFactor($operation, $envelope, $path->path);
             }
         }
+    }
+
+    /**
+     * The `423` the token exchange answers when the account has a second factor (Phase 18).
+     *
+     * Scramble reads an `abort()` and a return type; this one is a {@see TwoFactorRequiredException}
+     * raised two layers down, so there is nothing in the controller's signature to infer it from.
+     * It is written in by hand for the same reason the envelope is — a client generated from a
+     * specification that does not mention it treats the challenge as an unexpected failure, which
+     * is the one response that must not be mistaken for an error.
+     */
+    private function documentTwoFactor(Operation $operation, Reference $envelope, string $path): void
+    {
+        // Scramble's paths carry no leading slash; trimming makes that an assumption this
+        // method does not depend on.
+        if (ltrim($path, '/') !== 'auth/token' || strtolower((string) $operation->method) !== 'post') {
+            return;
+        }
+
+        $operation->addResponse(
+            Response::make(Status::HTTP_LOCKED)
+                ->setDescription(
+                    'The password was right and the account has two-factor authentication on, so it '
+                    .'is not enough on its own. `error.code` is `auth.two_factor_required` and '
+                    .'`error.details.methods` lists what to send next (`code`, `recovery_code`). '
+                    .'Re-post the same credentials with one of them.',
+                )
+                ->setContent('application/json', Schema::fromType($envelope)),
+        );
     }
 
     private function document(Operation $operation, Reference $envelope, bool $hasParameters): void

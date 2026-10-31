@@ -28,7 +28,7 @@
 | 15    | Compliance & Privacy features                 | ✅ Done | 2026-10-30 |
 | 16    | Billing & Plans                               | ✅ Done | 2026-10-30 |
 | 17    | API v1 hardening                              | ✅ Done | 2026-10-31 |
-| 18    | Mobile app (Capacitor + Ionic Vue)            | ⬜      | —          |
+| 18    | Mobile app (Capacitor + Ionic Vue)            | ✅ Done | 2026-10-31 |
 | 19    | Admin panel (internal)                        | ⬜      | —          |
 | 20    | Observability & security hardening            | ⬜      | —          |
 | 21    | Hetzner deployment & CI/CD                    | ⬜      | —          |
@@ -524,13 +524,13 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 **Modules & docs:** Mobile App (`mobile-app.md`).
 **Tasks:**
 
-1. [ ] Scaffold `/mobile` (Capacitor + Ionic Vue + TS) importing `resources/js/shared/` via alias.
-2. [ ] Token auth (+2FA), dashboard KPIs, leads list/detail, pipeline move, notes/tasks, log attempt, AI draft.
-3. [ ] **Push** via FCM/APNs wired to Notifications; RTL/Arabic.
-4. [ ] iOS + Android build configs.
+1. [x] Scaffold `/mobile` (Capacitor + Ionic Vue + TS) importing `resources/js/shared/` via alias. _(Its own npm project — Capacitor resolves platform packages from the nearest `package.json`, and nothing here is served by Laravel. Two Vite aliases do the sharing: `@shared` → `resources/js/shared/` and `@lang` → `lang/`. The master logo path **moved** to `shared/brand/artwork.ts` so one mark serves both apps; the Arabic bundle is lazily imported and `en.json` is not imported at all, because it is an identity map and `t()` falls through to the key.)_
+2. [x] Token auth (+2FA), dashboard KPIs, leads list/detail, pipeline move, notes/tasks, log attempt, AI draft. _(The 2FA exchange was the open backend item and is this phase's only server-side work: `POST /auth/token` now settles a two-factor account in **one** request — `423 auth.two_factor_required`, then the same credentials plus `code` or `recovery_code` — because a phone has neither Fortify's session nor its redirect. The password is checked before anything reveals that the account has a second factor, so the 423 is never a way to probe which accounts do. Also found and fixed on the way: `exposed_headers` was empty in the framework's CORS defaults, so cross-origin the shared client could not read `X-Api-Version` or a 429's `Retry-After` — unreadable rather than missing, and only ever on a non-same-origin caller.)_
+3. [x] **Push** via FCM/APNs wired to Notifications; RTL/Arabic. _(The server end was already built in Phase 12, so this is the handshake: permission on a deliberate tap in Settings, never at launch; the token posted from the OS's own async `registration` listener, so a rotated token is sent up too; deregistration best-effort at sign-out, because a handset with no signal must still be able to sign out of itself. RTL is `dir` on the root element, which is what flips Ionic's chrome and not just the text — with the logo forced LTR and identifiers isolated inside the Arabic layout.)_
+4. [x] iOS + Android build configs. _(Both native projects committed. **Android runs**: brand colours, the launch screen, the adaptive launcher icon and the notification icon are vector drawables generated from the master logo path by `npm run artwork`, plus the `POST_NOTIFICATIONS` permission and a **debug-only** manifest for cleartext HTTP, so a release build cannot send a token over plain HTTP however the URL is set. **iOS is as far as Windows goes**: the Xcode project, the two APNs callbacks in `AppDelegate.swift` that Capacitor cannot add for you, `en`+`ar` in `Info.plist`, and a brand launch screen — `pod install`, the Push Notifications capability and the signing team all need a Mac, step by step in `docs/runbooks/mobile-dev.md` §6.)_
        **Data model:** none (consumes API).
-       **Tests:** shared code unit tests; API contract reuse; smoke e2e where feasible.
-       **Acceptance:** app runs on both platforms against `/api/v1`; push works; gates pass; docs updated.
+       **Tests:** shared code unit tests; API contract reuse; smoke e2e where feasible. _(30 vitest tests in `mobile/src/lib/`: the shared API client's contract — every case mirroring a sentence in `docs/api/README.md` — the formatting layer, and the language layer. The client had no tests before; Phase 18 is the first thing to depend on it. Server-side, the 2FA exchange and the CORS headers are covered, and `MobileJourneyTest` already walked the whole journey over one token.)_
+       **Acceptance:** app runs on both platforms against `/api/v1`; push works; gates pass; docs updated. _(**Partly deferred, and knowingly:** Android runs; iOS cannot be built from Windows, which is Xcode's licence rather than a configuration problem. Push is wired end to end but needs a Firebase project to exercise — the credentials are the user's to create. And the icon rasters are still Capacitor's placeholders: everything derivable from the vector path is generated, but a store submission needs a rasterised export of the signature, which is a design deliverable. All three are recorded in `docs/modules/mobile-app.md`.)_
        **Dispatch prompt:** _"Execute Phase 18 of mvp.md (Mobile app). Read mobile-app.md. Scaffold /mobile with Capacitor + Ionic Vue reusing shared code, build the core screens against /api/v1, wire push, and set up iOS/Android builds."_
        **Risks:** FCM/APNs credentials + Apple/Google accounts; Capacitor native build on Windows (may need macOS for iOS).
 

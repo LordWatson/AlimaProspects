@@ -1,0 +1,54 @@
+{
+    "name": "@alima/mobile",
+    "private": true,
+    "version": "0.1.0",
+    "type": "module",
+    "description": "Alima Prospects — the iOS + Android field companion (Capacitor + Ionic Vue), built against /api/v1.",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
+        "check": "oxlint src --deny-warnings && oxfmt --check src",
+        "check:fix": "oxlint src --fix && oxfmt src",
+        "types:check": "vue-tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "artwork": "node scripts/generate-native-artwork.mjs",
+        "sync": "cap sync",
+        "android": "cap run android",
+        "android:open": "cap open android",
+        "ios": "cap run ios",
+        "ios:open": "cap open ios"
+    },
+    "dependencies": {
+        "@capacitor/app": "^7.0.0",
+        "@capacitor/core": "^7.0.0",
+        "@capacitor/haptics": "^7.0.0",
+        "@capacitor/keyboard": "^7.0.0",
+        "@capacitor/preferences": "^7.0.0",
+        "@capacitor/push-notifications": "^7.0.0",
+        "@capacitor/status-bar": "^7.0.0",
+        "@ionic/vue": "^8.4.0",
+        "@ionic/vue-router": "^8.4.0",
+        "ionicons": "^7.4.0",
+        "vue": "^3.5.13",
+        "vue-router": "^4.5.0"
+    },
+    "devDependencies": {
+        "@capacitor/android": "^7.0.0",
+        "@capacitor/cli": "^7.0.0",
+        "@capacitor/ios": "^7.0.0",
+        "@vitejs/plugin-vue": "^6.0.0",
+        "@vue/test-utils": "^2.4.6",
+        "jsdom": "^26.0.0",
+        "oxfmt": "^0.75.0",
+        "oxlint": "^1.0.0",
+        "typescript": "^5.2.2",
+        "vite": "^7.0.0",
+        "vitest": "^3.0.0",
+        "vue-tsc": "^3.3.13"
+    },
+    "allowScripts": {
+        "esbuild@0.28.2": true
+    }
+}

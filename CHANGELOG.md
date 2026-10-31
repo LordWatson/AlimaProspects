@@ -5,6 +5,110 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-31 — Mobile app (Phase 18)
+
+- **The app.** `/mobile` — Capacitor + Ionic Vue + TypeScript, its own npm project, consuming
+  `/api/v1` with a scoped Sanctum token. Sign-in (with the two-factor challenge), a dashboard, the
+  leads list and one lead, stage moves, notes and tasks, an AI draft you can edit and send, logged
+  approaches, the bell, and settings for language, theme, push and signing out. Four tabs, and
+  deliberately not a second web app: discovery, ICPs, scoring, the board, templates, the
+  do-not-contact list, notification preferences, team, tokens, billing and compliance all stay on
+  the web. A settings screen duplicated across two surfaces is a decision that can be made
+  differently in two places.
+- **Shared, not copied.** Two Vite aliases reach up into the Laravel app: `@shared` →
+  `resources/js/shared/` (the typed API client, the error envelope, every payload type, the brand
+  tokens) and `@lang` → `lang/` (the product's own translation bundles). The master logo path
+  **moved** to `shared/brand/artwork.ts`, so the launcher icon, the launch screen, the notification
+  icon and both apps' screens all draw the same mark — a logo that exists twice is a logo that
+  drifts. `en.json` is not imported at all: it is an identity map, so `t()` falls through to the key
+  and 120 KB stays out of the bundle; Arabic loads on demand.
+- **Two-factor over the API, in one request.** `POST /auth/token` used to refuse a 2FA account
+  outright with "create a token from the web app" — which left anyone with 2FA switched on unable to
+  use the app at all. Fortify's own challenge is a two-request dance over the session, and a phone
+  has neither the session nor the redirect, so the exchange now settles the password **and** the
+  second factor together: a first post answers `423 auth.two_factor_required` with
+  `details.methods`, and the client re-posts the same credentials plus `code` or `recovery_code`.
+  The password is checked **before** anything reveals that the account has a second factor, so the
+  423 is never a way to probe which accounts have it on; nothing is parked server-side between the
+  two requests, so a half-finished challenge is not itself a credential; and a recovery code is
+  spent and replaced exactly as the web challenge spends it. What counts as a valid code is still
+  Fortify's — same provider, same encrypter, same codes.
+- **Push, wired end to end.** The server half shipped in Phase 12; this is the handshake. Permission
+  is asked for on a deliberate tap in Settings and never at launch, because asking before the member
+  has seen anything worth being told about is how an app collects a permanent "no" on its first
+  screen. The registration token is posted from the OS's own asynchronous `registration` listener
+  rather than from the button, so a token the OS rotates unprompted is sent up too. Sign-out
+  deregisters first and is best-effort: a handset with no signal must still be able to sign out of
+  itself.
+- **EN/AR with real RTL.** `dir` goes on the root element, which is what flips Ionic's chrome — the
+  back chevron, the list arrows, the slide transitions and every logical margin — and not merely the
+  text. Arabic is Tajawal, ~10% larger, never letter-spaced; the logo is forced LTR because it is
+  never mirrored in any language; and identifiers (a score, a company number, a scope string) stay
+  LTR inside the Arabic layout.
+- **Native projects, with the brand generated from the vector.** Android's adaptive launcher icon,
+  launch screen and notification icon are vector drawables written from the master logo path by
+  `npm run artwork`, with the palette in `colors.xml` and a `values-night` variant. The
+  `POST_NOTIFICATIONS` permission is declared, and cleartext HTTP is permitted by a **debug-only**
+  manifest — so a release build cannot send a bearer token over plain HTTP however `VITE_API_URL` is
+  set. On iOS, `AppDelegate.swift` carries the two APNs callbacks Capacitor cannot add for you (the
+  omission that looks like a working app right up until a notification is due), `Info.plist`
+  declares `en` and `ar`, and the launch screen is a brand colour asset with a dark variant.
+
+### Fixed — 2026-10-31
+
+- **Cross-origin callers could not read two headers they are told to branch on.** The framework's
+  CORS defaults leave `exposed_headers` empty, and a browser hides every response header a
+  cross-origin response did not explicitly expose. So `X-Api-Version` and a `429`'s `Retry-After`
+  came back **empty rather than wrong** — the version pin unverifiable, and a throttle with nothing
+  to wait on, in the one client that reads both. `config/cors.php` is now published and names them,
+  with credentials deliberately off (the token authorises the call, so allowing cookies
+  cross-origin would open a CSRF surface for a caller with no use for it). Latent until Phase 18,
+  because the web app is same-origin and nothing else had ever called the API from a browser.
+
+### Fixed — 2026-10-31 — the Phase 18 review round
+
+Found by `laravel-module-reviewer` and `brand-reviewer`; the full list with reasoning is in
+`docs/modules/mobile-app.md` under "Review".
+
+- **The second factor had no per-account cap.** The token endpoint's limiter is keyed on email
+  **and IP**, which is the right shape for guessing a password and the wrong one for a six-digit
+  code: an attacker who already holds the password buys five more guesses with every rotated
+  address. Failures are now counted against the **user**, where rotating buys nothing. The
+  challenge itself is not counted — nothing was guessed.
+- **A recovery code could be spent twice under concurrency, or spent for nothing.** The match and
+  the replace were a read-modify-write on an in-memory model; the spend now happens under a row
+  lock, and the challenge and the token mint share one transaction, so a failure while minting no
+  longer burns a one-time credential.
+- **An unknown email answered measurably faster** than a real one with a wrong password, which is
+  an enumeration oracle. Pre-existing; closed by verifying against a throwaway hash.
+- **Six choice pickers were unreachable without a mouse or a finger.** The stage, tone, language,
+  variant, channel and outcome controls were chips with click handlers — no role, no tab stop, no
+  pressed state, selection carried by fill colour alone. They are real buttons now, in labelled
+  groups, with `aria-pressed` and 44px targets. This was WCAG 2.1.1 and 4.1.2 failing on the app's
+  main write interaction.
+- **The logo appeared in three colourways the brand forbids** — Teal on Ink on the dark sign-in
+  screen, and a Teal _tint_ in the Settings footer and on the Android night splash, the last
+  because its drawable referenced a colour the night theme redefines.
+- **The native dropdowns were under 16px**, which makes iOS zoom the whole page whenever one takes
+  focus, and under the 44px touch minimum.
+- **The Arabic size bump did not reach Ionic's own text.** Scaling the root scales what is sized in
+  `rem`; Ionic sizes its components in `px` inside shadow DOM, so the toolbar, tabs, buttons and
+  segments — the chrome a member touches most — stayed at Latin size.
+- **The unread badge was the error colour**, the eyebrow 11px against the book's 12, the focus ring
+  2px against the token's 3, and buttons 8px-radius under a comment that said pill.
+- **The KPI delta assumed a rise is good.** The server sends no polarity, and `ai_spend` is a tile
+  where a rise is bad — nothing was wrong on screen because that tile has no delta, but it would
+  have been the day it got one.
+
+### Changed — 2026-10-31
+
+- `resources/js/components/brand/artwork.ts` moved to `resources/js/shared/brand/artwork.ts`. The
+  three web call sites import from the new path; nothing else changed.
+- The root project's lint and format passes now skip `mobile/`, which has its own oxlint and oxfmt
+  configuration set to the same rules and the same style. Not to lint it less, but because the root
+  pass also reached its committed native projects — Gradle files, Xcode asset catalogues and a
+  `project.pbxproj`, none of which are ours to format.
+
 ### Added — 2026-10-31 — API v1 hardening (Phase 17)
 
 - **One error shape, for everything.** `{error: {code, message, details?}}` was already the contract

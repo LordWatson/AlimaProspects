@@ -1,0 +1,14 @@
+{
+    "$schema": "./node_modules/oxfmt/configuration_schema.json",
+
+    // The same formatting the root project uses, which it declares through vite-plus's `fmt`
+    // block in `vite.config.ts` (ADR 0003). Restated here because this project runs oxfmt —
+    // the same formatter vite-plus drives — directly, and oxfmt's own defaults are two-space
+    // indentation with double quotes. Two code styles in one repository is one too many.
+    "printWidth": 80,
+    "tabWidth": 4,
+    "singleQuote": true,
+    "semi": true,
+    "singleAttributePerLine": false,
+    "htmlWhitespaceSensitivity": "css"
+}

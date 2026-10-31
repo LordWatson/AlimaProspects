@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug builds only.
+
+    Cleartext HTTP, which Android has blocked by default since API 28. A debug build has to be
+    able to reach the API over plain HTTP, because during this phase the API is Laravel Herd on a
+    developer's machine: `http://10.0.2.2` from the emulator, or a LAN address from a handset
+    on the same network. There is no certificate for either.
+
+    Scoped to the debug manifest rather than the main one, so a **release** build cannot send a
+    bearer token over cleartext however `VITE_API_URL` is set — which is the mistake this file
+    exists to make impossible rather than merely discouraged.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:usesCleartextTraffic="true"
+        tools:targetApi="28" />
+</manifest>
