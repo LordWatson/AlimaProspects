@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { PanelLeft } from '@lucide/vue';
 import { computed } from 'vue';
+import AnnouncementBanner from '@/components/AnnouncementBanner.vue';
+import ImpersonationBanner from '@/components/admin/ImpersonationBanner.vue';
 import AppearanceToggle from '@/components/AppearanceToggle.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import LocaleToggle from '@/components/LocaleToggle.vue';
@@ -57,6 +59,20 @@ const today = computed(() =>
         <div
             class="flex min-w-0 flex-1 flex-col overflow-hidden bg-background text-foreground lg:rounded-3xl"
         >
+            <!--
+              An operator impersonating a customer sees this above everything else, on every screen
+              (Phase 19a). It is in the shell rather than on the pages for the obvious reason: a
+              banner added per screen is a banner missing from the screen nobody remembered. It
+              renders nothing at all when the shared prop is absent, which is every ordinary visit.
+            -->
+            <!--
+              Platform notices (Phase 19b). Below the impersonation banner on purpose: "you are
+              signed in as somebody else" outranks "we are doing maintenance on Sunday", and an
+              operator reading a customer's screen needs the first one at the top.
+            -->
+            <ImpersonationBanner />
+            <AnnouncementBanner />
+
             <!-- Topbar -->
             <header class="flex h-20 shrink-0 items-center gap-3 px-4 sm:px-6">
                 <!-- Mobile drawer -->

@@ -177,19 +177,29 @@ class DemoSeeder extends Seeder
     private function businessProfile(TeamContext $teamContext, Team $team, array $data): void
     {
         $teamContext->run($team, function () use ($team, $data): void {
-            BusinessProfile::query()->create([
-                'team_id' => $team->getKey(),
-                ...$data,
-                'version' => 1,
-                'completed_at' => now(),
-            ]);
+            // `version` and `completed_at` are real columns that are deliberately **not fillable**
+            // on either model: they are ours to set, not the onboarding form's, so a request can
+            // never claim a profile is complete. `CompleteOnboardingAction` sets them with
+            // `forceFill` for that reason, and this mirrors it.
+            //
+            // Mass-assigning them used to throw under `Model::shouldBeStrict()`, which is on
+            // everywhere but production — so the demo tenancy could not be seeded at all. The
+            // suite missed it because `$this->seed()` returns a `PendingCommand` that runs on
+            // destruct, where the exception went nowhere. `tests/Feature/Core/DatabaseSeederTest`
+            // now runs the seeders directly.
+            (new BusinessProfile)
+                ->fill(['team_id' => $team->getKey(), ...$data])
+                ->forceFill(['version' => 1, 'completed_at' => now()])
+                ->save();
 
-            OnboardingProgress::query()->create([
-                'team_id' => $team->getKey(),
-                'current_step' => OnboardingStep::Review->value,
-                'completed_steps' => OnboardingStep::dataValues(),
-                'completed_at' => now(),
-            ]);
+            (new OnboardingProgress)
+                ->fill([
+                    'team_id' => $team->getKey(),
+                    'current_step' => OnboardingStep::Review->value,
+                    'completed_steps' => OnboardingStep::dataValues(),
+                ])
+                ->forceFill(['completed_at' => now()])
+                ->save();
         });
     }
 

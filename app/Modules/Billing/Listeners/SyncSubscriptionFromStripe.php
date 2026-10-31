@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Billing\Listeners;
 
+use App\Modules\Billing\Contracts\StripeSwitch;
 use App\Modules\Billing\Services\PlanResolver;
 use App\Modules\Billing\Services\UsageLedger;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\Notifications\Enums\NotificationType;
+use App\Modules\Notifications\Services\NotificationDispatcher;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Events\WebhookHandled;
 
@@ -53,6 +56,10 @@ final class SyncSubscriptionFromStripe
         'customer.subscription.deleted',
         'customer.subscription.paused',
         'customer.subscription.resumed',
+        // Phase 19b: the event that tells a team their card was declined. Added to the allow-list
+        // because it is the only place the app learns of it — Stripe's own dunning email goes to
+        // the customer and tells us nothing.
+        'invoice.payment_failed',
     ];
 
     public function __construct(
@@ -60,10 +67,47 @@ final class SyncSubscriptionFromStripe
         private readonly UsageLedger $ledger,
         private readonly TeamContext $teamContext,
         private readonly AuditLogger $audit,
+        private readonly StripeSwitch $stripe,
+        private readonly NotificationDispatcher $notifications,
     ) {}
+
+    /**
+     * @param  array<string, mixed>|null  $invoice
+     */
+    private function notifyPaymentFailed(Team $team, ?array $invoice): void
+    {
+        $attempts = is_numeric($invoice['attempt_count'] ?? null) ? (int) $invoice['attempt_count'] : 1;
+
+        $this->teamContext->run($team, function () use ($team, $attempts): void {
+            // `toAdmins`, not `toTeam`: it is money, and a Member can neither act on it nor be
+            // expected to care. The type's own `isAdminOnly()` says so too — this is the dispatcher
+            // method that matches.
+            $this->notifications->toAdmins($team, NotificationType::PaymentFailed, [
+                'attempts' => $attempts,
+            ]);
+        });
+    }
 
     public function handle(WebhookHandled $event): void
     {
+        // **The actual protection behind the Stripe kill switch** (Phase 19b). The middleware that
+        // 404s the webhook route is defence in depth; this is the thing a webhook changes, so this
+        // is where “switched off” has to mean something. A webhook that slipped through — a
+        // misconfigured proxy, a route cached before the switch flipped — must not quietly change a
+        // team's entitlements while an operator believes Stripe is not being listened to.
+        //
+        // Returning rather than throwing: Stripe reads a 2xx as delivered and a 5xx as a retry, and
+        // a retry is what we want. Cashier has already answered 200 by the time this runs, so the
+        // honest move is to leave the event unprocessed and let the operator re-sync when they
+        // switch Stripe back on.
+        if (! $this->stripe->isEnabled()) {
+            Log::channel('billing')->warning('Ignored a Stripe webhook: Stripe is switched off.', [
+                'type' => is_string($event->payload['type'] ?? null) ? $event->payload['type'] : null,
+            ]);
+
+            return;
+        }
+
         $payload = $event->payload;
         $type = is_string($payload['type'] ?? null) ? $payload['type'] : '';
 
@@ -95,6 +139,18 @@ final class SyncSubscriptionFromStripe
         $this->plans->forget($team);
         $team->unsetRelation('subscriptions');
         $entitlements = $this->plans->for($team);
+
+        // **Tell the Owners their payment failed** (Phase 19b) — the gap `billing-plans.md`
+        // recorded. Stripe's dunning email was the only signal, so a team whose card had expired
+        // heard it from a third party or not at all.
+        //
+        // Raised on the invoice event rather than on the subscription becoming `past_due`, because
+        // Stripe sends one `invoice.payment_failed` per retry: the notification therefore arrives
+        // once per attempt, with the attempt count, rather than once when the status first changes
+        // and then never again through a fortnight of retries.
+        if ($type === 'invoice.payment_failed') {
+            $this->notifyPaymentFailed($team, $data);
+        }
 
         $this->teamContext->run($team, function () use ($team, $type, $entitlements, $data): void {
             $this->ledger->sync($team);

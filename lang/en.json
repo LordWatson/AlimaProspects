@@ -1648,5 +1648,8 @@
     "Too many requests — try again in :seconds seconds.": "Too many requests — try again in :seconds seconds.",
     "This app is not allowed to do that. Sign out and in again to refresh its permissions.": "This app is not allowed to do that. Sign out and in again to refresh its permissions.",
     "That code did not match. Try the next one your app shows.": "That code did not match. Try the next one your app shows.",
-    "That recovery code is not one of yours, or it has been used already.": "That recovery code is not one of yours, or it has been used already."
+    "That recovery code is not one of yours, or it has been used already.": "That recovery code is not one of yours, or it has been used already.",
+    "Notice": "Notice",
+    "Heads-up": "Heads-up",
+    "Problem": "Problem"
 }

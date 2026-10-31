@@ -42,6 +42,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $completed_by
  * @property Carbon|null $completed_at
  * @property Carbon|null $review_due_at
+ * @property Carbon|null $review_notified_at
  * @property int $version
  * @property Carbon|null $withdrawn_at
  * @property Carbon|null $created_at
@@ -158,6 +159,7 @@ class LiaRecord extends Model
             'status' => LiaStatus::class,
             'completed_at' => 'datetime',
             'review_due_at' => 'datetime',
+            'review_notified_at' => 'datetime',
             'withdrawn_at' => 'datetime',
             'version' => 'integer',
         ];

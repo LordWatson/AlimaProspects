@@ -16,6 +16,6 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     // One click here runs every aggregation on the dashboard, so it is metered by its own limiter
     // (per member, not per IP, so a shared office doesn't throttle itself).
     Route::get('reports/export', ReportExportController::class)
-        ->middleware('throttle:reports-export')
+        ->middleware(['throttle:reports-export', 'capability:csv_export'])
         ->name('reports.export');
 });

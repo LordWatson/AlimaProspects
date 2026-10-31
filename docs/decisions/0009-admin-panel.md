@@ -1,6 +1,6 @@
 # ADR 0009 — Admin panel: Filament (with Inertia fallback)
 
-- **Status:** Proposed (confirm at the Admin phase)
+- **Status:** **Superseded by [ADR 0014](0014-admin-panel-bespoke-inertia.md)** (2026-10-31)
 - **Date:** 2026-10-28
 
 ## Context
@@ -12,6 +12,20 @@ Packagist check (2026-10-28): **`filament/filament` v5.11.0** is current and req
 ## Decision
 
 Plan to use **Filament v5** for the internal admin panel, mounted on an admin guard separate from tenant UI, with all access audited and impersonation logged. If a clean install against Laravel 13 / PHP 8.5 proves problematic at the Admin phase, fall back to a **simple Inertia admin** reusing our design system.
+
+## Outcome
+
+The decision was revisited at the Admin phase, as this ADR said it would be, and **reversed**: the
+panel is bespoke Inertia, under `App\Modules\Admin`. The compatibility question parked here turned
+out not to be the deciding one — ADR 0014 records the four reasons that were, the first being that
+Filament's generated screens write straight to models, which is the second unvalidated write path
+the Action/transaction/audit rules in CLAUDE.md §2 exist to prevent.
+
+The "admin guard separate from tenant UI" below was reversed too. A second guard over a second
+table forks 2FA, passkeys, password resets and the audit trail; the platform identity is one column
+on `users` and the separation is a middleware stack.
+
+Read ADR 0014 instead of this file. It is kept for the record.
 
 ## Consequences
 

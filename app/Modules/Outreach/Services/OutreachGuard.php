@@ -9,6 +9,7 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Outreach\Contracts\LeadRestrictionResolver;
+use App\Modules\Outreach\Contracts\TeamSendingGate;
 use App\Modules\Outreach\Data\OutreachDecision;
 use App\Modules\Outreach\Enums\OutreachBlockReason;
 use App\Modules\Outreach\Enums\OutreachChannel;
@@ -36,11 +37,14 @@ use App\Modules\Outreach\Exceptions\OutreachBlockedException;
  *    module that created the lead, so Lead Sourcing's UAE leads carry none. Compliance (Phase 15)
  *    binds a market-aware resolver over Outreach's own; either way the answer can only get
  *    stricter than the flag, never looser.
- * 2. **Suppression.** The address and its domain, against the global list and the team's own.
- * 3. **Something to send to**, and **someone to send it from** — the configuration checks, which
+ * 2. **Whether this team may send at all** — the deployment switch, and the per-team
+ *    {@see TeamSendingGate}, which is how a suspended tenant stops reaching prospects without
+ *    anybody claiming the prospect is the problem (Phase 19a).
+ * 3. **Suppression.** The address and its domain, against the global list and the team's own.
+ * 4. **Something to send to**, and **someone to send it from** — the configuration checks, which
  *    only apply to a channel Alima actually transmits.
  *
- * Non-sendable channels (LinkedIn text, a call script) skip 2 and 3 entirely. They are the member's
+ * Non-sendable channels (LinkedIn text, a call script) skip 2 to 4 entirely. They are the member's
  * own act on a platform where the other person chooses whether to answer; Alima transmits nothing,
  * has no envelope to identify and cannot enforce an opt-out it never carries. Suppressing them
  * would also leave a restricted lead with no permitted channel at all, which is the opposite of
@@ -52,6 +56,7 @@ final class OutreachGuard
         private readonly SuppressionList $suppressions,
         private readonly SenderIdentityResolver $senderIdentity,
         private readonly LeadRestrictionResolver $restrictions,
+        private readonly TeamSendingGate $teamSending,
     ) {}
 
     /**
@@ -91,6 +96,13 @@ final class OutreachGuard
         // 2. Is sending switched on at all for this deployment?
         if (! (bool) config('outreach.sending_enabled', true)) {
             $reasons[] = OutreachBlockReason::SendingDisabled;
+        }
+
+        // 2a. ...and is it switched on for *this team*? Asked here rather than in middleware
+        //     because a queued send and a scheduled one have no request behind them (ADR 0012's
+        //     argument). The gate ships permissive; Admin binds a suspension-aware one (Phase 19a).
+        if (! $this->teamSending->mayTeamSend($team)) {
+            $reasons[] = OutreachBlockReason::TeamSuspended;
         }
 
         // 3. Somewhere to send it.

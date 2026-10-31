@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Admin\Providers\AdminServiceProvider;
 use App\Modules\AiInsights\Providers\AiInsightsServiceProvider;
 use App\Modules\AiPlatform\Providers\AiPlatformServiceProvider;
 use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
@@ -48,4 +49,8 @@ return [
     // Also last, and for the same reason: it replaces AI Platform's credit stub, Lead Sourcing's
     // lead-quota stub and Auth's seat stub with plan-backed sources (Phase 16).
     BillingServiceProvider::class,
+    // Last of all. It decorates (never replaces) the credit, lead-quota and team-sending guards
+    // that Billing and Outreach bind, so a suspended tenant stops sourcing, spending and sending
+    // without Admin having to know what a plan is (Phase 19a, ADR 0014).
+    AdminServiceProvider::class,
 ];

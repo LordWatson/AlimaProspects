@@ -32,6 +32,10 @@ use Laravel\Cashier\Billable;
  * @property string|null $pm_type
  * @property string|null $pm_last_four
  * @property Carbon|null $trial_ends_at
+ * @property string $billing_mode see Billing\Enums\BillingMode — a plain column here, because
+ *                                Core is the foundation Billing builds on and must not import it
+ * @property Carbon|null $suspended_at
+ * @property string|null $suspension_reason
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -74,6 +78,23 @@ class Team extends Model
     }
 
     /**
+     * Whether an operator has suspended this tenant (Phase 19a).
+     *
+     * Deliberately **not** a login check. A suspended team's members sign in and read their own
+     * data as before; what stops is sourcing, sending and spending — enforced in the guards, not in
+     * middleware, because a queued discovery job and a scheduled signal watch spend a team's
+     * allowance with no request behind them (ADR 0012's argument, unchanged).
+     *
+     * Not fillable: suspending a tenant goes through `Admin\Actions\SuspendTeamAction`, which
+     * records who did it and why. A `$team->update(['suspended_at' => …])` from anywhere else
+     * would be a suspension with no reason and no audit entry.
+     */
+    public function isSuspended(): bool
+    {
+        return $this->suspended_at !== null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function casts(): array
@@ -82,6 +103,7 @@ class Team extends Model
             // Cashier compares this against `now()` to decide whether a team is on its generic
             // (card-less) trial — a string would compare as a string and silently never expire.
             'trial_ends_at' => 'datetime',
+            'suspended_at' => 'datetime',
         ];
     }
 

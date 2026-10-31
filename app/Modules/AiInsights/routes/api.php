@@ -12,7 +12,11 @@ use Illuminate\Support\Facades\Route;
  *
  * Every route declares the token scope it needs (Phase 17) — see TokenAbility.
  */
-Route::middleware('auth:sanctum')->group(function (): void {
+// `capability:ai_insights` alongside the token scope, so the API and the web screen agree about
+// whose plan includes insights (Phase 19b, ADR 0015). A scope says what a *credential* may do; a
+// capability says what the *team* has bought, and a token issued before a downgrade carries the
+// first without the second.
+Route::middleware(['auth:sanctum', 'capability:ai_insights'])->group(function (): void {
     Route::get('insights', [InsightController::class, 'index'])
         ->middleware('ability:'.TokenAbility::InsightsRead->value)
         ->name('insights.index');

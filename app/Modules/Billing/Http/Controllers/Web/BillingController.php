@@ -14,10 +14,12 @@ use App\Modules\Billing\Actions\ResumeSubscriptionAction;
 use App\Modules\Billing\Actions\StartCheckoutAction;
 use App\Modules\Billing\Actions\SwapPlanAction;
 use App\Modules\Billing\Contracts\BillingGateway;
+use App\Modules\Billing\Contracts\StripeSwitch;
 use App\Modules\Billing\Data\BillingPeriod;
 use App\Modules\Billing\Data\InvoiceData;
 use App\Modules\Billing\Data\MetricUsage;
 use App\Modules\Billing\Data\PlanData;
+use App\Modules\Billing\Enums\BillingMode;
 use App\Modules\Billing\Exceptions\BillingException;
 use App\Modules\Billing\Http\Requests\ChoosePlanRequest;
 use App\Modules\Billing\Http\Resources\InvoiceResource;
@@ -57,6 +59,7 @@ final class BillingController extends Controller
         RefreshUsageAction $refreshUsage,
         SeatCounter $seats,
         BillingGateway $gateway,
+        StripeSwitch $stripe,
     ): Response {
         $team = $this->team($request);
         $user = $this->user($request);
@@ -67,6 +70,11 @@ final class BillingController extends Controller
 
         $period = BillingPeriod::containing();
         $entitlements = $resolver->for($team);
+
+        // Self-serve needs **both**: Stripe switched on for the deployment, and this tenant billed
+        // through it. An invoiced customer has no card to change and nothing to cancel.
+        $mode = BillingMode::of($team);
+        $selfServe = $stripe->isEnabled() && $mode->allowsSelfServe();
 
         // Up-to-date figures, and a warning to the Owners if an allowance is nearly gone — one
         // Action, one pass over the ledgers (see `RefreshUsageAction` for why it runs on a GET).
@@ -108,7 +116,22 @@ final class BillingController extends Controller
             'sales_email' => (string) config('billing.sales_email'),
             'can' => [
                 'manage' => $canManage,
+                // **Whether self-serve billing is available at all** (Phase 19b).
+                //
+                // The screen must not offer a button that will throw. Stripe can be switched off
+                // globally by an operator, and a tenant can be on `manual` or `disabled` billing —
+                // in all three cases checkout, the portal, a swap and a cancellation refuse with
+                // `billing.disabled`. Sending the answer as a prop means "Stripe is off" renders as
+                // a product state with a sentence, rather than as a 503 the member meets after
+                // clicking.
+                //
+                // `manage` stays as it was: it is about the member's role, and conflating the two
+                // would tell an Owner they lack permission when in fact we are not taking payments.
+                'checkout' => $canManage && $selfServe,
+                'portal' => $canManage && $selfServe && $entitlements->isSubscribed(),
             ],
+            'billing_mode' => $mode->value,
+            'self_serve' => $selfServe,
         ]);
     }
 

@@ -6,6 +6,7 @@ namespace App\Modules\Outreach\Providers;
 
 use App\Modules\ModuleServiceProvider;
 use App\Modules\Outreach\Contracts\LeadRestrictionResolver;
+use App\Modules\Outreach\Contracts\TeamSendingGate;
 use App\Modules\Outreach\Models\ContactAttempt;
 use App\Modules\Outreach\Models\OutreachMessage;
 use App\Modules\Outreach\Models\OutreachSuppression;
@@ -13,6 +14,7 @@ use App\Modules\Outreach\Models\OutreachTemplate;
 use App\Modules\Outreach\Policies\OutreachMessagePolicy;
 use App\Modules\Outreach\Policies\OutreachSuppressionPolicy;
 use App\Modules\Outreach\Policies\OutreachTemplatePolicy;
+use App\Modules\Outreach\Services\AlwaysAllowTeamSending;
 use App\Modules\Outreach\Services\OutreachGuard;
 use App\Modules\Outreach\Services\RecordedLeadRestriction;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -59,5 +61,10 @@ final class OutreachServiceProvider extends ModuleServiceProvider
         // this module stands up on its own, which is what makes the default binding the right place
         // for it.
         $this->app->bind(LeadRestrictionResolver::class, RecordedLeadRestriction::class);
+
+        // Whether a *team* may send at all, as opposed to whether this prospect may be approached.
+        // Permissive by default, like Auth's seat stub: a default that refused would block outreach
+        // for a suspension nobody applied. Admin (Phase 19a) binds a suspension-aware gate over it.
+        $this->app->bind(TeamSendingGate::class, AlwaysAllowTeamSending::class);
     }
 }

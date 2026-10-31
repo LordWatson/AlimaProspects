@@ -42,6 +42,9 @@ final class NotificationPresenter
             NotificationType::SignalsDetected => $this->signalsDetected($payload),
             NotificationType::InsightsReady => $this->insightsReady($payload),
             NotificationType::CreditLow => $this->creditLow($payload),
+            NotificationType::PaymentFailed => $this->paymentFailed($payload),
+            NotificationType::AssessmentReviewDue => $this->assessmentReviewDue($payload),
+            NotificationType::Announcement => $this->announcement($payload),
             NotificationType::Digest => $this->digest($payload),
         };
     }
@@ -204,6 +207,90 @@ final class NotificationPresenter
             params: ['percent' => $remaining, 'thing' => $thing],
             url: '/billing',
             actionLabel: 'See the plan',
+        );
+    }
+
+    /**
+     * A payment failed (Phase 19b).
+     *
+     * **It says what happens next and when**, which is the whole value of us sending this at all:
+     * Stripe's own dunning email says a payment failed, and a member who reads "update your card"
+     * with no deadline attaches no urgency to it. Stripe retries for about a fortnight and then
+     * cancels, and a team that loses its subscription over an expired card is a churn event nobody
+     * intended.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function paymentFailed(array $payload): NotificationContent
+    {
+        $attempts = $this->count($payload, 'attempts');
+
+        return new NotificationContent(
+            type: NotificationType::PaymentFailed,
+            title: 'A payment did not go through',
+            body: $attempts > 1
+                ? 'We have tried :count times. Update the card and nothing else changes — if the '
+                    .'retries run out, the subscription ends.'
+                : 'Usually an expired card. Update it and nothing else changes.',
+            params: ['count' => $attempts],
+            url: '/billing',
+            actionLabel: 'Update the card',
+        );
+    }
+
+    /**
+     * A lawful-basis assessment is due for review (Phase 19b).
+     *
+     * The consequence is in the body on purpose. "Your assessment is due for review" sounds like
+     * paperwork; "lead discovery stops without it" is why somebody will open it. Both are true, and
+     * the second is the one that gets it done before sourcing halts.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function assessmentReviewDue(array $payload): NotificationContent
+    {
+        $days = $this->count($payload, 'days_remaining');
+
+        return new NotificationContent(
+            type: NotificationType::AssessmentReviewDue,
+            title: $days <= 0
+                ? 'Your lawful-basis record needs reviewing now'
+                : 'Your lawful-basis record is due for review',
+            body: $days <= 0
+                ? 'Lead discovery is paused until somebody reviews and signs it.'
+                : 'In :count days, lead discovery pauses until somebody reviews and signs it.',
+            params: ['count' => max(0, $days)],
+            url: '/compliance',
+            actionLabel: 'Review it',
+        );
+    }
+
+    /**
+     * A platform announcement (Phase 19b).
+     *
+     * The only presenter that passes a **title the operator wrote** rather than a translation key:
+     * an announcement's text is per-locale content in the `announcements` table, already resolved
+     * for the reader's language by `AnnouncementBoard`. There is nothing for `t()` to look up, and
+     * pretending otherwise would render the sentence as its own key.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function announcement(array $payload): NotificationContent
+    {
+        $title = $this->text($payload, 'title');
+        $body = $this->text($payload, 'body');
+
+        return new NotificationContent(
+            type: NotificationType::Announcement,
+            // Both fall back, because this presenter is the one place a payload field is the whole
+            // message rather than a number inside a sentence — so a producer that forgot one would
+            // otherwise render a blank row in the bell. (A translation key is the right fallback
+            // here precisely because there is no operator text to show.)
+            title: $title !== '' ? $title : 'A notice from Alima',
+            body: $body !== '' ? $body : 'Open Alima to read it.',
+            params: [],
+            url: '/dashboard',
+            actionLabel: 'Read it',
         );
     }
 

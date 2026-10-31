@@ -84,6 +84,12 @@ final class BillingFixtures
 
         app(PlanResolver::class)->forget($team);
 
+        // The capability gate is `scoped` and memoises per team (ADR 0015), and a test container
+        // is not rebuilt between `$this->get()` calls the way a real request is. Dropping the
+        // scoped instances is what makes the next request in the same test see the new plan —
+        // which is what a browser would see, because its next request is a new container.
+        app()->forgetScopedInstances();
+
         return $subscription;
     }
 
@@ -109,6 +115,20 @@ final class BillingFixtures
         app(PlanRegistry::class)->flush();
 
         return $price;
+    }
+
+    /**
+     * Move a team onto a different plan, as a swap would.
+     *
+     * `subscribe()` twice on one team collides on the unique `stripe_id`, which is right — a team
+     * has one subscription — but makes "check it on Starter, then upgrade and check again" need two
+     * teams. This replaces the row instead, which is what the Stripe webhook does in production.
+     */
+    public static function moveToPlan(Team $team, PlanKey $plan): Subscription
+    {
+        Subscription::query()->where('team_id', $team->getKey())->delete();
+
+        return self::subscribe($team, $plan);
     }
 
     /**

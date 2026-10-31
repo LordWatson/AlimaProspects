@@ -1648,5 +1648,8 @@
     "Too many requests — try again in :seconds seconds.": "طلبات كثيرة — حاول مرة أخرى بعد :seconds ثانية.",
     "This app is not allowed to do that. Sign out and in again to refresh its permissions.": "هذا التطبيق غير مسموح له بذلك. سجّل الخروج ثم الدخول لتحديث صلاحياته.",
     "That code did not match. Try the next one your app shows.": "هذا الرمز غير مطابق. جرّب الرمز التالي الذي يعرضه تطبيقك.",
-    "That recovery code is not one of yours, or it has been used already.": "رمز الاسترداد هذا ليس من رموزك، أو أنه استُخدم بالفعل."
+    "That recovery code is not one of yours, or it has been used already.": "رمز الاسترداد هذا ليس من رموزك، أو أنه استُخدم بالفعل.",
+    "Notice": "إشعار",
+    "Heads-up": "تنبيه",
+    "Problem": "مشكلة"
 }

@@ -327,3 +327,68 @@ within a point or two of the reference's proportions of the panel. Four judgemen
 8. **RESOLVED 2026-10-30 — placeholder logo (was PENDING since Phase 2).** The delivered artwork now ships: the mark and the horizontal lock-up live in `resources/js/components/brand/artwork.ts` and are drawn inline by `AppLogo` / `PandaFace` (see §4.1). The snout stand-in and the typeset wordmark described below are gone. _Original note:_ Until the master SVGs in §7.3 arrive, the app uses: (a) the **snout** element (nose + smile only, Teal tile / Cream glyph = colourway 03) as the mark, and (b) a **typeset lowercase "alima" wordmark** in Poppins SemiBold Teal — a temporary stand-in for the real wordmark (do not treat as the final logo; the lockup is forced `dir=ltr` and carries an `aria-label`). Replace both with the delivered artwork.
 9. **PENDING — fonts via Bunny CDN.** Poppins / DM Mono / Tajawal load from `fonts.bunny.net` (GDPR-friendly, EU-hosted — relevant for UK/UAE). Confirm CDN use or switch to self-hosting; Tajawal is loaded 400/500/700 (no 600 — `font-semibold` falls back).
 10. **PENDING — dark-theme deviations from §7.1.** The implemented dark theme (in `app.css`, marked PENDING) deviates slightly from the §7.1 proposal for contrast: `--muted-foreground #B4B1AD`, `--brand #759491`, `--brand-hover #A0B3AE`, `--input #514F5C`, and **`--destructive #EF9A9A`** (a red deliberately OFF the Signal Orange ramp — §7.1 had suggested an orange-adjacent value, which would violate "Orange is never a status colour"). Re-measure all for AA before launch.
+
+### 7e. Added 2026-10-31 (the internal admin panel, Phase 19a)
+
+The internal operations panel at `/admin` is **not a customer surface**, and three of its choices sit
+outside the book. They are recorded here rather than silently taken (ADR 0014, `docs/modules/admin.md`):
+
+1. **English only, no RTL.** An internal tool carries no EN/AR obligation, so the panel has no `t()`
+   and no `dir` handling. The one component that renders on a **tenant** screen — the impersonation
+   banner — is therefore an explicit `lang="en" dir="ltr"` island, so an English operator-only
+   sentence does not right-align inside an Arabic layout.
+2. **A denser type scale.** `text-2xl` (24px) headings and `text-sm` (14px) body, below §3's H3 and
+   the 16px body floor. Defensible for a dense operations table; unrecorded until now. The 12px
+   eyebrow floor **is** respected (an earlier 10.4px step was corrected).
+3. **A Cloud Cream focus ring on Ink.** `focus.ring` (#2C6CAD) clears 3:1 on Ink, but cream is far
+   more visible on the dark rail, and a focus ring that cannot be seen is the one token worth
+   deviating for. Only on the Ink sidebar; every cream surface uses `focus.ring`.
+
+Separately, and **not** a panel decision: the off-scale spacing steps (`gap-3`, `p-3`, `py-1.5`,
+`px-5`) and the Regular/Medium/SemiBold weight mix are inherited from the tenant app shell and are
+product-wide — see §7c.
+
+### 7f. Added 2026-10-31 (platform settings, plan capabilities and announcements, Phase 19b)
+
+Phase 19b added the first thing the panel writes that a **customer** reads — the announcement banner
+— plus three operator screens. Five choices sit outside the book and are recorded here rather than
+taken silently (ADR 0015, `docs/modules/admin.md`):
+
+1. **A three-level announcement scheme.** `info` / `warning` / `critical`, rendered as
+   `status.info` / `status.warning` / `status.error`. The book has the status palette but no notice
+   taxonomy, so the mapping is ours. **Flagged for brand-owner approval**, with one rule already
+   applied: each level has its own icon (`Info`, `TriangleAlert`, `OctagonAlert`) and a visually
+   hidden level word, because colour alone is not a distinction (WCAG 1.4.1) and `warning` and
+   `critical` otherwise differed only by hue.
+2. **A 12% tint for status panels.** `bg-<status>/12` with a `/30` border. Not a book value; it is
+   the lightest step that reads as a panel rather than a ruled box on Cloud Cream.
+3. **Status colour never carries the words.** On those tints the title and body are
+   `text-foreground`, and the status token is kept to the icon, the border and the tint itself.
+   `status.info` (#2C6CAD) and `status.warning` (#8A5A00) over a 12% tint of themselves land at
+   roughly 4.1:1 and 4.4:1 — under AA for 14px text. The 4.9/5.3 figures in §2 are against plain
+   `bg.canvas`, which is not where these sit. **The Badge variants have not been re-measured against
+   a tint and should be** before any of them is used for body copy.
+4. **`status.info` is still PENDING** (§7.6: #2C6CAD light, #6FA4D8 dark), and the banner's `info`
+   level, the provisioning dry-run panel and the grant panel all depend on it. It is also the same
+   value as `focus.ring`, so a focused control inside an info panel loses contrast with its
+   surroundings — acceptable on an operator screen, worth a second look before it reaches a customer
+   surface. The dark-mode `warning`, `info` and `destructive` values remain unapproved (§7.10).
+5. **An override badge is not a warning.** `is_overridden` on the settings screen reads
+   `variant="outline"` with a pencil, not amber with an alert triangle. "Somebody chose this" is
+   information, and spending the amber on a non-problem is how a real warning stops being noticed.
+
+Two things the banner does that the panel does not, because it renders on a tenant screen:
+
+- **Per-line `lang` and `dir`.** The copy is operator-authored per locale with an English fallback,
+  so an Arabic reader can be handed an English sentence — which right-aligns with its punctuation
+  in the wrong place unless the element says what it is. `AnnouncementBoard` therefore returns the
+  locale each line **actually** resolved to (title and body separately, because an operator who
+  filled in an Arabic title and an English body produces one of each).
+- **Translated chrome.** The dismiss label and the three level words are `t()` keys in `lang/en.json`
+  and `lang/ar.json`; only the operator's own words are untranslated.
+
+Timestamps on the panel's screens are formatted in **UTC and labelled UTC** (`useFormat().utcDateTime`),
+and the `datetime-local` inputs say "UTC" in their labels because the server reads them as UTC. The
+tenant-facing `dateTime()` formats in the team's timezone, which is the wrong answer for an operator —
+they are either in no team or, worse, impersonating one, so the same contractual grant date would read
+differently depending on whose account they last opened.

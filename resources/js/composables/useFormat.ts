@@ -56,5 +56,22 @@ export function useFormat() {
         return date(value, { dateStyle: 'medium', timeStyle: 'short' });
     }
 
-    return { number, currency, percent, date, dateTime, timezone };
+    /**
+     * A timestamp in **UTC**, labelled as such.
+     *
+     * For the admin panel, where `dateTime()` is the wrong answer: it formats in the current team's
+     * timezone, and an operator is either in no team at all or — worse — impersonating one, so the
+     * same grant end date would read differently depending on whose account they last looked at. A
+     * grant window and an announcement window are contractual, and the panel's `datetime-local`
+     * inputs are read as UTC by the server, so this is the half that makes the screen agree with it.
+     */
+    function utcDateTime(value: string | number | Date): string {
+        return new Intl.DateTimeFormat(numericLocale.value, {
+            timeZone: 'UTC',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+        }).format(new Date(value));
+    }
+
+    return { number, currency, percent, date, dateTime, utcDateTime, timezone };
 }

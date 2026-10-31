@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Compliance\Providers;
 
 use App\Models\User;
+use App\Modules\Compliance\Console\NotifyAssessmentReviewsCommand;
 use App\Modules\Compliance\Console\PurgeExpiredDataCommand;
 use App\Modules\Compliance\Models\LiaRecord;
 use App\Modules\Compliance\Models\RetentionPolicy;
@@ -38,7 +39,7 @@ final class ComplianceServiceProvider extends ModuleServiceProvider
         parent::boot(); // routes + policies
 
         if ($this->app->runningInConsole()) {
-            $this->commands([PurgeExpiredDataCommand::class]);
+            $this->commands([PurgeExpiredDataCommand::class, NotifyAssessmentReviewsCommand::class]);
         }
 
         $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {
@@ -46,6 +47,11 @@ final class ComplianceServiceProvider extends ModuleServiceProvider
             // around the same hour) so the night's work moves outwards: each module prunes its own
             // derived data first, and the lead-level sweep runs last over what is left.
             $schedule->command('compliance:purge')->dailyAt('03:40')->withoutOverlapping();
+
+            // Early, before the business day, and **daily** — the command only notifies on the day
+            // a review crosses the warning threshold and on the day it lapses, so running it twice
+            // in one day would notify twice (Phase 19b).
+            $schedule->command('compliance:notify-reviews')->dailyAt('07:20')->withoutOverlapping()->onOneServer();
         });
 
         $this->registerGates();

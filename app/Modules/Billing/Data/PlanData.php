@@ -62,6 +62,36 @@ final class PlanData extends Data
     }
 
     /**
+     * The same plan with one or more allowances replaced by a grant's (Phase 19b).
+     *
+     * This is how Enterprise finally gets real numbers. The price list gives that plan `null`
+     * seats, leads and credits, which this class reads as *unlimited* — but a signed contract says
+     * 25 seats and 40,000 leads. A null argument here therefore means **leave the plan's own
+     * value**, not "unlimited"; the two readings of null are different and keeping them apart is
+     * the whole reason this is a method rather than a constructor flag.
+     */
+    public function withAllowances(?int $seats = null, ?int $leads = null, ?int $credits = null): self
+    {
+        if ($seats === null && $leads === null && $credits === null) {
+            return $this;
+        }
+
+        return new self(
+            key: $this->key,
+            name: $this->name,
+            blurb: $this->blurb,
+            amount: $this->amount,
+            currency: $this->currency,
+            stripePrice: $this->stripePrice,
+            seats: $seats ?? $this->seats,
+            leads: $leads ?? $this->leads,
+            credits: $credits ?? $this->credits,
+            overage: $this->overage,
+            features: $this->features,
+        );
+    }
+
+    /**
      * The monthly allowance for one metric, or null when the plan is unlimited in it.
      */
     public function allowanceFor(BillingMetric $metric): ?int

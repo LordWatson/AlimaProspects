@@ -90,12 +90,32 @@ function fakeTwoFactorCode(string $code): void
 
 /**
  * Create a verified user with their personal team (Owner), as registration would.
+ *
+ * **Including the free trial**, which is the part that has to be explicit rather than incidental.
+ * Billing starts a new team's trial from a `Team::created` model event (see
+ * `BillingServiceProvider::startTrialOnNewTeams` for why it is an event and not a line in
+ * `CreateTeamAction`) — and a test that calls `Event::fake()` in its `beforeEach`, which several do,
+ * suppresses it. Those teams were therefore silently resolving to the **Free** plan rather than the
+ * trial one.
+ *
+ * That cost nothing until Phase 19b made plans grant capabilities, at which point thirty-odd tests
+ * across Signals started being refused a feature their team should have had. Setting the column
+ * here makes the helper match its own description: a team that has just registered is on trial, and
+ * a test should not have to know that the trial arrives by event.
  */
 function createUserWithTeam(array $attributes = []): User
 {
     $user = User::factory()->create($attributes);
 
-    app(CreatePersonalTeamAction::class)->handle($user);
+    $team = app(CreatePersonalTeamAction::class)->handle($user);
+
+    if ($team->trial_ends_at === null) {
+        $days = max(0, (int) config('billing.trial.days', 14));
+
+        if ($days > 0) {
+            $team->forceFill(['trial_ends_at' => now()->addDays($days)])->save();
+        }
+    }
 
     return $user->refresh();
 }

@@ -32,6 +32,16 @@ enum SubscriptionState: string
     /** Cancelled and over. */
     case Cancelled = 'cancelled';
 
+    /**
+     * Entitled by an operator's grant rather than by Stripe (Phase 19b) — an invoiced customer, a
+     * pilot, an internal tenant.
+     *
+     * Its own state rather than being folded into `Active`, because the billing screen has to say
+     * something different: there is no card to change, no invoice history to show and nothing to
+     * cancel, and offering any of those would be offering a button that cannot work.
+     */
+    case Granted = 'granted';
+
     public function label(): string
     {
         return match ($this) {
@@ -41,6 +51,7 @@ enum SubscriptionState: string
             self::PastDue => 'Payment failed',
             self::GracePeriod => 'Ending soon',
             self::Cancelled => 'Cancelled',
+            self::Granted => 'Managed by us',
         };
     }
 
@@ -56,7 +67,7 @@ enum SubscriptionState: string
     public function isEntitled(): bool
     {
         return match ($this) {
-            self::Trialing, self::Active, self::PastDue, self::GracePeriod => true,
+            self::Trialing, self::Active, self::PastDue, self::GracePeriod, self::Granted => true,
             self::None, self::Cancelled => false,
         };
     }

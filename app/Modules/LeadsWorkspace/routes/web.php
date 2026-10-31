@@ -43,8 +43,11 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('leads/import', [LeadTransferController::class, 'import'])
         ->middleware('throttle:leads-bulk')
         ->name('leads.import.store');
+    // `capability:csv_export` (Phase 19b): taking the data out is a plan feature. Only the
+    // export is gated, not the import — a team on any plan should be able to bring its own data in,
+    // and gating that would be charging somebody for the privilege of giving us their list.
     Route::get('leads/export', [LeadTransferController::class, 'export'])
-        ->middleware('throttle:leads-bulk')
+        ->middleware(['throttle:leads-bulk', 'capability:csv_export'])
         ->name('leads.export');
 
     // Notes and tasks are addressed by their own id, not the lead's — they are already team-scoped,

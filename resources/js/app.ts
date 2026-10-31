@@ -2,6 +2,7 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { initializeTheme } from '@/composables/useAppearance';
 import { initializeLocaleDirection } from '@/composables/useLocaleDirection';
 import { initializeEcho } from '@/echo';
+import AdminLayout from '@/layouts/AdminLayout.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
@@ -24,6 +25,11 @@ void createInertiaApp({
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
+            // The internal panel has its own chrome, deliberately distinct so an operator never
+            // mistakes it for a tenant screen (Phase 19a, ADR 0014). Distinct *within* the
+            // brand — a Deep Ink shell — never by inventing colours.
+            case name.startsWith('admin/'):
+                return AdminLayout;
             // `onboarding/` deliberately falls through to the app shell. The business profile is
             // a destination in the sidebar, not a one-off wizard: giving it its own chrome made
             // the screen read like a different product, and onboarding is not hard-gated anyway

@@ -30,7 +30,12 @@ Route::middleware('auth')->group(function (): void {
 
     // Personal API tokens (web management for the mobile app).
     Route::get('settings/api-tokens', [ApiTokenController::class, 'index'])->name('api-tokens.index');
-    Route::post('settings/api-tokens', [ApiTokenController::class, 'store'])->name('api-tokens.store');
+    // `capability:api_access` (Phase 19b). **Issuing** only: the index and the revoke stay open on
+    // every plan, because a team that has downgraded still needs to see and clean up the tokens it
+    // already holds — taking away the ability to revoke would be the wrong lever entirely.
+    Route::post('settings/api-tokens', [ApiTokenController::class, 'store'])
+        ->middleware('capability:api_access')
+        ->name('api-tokens.store');
     Route::delete('settings/api-tokens/{token}', [ApiTokenController::class, 'destroy'])->name('api-tokens.destroy');
 
     // Accept an invitation (the signed landing GET is below).

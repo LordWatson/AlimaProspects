@@ -80,37 +80,59 @@ flowchart TD
   Bill -->|LeadQuotaSource| LS
   Bill -->|SeatLimitSource| Auth
   Bill -->|allowance low| Notif
-  Core --> Admin[Admin internal]
+  Core --> Admin[Admin internal ops]
+  Admin -->|suspension decorates CreditSource| AIp
+  Admin -->|suspension decorates LeadQuotaSource| LS
+  Admin -->|suspension decorates TeamSendingGate| Out
+  Core -->|CapabilityGate seam| Bill
+  Bill -->|PlanCapabilityGate decorates| Core
+  Admin -->|kill switch + overrides decorate| Core
+  Admin -->|StripeSwitch| Bill
   LW --> Integ[Integrations post-MVP]
   API[API v1] --> Mob[Mobile App iOS + Android]
 ```
 
-| #   | Module                        | Status                | Doc                                      |
-| --- | ----------------------------- | --------------------- | ---------------------------------------- |
-| 1   | Core                          | MVP                   | `modules/core.md`                        |
-| 2   | Auth & Users                  | MVP                   | `modules/auth-users.md`                  |
-| 3   | Onboarding & Business Profile | MVP                   | `modules/onboarding-business-profile.md` |
-| 4   | ICP                           | MVP                   | `modules/icp.md`                         |
-| 5   | Business Intelligence         | MVP                   | `modules/business-intelligence.md`       |
-| 6   | AI Platform                   | MVP                   | `modules/ai-platform.md`                 |
-| 7   | Lead Sourcing                 | MVP                   | `modules/lead-sourcing.md`               |
-| 8   | Enrichment & Data Quality     | MVP                   | `modules/enrichment-data-quality.md`     |
-| 9   | Scoring & Matching            | MVP                   | `modules/scoring-matching.md`            |
-| 10  | Leads Workspace               | MVP                   | `modules/leads-workspace.md`             |
-| 10c | Signals (trigger events)      | MVP (UAE v1, S0–S6)   | `modules/signals.md`                     |
-| 11  | Outreach                      | MVP (built, Phase 11) | `modules/outreach.md`                    |
-| 12  | Reporting & Analytics         | MVP (built, Phase 13) | `modules/reporting-analytics.md`         |
-| 13  | AI Insights                   | MVP (built, Phase 14) | `modules/ai-insights.md`                 |
-| 14  | Notifications                 | MVP (built, Phase 12) | `modules/notifications.md`               |
-| 15  | Billing & Plans               | MVP (built, Phase 16) | `modules/billing-plans.md`               |
-| 16  | Compliance & Privacy          | MVP (built, Phase 15) | `modules/compliance-privacy.md`          |
-| 17  | Admin (internal)              | MVP (minimal)         | `modules/admin.md`                       |
-| 18  | Integrations                  | Post-MVP              | `modules/integrations.md`                |
-| 19  | Mobile App                    | Built (Phase 18)      | `modules/mobile-app.md`                  |
+| #   | Module                        | Status                             | Doc                                      |
+| --- | ----------------------------- | ---------------------------------- | ---------------------------------------- |
+| 1   | Core                          | MVP                                | `modules/core.md`                        |
+| 2   | Auth & Users                  | MVP                                | `modules/auth-users.md`                  |
+| 3   | Onboarding & Business Profile | MVP                                | `modules/onboarding-business-profile.md` |
+| 4   | ICP                           | MVP                                | `modules/icp.md`                         |
+| 5   | Business Intelligence         | MVP                                | `modules/business-intelligence.md`       |
+| 6   | AI Platform                   | MVP                                | `modules/ai-platform.md`                 |
+| 7   | Lead Sourcing                 | MVP                                | `modules/lead-sourcing.md`               |
+| 8   | Enrichment & Data Quality     | MVP                                | `modules/enrichment-data-quality.md`     |
+| 9   | Scoring & Matching            | MVP                                | `modules/scoring-matching.md`            |
+| 10  | Leads Workspace               | MVP                                | `modules/leads-workspace.md`             |
+| 10c | Signals (trigger events)      | MVP (UAE v1, S0–S6)                | `modules/signals.md`                     |
+| 11  | Outreach                      | MVP (built, Phase 11)              | `modules/outreach.md`                    |
+| 12  | Reporting & Analytics         | MVP (built, Phase 13)              | `modules/reporting-analytics.md`         |
+| 13  | AI Insights                   | MVP (built, Phase 14)              | `modules/ai-insights.md`                 |
+| 14  | Notifications                 | MVP (built, Phase 12)              | `modules/notifications.md`               |
+| 15  | Billing & Plans               | MVP (built, Phase 16)              | `modules/billing-plans.md`               |
+| 16  | Compliance & Privacy          | MVP (built, Phase 15)              | `modules/compliance-privacy.md`          |
+| 17  | Admin (internal ops)          | MVP (19a + 19b built; 19c to come) | `modules/admin.md`                       |
+| 18  | Integrations                  | Post-MVP                           | `modules/integrations.md`                |
+| 19  | Mobile App                    | Built (Phase 18)                   | `modules/mobile-app.md`                  |
 
 ## 5. Cross-cutting concerns
 
-- **Tenancy (Core):** single DB, `team_id` on every tenant table, `BelongsToTeam` global scope + policy double-check, multi-team membership with an active team (ADR 0006).
+- **Tenancy (Core):** single DB, `team_id` on every tenant table, `BelongsToTeam` global scope + policy double-check, multi-team membership with an active team (ADR 0006). The scope is a **no-op when no team is active**, which is deliberate and is what the Admin panel's cross-tenant reads depend on — so the one place that removes the active team (`Admin\Http\Middleware\PlatformContext`) refuses to run on a route not named `admin.*`, and `tests/Feature/Admin/AdminRouteContractTest.php` asserts from the other side that no route outside `admin.*` carries it. Reading **one** tenant from the panel goes through `TeamContext::run()` rather than a hand-written `where`, so there is one implementation of tenancy rather than two that can disagree.
+- **Plan-driven capabilities (Core + Billing + Admin, Phase 19b, ADR 0015):** whether a team may use
+  a feature is **one question with one implementation** — `Core\Contracts\CapabilityGate`, decorated
+  three times in provider order: Core's permissive default, Billing's plan-backed gate, Admin's
+  governed gate. Resolution is **suspension → global kill switch → per-team override → plan →
+  permissive default**, and the order is itself the decision. The same seam shape as `CreditSource`,
+  `LeadQuotaSource` and `SeatLimitSource`: the module that owns the question ships the contract and a
+  permissive default, and the modules with an opinion decorate it — so Signals has never heard of a
+  plan, a grant or a suspension. Enforcement is in the **guards**, because a queued job and a
+  scheduled watch have no request; `capability:` middleware is the courtesy half. A **plan grant**
+  (`team_plan_grants`) outranks a live Stripe subscription, which is what makes "turn Stripe off" and
+  "take a plan away" two different acts, and `teams.billing_mode` stops checkout and metering while
+  granting nothing. Platform-wide knobs live in `platform_settings`, **schema'd by
+  `config/admin.php`** — an undeclared key throws, which is what keeps it from becoming a junk drawer
+  and what lets the settings screen be generated rather than hand-written.
+- **Internal operations (Admin, Phase 19a, ADR 0014):** a bespoke Inertia panel at `/admin` on a platform-admin identity (`users.admin_role`), separated from the tenant app by a middleware stack rather than a second auth guard. It owns no business rule: where a module owns an operation the panel calls that module's Action, and its generic registry writes only fields a descriptor declared. It reaches other modules the way Compliance and Billing do — by **decorating** their existing seams, so a suspended tenant stops sourcing, spending and sending without Admin knowing what a plan is. Every cross-tenant read is audited as a privacy event.
 - **The API (`/api/v1`)** — see `docs/api/README.md`, `docs/api/openapi.json` for the generated contract, and **ADR 0013** for why it is shaped this way. Six properties hold of _every_ endpoint, asserted over the whole route table in `tests/Feature/Api/V1/RouteContractTest.php` rather than endpoint by endpoint: it is versioned (there is no unversioned surface; `routes/api.php` is empty and each module declares its own), behind Sanctum (bar the token exchange), scoped by a token ability (`Auth\Enums\TokenAbility`, bar identity and a token's own lifecycle), answering with an API Resource and never a model, failing in the one envelope (`Core\Http\Responses\ApiError`), and throttled per token. Hardened in **Phase 17**; the mobile app (Phase 18) is its first full consumer, and the first caller that is not same-origin — which is what `config/cors.php` exists for (§6a of the API README: `exposed_headers`, or the client cannot read the version pin or a 429's `Retry-After` at all).
 - **i18n / RTL (ADR 0007):** EN + AR, RTL-aware components and brand tokens from the design-system phase.
 - **Page chrome:** every authenticated screen renders in `AppLayout` (teal rail + cream surface) and opens with **`PageHero`** — the Ink card carrying the screen's sidebar number, its statement with an Acid Lime tail, the one Orange rule, the screen's actions (`hero` Button variant for secondaries on Ink) and **one panda peek**. The hero carries the page's single `<h1>`; the shell topbar's title is a label.

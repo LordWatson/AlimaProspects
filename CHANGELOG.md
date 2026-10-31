@@ -5,6 +5,293 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-10-31 — Admin panel: platform controls, Stripe switches, plan features & provisioning (Phase 19b)
+
+- **One question, four possible answers, and the order is the feature** — **ADR 0015**.
+  `Core\Contracts\CapabilityGate` has a single method and is the only way anything in the product
+  asks whether a team may use a feature. Three bindings decorate it in provider order: Core's
+  permissive `AllCapabilitiesEnabled`, Billing's `PlanCapabilityGate` (the plan's own
+  `capabilities` list) and Admin's `GovernedCapabilityGate` (suspension, the global kill switch,
+  per-team overrides). Resolution is **suspension → kill switch → override → plan → permissive
+  default**, asserted layer by layer and in collision. Two of those would be wrong reversed: the
+  kill switch beats a per-team override because an operator reaching for it is dealing with
+  something broken and hunting down every exception first is how an incident becomes an outage; and
+  an override beats the plan **in both directions**, because "give this pilot a feature their plan
+  excludes" and "switch this off for a customer whose own compliance team asked" are both real
+  requests. A plan declaring **no** capability list falls through to permissive — a missing
+  configuration is not a product decision, and the alternative would have switched six features off
+  for everybody the day this shipped.
+- **Not Pennant**, although it has been installed and unused since Phase 0 and this was the phase to
+  decide rather than defer again. Pennant's model is a value that should stay _stable_ per scope once
+  resolved; ours changes the moment a webhook, a grant window, an override expiry or a suspension
+  changes, so using it would have meant inventing a cache-invalidation problem. It also has no
+  ordering story, and an override's reason and expiry are first-class here where a flag value of
+  `true` carries neither. **A paid entitlement is a term of a contract, not a feature flag.** Pennant
+  remains the right tool for a rollout percentage or an experiment.
+- **Six capabilities, not the thirteen the plan listed.** `signals`, `ai_insights`,
+  `business_intelligence`, `enrichment`, `csv_export`, `api_access` — and only `ai_insights`
+  (Starter+) and `signals` (Team+) are actually restricted, matching what the price list already
+  promises. Gating outreach channels, multiple ICPs or saved views means deciding they cost money,
+  which is a commercial decision and not a build task; the rest are declared, enforced and on for
+  everybody, so making one paid is a line in `config/billing.php`. Every case must name its
+  enforcement point, and `CapabilityEnforcementTest` **walks the enum and proves each one refuses** —
+  the previous test only checked the string was non-empty, which is no test at all.
+- **Enforcement in the guards, not middleware** — ADR 0012's argument unchanged, because a queued
+  discovery job and a scheduled watch spend a team's allowance with no request behind them.
+  `capability:` middleware is the courtesy half so a member who clicks a link their plan excludes
+  gets a sentence (402) rather than a half-rendered page, and a shared `capabilities` prop keeps the
+  nav from advertising what the plan does not include. `CapabilityExplainer` reports **which layer
+  decided**, which is the condition ADR 0015 accepts four layers on: a product where somebody has to
+  guess why a feature is off is a product nobody can support.
+- **A plan grant outranks a live Stripe subscription**, which is what makes "turn Stripe off" and
+  "take somebody's plan away" two different acts. `team_plan_grants` carries its own
+  seats/leads/credits, so Enterprise finally gets the numbers a signed contract says rather than the
+  price list's "unlimited"; `null` on a grant means "use the plan's number". Granted teams get
+  `SubscriptionState::Granted`, because the billing screen has no card to change, no invoices and
+  nothing to cancel. Precedence: **grant (inside its window) → live subscription → trial → default
+  plan**.
+- **`teams.billing_mode`** (`stripe` / `manual` / `disabled`) is a separate axis and **grants
+  nothing**. It stops checkout and usage metering — reporting overage against a subscription Stripe
+  is not billing is how a command logs an error every morning — and leaves entitlement alone. Which
+  means a team moved off Stripe without a grant is on the **default** plan, and if it was trialling
+  it drops there quietly when the trial lapses. The migration's first draft claimed the opposite;
+  the dry run and the mode-change toast now say what actually happens.
+- **"Stripe is off" is a product state, not an outage.** The container binds
+  `DisabledBillingGateway` over the real gateway so a checkout attempt is a `BillingException` with
+  a sentence, the billing screen does not render a button that would throw, and
+  `SyncSubscriptionFromStripe` **ignores a webhook that arrives anyway** — the middleware that 404s
+  the route is defence in depth, but a misconfigured proxy or a route cached before the switch
+  flipped must not change a team's entitlements while an operator believes Stripe is not being
+  listened to. It returns rather than throws, because Cashier has already answered 200. The rule the
+  tests exist to pin is that **turning Stripe off does not turn entitlement off**: a team on Scale
+  stays on Scale with its allowances intact and its usage sync running.
+- **Platform settings are a schema, not a key-value bin.** Every key `platform_settings` may hold is
+  declared in `config/admin.php` with a type, rules, a default and help text, and **both `get()` and
+  `set()` throw on an undeclared key** — every key is a literal in our own code, so an undeclared one
+  is always a typo, and a typo that returned null was the worst available failure:
+  `bool('billing.stripe_enable')` reads as false, which switches Stripe off and looks exactly like a
+  working screen. Writing the declared default deletes the row, so the table stays a record of
+  deviations. A declaration can carry an `allowed` list, which is what stops `signal` being saved as
+  a kill switch that kills nothing — discovered during the incident you reached for it in. The screen
+  is generated from the declarations, lists the pending changes in words, takes a second press before
+  switching anything off platform-wide, and saves the page in **one** transaction.
+- **Provisioning a business end to end**, calling Auth's own `CreateTeamAction` rather than
+  reimplementing it, so a tenant onboarded by sales is indistinguishable from one that signed up —
+  same Owner membership, same `team.created` audit entry, same trial-starting model event. A **dry
+  run** first, because the first real use of this screen is somebody typing a customer's name wrong
+  and the second is discovering the owner's address already belongs to an account, which an operator
+  must be told _before_ a stranger is emailed into somebody else's business. **An operator never
+  chooses a password:** a new owner gets a reset link after commit, through 19a's own
+  `SendUserPasswordResetAction`, so a provisioned account's first credential leaves the same audit
+  trail as an operator pressing "send reset link" on day ninety.
+- **Platform announcements**, scheduled, targetable by plan and market, dismissible **per person**
+  rather than per team, EN/AR because tenants read them, with a kill switch for the banner that turns
+  out to be wrong. The notification fan-out is **aggregated** — one per team through
+  `NotificationDispatcher::toTeam()`, never a loop over every member of every tenant — and it took
+  three guards, not the two planned: `ShouldBeUnique` stops a double-saved form, `notified_at` stops
+  a retry of a job that _finished_, and `announcement_notifications` (a per-tenant claim with a
+  unique index, taken **before** the send) covers the case this job actually hits, because it walks
+  every tenant and a crash at team 3,000 of 4,000 re-notified the first 2,999.
+- **The two notifications both module docs had parked:** `payment_failed`, raised by
+  `SyncSubscriptionFromStripe` on `invoice.payment_failed` and sent `toAdmins` because it is money a
+  Member can neither act on nor be expected to care about; and `assessment_review_due`, raised by a
+  new `compliance:notify-reviews` command. The second closes a gap that was indefensible rather than
+  merely missing: the compliance screen said a lawful-basis review was due and the gate closed when
+  it lapsed, but nothing ever _told_ anybody, so a team found out when their next discovery run was
+  refused. Two notices per cycle, and `lia_records.review_notified_at` is what lets the window be
+  wide enough to survive a missed scheduler morning without becoming a daily reminder for a
+  fortnight.
+
+### Fixed — 2026-10-31 — Phase 19b review (Phase 19b)
+
+Both review agents (CLAUDE.md §5a) found real defects, and the backend ones were not style.
+
+- **Privilege escalation through provisioning.** The screen is behind `teams.manage`, which `support`
+  holds, and it calls `GrantPlanAction` and `SetCapabilityOverrideAction`, whose own routes need
+  `billing.manage` and `settings.manage` — so a support operator could POST `grant_plan=enterprise`
+  with `capabilities_on[]=signals` and hand a tenant an unlimited plan and feature overrides through
+  a route that never mentions billing. `ProvisionTeamRequest` refuses those fields without the
+  matching ability, rather than stripping them: a team provisioned without the plan the form showed
+  is worse than an error naming the ability needed.
+- **Two capabilities declared an enforcement point that did not exist.** Nothing under `/api/v1`
+  consulted the gate at all, so the platform kill switch could not stop API traffic and a token
+  outlived the plan that justified it; and the insights API had no capability check although the web
+  screen did. `capability:api_access` now guards the whole api group, `capability:ai_insights` the
+  insights API routes, and `IssueApiTokenAction` checks before issuing — the mobile two-factor
+  exchange has no session for route middleware to hang on. This is exactly the "declared but not
+  enforced" case the enum's own docblock calls worse than no capability at all.
+- **Every validation rule on the settings form was a no-op.** A setting name _contains dots_, so a
+  rule keyed `settings.billing.stripe_enabled` is read by Laravel as three levels of nesting the
+  payload does not have — `data_get()` returns null and `sometimes` therefore skips the rule.
+  `UpdateSettingsRequest` validates each setting under a dot-free alias and maps the errors back to
+  the dotted name the screen indexes by.
+- **A settings save was one transaction per key**, so a failure part-way through left whichever half
+  came first in the config file applied — in a file full of kill switches.
+  `UpdatePlatformSettingsAction` wraps the page, keeping one audit entry per key.
+- **`CapabilityGate` was `bind`, not `scoped`**, so `extend` rebuilt the whole decorator chain on
+  every resolution: the per-team memo the docblocks described was per-resolution, and `forget()`
+  cleared a throwaway instance.
+- **`RevokePlanGrantAction` restamped `revoked_at`** on an already-revoked grant, moving the date a
+  tenant's entitlement actually ended — the one thing the kept row exists to answer — and writing a
+  second audit entry for a decision made once. `PublishAnnouncementAction::retire` had the same
+  shape. **`GrantPlanAction` revoked only grants _in force_**, so a future-dated grant stacked
+  behind a new one and which won next month became a tiebreak rather than a decision; it now revokes
+  every un-revoked grant under a row lock.
+- **`Announcement::dismissedBy()` used `withTimestamps('created_at', null)`**, which does not mean
+  "no `updated_at`" — Laravel reads the null as unspecified and falls back to the parent model's
+  column, so every dismissal 500'd on a column that does not exist.
+  **`PublishAnnouncementRequest::attributes()`** collided with `FormRequest`'s own hook, which the
+  validator calls while building messages and therefore _before_ `validated()` is available: every
+  failed validation died with "Call to a member function validated() on null" instead of rendering
+  the error bag, so the screen looked broken precisely when an operator had made a typo.
+- Also: `SettingDefinition::fromConfig` read a mistyped `type` as `Bool`; the assessment-review
+  command had an N+1 and no `onOneServer()`; `ends_at => after:starts_at` errored when `starts_at`
+  was blank; and `AnnouncementBoard` reached for the raw table builder where the relation already
+  described the pivot.
+- **Brand.** The announcement banner told `warning` from `critical` **by colour alone** (WCAG 1.4.1)
+  — each level now has its own icon and a visually hidden level word — and rendered operator-authored
+  per-locale copy with no `lang` or `dir`, so an Arabic reader handed the English fallback got
+  right-aligned English with its punctuation in the wrong place; `AnnouncementBoard` now returns the
+  locale each line _actually_ resolved to. Status-coloured 14px titles sat on a 12% tint of the same
+  status at roughly 4.1:1, under AA — the status token is now the icon, border and tint, and the
+  words are `text-foreground`. Four destructive actions (retire an announcement, revoke a grant,
+  clear an override, switch something off platform-wide) were single unconfirmed clicks. Admin
+  timestamps were formatted in the **viewer's team** timezone with no label, which for an operator is
+  either nothing or a borrowed one from an impersonated account, so a contractual grant date read
+  differently depending on whose account they last opened; admin screens use `utcDateTime()` and the
+  `datetime-local` inputs say UTC, which is what the server reads them as. Several banner and row
+  actions shared a generic accessible name, and the "Overridden" badge spent `status.warning` on a
+  non-problem. Recorded in `docs/brand/brand-tokens.md` §7f, including the items still **PENDING**
+  brand-owner approval: `status.info`, the dark-mode status values, the three-level notice scheme and
+  the 12% tint.
+
+### Added — 2026-10-31 — Admin panel: foundation, identity & cross-tenant CRUD (Phase 19a)
+
+- **Built ourselves, not with Filament** — **ADR 0014 supersedes ADR 0009**, which had planned
+  Filament v5 with an Inertia fallback and left the decision to be confirmed at this phase. Four
+  reasons, the first decisive: Filament's generated screens **write straight to models**, which is
+  precisely the second, unvalidated write path the Action/transaction/audit rules in CLAUDE.md §2
+  exist to prevent — and it would be the _default_, needing discipline on every resource to avoid
+  rather than discipline once to allow. Several of this product's invariants live only in those
+  Actions (the last-Owner refusals, the suppression entry that makes an erasure stick, the Stripe
+  round-trip on a plan change). The rest: a second Livewire/Blade stack to keep brand-compliant, a
+  second place tenancy can quietly fail, and the fact that the hard requirements — plan-driven
+  feature flags, manual billing, provisioning, margin reporting — are bespoke under any framework.
+  The CRUD was the cheap part.
+- **The platform identity is one column, not a second guard.** `users.admin_role` →
+  `Admin\Enums\AdminRole` (`super_admin`, `support`, `finance`, `read_only`), with ten abilities in
+  `AdminAbility` and the role-to-ability mapping in `config/admin.php` — a reviewed diff rather
+  than a `match` buried in a middleware. ADR 0009's "admin guard separate from tenant UI" was
+  reversed: a second guard over a second table forks 2FA, passkeys, password resets and the audit
+  trail, and what you want is one person with one credential and one trail. Four roles rather than
+  a boolean because reading a tenant's prospect list, impersonating a customer, suspending a team
+  and turning Stripe off are different powers. **Two-factor is required** —
+  `ADMIN_REQUIRE_TWO_FACTOR`, default on; one super-admin credential reads every tenant's data, and
+  a password alone is the wrong lock. **404 for a non-operator, 403 for an operator without the
+  ability**: a 403 on the door confirms there is something behind it.
+- **Crossing the tenancy boundary deliberately, and the test that makes it stick.**
+  `BelongsToTeam`'s global scope is a **no-op when no team is active**, so the panel's cross-tenant
+  reads work by _removing_ a constraint — which is exactly what an admin index needs and exactly
+  what must never happen anywhere else. `PlatformContext` clears `TeamContext` and refuses to run
+  on a route not named `admin.*`; `AdminRouteContractTest` asserts from the other side that **no
+  route outside `admin.*` carries it**, that every route inside carries the whole five-part stack,
+  and that each declares exactly one ability the enum defines. Phase 17's precedent, for the same
+  reason: a per-route test only covers the routes somebody remembered to write one for, and here
+  one forgotten middleware on one route is not a missing permission check — it is every tenant's
+  data served to whoever asked. Reading **one** tenant goes through `TeamContext::run()`, so there
+  is one implementation of tenancy rather than two that can disagree.
+- **Cross-tenant reads are audited as privacy events.** An operator opening a tenant's prospect
+  list leaves an `admin.resource.viewed` entry with the resource, the filters and a count — ids and
+  counts only, never a row, a name or an address, because a log of who looked at personal data must
+  not itself be a copy of it. An update records the _names_ of the fields that changed, not the
+  values. **The subtle bug this phase had to get right first:** `AuditLogger` stamps `team_id` from
+  `TeamContext`, which the panel has deliberately cleared, so every admin entry would have landed
+  with `team_id = null` — the row exists, nothing errors, and the per-tenant audit view a
+  customer's support ticket is answered from shows nothing at all. `AdminAudit` passes the target
+  team explicitly and writes inside `TeamContext::run()`.
+- **CRUD over all forty resources, from forty descriptors and three pages.** A declarative
+  `Admin\Resources\<Name>Resource` per model — columns (reusing Reporting's `ColumnFormat`),
+  detail-only columns, editable fields with their rules, searchable columns, filters, sorts, eager
+  loads — listed in `config/admin.php`, which is a single readable answer to "what can an operator
+  see and change?". Three rules hold it in shape, each enforced by a test: descriptors return
+  **data** (anything that needs to decide something gets a bespoke screen, which is what the team
+  and user operations controllers are); where a module owns the operation the panel **calls that
+  module's Action**; and `allowsCreate`/`allowsUpdate`/`allowsDelete` all default to **false**.
+  Create is permitted on two resources and only where every column the table requires is a declared
+  field — `lead-tags` fails that, because `slug` is derived and deriving a column is logic. Delete
+  is permitted on three, and the contract test pins the list, so changing it is a failing test and
+  a conversation rather than a quiet diff. The cross-tenant index over `leads` is the **only query
+  in the product with no `team_id` in its `where` clause**, so sorts and filters are whitelisted
+  against the descriptor, searches bind rather than build SQL, pagination has no "all" escape
+  hatch, and a dotted column without its eager load fails the contract test.
+- **Team suspension, enforced in three guards rather than in middleware.** `teams.suspended_at`
+  plus a **required** reason — a suspension nobody explained is one the next operator cannot safely
+  lift, so the customer stays switched off over a missing sentence. What stops is **sourcing,
+  sending and spending**; what does not stop is signing in and reading, deliberately: locking
+  people out of data they own punishes the colleague who did nothing, and a tenant who cannot reach
+  their own data cannot exercise their rights over it either. ADR 0012's argument decides _where_:
+  a queued discovery job and a scheduled signal watch spend a team's allowance with no request
+  behind them. Admin registers **last** and **decorates** (`extend`, never `bind`) Billing's
+  `CreditSource` and `LeadQuotaSource` and Outreach's new `TeamSendingGate` — a bind would have
+  replaced Billing's plan-backed source with one that had to know what a plan is. Lifting a
+  suspension **keeps** the reason, because a lifted suspension is still a thing that happened.
+- **Outreach gains a third seam rather than a shortcut.** `Contracts\TeamSendingGate` with
+  `AlwaysAllowTeamSending` as the permissive default (Auth's `UnlimitedSeatLimit` reasoning: a
+  default that refused would block sends for a suspension nobody applied), consulted by
+  `OutreachGuard` beside the deployment-wide switch, refusing with the new
+  `OutreachBlockReason::TeamSuspended`. **Binding over `LeadRestrictionResolver` would have been
+  one line**, and it would have had the guard tell a member that _this prospect_ may not be
+  approached — a false statement about somebody else's legal position, written into the team's
+  compliance history as though it were true.
+- **Impersonation, defined by what it cannot do.** Start is behind `admin.can:impersonate`
+  (`super_admin` and `support` only — never `finance`, never `read_only`); **stop is deliberately
+  not an `admin.*` route**, because by then `Auth::user()` is the customer and an admin-gated stop
+  would 404 the only way back. One list in `config/admin.php` of route-name patterns blocks
+  outreach sending, every billing write, erasure and export, CSV exports, passwords, email, 2FA,
+  passkeys, API tokens, and the team and account themselves — one file rather than a middleware
+  sprinkled across eight modules' route files, because that would be eight places to forget. An
+  operator cannot impersonate another operator, the session expires after 60 minutes, and the
+  banner lives in the **app shell** so it is on every tenant screen rather than the screens
+  somebody remembered. And `impersonated_by` rides in Core's new ambient `AuditContext`, so **every
+  write the session makes — through whichever module's Action, none of which know impersonation
+  exists — records the operator behind the customer**. That ambient bag is the one Core change the
+  phase needed: there is no layer between an Action and the logger to annotate from.
+- **Admin chrome, inside the brand.** Its own `AdminLayout` and server-driven sidebar, visually
+  distinct so an operator never mistakes it for a tenant screen — a Deep Ink shell, DM Mono labels,
+  a cream content surface (§2a), never a colour nobody chose and never Signal Orange, which is
+  decorative only. Timestamps are **UTC everywhere**, which falls out of an operator belonging to
+  no team and is correct rather than incidental. **English only, by decision**: an internal tool
+  carries no EN/AR or RTL obligation, and the panel is **web only** — there is no `/api/v1/admin`,
+  because a token that can read every tenant is a liability no ops task in the MVP needs.
+- **`SuperAdminSeeder`** — `super@admin.com` / `password`, super admin, verified, and **in no team
+  with no `current_team_id`**, which is the point of seeding one rather than promoting a demo user:
+  an operator belongs to no tenant, so the panel is exercised the way it is actually held. It
+  **refuses to run in production** unless both `ADMIN_SEED_ALLOW_PRODUCTION=true` and `--force` — a
+  seeder that plants a known password on a public host is not a convenience, it is the breach — and
+  it refreshes the role on a re-seed while **never resetting a password somebody has changed**. The
+  account has no second factor, so its first `/admin` visit is the enrolment screen: the correct
+  local experience, written into the runbook rather than excepted in the middleware.
+- **Tests: 66 new** (1520 → 1586), of which the ten in `AdminRouteContractTest` are the ones the
+  panel's isolation rests on. The rest: every admin route answering 404 to a signed-in customer
+  (swept over the whole route table, not a list of paths), each lower role refused its forbidden
+  actions, a cross-tenant index returning more than one team's rows **and** a drill-down returning
+  exactly one's, reads and writes audited with the target team, a posted field the descriptor never
+  declared being ignored, delete refused where the descriptor forbids it, impersonation's whole
+  forbidden list, suspension blocking sourcing/sending/spending **from a queue with no request
+  behind it** while sign-in and reading still work, and the seeder's idempotence and its production
+  refusal. Phase 16's `PlanEnforcementTest` was updated rather than worked around: it now asserts
+  the decorator is bound **and** that the limit it reports is still the plan's, which is the
+  property that matters — a decorator answering on its own would silently drop every plan allowance
+  in the product, and the class name alone would not show it.
+- **Then reviewed, and eight real defects fixed.** The `laravel-module-reviewer` and `brand-reviewer` agents (CLAUDE.md §5a) both found things, and the backend ones were not style: (1) the registry's **write** routes never consulted the descriptor's own ability, so `support` — which holds `tenant.write` — could rewrite the platform-wide **AI prompt registry** and change every tenant's next AI call; a new `platform.write` ability and a gate on store/update/destroy close it. (2) Account operations refused nothing when the target was another **operator**, so `support` could clear a super admin's second factor and leave `EnsureAdminTwoFactor` politely sending them to re-enrol — a lower role taking the second lock off a higher one; now super-admin only, via `ProtectsOperators`. (3) `Auth::logout()` during impersonation cycles the **authenticated** user's remember token, and that user is the customer: an expiring session signed a real customer out of every device they had ticked “remember me” on. Expiry now hands the operator back to themselves instead, and `logout` joined the blocked list. (4) The audit entry for an index stored the **raw search term**, and operators search by email address — so the log of who read personal data was itself accumulating it, in an append-only table outside Compliance's retention sweep; it records `searched: true` now. (5) `DatabaseSeeder` called `SuperAdminSeeder` unconditionally, so a `db:seed --force` in production aborted the whole run at the refusal and skipped everything after it. (6) The seeder would **promote** a pre-existing `super@admin.com`, which on any non-production host with open registration is a privilege escalation waiting for somebody to register the address; it now refuses an account that belongs to a team, which is what registration always creates. (7) `AuditContext` was a singleton that nothing reset, so `impersonated_by` could stamp a later request's entries in the same process — a _false attribution_ in an audit trail, not a missing field; it is `scoped`. (8) The blocked-route list had real gaps — un-suppressing a do-not-contact entry, editing the lawful-basis declaration, switching teams, accepting an invitation, spending the customer's allowance — and its `teams.store` pattern did not match `api.v1.teams.store`, because `Str::is()` is anchored. Also fixed: the panel's logo rendered Teal on Ink (a “Never” in the book, and 2.1:1) below its 120px minimum width; the impersonation banner printed the customer's local time labelled UTC, and was an English sentence with no `dir` on screens that may be Arabic; member removal was a one-click ghost button; eyebrow labels sat at 10.4px under a 12px floor; and `aria-sort` and per-row link names were missing. Three §2 layering violations went with them: five account operations became Actions with their writes and audit entries in **one** transaction, and the dashboard's and team page's queries moved into `PlatformOverview` and `TeamOverview`.
+- **Fixed: `migrate --seed` was broken, and the suite could not see it.** `DemoSeeder` mass-assigned `business_profiles.version` and `completed_at` — real columns deliberately kept off `$fillable`, because they are ours to set rather than the onboarding form's — which throws under `Model::shouldBeStrict()`, i.e. everywhere but production. So nobody could seed the demo tenancy at all. It survived because **`$this->seed()` returns a `PendingCommand` that only executes when it is destructed**, and an exception thrown there never reaches the assertion count: twenty tests called it and none of them noticed. The seeder now mirrors `CompleteOnboardingAction` and `forceFill`s those two columns, and `tests/Feature/Core/DatabaseSeederTest` invokes the seeders **directly** — which is the real lesson, since `$this->seed()` is fine for a test that then asserts on what a seeder produced and useless for asserting that it ran. Pre-existing, and unrelated to the admin panel beyond having been found while building it.
+- **Deferred, and said out loud:** no platform-user deletion. Deleting a user who is a team's last
+  Owner needs a product decision (delete the team, transfer it, or refuse?), and the panel can
+  already remove a member, suspend a tenant and erase a _data subject_ through Compliance. **Phase
+  19b** owns the settings store, the Stripe switches, plan grants, plan-driven capabilities over
+  Pennant and provisioning; **Phase 19c** owns platform reporting and the operator views Signals,
+  Compliance and Billing each deferred here.
+
 ### Added — 2026-10-31 — Mobile app (Phase 18)
 
 - **The app.** `/mobile` — Capacitor + Ionic Vue + TypeScript, its own npm project, consuming
