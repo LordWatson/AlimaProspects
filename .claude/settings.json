@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "env": {
+    "PYTHONHASHSEED": "0",
+    "GRAPHIFY_MAX_WORKERS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(graphify query:*)",
+      "Bash(graphify path:*)",
+      "Bash(graphify explain:*)",
+      "Bash(graphify update:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git blame:*)",
+      "Bash(composer test:*)",
+      "Bash(composer analyse:*)",
+      "Bash(composer lint:*)",
+      "Bash(composer lint:check:*)",
+      "Bash(composer types:check:*)",
+      "Bash(composer ci:check:*)",
+      "Bash(composer api:docs:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm run types:check:*)",
+      "Bash(npm run build:*)",
+      "Bash(php artisan test:*)",
+      "Bash(php artisan about:*)",
+      "Bash(php artisan route:list:*)",
+      "Bash(php artisan migrate:status:*)",
+      "Bash(php artisan config:clear:*)",
+      "Bash(php artisan optimize:clear:*)",
+      "Bash(php artisan queue:work:*)",
+      "Bash(php artisan queue:listen:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(php artisan migrate:fresh:*)",
+      "Bash(php artisan migrate:rollback:*)",
+      "Bash(php artisan db:wipe:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.testing)",
+      "Read(./.env.backup)",
+      "Read(./.env.production)",
+      "Read(./storage/*.key)",
+      "Edit(./.env)",
+      "Edit(./.env.testing)",
+      "Edit(./.env.production)",
+      "Bash(php artisan horizon:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Edit(./vendor/**)",
+      "Edit(./node_modules/**)",
+      "Edit(./mobile/node_modules/**)",
+      "Edit(./public/build/**)",
+      "Edit(./graphify-out/**)",
+      "Edit(./docs/api/openapi.json)",
+      "Edit(./mobile/android/app/src/main/res/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Pint: formatting edited PHP",
+            "timeout": 60,
+            "command": "PHP=\"$HOME/.config/herd/bin/php.bat\"; [ -f \"$PHP\" ] || PHP=php; node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>{const j=JSON.parse(s);const f=j.tool_response?.filePath||j.tool_input?.file_path||\"\";if(/[.]php$/i.test(f))console.log(f)})' | { read -r f; [ -n \"$f\" ] && \"$PHP\" vendor/bin/pint \"$f\"; } 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "async": true,
+            "timeout": 300,
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; [ -f graphify-out/graph.json ] || exit 0; command -v graphify >/dev/null 2>&1 || exit 0; find app tests database config routes resources/js lang -type f -newer graphify-out/graph.json 2>/dev/null | grep -Eq '[.](php|ts|vue)$' && graphify update . >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ]
+  }
+}
