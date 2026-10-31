@@ -15,7 +15,7 @@ The foundation every other module builds on. Owns multi-tenancy (`teams` + the u
 - `LogContext` middleware injecting `team_id`, `user_id`, `request_id` into every log line; dedicated channels `ai`, `lead_sourcing`, `billing`.
 - Base module service provider + auto-registration of module web/api routes, policies, migrations.
 - Central exception rendering in `bootstrap/app.php`; base `DomainException` type.
-- **The `/api/v1` contract** (Phase 17): one error envelope (`Http/Responses/ApiError` + `Enums/ApiErrorCode` + `Exceptions/ApiExceptionRenderer`), the version policy (`Http/Middleware/ApiVersion`), the shared pagination parameter (`Http/Requests/PaginatedIndexRequest`), and what the OpenAPI generator cannot infer (`Support/ApiDocs/DocumentsApiContract`). See `docs/api/README.md`.
+- **The `/api/v1` contract** (Phase 17, ADR 0013): one error envelope (`Http/Responses/ApiError` + `Enums/ApiErrorCode` + `Exceptions/ApiExceptionRenderer`), the version policy (`Http/Middleware/ApiVersion`), the shared pagination parameter (`Http/Requests/PaginatedIndexRequest`), and what the OpenAPI generator cannot infer (`Support/ApiDocs/DocumentsApiContract`). See `docs/api/README.md`.
 - `Model::shouldBeStrict()` outside production; money cast helper (integer minor units); UTC storage + team-tz display helpers.
 - Pennant feature-flag scaffolding scoped to team.
 
