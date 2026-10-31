@@ -96,9 +96,11 @@ enum TokenAbility: string
     }
 
     /**
-     * The abilities grouped by resource, in the order a picker should show them.
+     * The abilities grouped by resource, in the order a picker should show them — the shape the
+     * token settings screen renders, so a new ability appears in the UI by existing rather than by
+     * somebody remembering to add a checkbox.
      *
-     * @return array<string, list<array{value: string, label: string}>>
+     * @return list<array{group: string, title: string, abilities: list<array{value: string, label: string}>}>
      */
     public static function catalogue(): array
     {
@@ -111,6 +113,34 @@ enum TokenAbility: string
             ];
         }
 
-        return $grouped;
+        return array_map(
+            static fn (string $group, array $abilities): array => [
+                'group' => $group,
+                'title' => self::groupTitle($group),
+                'abilities' => $abilities,
+            ],
+            array_keys($grouped),
+            array_values($grouped),
+        );
+    }
+
+    /**
+     * The heading above a group of checkboxes.
+     */
+    private static function groupTitle(string $group): string
+    {
+        return match ($group) {
+            'leads' => __('Leads'),
+            'discovery' => __('Lead discovery'),
+            'icp' => __('Ideal customer profiles'),
+            'scoring' => __('Scoring'),
+            'outreach' => __('Outreach'),
+            'signals' => __('Signals'),
+            'insights' => __('AI insights'),
+            'notifications' => __('Notifications'),
+            'reports' => __('Reports'),
+            'team' => __('Team'),
+            default => $group,
+        };
     }
 }

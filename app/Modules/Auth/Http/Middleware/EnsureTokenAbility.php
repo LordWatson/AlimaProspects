@@ -7,6 +7,7 @@ namespace App\Modules\Auth\Http\Middleware;
 use App\Models\User;
 use App\Modules\Auth\Enums\TokenAbility;
 use App\Modules\Auth\Exceptions\TokenAbilityException;
+use App\Modules\Core\Http\Responses\ApiError;
 use Closure;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Request;
@@ -34,7 +35,7 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Sanctum ships `CheckForAnyAbility`, which this deliberately replaces: it rejects the
  * cookie-authenticated caller outright, and it aborts with a bare 403 outside the error envelope
- * every client is written against ({@see \App\Modules\Core\Http\Responses\ApiError}).
+ * every client is written against ({@see ApiError}).
  *
  * **Testing a scope needs a real token.** `Sanctum::actingAs()` sets a token object on the user but
  * sends no credential with the request, so it reads as first-party here; a test that means to

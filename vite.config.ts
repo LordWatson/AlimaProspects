@@ -74,6 +74,10 @@ export default defineConfig({
             // Generated whole on every graph build (and by the post-commit hook), so formatting it
             // is a fight the generator always wins — and `composer ci:check` loses.
             'graphify-out/**',
+            // Same bargain for the OpenAPI specification: Scramble writes it whole on every
+            // `composer api:docs`, so a formatter that reflows it only makes the next export a
+            // diff nobody asked for.
+            'docs/api/openapi.json',
             // Published vendor views: Laravel's own markup, deliberately kept diffable against
             // upstream. The brand lives in the theme stylesheet beside them.
             'resources/views/vendor/mail/**',

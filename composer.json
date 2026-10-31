@@ -72,6 +72,9 @@
         "lint": [
             "pint --parallel"
         ],
+        "api:docs": [
+            "@php artisan scramble:export"
+        ],
         "analyse": [
             "phpstan analyse --memory-limit=1G"
         ],

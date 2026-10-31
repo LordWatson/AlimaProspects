@@ -297,7 +297,7 @@ within a point or two of the reference's proportions of the panel. Four judgemen
   carries none, so the layout still has **one peek in one colour** (§5) — and the panel's lower half
   belongs to the wordmark, which a second mark was competing with.
 - **A mono sign-off on the bottom line** of the form column (`© <year> Alima. Marketing brighter
-together.`) at `text-xs`, tracked, Ink 55. It is the brand line the sidebar already carries, not
+  together.`) at `text-xs`, tracked, Ink 55. It is the brand line the sidebar already carries, not
   new copy.
 
 3. **PENDING — favicon/app-icon source SVGs** are referenced (`/Alima_Brand_Library`) but not delivered in `docs/brand/`; need the master files before the app-shell phase.

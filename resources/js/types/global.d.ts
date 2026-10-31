@@ -1,8 +1,8 @@
 import type { Directive } from 'vue';
-import type { Auth } from '@/types/auth';
-import type { LocaleShared } from '@/types/locale';
-import type { NotificationBell } from '@/types/notifications';
-import type { OnboardingShared } from '@/types/onboarding';
+import type { Auth } from '@/shared/types/auth';
+import type { LocaleShared } from '@/shared/types/locale';
+import type { NotificationBell } from '@/shared/types/notifications';
+import type { OnboardingShared } from '@/shared/types/onboarding';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {

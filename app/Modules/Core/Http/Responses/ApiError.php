@@ -7,6 +7,7 @@ namespace App\Modules\Core\Http\Responses;
 use App\Modules\Core\Enums\ApiErrorCode;
 use App\Modules\Core\Exceptions\ApiExceptionRenderer;
 use App\Modules\Core\Exceptions\DomainException;
+use App\Modules\Core\Http\Middleware\ApiVersion;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -47,6 +48,12 @@ final class ApiError
     }
 
     /**
+     * The version is stamped here as well as in {@see ApiVersion}, and not by accident: the
+     * middleware sets the header on the way back out, and an exception never comes back out
+     * through it — it is caught by the handler above. Without this, every error response would be
+     * the one kind of response missing the header a client uses to decide how to parse it, which
+     * is exactly when it is needed most. An explicit header still wins, so a 429 keeps its own.
+     *
      * @param  array<string, mixed>  $details
      * @param  array<string, string>  $headers
      */
@@ -60,7 +67,7 @@ final class ApiError
         return new JsonResponse(
             self::payload($code instanceof ApiErrorCode ? $code->value : $code, $message, $details),
             $status,
-            $headers,
+            [ApiVersion::HEADER => ApiVersion::VERSION, ...$headers],
         );
     }
 }

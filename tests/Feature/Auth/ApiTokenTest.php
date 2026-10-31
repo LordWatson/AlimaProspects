@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Models\User;
 use App\Modules\Auth\Actions\CreateTeamAction;
 use App\Modules\Auth\Data\CreateTeamData;
+use App\Modules\Auth\Enums\TokenAbility;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -83,4 +84,58 @@ it('switches teams over the API', function (): void {
         ->assertJsonPath('data.id', $second->id);
 
     expect($user->fresh()->currentTeamId())->toBe((int) $second->getKey());
+});
+
+it('offers the ability catalogue on the token settings screen', function (): void {
+    $user = createUserWithTeam();
+
+    // The picker is built from the enum, so a new ability appears on the screen by existing
+    // rather than by somebody remembering to add a checkbox (Phase 17).
+    $this->actingAs($user)
+        ->get(route('api-tokens.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('settings/ApiTokens')
+            ->has('abilityGroups')
+            ->where('abilityGroups.0.group', 'leads')
+            ->has('abilityGroups.0.abilities'));
+});
+
+it('creates a scoped token from the settings form', function (): void {
+    $user = createUserWithTeam();
+
+    $this->actingAs($user)
+        ->post(route('api-tokens.store'), [
+            'name' => 'Pipeline reader',
+            'abilities' => [TokenAbility::LeadsRead->value],
+        ])
+        ->assertRedirect(route('api-tokens.index'));
+
+    expect($user->tokens()->firstOrFail()->abilities)->toBe([TokenAbility::LeadsRead->value]);
+});
+
+it('defaults a token to full access when no scope is chosen', function (): void {
+    $user = createUserWithTeam();
+
+    // The form posts `*` when the limit is left off; a token created without the field at all —
+    // an older client, or a curl — means the same thing. A token that silently came out able to do
+    // nothing would fail on first use with no clue why.
+    $this->actingAs($user)
+        ->post(route('api-tokens.store'), ['name' => 'My iPhone'])
+        ->assertRedirect(route('api-tokens.index'));
+
+    expect($user->tokens()->firstOrFail()->abilities)->toBe([TokenAbility::WILDCARD]);
+});
+
+it('refuses an ability the API does not enforce', function (): void {
+    $user = createUserWithTeam();
+
+    $this->actingAs($user)
+        ->post(route('api-tokens.store'), [
+            'name' => 'Invented scope',
+            'abilities' => ['leads:read', 'leads:everything'],
+        ])
+        ->assertSessionHasErrors('abilities.1');
+
+    expect($user->tokens()->count())->toBe(0);
 });

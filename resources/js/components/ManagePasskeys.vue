@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
 import { KeyRound } from '@lucide/vue';
-import type { Passkey } from '@/types/auth';
+import type { Passkey } from '@/shared/types/auth';
 import Heading from '@/components/Heading.vue';
 import PasskeyItem from '@/components/PasskeyItem.vue';
 import PasskeyRegister from '@/components/PasskeyRegister.vue';
