@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
 import {
+    ChartNoAxesColumn,
+    CircuitBoard,
     LayoutDashboard,
+    ListTodo,
     Megaphone,
+    Radar,
+    ScrollText,
+    Send,
+    ShieldCheck,
     SlidersHorizontal,
     UserPlus,
 } from '@lucide/vue';
@@ -53,6 +60,26 @@ const actions = [
     },
     { label: 'Announcements', href: '/admin/announcements', icon: Megaphone },
     { label: 'Settings', href: '/admin/settings', icon: SlidersHorizontal },
+] as const;
+
+/**
+ * Phase 19c's screens: the business's own numbers, and the views that make the platform runnable.
+ *
+ * Hard-coded for the same reason as `actions` above — each is a bespoke screen with its own
+ * ability, and there is no list to derive them from. Ordered by how often an operator reaches for
+ * one: reporting is where a morning starts, and the oversight views are where a ticket ends.
+ *
+ * They sit **above** the registry groups because, like `actions`, they are things an operator comes
+ * here to *do* or to *read*, whereas the registry is where they go to look a record up.
+ */
+const insight = [
+    { label: 'Reporting', href: '/admin/reporting', icon: ChartNoAxesColumn },
+    { label: 'Queues and jobs', href: '/admin/operations', icon: ListTodo },
+    { label: 'Provider health', href: '/admin/providers', icon: CircuitBoard },
+    { label: 'Outreach', href: '/admin/outreach', icon: Send },
+    { label: 'Audit trail', href: '/admin/audit', icon: ScrollText },
+    { label: 'Compliance', href: '/admin/compliance', icon: ShieldCheck },
+    { label: 'Signal runs', href: '/admin/signal-runs', icon: Radar },
 ] as const;
 </script>
 
@@ -118,6 +145,36 @@ const actions = [
                 >
                     <component :is="action.icon" class="size-4" />
                     {{ action.label }}
+                </Link>
+            </div>
+
+            <!--
+              Phase 19c. A group of its own rather than more rows under "Operate": these are how
+              the platform is measured and diagnosed, and the two kinds of task do not interleave
+              in an operator's head.
+            -->
+            <div class="flex flex-col gap-1">
+                <p
+                    class="px-3 pb-1 font-mono text-xs tracking-eyebrow text-cream/70 uppercase"
+                >
+                    Measure and diagnose
+                </p>
+                <Link
+                    v-for="item in insight"
+                    :key="item.href"
+                    :href="item.href"
+                    class="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition-colors focus-visible:ring-[3px] focus-visible:ring-cream focus-visible:outline-none"
+                    :class="
+                        page.url.startsWith(item.href)
+                            ? 'bg-teal font-semibold text-cream'
+                            : 'text-cream/75 hover:bg-cream/10 hover:text-cream'
+                    "
+                    :aria-current="
+                        page.url.startsWith(item.href) ? 'page' : undefined
+                    "
+                >
+                    <component :is="item.icon" class="size-4" />
+                    {{ item.label }}
                 </Link>
             </div>
 

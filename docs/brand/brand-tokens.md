@@ -392,3 +392,40 @@ and the `datetime-local` inputs say "UTC" in their labels because the server rea
 tenant-facing `dateTime()` formats in the team's timezone, which is the wrong answer for an operator —
 they are either in no team or, worse, impersonating one, so the same contractual grant date would read
 differently depending on whose account they last opened.
+
+### 7g. Added 2026-11-01 (platform reporting and operations, Phase 19c)
+
+Phase 19c added seven operator screens made almost entirely of **state** — open and closed circuits,
+failed jobs, lapsed assessments, bounce rates — which is the hardest shape for this palette, because
+Signal Orange is decorative only and must never carry one. Nothing new was invented; three things
+are recorded.
+
+1. **The chart set is reused, not extended.** `StatTile`, `BarListChart`, `FunnelChart` and
+   `ReportTableView` from `components/charts` draw every figure on these pages, with the validated
+   `--chart-*` tokens and single-series bars (§7.7). `ReportTableView`'s prop widened to the table
+   shape _without_ its key so a platform report renders through it, and it takes a `utc` flag —
+   because `useFormat().date()` formats in the **active team's** timezone, and an operator who has
+   just been impersonating somebody would otherwise read the platform's figures on that customer's
+   clock. Thirteen reports, no fourteenth chart.
+2. **Status badge contrast, measured.** §7f.3 left this open; the Phase 19c review worked it out
+   against the 12% tints these pages use: `warning` ≈ 4.7:1, `error` ≈ 5.4:1, `success` > 5:1 — all
+   passing AA at the 12px eyebrow size they are set in. **`info` ≈ 4.4:1 and would fail**, so it is
+   used only as a non-text icon on these screens and never as a badge. That remains the rule until
+   `status.info` is approved (§7.6).
+3. **An em dash is a brand rule here, not a convention.** Every figure on these screens renders `—`
+   rather than `0` where the value is unavailable: a failure rate over no calls means the provider
+   was unused, a margin percentage over no revenue would read as break-even, a blank run duration
+   means the run never finished. It is Reporting's own honesty rule (`Ratio::of()` returns null) and
+   the review found two places that had quietly broken it, so it is written down rather than
+   remembered.
+
+Two existing decisions were tightened rather than added to: the status-panel tint is `/12` with a
+`/30` border everywhere now, as §7f.2 already documented (two Phase 19c panels had drifted to `/8`
+and `/40`), and the panel's **UTC** timestamp rule gained a date-only form, `useFormat().utcDate()`,
+for the rollup's "figures as at" lines — a rolled-up day is a day, and padding it with a midnight it
+never had and then shifting that midnight into a team's timezone is two mistakes rather than one.
+
+**Not a panel decision, raised for the design system:** `components/ui/table/TableHead.vue` sets
+`tracking-wide` rather than `tracking-eyebrow` and carries no `scope="col"`, so a table header reads
+with slightly different tracking from the DM Mono eyebrow beside it. Product-wide and pre-existing;
+worth a ticket rather than a local override.

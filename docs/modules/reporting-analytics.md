@@ -184,6 +184,17 @@ person asked to read them would make the role useless. A non-member is a 404 bef
 
 ## Known limitations / TODO
 
+- **Nothing here is cross-tenant, and the Admin panel does not reuse it.** Every builder in this
+  module is scoped by design and every figure's cohort rule is written for _one team's_ window, so
+  running them with the scope removed would not produce a platform version of the same report — it
+  would silently answer a different question. Platform reporting (Admin, Phase 19c) therefore has
+  **its own** builders over its own rollup, and reuses this module's plumbing instead: `DateRange`
+  and its UTC rule, `Ratio::of()`, the `ReportColumn`/`ReportRow`/`Kpi`/`FunnelStep`/
+  `BreakdownSlice` shapes, the Vue chart set, and `ReportCsvExporter` — which grew `rowsFor()` and
+  `filenameFor()` for it rather than being copied, because the thing that would have drifted between
+  two writers is the formula hardening. `ReportKey` is deliberately **not** shared: a cross-tenant
+  figure must not be reachable through a tenant's enum, where it would leak into `tabular()`, the
+  dashboard's tabs and `/api/v1/reports`' validation. See `docs/modules/admin.md`.
 - **A null rate is not a zero.** `Ratio::of()` returns null when there is nothing to divide by, the
   screen draws an em dash and the CSV leaves the cell empty. A reply rate of zero means nobody
   replied; a reply rate over no attempts means nobody was asked. Do not let a later change collapse

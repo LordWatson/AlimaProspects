@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
-import type { ReportColumn, ReportTable } from '@/types';
+import type { RenderableReportTable, ReportColumn } from '@/types';
 
 /*
  * Any report, as a table — the `dataviz` guidance's "a table view exists", promoted from a
@@ -29,7 +29,26 @@ import type { ReportColumn, ReportTable } from '@/types';
  * The first column is the row header (`<th scope="row">`), so a screen reader announces "Email —
  * reply rate 12%" rather than reading a wall of numbers with no subject.
  */
-const props = defineProps<{ table: ReportTable }>();
+/*
+ * `RenderableReportTable`, not `ReportTable`: this component never reads `key`, and typing it
+ * without one is what lets the admin panel's platform reports (Phase 19c) render here too. A
+ * `ReportTable` still satisfies it.
+ */
+const props = withDefaults(
+    defineProps<{
+        table: RenderableReportTable;
+        /**
+         * Render date cells in **UTC** rather than in the active team's timezone.
+         *
+         * Set by the admin panel's platform reports (Phase 19c). `useFormat().date()` formats in
+         * the current team's zone, and an operator belongs to no team — worse, one who has just
+         * been impersonating somebody would read the platform's figures on that customer's clock.
+         * A rolled-up day is a UTC day, so there is one right answer and it is not the tenant's.
+         */
+        utc?: boolean;
+    }>(),
+    { utc: false },
+);
 
 const { t } = useI18n();
 const { number, currency, percent, date } = useFormat();
@@ -61,7 +80,9 @@ function cell(column: ReportColumn, value: string | number | null): string {
         case 'percent':
             return percent(Number(value));
         case 'date':
-            return date(String(value));
+            return props.utc
+                ? date(String(value), { dateStyle: 'medium', timeZone: 'UTC' })
+                : date(String(value));
         default:
             return column.translated ? t(String(value)) : String(value);
     }

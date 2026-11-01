@@ -47,10 +47,32 @@ final class ReportCsvExporter
      */
     public function rows(ReportTable $table): Generator
     {
-        yield array_map(fn (ReportColumn $column): string => $this->header($column), $table->columns);
+        yield from $this->rowsFor($table->columns, $table->rows);
+    }
 
-        foreach ($table->rows as $row) {
-            yield $this->row($table, $row);
+    /**
+     * The same writer, given the columns and rows directly.
+     *
+     * It exists so the **Admin panel's platform reports** (Phase 19c) are written by this code
+     * rather than by a second exporter. They are not {@see ReportTable}s — a platform figure must
+     * not be reachable through a tenant's `ReportKey`, see `Admin\Enums\PlatformReport` — but they
+     * are built from the same {@see ReportColumn} and {@see ReportRow}, so every rule above about
+     * what a spreadsheet wants applies to them unchanged: bare numbers, the unit in the header, an
+     * empty cell rather than a zero, and formula neutralisation only where a cell holds words.
+     *
+     * A second writer would have drifted from this one the first time either changed, and the
+     * thing that would have drifted is the formula hardening.
+     *
+     * @param  list<ReportColumn>  $columns
+     * @param  list<ReportRow>  $rows
+     * @return Generator<int, list<string>>
+     */
+    public function rowsFor(array $columns, array $rows): Generator
+    {
+        yield array_map(fn (ReportColumn $column): string => $this->header($column), $columns);
+
+        foreach ($rows as $row) {
+            yield $this->cellsFor($columns, $row);
         }
     }
 
@@ -60,13 +82,22 @@ final class ReportCsvExporter
      */
     public function filename(ReportTable $table, ?string $from, ?string $to): string
     {
+        return $this->filenameFor($table->key->slug(), $from, $to);
+    }
+
+    /**
+     * The same filename, given the slug directly — the Admin panel's platform reports (Phase 19c)
+     * name themselves with their own enum's slug.
+     */
+    public function filenameFor(string $slug, ?string $from, ?string $to): string
+    {
         $window = match (true) {
             $from !== null && $to !== null => $from.'-to-'.$to,
             $to !== null => $to,
             default => 'all-time',
         };
 
-        return 'alima-'.$table->key->slug().'-'.$window.'.csv';
+        return 'alima-'.$slug.'-'.$window.'.csv';
     }
 
     private function header(ReportColumn $column): string
@@ -86,13 +117,14 @@ final class ReportCsvExporter
     }
 
     /**
+     * @param  list<ReportColumn>  $columns
      * @return list<string>
      */
-    private function row(ReportTable $table, ReportRow $row): array
+    private function cellsFor(array $columns, ReportRow $row): array
     {
         $cells = [];
 
-        foreach ($table->columns as $column) {
+        foreach ($columns as $column) {
             $cells[] = $this->harden($column, $this->cell($column, $row->cells[$column->key] ?? null));
         }
 

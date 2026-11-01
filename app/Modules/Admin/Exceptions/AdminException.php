@@ -143,4 +143,62 @@ final class AdminException extends DomainException
 
         return $e;
     }
+
+    /**
+     * A retry or delete aimed at a failed job that is no longer there (Phase 19c).
+     *
+     * A refusal rather than a silent success, because the two are different things to tell an
+     * operator: another colleague retrying the same job a second earlier is the common cause, and
+     * "retried" when nothing was would leave them believing the work is back on the queue.
+     */
+    public static function failedJobMissing(string $uuid): self
+    {
+        $e = new self(
+            'That failed job is no longer in the table — somebody may have retried or cleared it. '
+            .'Reload the list. (Reference '.$uuid.'.)'
+        );
+        $e->errorCode = 'admin.failed_job_missing';
+        $e->status = 404;
+
+        return $e;
+    }
+
+    /**
+     * A breaker reset aimed at a provider that has no breaker (Phase 19c).
+     *
+     * Three providers genuinely have none — the AI transport, the mail transport and Stripe — and
+     * `PlatformProvider` says so rather than pretending. A 422 rather than a 500: the value came
+     * from a form, and the honest answer is that there is nothing there to reset.
+     */
+    public static function providerNotInstrumented(string $provider): self
+    {
+        $e = new self(
+            $provider.' has no circuit breaker, so there is nothing to reset. Its health is read '
+            .'from the error rates on this screen instead.'
+        );
+        $e->errorCode = 'admin.provider_not_instrumented';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * A platform suppression whose value is not a usable identity of the chosen type (Phase 19c).
+     *
+     * `SuppressionList::suppress()` returns null rather than storing a hash of nonsense, which is
+     * the right behaviour and silent — so this is what turns it into something the operator sees.
+     * A suppression that stored a mistyped address would never match anything and would read, for
+     * ever, as a promise we had kept.
+     */
+    public static function suppressionValueUnusable(string $type): self
+    {
+        $e = new self(
+            'That is not a usable '.$type.', so nothing was added. A suppression list entry only '
+            .'works if it matches what arrives later.'
+        );
+        $e->errorCode = 'admin.suppression_value_unusable';
+        $e->status = 422;
+
+        return $e;
+    }
 }

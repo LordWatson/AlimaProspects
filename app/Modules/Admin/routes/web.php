@@ -5,11 +5,18 @@ declare(strict_types=1);
 use App\Modules\Admin\Enums\AdminAbility;
 use App\Modules\Admin\Http\Controllers\Web\AnnouncementController;
 use App\Modules\Admin\Http\Controllers\Web\AnnouncementDismissalController;
+use App\Modules\Admin\Http\Controllers\Web\AuditController;
+use App\Modules\Admin\Http\Controllers\Web\ComplianceActivityController;
 use App\Modules\Admin\Http\Controllers\Web\DashboardController;
 use App\Modules\Admin\Http\Controllers\Web\ImpersonationController;
+use App\Modules\Admin\Http\Controllers\Web\OperationsController;
+use App\Modules\Admin\Http\Controllers\Web\OutreachOversightController;
+use App\Modules\Admin\Http\Controllers\Web\PlatformReportingController;
+use App\Modules\Admin\Http\Controllers\Web\ProviderHealthController;
 use App\Modules\Admin\Http\Controllers\Web\ProvisioningController;
 use App\Modules\Admin\Http\Controllers\Web\ResourceController;
 use App\Modules\Admin\Http\Controllers\Web\SettingsController;
+use App\Modules\Admin\Http\Controllers\Web\SignalRunController;
 use App\Modules\Admin\Http\Controllers\Web\TeamBillingController;
 use App\Modules\Admin\Http\Controllers\Web\TeamOperationsController;
 use App\Modules\Admin\Http\Controllers\Web\UserOperationsController;
@@ -111,6 +118,122 @@ Route::middleware([
             Route::post('/', [ProvisioningController::class, 'store'])
                 ->middleware('admin.can:'.AdminAbility::ManageTeams->value)
                 ->name('store');
+        });
+
+        /*
+         * Platform reporting (Phase 19c) — the business's own numbers.
+         *
+         * Behind `reports.read`, its own ability: every figure is an aggregate and names nobody, so
+         * it is not the privacy event `tenant.read` audits, and it is not only money, so putting it
+         * behind `billing.manage` would have hidden the onboarding funnel from everybody but
+         * Finance. The export carries the same ability as the screen — a download is the report in
+         * a different window, and gating the file more strictly than the chart would stop the
+         * person asked to read the numbers taking them to a meeting.
+         */
+        Route::prefix('reporting')->name('reporting.')->group(function (): void {
+            Route::get('/', [PlatformReportingController::class, 'index'])
+                ->middleware('admin.can:'.AdminAbility::ReadPlatformReports->value)
+                ->name('index');
+
+            Route::get('export', [PlatformReportingController::class, 'export'])
+                ->middleware('admin.can:'.AdminAbility::ReadPlatformReports->value)
+                ->name('export');
+        });
+
+        /*
+         * Failed jobs, queues and the schedule (Phase 19c).
+         *
+         * Reading is `operations.manage` rather than `tenant.read`, which looks strict for a list
+         * of job classes and is not: a failed job's exception and payload reference is the one place
+         * in the panel where a tenant's internals leak out of their own screens, and the people who
+         * need it are the people who can also clear it.
+         *
+         * Retry and delete are keyed on the **uuid**, not the numeric id: the uuid is what
+         * `queue:retry` takes and what survives a retry-and-fail cycle, and a numeric id is reused
+         * by the next failure.
+         */
+        Route::prefix('operations')->name('operations.')->group(function (): void {
+            Route::get('/', [OperationsController::class, 'index'])
+                ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+                ->name('index');
+
+            // Declared before `{uuid}` so the literal cannot be swallowed by the placeholder — the
+            // same ordering rule the registry's `create` route follows.
+            Route::post('failed-jobs/retry-all', [OperationsController::class, 'retryAll'])
+                ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+                ->name('failed-jobs.retry-all');
+
+            Route::post('failed-jobs/{uuid}/retry', [OperationsController::class, 'retry'])
+                ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+                ->name('failed-jobs.retry');
+
+            Route::delete('failed-jobs/{uuid}', [OperationsController::class, 'destroy'])
+                ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+                ->name('failed-jobs.destroy');
+        });
+
+        /*
+         * Provider health (Phase 19c). Reading is `reports.read` — the error and latency rates are
+         * the same aggregates the cost report shows — and the reset is `operations.manage`, because
+         * overriding a breaker that exists to protect a struggling provider from us is an act
+         * rather than a reading.
+         */
+        Route::prefix('providers')->name('providers.')->group(function (): void {
+            Route::get('/', [ProviderHealthController::class, 'index'])
+                ->middleware('admin.can:'.AdminAbility::ReadPlatformReports->value)
+                ->name('index');
+
+            Route::post('reset', [ProviderHealthController::class, 'reset'])
+                ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+                ->name('reset');
+        });
+
+        /*
+         * The cross-tenant audit viewer (Phase 19c). `audit.read`, the same ability the registry's
+         * `audit-logs` descriptor declares: these are other **operators'** actions as well as
+         * customers'.
+         *
+         * **One route, and it is a GET.** `audit_logs` is append-only; there is no update and no
+         * delete here or in the descriptor, and `PlatformOversightTest` asserts that over the route
+         * table rather than trusting this comment.
+         */
+        Route::get('audit', [AuditController::class, 'index'])
+            ->middleware('admin.can:'.AdminAbility::ReadAudit->value)
+            ->name('audit.index');
+
+        /*
+         * The two remaining deferred operator views (Phase 19c), both read-only and both with no
+         * write route anywhere:
+         *
+         *  - `signal_runs` across tenants (`signals-plan.md` task 6). No re-run: a run spends real
+         *    money at Serper and on the AI, and an operator must not spend a tenant's allowance.
+         *  - compliance activity (`compliance-privacy.md`). An erasure, an export and a retention
+         *    policy are the tenant's decisions as data controller, not ours.
+         */
+        Route::get('signal-runs', [SignalRunController::class, 'index'])
+            ->middleware('admin.can:'.AdminAbility::ReadTenantData->value)
+            ->name('signal-runs.index');
+
+        Route::get('compliance', [ComplianceActivityController::class, 'index'])
+            ->middleware('admin.can:'.AdminAbility::ReadAudit->value)
+            ->name('compliance.index');
+
+        /*
+         * Outreach oversight and the **global** do-not-contact list (Phase 19c).
+         *
+         * Two routes, and the missing third is the decision: there is no lift route for a global
+         * suppression anywhere in the product. Reading is `reports.read` (deliverability is an
+         * aggregate); adding is `operations.manage`, because a platform entry stops every tenant
+         * contacting somebody and whoever is on support is who needs it.
+         */
+        Route::prefix('outreach')->name('outreach.')->group(function (): void {
+            Route::get('/', [OutreachOversightController::class, 'index'])
+                ->middleware('admin.can:'.AdminAbility::ReadPlatformReports->value)
+                ->name('index');
+
+            Route::post('suppressions', [OutreachOversightController::class, 'suppress'])
+                ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+                ->name('suppressions.store');
         });
 
         /*

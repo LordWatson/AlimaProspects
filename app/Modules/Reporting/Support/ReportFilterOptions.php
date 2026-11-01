@@ -24,13 +24,7 @@ final class ReportFilterOptions
     public static function all(): array
     {
         return [
-            'ranges' => array_map(
-                static fn (ReportRange $range): array => [
-                    'value' => $range->value,
-                    'label' => $range->label(),
-                ],
-                ReportRange::presets(),
-            ),
+            'ranges' => self::ranges(),
             'reports' => array_map(
                 static fn (ReportKey $key): array => [
                     'value' => $key->value,
@@ -39,5 +33,26 @@ final class ReportFilterOptions
                 ReportKey::cases(),
             ),
         ];
+    }
+
+    /**
+     * The window presets on their own.
+     *
+     * Split out for the Admin panel's platform reporting (Phase 19c), which asks the same question
+     * about windows and an entirely different one about reports: handing it `all()` would have put
+     * the **tenant** report list on an operator's screen, where choosing one would mean nothing.
+     * One preset list, two report lists — which is the shape of the two modules' relationship.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    public static function ranges(): array
+    {
+        return array_map(
+            static fn (ReportRange $range): array => [
+                'value' => $range->value,
+                'label' => $range->label(),
+            ],
+            ReportRange::presets(),
+        );
     }
 }

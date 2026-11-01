@@ -148,6 +148,16 @@ export type ReportTable = {
     empty_message: string;
 };
 
+/**
+ * The part of a report table a renderer needs — everything but its key.
+ *
+ * `ReportTableView` takes this rather than `ReportTable`, so the **platform** reports in the admin
+ * panel (Phase 19c) render through the same component. Those carry a `PlatformReport` key rather
+ * than a `ReportKey`, deliberately: a cross-tenant figure must not be reachable through a tenant's
+ * enum (see `Admin\Enums\PlatformReport`). The table *shape* is shared; the key is not.
+ */
+export type RenderableReportTable = Omit<ReportTable, 'key'>;
+
 export type DashboardReport = {
     kpis: Kpi[];
     funnel: FunnelStep[];

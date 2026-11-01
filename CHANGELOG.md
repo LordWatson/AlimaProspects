@@ -5,6 +5,199 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-01 — Admin panel: platform reporting & operations (Phase 19c)
+
+- **The business's own numbers, on their own builders.** Thirteen platform reports, each also a CSV
+  download: growth, the onboarding funnel, revenue by plan, MRR movement, retention by signup
+  cohort, allowance consumption, provider health and spend, AI spend, cost per prospect, outreach
+  deliverability, and **gross margin per tenant, per plan and per signup cohort**. Reporting's own
+  Actions are deliberately **not** reused: they are scoped by design and each figure's cohort rule
+  is written for one team's window, so running them unscoped would not produce a cross-tenant
+  version of the same report — it would silently answer a different question, with no customer to
+  notice. What is shared is the discipline and the plumbing: `DateRange` and its UTC rule,
+  `Ratio::of()`'s refusal to divide by nothing, the `ReportColumn`/`ReportRow`/`Kpi`/`FunnelStep`/
+  `BreakdownSlice` shapes, the validated chart set, and `ReportCsvExporter` — which grew `rowsFor()`
+  and `filenameFor()` for this rather than being copied, because the thing that would have drifted
+  between two writers is the formula hardening. `ReportKey` is **not** shared: a cross-tenant figure
+  must not be reachable through a tenant's enum, where it would have leaked into the dashboard's
+  tabs and `/api/v1/reports`' validation.
+- **Gross margin per team — the number the business lives on.** Both halves have been recorded since
+  Phase 5 (`ai_requests.cost_micros`, `discovery_runs.cost_micros`, and the plan's price) and
+  nothing had put them next to each other: **a tenant can be on Scale and still be unprofitable.**
+  Three rules keep it honest. Revenue is **prorated from the daily snapshots**, not taken as MRR, so
+  a window of any length and a plan change mid-window are both accounted for day by day. Cost that
+  cannot be converted — a provider currency with no configured rate — is **reported** rather than
+  absorbed, which makes every margin on the page a stated _ceiling_ rather than a quiet lie. And
+  spend with no tenant behind it is its own `unattributed` row, never divided across customers,
+  because that would flatter every margin equally and be impossible to notice. A margin _ratio_ is
+  null, not zero, where there is no revenue: a free-plan tenant costs us money and earns none, and
+  "0%" reads as break-even.
+- **`platform_daily_metrics`: a record over the ledgers, not a counter.** One table,
+  `(date, metric, dimension) → value`, written nightly by `platform:roll-up` from the ledgers and
+  recomputable with `--days`. It exists because **a cross-tenant aggregate over `ai_requests` is the
+  one query in this product with no `team_id` to narrow it** — every tenant-facing index is scoped
+  by the leading column of its own index, and the platform's figures are scoped by nothing. Nothing
+  in the application increments it, so a crashed worker leaves the numbers unwritten rather than
+  wrong (ADR 0012's rule for `usage_meters`, applied again). Three properties are enforced by test:
+  running it twice changes nothing, a day's metric is replaced atomically so a dimension that went
+  quiet is overwritten with a zero rather than left behind at yesterday's figure, and a **snapshot
+  is never summed** — thirty days of MRR summed is thirty months of revenue, so the store reads a
+  snapshot from the window's last known day and the decision lives there where no builder can get
+  it wrong.
+- **The rollup is scheduled at 02:40, and the time is load-bearing.** Compliance's retention sweep
+  (03:40), the Signals prune (03:20) and the insights prune (03:50) all delete the rows these
+  figures are computed from, and a period that has been swept cannot be recomputed — the same
+  constraint `billing:sync-usage` runs hourly for. A test asserts the ordering against the **real**
+  schedule, so a later phase moving a sweep earlier fails there instead of silently losing the
+  business's numbers.
+- **Two shapes of date, because the funnel is a cohort.** Most figures are event-shaped: yesterday's
+  signups are yesterday's signups for ever. The onboarding funnel's rows are dated by the day a
+  cohort _signed up_, and a team that signed up a fortnight ago and runs its first discovery tonight
+  changes a row dated a fortnight ago — so those six metrics are **recomputed** over a trailing
+  thirty days every night. Treated as event-shaped, every step after the first would have
+  permanently under-reported. A third group — dunning, seats, allowance consumption, reported
+  overage — is **point-in-time**: nothing historises it, so a backfill neither writes nor deletes
+  those days and the command says so rather than leaving an operator to wonder.
+- **Failed jobs, with the thing Horizon cannot tell you: whose job it was.** Every queued job in
+  this product belongs to a tenant and the answer is in the serialised payload, so the panel digs it
+  out — **by pattern-matching the string, never by unserialising it.** `unserialize()` on a payload
+  instantiates whatever classes it names, which is a remote-code-execution primitive pointed at a
+  table that exists precisely because something went wrong; a regex cannot hurt anybody, and a
+  missed id renders as an em dash rather than a guess. Retry goes through `queue:retry` (the driver
+  decides how a payload returns, and a batched job must be re-registered), with no transaction
+  around it because wrapping an external push in one is what CLAUDE.md §2 forbids outright. A
+  **delete** is the other way round: its audit entry is written _before_ the row goes, in the same
+  transaction, because the payload is the only copy of that work.
+- **Queue depth that admits what it cannot see**, and **schedule health Laravel does not store.**
+  Depth is only readable on the database driver; on Redis the page names the driver and says so,
+  because a queue depth of zero is the most reassuring number on an operations screen and must never
+  be a default. The scheduler records nothing about past runs — there is no table, and
+  `schedule:list` prints the next due time — so `RecordScheduledTaskRun` writes each one to the
+  cache and the column is honestly headed _last seen_, not _last run_. A **skipped** run is recorded
+  separately, because `withoutOverlapping()` quietly skipping a stuck overnight job every night
+  afterwards looks exactly like a healthy schedule.
+- **Provider health that refuses to draw a light it did not wire up.** The circuit breaker's state is
+  live; the error and latency rates are the last seven complete days from the rollup, and the screen
+  says which is which — a provider that started failing an hour ago shows a healthy rate next to an
+  open circuit, which is the useful pairing rather than a contradiction. Three providers (the AI
+  transport, the mail transport, Stripe) have **no breaker at all** and report "not instrumented",
+  never "closed". The breaker is cache-backed and advisory by its own design, so every row carries
+  that caveat. `Core\Support\CircuitBreaker` gained `isOpen()`, `failures()` and `reset()` — and the
+  reset action calls `reset()` rather than `recordSuccess()`, which does the same thing, because an
+  operator overriding the protection is not recording a success and the only place that knows how a
+  provider is doing should not be written a small lie.
+- **A cross-tenant audit viewer whose categories are the point.** `audit_logs` holds every tenant's
+  ordinary activity, and the entries that matter when reviewing _operator_ behaviour are four rows
+  in ten thousand — so impersonation sessions and operator reads are first-class filters rather than
+  action strings you can only find if you already know them. The enum's case order is load-bearing:
+  `admin.impersonation.started` and `admin.resource.viewed` both begin `admin.`, so the specific
+  categories are declared before the general one and win. Read-only **structurally** — one `GET`, no
+  Action, no route to change it, asserted over the whole route table. Reading the trail is the one
+  cross-tenant read the panel deliberately does not audit: the same rule applied here would write a
+  row to the trail on every look and bury what somebody came to find.
+- **The three operator views earlier phases deferred to Phase 19, and in each case the missing write
+  route is the decision.** `signal_runs` across tenants with cost, failures and durations (no
+  re-run: a run spends the tenant's own Serper and AI allowance, which their own screen throttles).
+  Compliance activity — sweeps, exports, erasures, opt-outs, assessments and retention policies —
+  read from the **audit trail** rather than a table of its own, because those entries already carry
+  counts and ids and deliberately no copy of what was erased, and a second activity table would
+  either duplicate them or tempt somebody into recording the contents. Subscriptions, MRR and failed
+  payments, which are now figures on the reporting screen. All three are read-only and
+  `PlatformOversightTest` asserts the absence of a write route rather than trusting a comment.
+- **Outreach oversight, because a shared sending domain means one tenant's behaviour is every
+  tenant's deliverability.** Platform send volume and bounce/opt-out rates by channel, and the
+  **global do-not-contact list** — which stays in `outreach_suppressions` with a null `team_id`
+  rather than a second table (CLAUDE.md §3). That is not tidiness: `OutreachGuard` is still the only
+  thing that answers whether a prospect may be approached, `SuppressionList` already consults the
+  global scope in every tenant's send-time check, and a platform list kept anywhere else would be a
+  list the guard does not read — so the enforcement was built in Phase 11 and needed nothing new.
+  Adding goes through Outreach's own service so the value is normalised, hashed and masked exactly
+  like every other entry; only a preview is ever shown, because only a hash is stored. **There is no
+  lift route**, here or anywhere, and `removable` is rendered on every row — always false — so the
+  absence reads as a rule rather than an oversight. Three of the five reasons are offered: a bounce
+  is one tenant's technical fact and an erasure belongs to the tenant that received the request.
+- **Two new abilities rather than stretching an existing one.** `reports.read` — the figures are
+  aggregates and name no _person_, so reading them is not the privacy event `tenant.read` audits;
+  and they are not only money, so hiding them behind the Finance ability would have hidden the
+  onboarding funnel, the one report that says whether the product works, from everybody except
+  Finance. (They are not anonymous either, and the config says so: the margin reports name
+  **companies**, with what each pays and costs.) `operations.manage` — retry a job, reset a breaker,
+  suppress an address platform-wide: **incident** actions for whoever is on support at 2am, who does
+  not need the Stripe switch. Read-only deliberately holds the first and not the second.
+
+### Fixed — 2026-11-01 — Phase 19c review: five figures that were wrong, and nobody would have noticed
+
+The `laravel-module-reviewer` and `brand-reviewer` agents (CLAUDE.md §5a) found twelve and nine
+items between them. These are the ones that were defects rather than polish, and all five of the
+first group were numbers a dashboard would have reported confidently and incorrectly.
+
+- **A snapshot that emptied froze instead of falling to zero.** Snapshot metrics only write rows for
+  non-zero dimensions, and the reader took the window's last _populated_ day — so the night the
+  platform's last paying tenant cancelled, MRR wrote nothing, the reader fell back to the last day
+  that had revenue, and the dashboard reported the old figure for as long as the window contained
+  it. A frozen number is worse than a zero. Two bookkeeping markers (`rollup_day`,
+  `rollup_state_day`) make "the last day we know about" a fact about the **rollup** rather than
+  about one metric; two rather than one, because a backfill reconstructs MRR for an old day but
+  cannot invent that day's Stripe statuses, and reading a point-in-time snapshot against the wrong
+  marker would report "no dunning" for every reconstructed day.
+- **A night the scheduler missed booked the entire platform's revenue as movement.** Movement
+  compared against "yesterday", and with no row there every paying tenant had a baseline of zero —
+  so the next successful run reported them all as **new** on a first run and, worse, as
+  **reactivated** on any later one, because `everPositiveBefore` was true. The baseline is now the
+  last day actually recorded, so a gap produces the correct movement _across_ it; with no baseline
+  at all, movement is left unwritten rather than invented.
+- **The comparison window overlapped the current one.** A rolling preset's bounds are mid-day
+  instants, so `DateRange::previous()` reduced to whole days both shared the boundary date with the
+  current window and spanned one date more — biasing every "vs the window before" delta by about a
+  thirtieth and counting a day's signups twice. `Admin\Support\PlatformWindow` does the arithmetic in
+  date space: the same number of dates, ending the day before the current window opens.
+- **Every churned customer read as never having paid us.** `subscriptions.stripe_status` is not
+  historised, so a subscription the customer has since cancelled reads `canceled` today — and
+  treating that as dead meant a backfill showed zero MRR for their entire paying history, with no
+  churn in the series to explain where they went. Only `incomplete`, `incomplete_expired` and a
+  `canceled` row with **no** end date are dead now; past due is money owed, not money that never
+  existed.
+- **`OverageRevenue` was registered as a flow.** `usage_meters.reported` is a running total for the
+  open billing period, so each night re-recorded the whole month and any window summed about thirty
+  copies of the same money. Latent — nothing displayed it yet — and now a snapshot.
+- **The delete audit copied the exception's first line.** Failed-job detail sits behind
+  `operations.manage` precisely because an exception message carries bound values — a provider error
+  quoting an address, a database message quoting a parameter — and the audit viewer sits behind
+  `audit.read`, which Finance and Read-only also hold. The entry therefore widened the audience for
+  the very thing the narrower ability exists to contain. It records the class, queue, uuid and
+  tenant; the logs keep the rest.
+- **The per-plan margin could not show a loss on the Free plan.** A revenue-less tenant has no
+  `TeamMrr` row, so keying the report on the plan from that row dropped it — and its cost with it.
+  Free and trial tenants now land in an explicit "No revenue in this window" bucket. The same report
+  also converted cost per tenant and _then_ summed, flooring each row: a thousand tenants at a
+  fraction of a penny each reported no cost at all, overstating margin — the one direction this
+  figure must not err in. It sums micro-units and converts once per group.
+- **Three new cross-tenant reads were not audited**, unlike every other one in the panel. Signal runs
+  show a tenant's watch names and a provider's error text, compliance activity names tenants and
+  their assessments, and the failed-job list carries payload-derived tenant ids. All three record
+  `admin.resource.viewed` with their filters and a count. The general audit viewer stays unaudited,
+  deliberately.
+- **Smaller, and still real:** the Actions paged the newest thousand failed jobs and searched them in
+  PHP, quietly losing the job class and tenant id for anything older — on the screen whose reason to
+  exist is a backlog; the suppression and its audit row were two separate writes and are now one
+  transaction; the bulk insert would have exceeded MySQL's 65,535-placeholder limit at about 10,900
+  tenants; and `dimension` at 64 characters would have let one long model name reject a whole day's
+  figures under strict mode.
+- **Retention asked the wrong question.** "Has this customer ever paid us" was computed from MRR, and
+  a plan priced on application or granted manually contributes **zero** — so a cohort of Enterprise
+  and invoiced customers read as having never paid a penny. A `team_paying` metric answers it
+  without going through a price.
+- **Brand.** `Providers.vue` printed `0 / 0` where a figure was null, breaking the em-dash rule the
+  same file's comment cited; six scrollable table regions had no keyboard access and no focus ring
+  (WCAG 2.1.1, 2.4.7); in-table links fell back to the browser's default outline instead of the
+  panel's; the two-step confirmations were silent to assistive technology and could not be
+  cancelled (both now `role="status"`, both cancelled by Escape); the **irreversible** global
+  suppression was a single click while a retryable job drop was not, and its required note was not
+  tied to the input; three freshness lines printed a raw timestamp on a page claiming UTC (there is
+  a `utcDate()` now); `ReportTableView` formatted date cells in whichever team the operator last
+  looked at, which a `utc` flag closes; and two status tints used `/8` and `/40` against §7f.2's
+  documented `/12` and `/30`.
+
 ### Added — 2026-10-31 — Admin panel: platform controls, Stripe switches, plan features & provisioning (Phase 19b)
 
 - **One question, four possible answers, and the order is the feature** — **ADR 0015**.

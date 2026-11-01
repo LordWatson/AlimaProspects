@@ -351,9 +351,12 @@ S5, and the API is S6 — S4 is the Actions, the data model and the lead-side su
 **Dispatch prompt:** _"Execute Phase S6 of signals-plan.md. Read docs/modules/signals.md and docs/compliance.md. Add the API v1 endpoints, signals:prune, the DSAR exporter hook, per-team ignore domains, audit entries, observability and the demo runbook, then run laravel-module-reviewer and security-review and fix the findings. Finish with the phase-complete checklist."_
 **Shipped, with these notes:**
 
-- **Task 6's admin view is deferred to Phase 19**, as the task itself allowed: there is no Filament
-  panel in the app yet. Run cost and failures are visible per watch on the settings screen, and a
-  failed run leaves a Sentry breadcrumb carrying the team and watch ids.
+- ~~**Task 6's admin view is deferred to Phase 19**~~ — **done in Phase 19c.** There is no Filament
+  panel (ADR 0014 replaced that plan), so it landed as a bespoke cross-tenant screen:
+  **`/admin/signal-runs`**, read-only, showing cost, failures and durations per run across tenants.
+  No "run again" button, deliberately — a run spends the tenant's own allowance. Per-watch cost and
+  failures remain on the settings screen, and a failed run still leaves a Sentry breadcrumb with the
+  team and watch ids. See `docs/modules/admin.md`.
 - **The retention windows moved into a `SignalRetention` service.** `signals:prune` and the feed's
   "Deletes in N days" both read it, so the promise on screen and the rule that deletes the row are
   one rule rather than two copies. The countdown itself answers the phase's own risk note

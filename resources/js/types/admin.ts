@@ -12,6 +12,14 @@
  * detail page — and a generated second set would simply drift from the first.
  */
 
+import type {
+    BreakdownSlice,
+    FunnelStep,
+    Kpi,
+    ReportColumn,
+    ReportRow,
+} from '@/shared/types';
+
 /**
  * Mirrors `Core\Enums\Capability` (Phase 19b, ADR 0015) — a feature a team either has or does not,
  * depending on their plan.
@@ -273,4 +281,271 @@ export type AdminAnnouncementOptions = {
     levels: { value: string; label: string; dismissible: boolean }[];
     plans: { value: string; label: string }[];
     markets: { value: string; label: string }[];
+};
+
+/* ------------------------------------------------------------------ Phase 19c */
+
+/**
+ * The platform's own reports.
+ *
+ * Reuses `ReportColumn`/`ReportRow` from the shared reporting types, because a platform report and
+ * a tenant report are the same table shape rendered by the same component. The **keys** differ,
+ * which is why this is its own union and not `ReportKey`: a cross-tenant figure must not be
+ * reachable through a tenant's enum (see `Admin\Enums\PlatformReport`).
+ */
+export type PlatformReportKey =
+    | 'growth'
+    | 'funnel'
+    | 'revenue'
+    | 'movement'
+    | 'retention'
+    | 'pricing'
+    | 'cost'
+    | 'ai_cost'
+    | 'lead_cost'
+    | 'margin'
+    | 'margin_by_plan'
+    | 'margin_by_cohort'
+    | 'outreach';
+
+/**
+ * `definitions` is the one addition over a tenant report's shape, and it is the point: a platform
+ * aggregate that quietly answers a tenant-shaped question has no customer to complain, so every
+ * figure's counting rule travels with the figure.
+ */
+export type PlatformReportTable = {
+    key: PlatformReportKey;
+    title: string;
+    caption: string;
+    columns: ReportColumn[];
+    rows: ReportRow[];
+    definitions: string[];
+    empty_message: string;
+};
+
+export type PlatformReportPage = {
+    kpis: Kpi[];
+    funnel: FunnelStep[];
+    signups_by_market: BreakdownSlice[];
+    /** In day order, not by volume: the shape is the signal. */
+    conversion_days: BreakdownSlice[];
+    tables: PlatformReportTable[];
+    currency: string;
+    /** ISO code => minor units of the reporting currency per major unit. A configured constant. */
+    fx_rates: Record<string, number>;
+    /** The last day any metric was rolled up; null when the nightly command has never run. */
+    last_rolled_up: string | null;
+    range_from: string | null;
+    range_to: string | null;
+    range: string;
+    has_data: boolean;
+    /** True when a margin somewhere on the page is a ceiling rather than a figure. */
+    has_unconverted_cost: boolean;
+};
+
+/** One failed job, with the thing Horizon's queue view does not know: whose it was. */
+export type AdminFailedJob = {
+    id: number;
+    uuid: string;
+    connection: string;
+    queue: string;
+    job: string;
+    /** Null when the payload does not say. An em dash, never a guess. */
+    team_id: number | null;
+    /** The exception's first line only. */
+    exception: string;
+    failed_at: string | null;
+};
+
+export type AdminFailedJobs = {
+    available: boolean;
+    driver: string | null;
+    total: number;
+    jobs: AdminFailedJob[];
+};
+
+export type AdminQueueDepth = {
+    available: boolean;
+    driver: string;
+    /** Why the figure is missing, when it is. Shown rather than hidden. */
+    note: string | null;
+    queues: {
+        queue: string;
+        pending: number;
+        oldest_at: string | null;
+        oldest_age_seconds: number | null;
+        max_attempts_seen: number;
+    }[];
+};
+
+/**
+ * One scheduled command. `last_seen_at` rather than "last run": the record is cache-backed, so a
+ * flushed cache reports never-seen rather than the truth.
+ */
+export type AdminScheduledTask = {
+    command: string;
+    expression: string;
+    description: string | null;
+    next_due: string | null;
+    last_seen_at: string | null;
+    last_outcome: 'ok' | 'failed' | 'skipped' | null;
+    last_runtime_ms: number | null;
+    last_error: string | null;
+};
+
+export type AdminPulseStatus = {
+    installed: boolean;
+    enabled: boolean;
+    path: string | null;
+};
+
+/**
+ * One provider's health. `instrumented: false` means it has no circuit breaker at all — three do
+ * not — so `open` is null rather than a green light nobody wired up.
+ */
+export type AdminProviderHealth = {
+    key: string;
+    label: string;
+    impact: string;
+    instrumented: boolean;
+    open: boolean | null;
+    failures_recorded: number | null;
+    threshold: number | null;
+    /** Always true. The breaker is cache-backed and sheds load; it is not a guarantee. */
+    advisory: boolean;
+    metered: boolean;
+    calls: number | null;
+    failures: number | null;
+    /** Null over no calls — unused, not healthy. */
+    failure_rate: number | null;
+    cost_minor: number | null;
+    mean_latency_ms: number | null;
+};
+
+export type AdminAuditEntry = {
+    id: number;
+    action: string;
+    category: string;
+    category_label: string;
+    at: string | null;
+    actor: string | null;
+    actor_id: number | null;
+    team: string | null;
+    team_id: number | null;
+    subject_type: string | null;
+    subject_id: number | null;
+    ip_address: string | null;
+    request_id: string | null;
+    /** Ids and counts as the writing Action stored them — never a copy of the record. */
+    properties: Record<string, unknown> | null;
+};
+
+export type AdminPagination = {
+    current_page: number;
+    last_page: number;
+    total: number;
+    per_page: number;
+};
+
+export type AdminSignalRun = {
+    id: number;
+    team: string | null;
+    team_id: number | null;
+    watch: string | null;
+    status: string;
+    queries: number;
+    results: number;
+    created: number;
+    cost_micros: number;
+    /** Null when the run never started or never finished — which is the finding on a stuck run. */
+    duration_ms: number | null;
+    error: string | null;
+    at: string | null;
+};
+
+export type AdminComplianceEvent = {
+    id: number;
+    action: string;
+    at: string | null;
+    team: string | null;
+    team_id: number | null;
+    /** Null for the scheduled sweep, which runs with nobody behind it. */
+    actor: string | null;
+    properties: Record<string, unknown> | null;
+};
+
+export type AdminAssessment = {
+    id: number;
+    team: string | null;
+    team_id: number | null;
+    market: string;
+    status: string;
+    version: number;
+    completed_at: string | null;
+    review_due_at: string | null;
+    withdrawn_at: string | null;
+    in_force: boolean;
+    expired: boolean;
+    review_due_in_days: number | null;
+};
+
+export type AdminRetentionPolicy = {
+    id: number;
+    team: string | null;
+    team_id: number | null;
+    is_enabled: boolean;
+    uncontacted_lead_days: number;
+    contacted_lead_days: number;
+    last_swept_at: string | null;
+    last_deleted_count: number;
+    last_anonymised_count: number;
+};
+
+export type AdminDeliverability = {
+    channels: {
+        channel: string;
+        label: string;
+        sent: number;
+        attempts: number;
+        bounced: number;
+        opted_out: number;
+        bounce_rate: number | null;
+        opt_out_rate: number | null;
+    }[];
+    totals: {
+        sent: number;
+        attempts: number;
+        bounced: number;
+        complaints: number;
+        bounce_rate: number | null;
+        opt_out_rate: number | null;
+    };
+    last_rolled_up: string | null;
+};
+
+/** A global suppression. `preview` is a mask — the table stores only a hash of the value. */
+export type AdminSuppression = {
+    id: number;
+    type: string;
+    type_label: string;
+    preview: string;
+    reason: string;
+    reason_label: string;
+    note: string | null;
+    added_by: string | null;
+    suppressed_at: string;
+    /** Always false for a global entry. Rendered so the missing button is visibly a rule. */
+    removable: boolean;
+};
+
+export type AdminSuppressionSummary = {
+    global: number;
+    team: number;
+    global_by_reason: Record<string, number>;
+};
+
+export type AdminWindowFilters = {
+    range: string;
+    from: string | null;
+    to: string | null;
 };

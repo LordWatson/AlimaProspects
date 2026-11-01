@@ -1,6 +1,6 @@
 # Runbook — the admin panel
 
-> For whoever is on support. Written for somebody who has not read the code. Phase 19a; the Phase 19b and 19c sections will be added when those ship.
+> For whoever is on support. Written for somebody who has not read the code, and complete as of Phase 19c.
 >
 > Background, if you want it afterwards: `docs/modules/admin.md` and ADR 0014.
 
@@ -187,7 +187,7 @@ The actions worth knowing:
 
 The table is **append-only**: no edit, no delete, and the panel offers neither. An audit trail somebody can tidy up records only what they were willing to leave behind.
 
-A cross-tenant viewer with richer filters is Phase 19c. Until then the resource index does the job.
+A cross-tenant viewer with categories, a window and richer filters is **§17** — use that for an audit question; the resource index is for looking a single record up.
 
 ---
 
@@ -288,3 +288,186 @@ down?" is a question that comes up later.
 **If a banner turns out to be wrong**, the fastest fix is `announcements.enabled` on the settings
 screen. Every tenant stops seeing every announcement on their next request, which beats working out
 which row to edit while people are reading it.
+
+---
+
+## 13. Reading the platform's numbers (19c)
+
+**`/admin/reporting`**, and `reports.read` — every operator role has it.
+
+Pick a window at the top; everything below re-reads against it and the URL carries it, so a link you paste into a conversation shows what you were looking at. **Windows are UTC**, because you are in no team and there is no team clock to read one in.
+
+**Read the "Figures as at" date in the header first.** Every number on the page comes from a command that runs at 02:40, not from a live query — so if that date is not yesterday, the figures are not current and a quiet week may be a command that failed. See §15.
+
+The thirteen tabs, and what each is actually for:
+
+| Tab                     | The question it answers                                                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Growth                  | Signups, trials, activations and conversions against the window before.                                                            |
+| Onboarding funnel       | **Does the product's first hour work?** Of the tenants that signed up in this window, how many got as far as approaching somebody. |
+| Revenue by plan         | MRR and ARR by plan, and how many tenants are paying.                                                                              |
+| MRR movement            | Where the change came from — new, expansion, contraction, churn, reactivation.                                                     |
+| Retention               | For each month's signups, how many ever paid and how many still do.                                                                |
+| Allowance consumption   | How close tenants are to their limits. **The shape of this is what says a plan is priced or sized wrong.**                         |
+| Provider health & spend | Calls, failures and cost per provider over the window.                                                                             |
+| AI spend                | What we spent on AI, by model and by the work the call did.                                                                        |
+| Cost per prospect       | What each provider cost us per company it found.                                                                                   |
+| Gross margin            | **What each tenant pays against what it costs us.** Worst first.                                                                   |
+| Margin by plan          | The same by plan — whether a plan is priced right.                                                                                 |
+| Margin by cohort        | The same by signup month — whether the customers we are winning now are better or worse.                                           |
+| Outreach                | Platform send volume and deliverability by channel.                                                                                |
+
+**Every tab has a "How these are counted" panel under the table.** Read it before you quote a number at anybody. The figures look obvious and several of them are not — "activations" means a _member_ did something to a prospect, not that Alima scored one, and the funnel's window picks a signup cohort rather than a set of events.
+
+Three things about the money, so you do not have to work them out from a surprise:
+
+- **An em dash is not a zero.** A blank margin percentage means there was no revenue to divide by, not that the tenant broke even. A blank failure rate means nobody called that provider.
+- **A row marked `*` has cost in a currency with no configured rate**, which makes its margin a _ceiling_ — the real figure is lower. A banner appears at the top of the page when that is true anywhere on it. Fix it by adding the rate to `admin.reporting.fx`.
+- **An Enterprise tenant shows zero MRR.** Its contract price is not in the system, so the revenue report cannot know it. It still counts under "paying tenants" and in retention, which is what stops it vanishing.
+
+**Export** gives you the open tab as CSV over the same window. Downloads are audited — who, which report, which window, how many rows — and never the contents.
+
+---
+
+## 14. "Is this customer worth having?" (19c)
+
+Go to **Gross margin** and read from the top: the worst margins are first.
+
+For one tenant specifically, use the window filter to pick a whole month and find them in the table. What you are looking at is their prorated subscription revenue for the window against what their AI calls and data lookups cost us in it.
+
+If a tenant is losing money, the usual causes in order:
+
+1. **They are on Free or a trial** and using the product properly. That is the plan working as designed; the row exists so you know the size of it.
+2. **They are hammering AI** — check the AI spend tab for the prompt key, and their own usage on `/admin/teams/{id}/billing`.
+3. **They are on an old price.** Check whether the plan they are on still costs what the price list says.
+4. **Their allowance is sized wrong for the price.** The allowance-consumption tab is where that shows up as a shape rather than as one row.
+
+The **unattributed** row at the bottom is platform spend with no tenant behind it — a backfill, a scheduled job, something run outside a tenant's context. It is deliberately never divided across customers, because that would flatter every margin equally and be impossible to notice.
+
+---
+
+## 15. A stuck queue, a failed job, a command that has not run (19c)
+
+**`/admin/operations`**, and `operations.manage` — super admin and support.
+
+### Failed jobs
+
+The table shows the job class, **which tenant it belonged to**, the queue, when it failed and the first line of the exception. The tenant is the column nothing else can give you; it is dug out of the job's payload.
+
+- **Retry** puts it back on its queue. Safe to do twice — the worst case is a duplicate attempt — and audited.
+- **Drop** deletes it. **Irreversible**: the payload is the only copy of that work. It asks twice, and the audit entry is written before the row goes, so what was lost is on the record.
+- **Retry all** does the lot. It asks twice too, because a hundred retries is a hundred real side effects.
+
+Press **Escape** to back out of either confirmation.
+
+If a job keeps failing, retrying it is not the fix — read the exception, fix the cause, then retry. A tenant id and a job class is usually enough to reproduce it.
+
+### Queue depth
+
+Pending work per queue, and **the oldest waiting job's age**. That age is the number that matters: a deep queue with a young oldest job is a busy worker, and a shallow queue with an hour-old job is a worker that is not running.
+
+If the page says depth is not readable, this deployment is not on the database queue driver — Horizon or Pulse has it instead, and the page names the driver.
+
+### Scheduled commands
+
+Every scheduled command, when it is next due, and **when it was last seen running**.
+
+"Last seen", not "last run": the panel records each run in the cache, because Laravel itself stores nothing about past scheduled runs. So:
+
+- **"not seen"** can mean it has not run, or that the cache was cleared. Check `php artisan schedule:list` on the host if you need certainty.
+- **"skipped"** means the previous run was still going. One skip is nothing; a command skipped every night is a job that is stuck, and it looks exactly like a healthy schedule unless you notice the word.
+- **"failed"** shows the error message underneath.
+
+The one to watch is **`platform:roll-up`** at 02:40. If it has not run, every figure in §13 is stale. Close a gap by hand:
+
+```
+php artisan platform:roll-up                   # yesterday
+php artisan platform:roll-up --days=7          # the last seven days, oldest first
+php artisan platform:roll-up --date=2026-10-01 # one specific UTC day
+```
+
+It is safe to run twice: it replaces a day's figures rather than adding to them. Two things to know about a backfill, both of which the command tells you as it goes:
+
+- It walks **forwards**, because the MRR movement for a day is measured against the day before it.
+- It **will not invent** dunning, seat or allowance figures for an old day, because nothing in the product recorded them — those stay as they were.
+
+**It must stay scheduled before 03:20.** The nightly sweeps prune the rows the figures are computed from, and a period that has been swept cannot be recomputed.
+
+---
+
+## 16. A provider is failing (19c)
+
+**`/admin/providers`**, and `reports.read` to look; `operations.manage` to reset.
+
+Each provider shows its **circuit breaker** — live — and its error rate, latency and spend over the last seven complete days from the rollup. Those two disagree on purpose: the breaker tells you about this minute and the rates tell you about the week.
+
+What "open" means: we have refused to call that provider for now, after several consecutive failures, so we stop hammering something that is already struggling. It closes itself after a cooldown of a minute or two. The card says what stops working for a tenant while it is open.
+
+**Reset the breaker** when you have fixed the cause — a rotated key, a raised quota — and do not want the next batch of jobs refused on the strength of the old failures. It is audited, with whether the circuit was actually open. It does not fix the provider; it only means we will try again.
+
+Three providers say **"not instrumented"**: Claude, Resend and Stripe have no breaker in the product. That is a fact about the code, not a gap in the screen — their health is the error rate beside them. Do not read the absence as "healthy".
+
+The breaker lives in the cache, so clearing the cache closes every circuit. Worth knowing before you do it during an incident.
+
+---
+
+## 17. The audit trail, across tenants (19c)
+
+**`/admin/audit`**, and `audit.read` — every operator role has it. This replaces the resource index for audit questions.
+
+Filter by **category** first. It is there because `audit_logs` holds every tenant's ordinary activity — notes, stage moves, tags — and the entries you usually want are a handful in ten thousand:
+
+- **Impersonation** — every session started, stopped or expired.
+- **Operator reads** — somebody outside a business read their records.
+- **Operator changes** — a panel write, a setting, an announcement.
+- **Compliance**, **Billing**, **Outreach**, **Access and identity**, **Tenant activity**.
+
+Then narrow by action, tenant, actor, subject or window. The window defaults to seven days, not thirty, because this table is the busiest in the product.
+
+The **Details** column is what the writing code chose to record: ids, counts and masked previews. It never holds a copy of the record — a log of who read personal data must not itself be a copy of it. If you need to reproduce exactly what an operator saw, the URL is in the ticket.
+
+Nothing here can be edited or deleted, and there is no route that could be. Reading the trail is the one cross-tenant read the panel does **not** audit, deliberately: otherwise every look would write a row to the thing you are looking at.
+
+---
+
+## 18. Compliance questions and signal runs (19c)
+
+Both read-only, both cross-tenant.
+
+**`/admin/compliance`** (`audit.read`) — retention sweeps, exports, erasures and assessments.
+
+Start with the **assessments** table. Without a legitimate-interest assessment in force for its market, a tenant **cannot run discovery at all** — the gate refuses before a provider is called. So "discovery stopped working and nothing changed" is very often a lapsed row here, and the fix is the tenant's: they complete a new assessment in their own compliance centre. You cannot do it for them, and there is no button here that pretends otherwise. Same for an erasure or a retention policy: the tenant is the data controller, and that decision is theirs to make.
+
+The **events** table shows what actually happened and when, with counts. A sweep has no actor, because nobody ran it.
+
+**`/admin/signal-runs`** (`tenant.read`) — cost, failures and durations per signal run across tenants. Use it when a tenant says their signals have stopped: look for failed runs and read the error. A **blank duration** means the run never started or never finished, which is itself the finding.
+
+There is no "run again" here, and that is deliberate: a run spends the tenant's own allowance at Serper and on the AI. They re-run their own watch from their own screen.
+
+Both screens are audited as cross-tenant reads, because both show somebody else's records.
+
+---
+
+## 19. "Somebody must never be contacted again" (19c)
+
+**`/admin/outreach`**, and `operations.manage` to add.
+
+A **global suppression** is an address, domain or phone number **no tenant may contact** — a regulator, somebody who complained to us rather than to the tenant approaching them, a journalist who asked once.
+
+It takes effect on the next send, in every tenant, with nothing else to switch on. And **it cannot be lifted**: there is no button, no route and no command anywhere in the product that removes a global entry. Removing one would mean overruling somebody's stated wish with a click. Be sure before you press it twice.
+
+You will be asked for:
+
+- **What it is** — an address, a whole domain ("stop contacting anyone at this company"), or a number. A pasted URL works as a domain.
+- **Why** — they asked us to stop, they reported us, or you are adding it by hand. A bounce and an erasure are deliberately not offered: a bounce is one tenant's technical fact, and an erasure belongs to the tenant that received the request.
+- **A note** — required. An entry nobody can explain is one the next operator cannot act on.
+
+Only a **masked preview** is ever shown (`j***@example.com`), because only a hash is stored. That is not an inconvenience to work around; a register of people who want nothing to do with us is not a contact book.
+
+### Reading the deliverability figures above it
+
+A shared sending domain means **one tenant's behaviour is every tenant's deliverability**. Watch the bounce and opt-out rates per channel. A climbing complaint rate usually means one tenant is working a list they should not be, and the way to find them is the outreach tab in §13 plus their own `/admin/teams/{id}` page — then a conversation, or a suspension (§5) if it does not stop.
+
+The "tenants' own entries" count next to the global one is each team's housekeeping — bounces, companies they handle offline. It is normally much larger and it is **not** a platform block list.
+
+---

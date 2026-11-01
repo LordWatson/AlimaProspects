@@ -65,6 +65,38 @@ enum AdminAbility: string
     /** Read the cross-tenant audit trail — including other operators' entries. */
     case ReadAudit = 'audit.read';
 
+    /**
+     * Read **the platform's own numbers** — MRR, churn, the onboarding funnel, and gross margin per
+     * team (Phase 19c).
+     *
+     * Its own ability rather than {@see self::ReadTenantData} or {@see self::ManageBilling},
+     * because it is neither. The figures are aggregates and name **no person**, so reading them is
+     * not the privacy event `tenant.read` audits; and they are not only money, so putting them
+     * behind the Finance ability would have hidden the onboarding funnel — the one report that
+     * says whether the product works — from everybody except Finance.
+     *
+     * They are not anonymous, though, and the distinction is worth stating: the margin and
+     * per-tenant MRR reports name **companies**, with what each pays and what each costs. That is
+     * commercially sensitive and every operator role can see it. What they never carry is a
+     * person's name, address or record, which is the line `tenant.read` is drawn on.
+     */
+    case ReadPlatformReports = 'reports.read';
+
+    /**
+     * Run the platform's operational levers: retry or drop a failed job, reset a provider's circuit
+     * breaker, add an address to the global do-not-contact list (Phase 19c).
+     *
+     * Separate from {@see self::ManageSettings} because these are **incident** actions rather than
+     * product decisions — the person on support at 2am needs them and does not need the Stripe
+     * switch. Separate from {@see self::WriteTenantData} because none of them is a tenant's record:
+     * each one reaches every tenant at once, which is why each is audited with no team and the
+     * operator's name.
+     *
+     * Note what is *not* here: nothing in this ability can lift a suppression. There is no route
+     * and no Action for it anywhere — see `AddPlatformSuppressionAction`.
+     */
+    case ManageOperations = 'operations.manage';
+
     public function label(): string
     {
         return match ($this) {
@@ -79,6 +111,8 @@ enum AdminAbility: string
             self::ManagePlatformData => 'Change platform-wide records',
             self::Impersonate => 'Impersonate a user',
             self::ReadAudit => 'Read the audit trail',
+            self::ReadPlatformReports => 'Read platform reporting',
+            self::ManageOperations => 'Run platform operations',
         };
     }
 

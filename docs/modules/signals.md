@@ -582,11 +582,18 @@ Policies `SignalWatchPolicy` + `SignalPolicy` double-check `team_id` behind the
   Sourcing's cache namespace (`lead_sourcing:cb:*`).
 - **Retention, the per-team ignore list and the DSAR hook all shipped in S6** — see
   "Key flows" and `compliance.md` §5a.
-- **No admin view of `signal_runs` yet.** S6 planned a read-only Filament view of run
-  cost and failures; there is no Filament panel in the app yet (`app/Filament/` doesn't
-  exist), so this is **deferred to Phase 19 (Admin)** as the plan allowed. Until then,
-  run cost and failures are visible per watch on the settings screen, and failures leave
-  a Sentry breadcrumb with the team and watch ids attached.
+- ~~**No admin view of `signal_runs` yet.**~~ **Closed in Phase 19c.** S6 planned a read-only
+  Filament view of run cost and failures; there is no Filament panel (ADR 0014 replaced that plan),
+  so it landed as a bespoke cross-tenant screen instead: **`/admin/signal-runs`** shows cost,
+  failures and **durations** per run across every tenant, filterable by status, tenant and window,
+  with totals above the table. Read-only, and the absence of a "run again" button is the decision
+  rather than an omission — a run spends the tenant's own Serper and AI allowance, which
+  `TriggerSignalWatchAction` throttles for that reason; a tenant re-runs their own watch from their
+  own screen. Durations come from `started_at`/`finished_at` rather than `created_at`, because a
+  queued run can wait minutes before it begins, and a **blank** duration is itself the finding on a
+  stuck run. See `docs/modules/admin.md` and `docs/runbooks/admin-panel.md` §18. Per-watch cost and
+  failures are still on the tenant's own settings screen, and a failed run still leaves a Sentry
+  breadcrumb with the team and watch ids.
 - **Serper sometimes returns a Google redirect, not the publisher's link.** Observed in real
   data: `link = https://google.com/goto?url=<opaque token>` (~280 chars) with
   `source = "Construction Week Online"`. The token is Google's own encoding, so **the publisher

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Admin\Providers;
 
 use App\Models\User;
+use App\Modules\Admin\Console\RollUpPlatformMetricsCommand;
 use App\Modules\Admin\Enums\AdminAbility;
+use App\Modules\Admin\Listeners\RecordScheduledTaskRun;
 use App\Modules\Admin\Resources\ResourceRegistry;
 use App\Modules\Admin\Services\GovernedCapabilityGate;
 use App\Modules\Admin\Services\PlatformSettings;
@@ -21,7 +23,12 @@ use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\ModuleServiceProvider;
 use App\Modules\Outreach\Contracts\TeamSendingGate;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Console\Events\ScheduledTaskFinished;
+use Illuminate\Console\Events\ScheduledTaskSkipped;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 
@@ -68,6 +75,43 @@ final class AdminServiceProvider extends ModuleServiceProvider
 
         $this->registerGates();
         $this->registerRateLimiter();
+        $this->registerPlatformReporting();
+    }
+
+    /**
+     * Phase 19c: the nightly rollup and the schedule-health listener.
+     *
+     * **The rollup is scheduled at 02:40, and the time is load-bearing.** Compliance's retention
+     * sweep (03:40), the Signals prune (03:20) and the insights prune (03:50) all delete the rows
+     * these figures are computed from, and a period that has been swept cannot be recomputed — the
+     * same constraint `billing:sync-usage` runs hourly for. `PlatformRollupTest` asserts the
+     * ordering against the real schedule rather than trusting this comment, because a later phase
+     * moving a sweep earlier would otherwise lose the business's own numbers silently.
+     *
+     * The listener exists because Laravel stores **nothing** about past scheduled runs: there is no
+     * table and `schedule:list` prints the next due time, not the last actual one. So "the rollup
+     * has not run since Tuesday" was a fact nobody was recording. See
+     * {@see RecordScheduledTaskRun}.
+     */
+    private function registerPlatformReporting(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([RollUpPlatformMetricsCommand::class]);
+        }
+
+        $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {
+            $schedule->command('platform:roll-up')
+                ->dailyAt('02:40')
+                ->withoutOverlapping()
+                // One rollup per night across a fleet. The command is idempotent, so a second run
+                // would be harmless rather than wrong — but it walks every tenant and every
+                // ledger, and two of them racing is work nobody needs twice.
+                ->onOneServer();
+        });
+
+        Event::listen(ScheduledTaskFinished::class, [RecordScheduledTaskRun::class, 'handleFinished']);
+        Event::listen(ScheduledTaskFailed::class, [RecordScheduledTaskRun::class, 'handleFailed']);
+        Event::listen(ScheduledTaskSkipped::class, [RecordScheduledTaskRun::class, 'handleSkipped']);
     }
 
     /**

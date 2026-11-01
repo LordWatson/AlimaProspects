@@ -41,6 +41,22 @@ final class AdminAudit
 
     public const string RECORD_DELETED = 'admin.record.deleted';
 
+    /*
+     * Phase 19c's operations. Each one is a **platform-wide act with no tenant behind it** —
+     * retrying somebody's failed job, closing a provider's circuit, telling every tenant that an
+     * address may not be contacted — so each is recorded with a null team and the operator's name.
+     */
+
+    public const string JOB_RETRIED = 'admin.job.retried';
+
+    public const string JOB_DELETED = 'admin.job.deleted';
+
+    public const string BREAKER_RESET = 'admin.breaker.reset';
+
+    public const string PLATFORM_SUPPRESSED = 'admin.suppression.added';
+
+    public const string REPORT_EXPORTED = 'admin.report.exported';
+
     public function __construct(
         private readonly AuditLogger $logger,
         private readonly TeamContext $teamContext,

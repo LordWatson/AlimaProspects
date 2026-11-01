@@ -7,6 +7,7 @@ use App\Modules\Admin\Enums\AdminRole;
 use App\Modules\Admin\Enums\SettingType;
 use App\Modules\Admin\Resources;
 use App\Modules\Core\Enums\Capability;
+use App\Modules\Core\Enums\Currency;
 
 /*
 |--------------------------------------------------------------------------
@@ -94,6 +95,11 @@ return [
             AdminAbility::ManageTeams->value,
             AdminAbility::Impersonate->value,
             AdminAbility::ReadAudit->value,
+            AdminAbility::ReadPlatformReports->value,
+            // Phase 19c. Support is who is on at 2am: retrying a stuck job, resetting a recovered
+            // provider's breaker and adding a complainant to the global do-not-contact list are
+            // the three levers a ticket actually needs. None of them changes a plan or a switch.
+            AdminAbility::ManageOperations->value,
             // Deliberately **without** `platform.write`: Support fixes a customer's record, and the
             // AI prompt registry is not one. Editing it would change every tenant's next AI call.
         ],
@@ -103,12 +109,19 @@ return [
             AdminAbility::ReadTenantData->value,
             AdminAbility::ManageBilling->value,
             AdminAbility::ReadAudit->value,
+            // Phase 19c. MRR, churn, overage and gross margin per team are the reason this role
+            // exists; it still never impersonates and never touches an operational lever.
+            AdminAbility::ReadPlatformReports->value,
         ],
 
         AdminRole::ReadOnly->value => [
             AdminAbility::Access->value,
             AdminAbility::ReadTenantData->value,
             AdminAbility::ReadAudit->value,
+            // Phase 19c. The platform's figures are aggregates and name nobody, so an analyst or
+            // an auditor reading them is exactly what this role is for. `operations.manage` is
+            // deliberately absent: looking, not touching.
+            AdminAbility::ReadPlatformReports->value,
         ],
 
     ],
@@ -180,6 +193,98 @@ return [
                 .'whose contract already started.',
             'operational' => false,
         ],
+
+    ],
+
+    /*
+    | **Platform reporting** (Phase 19c).
+    |
+    | The business's own numbers, not a tenant's. Three settings, and the first two exist because
+    | gross margin per team crosses a currency boundary that nothing else in the product does:
+    | plans are priced in `billing.currency` (minor units) and providers bill us in whatever
+    | `ai_requests.currency` says (cost micro-units). A margin figure has to put both on one scale,
+    | and the only honest way to do that is with a rate somebody chose and can see.
+    */
+    'reporting' => [
+
+        /*
+        | The currency every platform money figure is expressed in. Defaults to the currency plans
+        | are priced in, because MRR is the figure margin is measured against.
+        */
+        'currency' => env('PLATFORM_REPORTING_CURRENCY', env('CASHIER_CURRENCY', 'gbp')),
+
+        /*
+        | A note on what these screens show, because `reports.read` is held by every operator role:
+        | the figures are aggregates and name no **person**, which is why reading them is not the
+        | privacy event `tenant.read` audits — but the margin and per-tenant MRR reports do name
+        | **companies**, with what each pays and what each costs us. That is commercially
+        | sensitive. If that ever needs narrowing, it narrows here.
+        */
+
+        /*
+        | How many **minor units of the reporting currency** one major unit of a provider's
+        | currency is worth. `usd => 79` reads "one dollar is 79 pence".
+        |
+        | A configured constant, not a market rate, and the screen says so beside the number. The
+        | alternative was an FX API — a live dependency, in a nightly rollup, for a figure whose
+        | third significant digit nobody acts on.
+        |
+        | **A currency with no rate here is reported as unconverted, never as zero.** That is the
+        | phase's own risk note: a margin that looks authoritative while a provider's cost is
+        | missing is worse than one that admits the gap. `PlatformMoney` returns the unconverted
+        | amounts alongside the converted total and the margin screen prints them.
+        */
+        'fx' => [
+            'gbp' => (int) env('PLATFORM_FX_GBP', 100),
+            'usd' => (int) env('PLATFORM_FX_USD', 79),
+            'eur' => (int) env('PLATFORM_FX_EUR', 85),
+            'aed' => (int) env('PLATFORM_FX_AED', 22),
+        ],
+
+        /*
+        | The currency `discovery_runs.cost_micros` and `signal_runs.cost_micros` are denominated
+        | in.
+        |
+        | Those two tables record a cost with **no currency column** — unlike `ai_requests`, which
+        | has one — and the prices behind them (`lead-sourcing.providers.*.cost_micros_per_request`,
+        | `signals.cost_micros_per_request`) are configured in dollars, the same currency the AI
+        | ledger bills in. So the rollup reads this rather than guessing, and the margin screen
+        | names it.
+        |
+        | **The right fix is a `currency` column on both tables**, which is a migration for a later
+        | phase and is recorded in `docs/modules/admin.md` as a deviation. Until then a deployment
+        | that changes provider currency changes this key, and nothing silently converts at 1:1.
+        */
+        // `Currency::Usd` rather than `config('ai-platform.cost.currency')`: config files are
+        // loaded alphabetically, so `admin.php` is read before `ai-platform.php` and a `config()`
+        // call here would resolve to null on a cold boot and to the right value once cached — the
+        // worst kind of bug. The enum is the shared constant both files can name.
+        'data_cost_currency' => env('PLATFORM_DATA_COST_CURRENCY', Currency::Usd->value),
+
+        /*
+        | How far back the nightly rollup recomputes the **onboarding funnel**.
+        |
+        | The funnel's rows are dated by the day a cohort signed up, and a team that signed up three
+        | weeks ago and runs its first discovery tonight changes a row dated three weeks ago. So
+        | those six metrics are recomputed over a trailing window rather than written once — see
+        | `PlatformMetric::isCohort()`. Thirty days is long enough to cover the first-hour story the
+        | funnel is for; a cohort older than that has told us what it is going to.
+        */
+        'funnel_cohort_days' => (int) env('PLATFORM_FUNNEL_COHORT_DAYS', 30),
+
+        /*
+        | How many months of a signup cohort the retention report follows.
+        */
+        'retention_months' => (int) env('PLATFORM_RETENTION_MONTHS', 12),
+
+        /*
+        | How many days of history the provider-health screen reads for its error and latency rates.
+        |
+        | Read from the **rollup**, not live from `ai_requests`: a cross-tenant scan of the AI ledger
+        | is the query this whole table exists to avoid, and an operator diagnosing a provider wants
+        | last night's shape next to the breaker's live state, which is what they get.
+        */
+        'provider_health_days' => (int) env('PLATFORM_PROVIDER_HEALTH_DAYS', 7),
 
     ],
 

@@ -73,5 +73,29 @@ export function useFormat() {
         }).format(new Date(value));
     }
 
-    return { number, currency, percent, date, dateTime, utcDateTime, timezone };
+    /**
+     * A **date** in UTC, labelled as such — the date-only sibling of {@see utcDateTime}.
+     *
+     * For the admin panel's platform figures, which are rolled up per UTC day: `date()` would
+     * render that day in the current team's timezone and, for an operator who has just been
+     * impersonating somebody, in *that customer's*. A rollup day is a day, not an instant, so
+     * padding it with a midnight it never had and then shifting that midnight is two mistakes.
+     */
+    function utcDate(value: string | number | Date): string {
+        return new Intl.DateTimeFormat(numericLocale.value, {
+            timeZone: 'UTC',
+            dateStyle: 'medium',
+        }).format(new Date(value));
+    }
+
+    return {
+        number,
+        currency,
+        percent,
+        date,
+        dateTime,
+        utcDate,
+        utcDateTime,
+        timezone,
+    };
 }
