@@ -5,6 +5,186 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — 2026-11-01 — Lists and create/edit forms: one shared shell (UI pass, not an mvp phase)
+
+The screens a team actually lives in — every list, and the forms behind them — were rebuilt onto two
+shared component sets instead of being hand-rolled per screen. Seven list screens meant seven
+answers to "is the header sticky", "can I order by this column", "what happens while the server is
+thinking" and "how do I see what is being filtered out", and the answers were mostly _no_, _no_,
+_nothing_ and _you don't_. The new pieces are catalogued on `/design` and the brand decisions behind
+them are recorded in `docs/brand/brand-tokens.md` §7h.
+
+- **`components/list/`** — `ListToolbar` (search, ordering, folded-away filters, the record count,
+  and the summary of what is in force via `ActiveFilters`), `ListTable`/`ListHead`/`ListRow`/
+  `ListCell`/`ListRowLink`, plus `ListSearch`, `ListSort`, `FilterGroup`, `FilterToggle` and
+  `DensityToggle`. Ordering, filtering and paging all stay **server-side**: the URL remains the
+  truth about what is on screen, so a list can be shared, bookmarked and walked back through with
+  the browser's own buttons. Nothing in the set holds list state.
+- **The filters fold away, and what they are doing is said in words.** The leads list used to open
+  with every filter it has permanently expanded — six chip groups, about 300 pixels, above the first
+  row — so a laptop showed four leads, and a member who scrolled past the panel had no way of
+  telling whether eleven rows was the answer or the leftovers of a filter set last Tuesday. The
+  panel is behind a disclosure that counts what is on, and the filters in force are removable chips
+  that name their group. The same chips went onto the **signals** feed, where a shared link could
+  show four signals out of two hundred with nothing on screen to say why.
+- **Columns order from the column.** Company, Fit and Updated carry `aria-sort` and an arrow and
+  re-request the list; the ordering select stays, because "newest first" has no column to live on.
+  The header stays put as the rows scroll, a row is clickable across its whole width while still
+  holding exactly one link, and row density is the member's own setting, remembered across every
+  list.
+- **A list says when it is thinking.** New `useNavigating()` — true while a GET to the same screen
+  is in flight — dims the rows and announces the new count when it lands, instead of leaving stale
+  rows looking like an answer.
+- **`components/forms/`** — `FormSection`, `FormField`, `FormErrorSummary`, `FormActions` and
+  `UnsavedChangesDialog`, plus `useUnsavedGuard()`. These are five fixes the long forms all shared:
+  **not one of the forty-odd hand-wired fields in the product set `aria-invalid`**, so a field the
+  server had rejected looked wrong and read fine; a rejected form showed a red line in the third
+  section with nothing at the top of the page to say so and nothing moving focus; the save button
+  sat below the fold; and nothing at all stopped a mis-clicked breadcrumb throwing away a
+  half-filled lead. `FormField` owns the `for`/`id`/`aria-describedby`/`aria-invalid` wiring by
+  construction; `FormErrorSummary` announces itself and links each failure into its field;
+  `FormActions` is sticky and says whether anything is unsaved; the guard holds back a `get` to
+  another path and asks in a real `Dialog` — never `window.confirm`, which cannot be translated and
+  says "Leave site?" about a navigation that never leaves the site.
+- **Leads list.** The hero carried five buttons of equal weight against the brand's one-CTA rule;
+  discovery is now the primary, the two ways into the list are outlines, and import/export moved
+  into a `More` menu. Each row carries a one-line summary of the six columns a phone cannot show.
+  The **location filter** finally has a control: it was in `LeadFilterState`, the export honoured it
+  and a saved view could carry it, but no element on the screen could set it.
+- **Ideal customers.** The cards listed a profile's signals as equal-looking chips with a number on
+  the end, which is backwards for a screen whose whole subject is the weighting — each signal now
+  has a bar, heaviest first, and the **active** profile is hoisted to the front at full width
+  because it is the one deciding how every lead in the account is graded. The editor says what a
+  weight _means_ ("Important · 50", on `lib/importance`'s three bands, shared with the list so the
+  two cannot drift) and carries a live summary of what the profile will do — this is the one form in
+  the product whose output is a behaviour rather than a record.
+- **Score screen.** The score is a dial (`ScoreDial`, coloured by grade from the same status tokens
+  `GradeBadge` uses, D neutral rather than `error`). The breakdown finally shows `contribution` —
+  the points each criterion was actually worth, which the server has sent since Phase 9 and this
+  screen silently dropped, printing a bare "Weight 70" instead — ordered heaviest first, with
+  `MeterBar` for the weight. **Bug:** the "Graded" timestamp was
+  `new Date(...).toLocaleString()`, which formats in the browser's zone and locale, so the same
+  score read differently depending on the laptop and in English inside an Arabic page; it goes
+  through `useFormat().dateTime()` (team timezone) like everything else.
+- **Do not contact.** Lifting an entry now asks first. Everywhere else in the product a single click
+  undoes something a member can see; here it re-opens a person to contact, and "Lift" sat one
+  mis-click from the row above it.
+- **Outreach briefs.** Deleting a brief asks (it had no confirmation and no undo, next to "Edit"),
+  pressing "Edit" on the sixth card now takes focus and the viewport to the form instead of opening
+  it silently off-screen, and a long brief folds rather than making its card four screens tall.
+- **Notifications.** Days are grouped as "Today"/"Yesterday"/date in the **team's** timezone, times
+  are relative with the exact instant on hover, and a notification with somewhere to go is clickable
+  across its whole width. New `useFormat().relative()` and `dayKey()`.
+- **Discovery.** The runs list said what had run and how many it found and **nothing about when**, so
+  three runs of one source were three identical rows; each row now carries its own time, how many
+  leads were new, and — while it is still going — the live step and percentage that were already
+  arriving over Reverb and only being used to flip a badge. A discovered company's name is now a
+  link to the lead; it was plain text, which left the one thing a reader wants to open as the one
+  thing they could not click.
+- **The lead record page.** It opened by answering none of the five questions somebody opens it
+  with: the grade was in a card down the right-hand column, the stage and the owner were inside the
+  work panel below that, and how stale the data was lived at the very bottom of the page — so a
+  member deciding whether to pick up the phone had to scroll to assemble it. There is now a header
+  card with the name and a rail of five figures: fit, stage, who's on it, contacts, and the state of
+  the data. The two full-width warning cards became one list that also carries **the notice that was
+  missing — enrichment having failed**: a lead with three empty facts and no explanation reads as a
+  bug in Alima, when it is usually a company with no website. The fit score is the `ScoreDial`
+  instead of a number in a grey square. A contact's email or phone can be **copied** (new
+  `CopyButton`), which previously meant selecting text inside a table cell — close to impossible on
+  a phone — and role-based addresses now sort to the top, because the compliance note tells members
+  to prefer them and the table was listing them in arbitrary order. The side column is placed by
+  grid rather than DOM order, so on a phone the things a member _does_ to a lead are not below five
+  sections of reading matter. In the work panel, the assignees were shown **twice** — as removable
+  chips and again as the whole team in pressed toggles, two ways to take the same person off — and
+  are now one row of toggles; its `<select>` was the last one flagged in `signals.md`.
+- **Reviewed again** for the record page. Two more AA failures came out of it, and both were fixed
+  **product-wide**, because both were rules this product had written down and then not followed:
+  body copy on a status tint was `text-muted-foreground` (about **4.4:1** on a 12% warning or info
+  tint, under AA) where §7f.3 says the words on a tint take the foreground colour — fixed here and
+  in the add-a-lead form's compliance note; and `enriching` was an `info` **badge** in both the
+  leads list and the lead's rail, which §7g.2 forbids until `status.info` is approved, so it is an
+  outline badge with a spinner instead. Also fixed: the grade chip in the rail took its accessible
+  name from an `aria-label` that replaced the badge's own, so a screen reader was told "see the full
+  breakdown" and never the score; the restriction notice wore a `ShieldCheck`, which reads as "you
+  are fine to go", and now wears scales; the website URL forced `dir="ltr"` on a full-width
+  paragraph, which left-aligns a URL under a right-aligned Arabic company name; the contacts figure
+  in the rail became an anchor into the contacts section rather than a count repeating it; and the
+  copy button's 24px glyph got a 40px hit area.
+- **A compliance record can be opened, edited and saved — including the market you are not based
+  in.** The compliance centre lists one assessment card per market, and **none of them opened
+  anything**: the single button above them carries no market, so it always opened the team's own
+  record, and a UK team looking at the UAE card read "lead discovery is closed for this market"
+  with nothing to click. The editor's own dropdown could reach it, but only once you were already
+  inside the editor. Each card is now its own record — openable across the whole card, with the act
+  it leads to named on it ("Write it" / "Open and edit it" / "Read it", by state and by what the
+  reader may do) — and the button above names the team's market explicitly. Nothing changed on the
+  server: `LiaController` already read `?market=`, `ResolvesCompliance` already authorised a
+  transient per-market record, and drafts were already savable. **Three tests now cover the path
+  the UI had been hiding**: opening another market's record, saving it as an independent second
+  record without touching the team's own or moving its gate, and a plain member being refused the
+  write on _that_ market rather than only on the one the policy was first exercised against.
+- **The assessment editor got the form treatment the other two long forms got**, and it needed it
+  most: this is the one screen in the product that is a legal document, and twenty minutes of
+  careful wording could be lost to a mis-clicked breadcrumb. It now has a sticky save bar that says
+  whether anything is unsaved, an announced summary of what the server rejected, `aria-describedby`
+  and `aria-invalid` on every question (written out rather than taken from `FormField`, because
+  here the prompt _is_ the regulator's question and `FormField`'s hint would shrink it to small
+  print), and a guard on leaving. **The market picker is guarded separately**: switching market
+  loads a different record from the same URL, and a same-path visit is exactly what
+  `useUnsavedGuard` lets through by design — so the draft is defended there by hand, and backing
+  out of the prompt puts the picker back to the market you are actually looking at.
+- **A member who may not edit the assessment now gets it to read.** Any member may _view_ this
+  record by design (`LiaRecordPolicy`: "a member working a list is the one who will be asked"), and
+  they were being shown five **disabled textareas and no buttons, with nothing saying why** — which
+  is also the worst way to read a document, since a disabled field is greyed, often clipped, and in
+  some browsers cannot be scrolled. They get the record as prose and a line naming who can change
+  it.
+- **Everything else:** `useListDensity()`, `MeterBar`, `ActiveFilterChip` in `types/ui.ts`, and
+  71 new EN/AR strings at parity (1 724 keys each). The remaining hand-rolled `<select>` call sites
+  recorded in `signals.md` are gone from the leads filter bar, the bulk-action bar, the ICP editor,
+  the discovery form and the do-not-contact form.
+
+**Reviewed** by the `brand-reviewer` agent. No brand violation: Signal Orange is on no state, there
+is no raw hex in the new components, and the 12px type floor holds. Nine findings were actioned:
+
+- **A real bug** — a `raised` cell (the checkbox column, a row's tag list) and the sticky header
+  were both `z-10`, and body cells come later in the DOM, so the checkbox column showed _through_
+  the header band as the rows scrolled under it. Header to `z-20`, veil to `z-30`.
+- **Four contrast failures**, all under AA at 12px and all now fixed: column headers were
+  `text-muted-foreground` on the newly opaque header band (**4.47:1** — the band had to become
+  opaque for the header to be sticky, so the text moved to `text-foreground/80`); the active-filter
+  chip set its group name in `text-brand/70` (**3.4:1**) and its value in `text-brand` on a 10%
+  tint of itself (**4.3:1** on the dark card, where `--brand` is still PENDING) — the brand now
+  carries the tint and the words are `text-foreground`, which is §7f.3's own rule; the form
+  section's step square had the same pair and became solid Teal with cream type; and `MeterBar`'s
+  neutral fill was Ink 60 on the border token (**2.3:1** dark, under the 3:1 non-text minimum) —
+  §7.7's Ink 60 figures are measured against the _card_, which is not where a bar sits.
+- **The `/` shortcut was withdrawn.** A single-character shortcut bound to the document fails
+  **WCAG 2.1.4 (Level A)** unless it can be turned off, remapped, or is active only on focus, and
+  guarding it against fields and dialogs is none of the three. Recorded in brand-tokens.md §7h
+  with how it comes back: as a preference, like GitHub's.
+- **Two toggles contradicted their own state.** The density button and the filters disclosure
+  flipped their labels while also setting `aria-pressed`/`aria-expanded`, so one read as
+  "Comfortable rows, pressed" while the rows were compact. The name is now the thing being
+  toggled; the sentence about the next click is the tooltip.
+- **The error summary would not re-announce a repeat rejection.** It watched the _number_ of
+  failures, so a second submit rejected for the same two reasons moved no focus and said nothing.
+  It now takes an `attempt` counter and fires immediately on arrival as well.
+- **Sortable columns were invisible on touch** (the handle was `opacity-0` until hover). Shown at
+  rest at 60%.
+- **Smaller ones:** `MeterBar` gained a `live` form (`role="progressbar"`) for the discovery run's
+  climbing percentage, which a one-off `sr-only` phrase never announced; the notification rows'
+  twenty identical "Mark read" buttons now name their notification; the timestamp is raised clear
+  of the row's stretched link so its exact-time tooltip still works; Escape on an empty search box
+  no longer fires a request that changes nothing; and `ScoreDial`'s figure gained `rtl:font-bold`
+  (Tajawal has no 600).
+
+Four findings were left as judgements and are flagged for the brand owner in **§7h.1**: the busy
+veil lets the rows it covers fall below AA while it is up; the full-row click target costs text
+selection in non-raised cells; the Orange full stop after a company name on the score screen
+stretches §3's statement rule (pre-existing, and consistent with its sibling screens); and grade B
+still depends on the PENDING `--info`.
+
 ### Added — 2026-11-01 — Admin panel: platform reporting & operations (Phase 19c)
 
 - **The business's own numbers, on their own builders.** Thirteen platform reports, each also a CSV

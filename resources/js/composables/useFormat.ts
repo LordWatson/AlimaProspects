@@ -57,6 +57,64 @@ export function useFormat() {
     }
 
     /**
+     * How long ago, in words — "2 hours ago", "yesterday", "last week".
+     *
+     * For the places where the *distance* is the point rather than the instant: a notification, an
+     * activity line, "last run". An absolute timestamp there makes the reader do arithmetic
+     * against a clock they have to find first, and in a list of twenty it makes them do it twenty
+     * times. Where the exact moment also matters, the screen keeps it — usually as the element's
+     * `title`, so it is one hover away rather than gone.
+     *
+     * `numeric: 'auto'` is what produces "yesterday" instead of "1 day ago"; both are correct, and
+     * the first is what somebody would have said.
+     */
+    function relative(value: string | number | Date): string {
+        const seconds = Math.round(
+            (new Date(value).getTime() - Date.now()) / 1000,
+        );
+
+        const units: [Intl.RelativeTimeFormatUnit, number][] = [
+            ['year', 31_536_000],
+            ['month', 2_592_000],
+            ['week', 604_800],
+            ['day', 86_400],
+            ['hour', 3_600],
+            ['minute', 60],
+        ];
+
+        const formatter = new Intl.RelativeTimeFormat(numericLocale.value, {
+            numeric: 'auto',
+        });
+
+        for (const [unit, size] of units) {
+            if (Math.abs(seconds) >= size) {
+                return formatter.format(Math.round(seconds / size), unit);
+            }
+        }
+
+        return formatter.format(Math.round(seconds), 'second');
+    }
+
+    /**
+     * Which **day** an instant falls on, as `YYYY-MM-DD` in the **team's** timezone — the key a
+     * list groups its rows by.
+     *
+     * It has to be the team's day rather than the browser's: a notification raised at 23:30 in
+     * Dubai is still Tuesday's for a Dubai team, and grouping it under Wednesday because the
+     * reader is in London would put it in the wrong pile. `en-CA` is used for the formatting only,
+     * because it is the locale whose short date already *is* `YYYY-MM-DD`; nothing here is shown
+     * to anybody.
+     */
+    function dayKey(value: string | number | Date): string {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: timezone.value,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+        }).format(new Date(value));
+    }
+
+    /**
      * A timestamp in **UTC**, labelled as such.
      *
      * For the admin panel, where `dateTime()` is the wrong answer: it formats in the current team's
@@ -94,6 +152,8 @@ export function useFormat() {
         percent,
         date,
         dateTime,
+        relative,
+        dayKey,
         utcDate,
         utcDateTime,
         timezone,

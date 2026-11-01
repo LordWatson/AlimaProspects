@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { Check, Satellite, Settings2, SlidersHorizontal } from '@lucide/vue';
+import { Satellite, Settings2, SlidersHorizontal } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { ActiveFilters, FilterGroup, FilterToggle } from '@/components/list';
 import PageHero from '@/components/PageHero.vue';
 import Pagination from '@/components/Pagination.vue';
 import ConvertSignalModal from '@/components/signals/ConvertSignalModal.vue';
@@ -12,7 +13,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useI18n } from '@/composables/useI18n';
+import { useNavigating } from '@/composables/useNavigating';
 import type {
+    ActiveFilterChip,
     PaginationLink,
     PipelineStage,
     Signal,
@@ -158,6 +161,73 @@ const isNarrowed = computed(
         props.filters.to !== null ||
         props.filters.min_relevance !== null,
 );
+
+// A filter change is a round trip, so the feed says it is thinking rather than leaving stale
+// cards looking like the answer.
+const busy = useNavigating();
+
+/**
+ * What is narrowing the feed, in words, above it.
+ *
+ * The filters live behind a disclosure, which is right — they are used occasionally — but it means
+ * a member can land on a shared link showing four signals out of two hundred with nothing on
+ * screen to say why. Each chip names its group and removes only itself.
+ */
+const activeChips = computed<ActiveFilterChip[]>(() => {
+    const chips: ActiveFilterChip[] = [];
+
+    for (const type of props.filters.event_types) {
+        const option = props.options.event_types.find(
+            (candidate) => candidate.value === type,
+        );
+
+        chips.push({
+            id: 'event_types:' + type,
+            group: t('Event type'),
+            label: option ? t(option.label) : type,
+        });
+    }
+
+    if (props.filters.from !== null) {
+        chips.push({
+            id: 'from:1',
+            group: t('From'),
+            label: props.filters.from,
+        });
+    }
+
+    if (props.filters.to !== null) {
+        chips.push({ id: 'to:1', group: t('To'), label: props.filters.to });
+    }
+
+    if (props.filters.min_relevance !== null) {
+        chips.push({
+            id: 'min_relevance:1',
+            group: t('Minimum relevance'),
+            label: String(props.filters.min_relevance),
+        });
+    }
+
+    return chips;
+});
+
+function removeChip(chip: ActiveFilterChip): void {
+    const [key, raw] = chip.id.split(':');
+
+    if (key === 'event_types') {
+        navigate({
+            event_types: props.filters.event_types.filter(
+                (type) => type !== raw,
+            ),
+        });
+
+        return;
+    }
+
+    if (key === 'from') navigate({ from: null });
+    if (key === 'to') navigate({ to: null });
+    if (key === 'min_relevance') navigate({ min_relevance: null });
+}
 
 // --- Modals -------------------------------------------------------------------------------------
 const converting = ref<Signal | null>(null);
@@ -351,49 +421,21 @@ onBeforeUnmount(() => {
                     id="signal-filters"
                     class="space-y-4 rounded-2xl border border-border bg-card p-6"
                 >
-                    <fieldset class="space-y-3">
-                        <legend
-                            class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                        >
-                            {{ t('Event type') }}
-                        </legend>
-                        <div class="flex flex-wrap gap-2">
-                            <Label
-                                v-for="option in options.event_types"
-                                :key="option.value"
-                                class="flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring"
-                                :class="
-                                    filters.event_types.includes(option.value)
-                                        ? 'border-brand bg-brand/5 text-brand'
-                                        : 'border-border text-foreground hover:border-brand/40'
-                                "
-                            >
-                                <input
-                                    type="checkbox"
-                                    class="sr-only"
-                                    :value="option.value"
-                                    :checked="
-                                        filters.event_types.includes(
-                                            option.value,
-                                        )
-                                    "
-                                    @change="toggleEventType(option.value)"
-                                />
-                                <!-- Selection has to be visible without colour (WCAG 1.4.1), so a
-                                     tick appears rather than only the tint changing. -->
-                                <Check
-                                    v-if="
-                                        filters.event_types.includes(
-                                            option.value,
-                                        )
-                                    "
-                                    class="size-3"
-                                    aria-hidden="true"
-                                />
-                                {{ t(option.label) }}
-                            </Label>
-                        </div>
-                    </fieldset>
+                    <!-- The same chip as the leads list, so a filter looks like a filter
+                         wherever a member meets one. The tick is what keeps the on state from
+                         being colour alone (WCAG 1.4.1). -->
+                    <FilterGroup :legend="t('Event type')">
+                        <FilterToggle
+                            v-for="option in options.event_types"
+                            :key="option.value"
+                            :pressed="
+                                filters.event_types.includes(option.value)
+                            "
+                            :label="t(option.label)"
+                            :data-test="'filter-event-' + option.value"
+                            @toggle="toggleEventType(option.value)"
+                        />
+                    </FilterGroup>
 
                     <div class="grid gap-4 sm:grid-cols-3">
                         <div class="space-y-2">
@@ -452,16 +494,15 @@ onBeforeUnmount(() => {
                             />
                         </div>
                     </div>
-
-                    <Button
-                        v-if="isNarrowed"
-                        variant="ghost"
-                        size="sm"
-                        @click="clearFilters"
-                    >
-                        {{ t('Clear filters') }}
-                    </Button>
                 </div>
+
+                <!-- What the filters are doing, where it cannot be scrolled past or folded
+                     away with them. -->
+                <ActiveFilters
+                    :chips="activeChips"
+                    @remove="removeChip"
+                    @clear="clearFilters"
+                />
             </div>
 
             <!-- The feed -->
@@ -469,7 +510,9 @@ onBeforeUnmount(() => {
                 v-if="signals.data.length"
                 ref="listRef"
                 tabindex="-1"
-                class="space-y-4 focus:outline-none"
+                class="duration-fast space-y-4 transition-opacity ease-brand focus:outline-none"
+                :class="busy ? 'opacity-55' : ''"
+                :aria-busy="busy ? 'true' : undefined"
                 data-test="signal-list"
             >
                 <SignalCard

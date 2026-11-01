@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { Inbox, Rocket, Sparkles } from '@lucide/vue';
+import { ref } from 'vue';
 import { toast } from 'vue-sonner';
 import {
     BarListChart,
@@ -10,7 +11,26 @@ import {
     StatTile,
     TrendChart,
 } from '@/components/charts';
+import {
+    FormActions,
+    FormErrorSummary,
+    FormField,
+    FormSection,
+} from '@/components/forms';
+import {
+    FilterGroup,
+    FilterToggle,
+    ListCell,
+    ListHead,
+    ListRow,
+    ListRowLink,
+    ListSearch,
+    ListTable,
+    ListToolbar,
+} from '@/components/list';
+import MeterBar from '@/components/MeterBar.vue';
 import PageHero from '@/components/PageHero.vue';
+import ScoreDial from '@/components/scoring/ScoreDial.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -64,6 +84,44 @@ const demoTrend = [
     { label: '22 Sep', starts_on: '2026-09-22', sourced: 35, qualified: 18 },
     { label: '29 Sep', starts_on: '2026-09-29', sourced: 41, qualified: 19 },
 ];
+
+/*
+ * The list and form furniture is driven by state the page owns, so the catalogue is a working
+ * example rather than a screenshot: the chips really remove, the columns really sort, the density
+ * toggle really switches (and is remembered, because it is the member's own setting).
+ */
+const demoSort = ref('company');
+const demoDirection = ref<'asc' | 'desc'>('asc');
+const demoFitFilter = ref<string[]>(['A']);
+const demoSearch = ref('');
+const demoChips = ref([
+    { id: 'grades:A', group: 'Fit', label: 'A' },
+    { id: 'stage:2', group: 'Stage', label: 'In conversation' },
+]);
+const demoErrors = ref<Record<string, string>>({});
+
+const demoRows = [
+    { id: 1, company: 'Bright Bean Coffee', town: 'Manchester', score: 86 },
+    { id: 2, company: 'Northwind Trading', town: 'Leeds', score: 64 },
+    { id: 3, company: 'Harbour & Co', town: 'Dubai', score: 41 },
+];
+
+function demoToggleGrade(grade: string): void {
+    demoFitFilter.value = demoFitFilter.value.includes(grade)
+        ? demoFitFilter.value.filter((value) => value !== grade)
+        : [...demoFitFilter.value, grade];
+}
+
+function demoSortBy(key: string): void {
+    if (demoSort.value === key) {
+        demoDirection.value = demoDirection.value === 'asc' ? 'desc' : 'asc';
+
+        return;
+    }
+
+    demoSort.value = key;
+    demoDirection.value = 'asc';
+}
 
 const demoFunnel = [
     {
@@ -283,7 +341,7 @@ const grades = [
                     <span :class="['text-xs font-medium', s.fg]">{{
                         s.name
                     }}</span>
-                    <span :class="['font-mono text-[10px] opacity-70', s.fg]">{{
+                    <span :class="['font-mono text-xs opacity-70', s.fg]">{{
                         s.hex
                     }}</span>
                 </div>
@@ -523,6 +581,207 @@ const grades = [
                 <Button>Let's grow</Button>
                 <Button variant="outline">See the work</Button>
             </EmptyState>
+        </section>
+
+        <!-- List furniture -->
+        <section class="flex flex-col gap-4">
+            <h2
+                class="font-mono text-sm tracking-wide text-muted-foreground uppercase"
+            >
+                Lists
+            </h2>
+            <p class="max-w-prose text-sm text-muted-foreground">
+                Every tenant list is this shell:
+                <code>ListToolbar</code> over <code>ListTable</code>. The
+                filters fold away and what they are doing is said above the
+                table as removable chips — a list that hides its own filters is
+                a list that lies about what it holds. Columns carry
+                <code>aria-sort</code> and order server-side, the header stays
+                as the rows scroll, a row is clickable across its whole width
+                while still holding one link, and density is the member's
+                choice, remembered across every list.
+            </p>
+
+            <ListToolbar
+                summary="3 leads match"
+                :chips="demoChips"
+                @remove-filter="
+                    (chip) =>
+                        (demoChips = demoChips.filter(
+                            (candidate) => candidate.id !== chip.id,
+                        ))
+                "
+                @clear-filters="demoChips = []"
+            >
+                <template #search>
+                    <ListSearch
+                        id="demo-search"
+                        :value="demoSearch"
+                        label="Search"
+                        placeholder="Company, number, website or contact"
+                        @search="demoSearch = $event"
+                    />
+                </template>
+                <template #filters>
+                    <FilterGroup legend="Fit">
+                        <FilterToggle
+                            v-for="grade in ['A', 'B', 'C', 'D']"
+                            :key="grade"
+                            mono
+                            :pressed="demoFitFilter.includes(grade)"
+                            :label="grade"
+                            :sr-label="`Grade ${grade}`"
+                            @toggle="demoToggleGrade(grade)"
+                        />
+                    </FilterGroup>
+                </template>
+            </ListToolbar>
+
+            <ListTable caption="Three invented companies, for the catalogue">
+                <thead>
+                    <tr>
+                        <ListHead
+                            label="Company"
+                            sort="company"
+                            :active="demoSort"
+                            :direction="demoDirection"
+                            @sort="demoSortBy"
+                        />
+                        <ListHead label="Town" hide="sm" />
+                        <ListHead
+                            label="Fit"
+                            align="end"
+                            sort="fit"
+                            :active="demoSort"
+                            :direction="demoDirection"
+                            @sort="demoSortBy"
+                        />
+                    </tr>
+                </thead>
+                <tbody>
+                    <ListRow v-for="row in demoRows" :key="row.id">
+                        <ListCell>
+                            <ListRowLink href="/design">{{
+                                row.company
+                            }}</ListRowLink>
+                        </ListCell>
+                        <ListCell hide="sm" muted>{{ row.town }}</ListCell>
+                        <ListCell align="end">
+                            <span class="inline-flex items-center gap-3">
+                                <MeterBar
+                                    :value="row.score"
+                                    width="sm"
+                                    :label="`${row.score} out of 100`"
+                                />
+                                <span
+                                    class="w-6 text-end font-mono text-xs text-muted-foreground tabular-nums"
+                                    aria-hidden="true"
+                                    >{{ row.score }}</span
+                                >
+                            </span>
+                        </ListCell>
+                    </ListRow>
+                </tbody>
+            </ListTable>
+        </section>
+
+        <!-- Form furniture -->
+        <section class="flex flex-col gap-4">
+            <h2
+                class="font-mono text-sm tracking-wide text-muted-foreground uppercase"
+            >
+                Forms
+            </h2>
+            <p class="max-w-prose text-sm text-muted-foreground">
+                A long form is a few short ones:
+                <code>FormSection</code> per part, <code>FormField</code> per
+                field — which is where the <code>for</code>/<code>id</code>,
+                <code>aria-describedby</code> and
+                <code>aria-invalid</code> wiring comes from —
+                <code>FormErrorSummary</code> at the top, and
+                <code>FormActions</code> keeping the save within reach.
+                "Required" is said in words: a colour is not a label, and Signal
+                Orange is decorative only.
+            </p>
+
+            <FormErrorSummary
+                :errors="demoErrors"
+                :labels="{ demoName: 'Company name' }"
+                :anchors="{ demoName: 'demo-name' }"
+            />
+
+            <FormSection
+                step="01"
+                title="The company"
+                description="Only the name is needed; everything else is for when you happen to know it."
+            >
+                <FormField
+                    id="demo-name"
+                    label="Company name"
+                    required
+                    hint="Already have this company? Alima adds to that lead instead of making a second one."
+                    :error="demoErrors.demoName"
+                >
+                    <template #default="{ id, describedBy, invalid }">
+                        <Input
+                            :id="id"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="invalid"
+                            placeholder="e.g. Bright Bean Coffee"
+                        />
+                    </template>
+                </FormField>
+
+                <FormField id="demo-website" label="Website" optional>
+                    <template #default="{ id, describedBy }">
+                        <Input
+                            :id="id"
+                            :aria-describedby="describedBy"
+                            placeholder="brightbean.co.uk"
+                            dir="ltr"
+                        />
+                    </template>
+                </FormField>
+            </FormSection>
+
+            <div class="flex flex-wrap gap-3">
+                <Button
+                    variant="outline"
+                    @click="
+                        demoErrors = {
+                            demoName: 'Please give the company a name.',
+                        }
+                    "
+                >
+                    Show a rejected form
+                </Button>
+                <Button variant="ghost" @click="demoErrors = {}">
+                    Clear it
+                </Button>
+            </div>
+        </section>
+
+        <!-- Score dial -->
+        <section class="flex flex-col gap-4">
+            <h2
+                class="font-mono text-sm tracking-wide text-muted-foreground uppercase"
+            >
+                Score dial
+            </h2>
+            <p class="max-w-prose text-sm text-muted-foreground">
+                A fit score against its scale. Colour follows the
+                <em>grade</em>, with the same semantic tokens
+                <code>GradeBadge</code> uses, so a grade is one colour
+                everywhere — and a weak fit is a neutral Ink 60, never
+                <code>error</code>: a lead that does not match your profile is
+                nobody's fault.
+            </p>
+            <div class="flex flex-wrap items-center gap-6">
+                <ScoreDial :score="86" grade="A" grade-label="Strong fit" />
+                <ScoreDial :score="64" grade="B" grade-label="Good fit" />
+                <ScoreDial :score="41" grade="C" grade-label="Possible fit" />
+                <ScoreDial :score="18" grade="D" grade-label="Weak fit" />
+            </div>
         </section>
 
         <!-- Charts -->

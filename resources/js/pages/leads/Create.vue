@@ -2,7 +2,13 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Plus, ShieldCheck, Upload, X } from '@lucide/vue';
 import { computed, nextTick, ref, useTemplateRef } from 'vue';
-import InputError from '@/components/InputError.vue';
+import {
+    FormActions,
+    FormErrorSummary,
+    FormField,
+    FormSection,
+    UnsavedChangesDialog,
+} from '@/components/forms';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { useI18n } from '@/composables/useI18n';
+import { useUnsavedGuard } from '@/composables/useUnsavedGuard';
 import type { CreateLeadForm, LeadTag, PipelineStage } from '@/types';
 
 /*
@@ -21,6 +28,18 @@ import type { CreateLeadForm, LeadTag, PipelineStage } from '@/types';
  * should be able to fill one field and be done; everything below it is there for when they happen
  * to know it, and enrichment fills in the rest afterwards. A form that insisted on a website and a
  * registry number would be a form people give up on, and the lead would be lost.
+ *
+ * Four things the rebuild added, all of them things a four-section form cannot do without:
+ *
+ *  - **A summary of what the server rejected**, at the top, announced, with each failure a link
+ *    into its field. A rejected email address used to show as a red line in the third section,
+ *    off-screen, with nothing at the top of the page to say so.
+ *  - **`aria-invalid` and `aria-describedby` on every field**, via `FormField`. Not one of the
+ *    forty-odd hand-wired fields in this product had the first of those, so a field the server
+ *    had rejected looked wrong and read fine.
+ *  - **The save button within reach**, in a sticky bar that also says whether anything is unsaved.
+ *  - **A guard on leaving.** This is the screen somebody fills in from a half-remembered
+ *    conversation; losing it to a mis-clicked breadcrumb was the worst thing it could do.
  *
  * The contact note is not a warning the member can click past: it is what they are agreeing to by
  * typing someone's details in (docs/compliance.md). It uses `warning`, never Signal Orange, which
@@ -73,11 +92,45 @@ const form = useForm<CreateLeadForm>({
     note: '',
 });
 
+// Hold back a navigation that would throw the draft away. The save itself is a POST and goes
+// through untouched; only leaving is held.
+const guard = useUnsavedGuard(() => form.isDirty);
+
+/**
+ * What each failure is called in the summary, and where the summary sends you.
+ *
+ * The labels are the field labels, so the summary and the form agree word for word. Only the two
+ * fields whose control id doesn't follow from the key need an anchor of their own.
+ */
+const errorLabels = computed<Record<string, string>>(() => ({
+    company_name: t('Company name'),
+    website: t('Website'),
+    company_number: t('Company number'),
+    industry: t('Industry'),
+    employee_range: t('Team size'),
+    locality: t('Town or city'),
+    region: t('Region'),
+    postal_code: t('Postcode'),
+    country: t('Country'),
+    contact_name: t('Their name'),
+    contact_title: t('Their role'),
+    contact_email: t('Email'),
+    contact_phone: t('Phone'),
+    tags: t('Tags'),
+    pipeline_stage_id: t('Pipeline stage'),
+    note: t('Note'),
+}));
+
+const errorAnchors: Record<string, string> = {
+    pipeline_stage_id: 'stage',
+    tags: 'new-tag',
+};
+
 // --- Tags ----------------------------------------------------------------------------------
 // Names rather than ids, matching the lead's work panel: a tag is created on first use, so the
 // screen never has to create one and then attach it.
 const newTag = ref('');
-const tagInput = useTemplateRef<InstanceType<typeof Input>>('tagInput');
+const tagInput = useTemplateRef<HTMLElement>('tagInput');
 
 /**
  * What a screen reader is told when a chip appears or disappears. Chips are added and removed
@@ -109,7 +162,7 @@ async function removeTag(name: string): Promise<void> {
     // The button that was clicked has just unmounted, so focus would otherwise land on the body.
     // It goes to the field the member would reach for next.
     await nextTick();
-    tagInput.value?.$el?.focus?.();
+    tagInput.value?.querySelector('input')?.focus();
 }
 
 /** The team's existing tags that aren't on this lead yet — one tap each. */
@@ -124,15 +177,24 @@ const suggestedTags = computed(() =>
         .slice(0, 8),
 );
 
+// Bumped on every submit so the error summary announces a repeat rejection rather than
+// sitting still because the number of failures happens to be the same.
+const attempt = ref(0);
+
 function submit(): void {
-    form.post('/leads');
+    attempt.value += 1;
+
+    form.post('/leads', {
+        // The redirect leaves this screen, and by then the draft is saved rather than lost.
+        onSuccess: () => guard.allowOnce(),
+    });
 }
 </script>
 
 <template>
     <Head :title="t('Add a lead')" />
 
-    <div class="flex flex-col gap-8 py-2">
+    <div class="flex flex-col gap-6 py-2">
         <header
             class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
         >
@@ -168,321 +230,359 @@ function submit(): void {
         </header>
 
         <form class="space-y-6" @submit.prevent="submit">
-            <!-- The company -->
-            <section
-                class="space-y-4 rounded-2xl border border-border bg-card p-6"
-            >
-                <h2
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                >
-                    {{ t('The company') }}
-                </h2>
+            <FormErrorSummary
+                :errors="form.errors"
+                :labels="errorLabels"
+                :anchors="errorAnchors"
+                :attempt="attempt"
+            />
 
-                <div class="space-y-2">
-                    <Label for="company-name">
-                        {{ t('Company name') }}
-                        <!-- Signal Orange is decorative only (brand-tokens §2.1), and
-                             "required" is functional — so it is said in words. -->
-                        <span
-                            class="text-xs font-normal text-muted-foreground"
-                            >{{ t('(required)') }}</span
-                        >
-                    </Label>
-                    <Input
-                        id="company-name"
-                        v-model="form.company_name"
-                        name="company_name"
-                        required
-                        autocomplete="organization"
-                        aria-describedby="company-name-hint"
-                        class="lg:max-w-2xl"
-                        :placeholder="t('e.g. Bright Bean Coffee')"
-                        dir="auto"
-                        data-test="company-name"
-                    />
-                    <p
-                        id="company-name-hint"
-                        class="text-xs text-muted-foreground lg:max-w-2xl"
-                    >
-                        {{
+            <FormSection step="01" :title="t('The company')">
+                <FormField
+                    id="company-name"
+                    :label="t('Company name')"
+                    required
+                    :error="form.errors.company_name"
+                    :hint="
+                        t(
+                            'It’s the only thing Alima needs. Already have this company? Alima adds to that lead instead of making a second one.',
+                        )
+                    "
+                    class="lg:max-w-2xl"
+                >
+                    <template #default="{ id, describedBy, invalid }">
+                        <Input
+                            :id="id"
+                            v-model="form.company_name"
+                            name="company_name"
+                            required
+                            autocomplete="organization"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="invalid"
+                            :placeholder="t('e.g. Bright Bean Coffee')"
+                            dir="auto"
+                            data-test="company-name"
+                        />
+                    </template>
+                </FormField>
+
+                <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                    <FormField
+                        id="website"
+                        :label="t('Website')"
+                        :error="form.errors.website"
+                        :hint="
                             t(
-                                'It’s the only thing Alima needs. Already have this company? Alima adds to that lead instead of making a second one.',
+                                'Worth a few seconds if you have it — it is how Alima finds everything else.',
                             )
-                        }}
-                    </p>
-                    <InputError :message="form.errors.company_name" />
+                        "
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.website"
+                                name="website"
+                                autocomplete="url"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                :placeholder="t('brightbean.co.uk')"
+                                dir="ltr"
+                                data-test="website"
+                            />
+                        </template>
+                    </FormField>
+
+                    <FormField
+                        id="company-number"
+                        :label="t('Company number')"
+                        :error="form.errors.company_number"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.company_number"
+                                name="company_number"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                dir="ltr"
+                            />
+                        </template>
+                    </FormField>
+
+                    <FormField
+                        id="industry"
+                        :label="t('Industry')"
+                        :error="form.errors.industry"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.industry"
+                                name="industry"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                dir="auto"
+                            />
+                        </template>
+                    </FormField>
+
+                    <FormField
+                        id="employee-range"
+                        :label="t('Team size')"
+                        :error="form.errors.employee_range"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.employee_range"
+                                name="employee_range"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                :placeholder="t('e.g. 11-50')"
+                                dir="auto"
+                            />
+                        </template>
+                    </FormField>
                 </div>
+            </FormSection>
 
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div class="space-y-2">
-                        <Label for="website">{{ t('Website') }}</Label>
-                        <Input
-                            id="website"
-                            v-model="form.website"
-                            name="website"
-                            autocomplete="url"
-                            aria-describedby="website-hint"
-                            :placeholder="t('brightbean.co.uk')"
-                            dir="ltr"
-                            data-test="website"
-                        />
-                        <p
-                            id="website-hint"
-                            class="text-xs text-muted-foreground"
-                        >
-                            {{
-                                t(
-                                    'Worth a few seconds if you have it — it is how Alima finds everything else.',
-                                )
-                            }}
-                        </p>
-                        <InputError :message="form.errors.website" />
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="company-number">{{
-                            t('Company number')
-                        }}</Label>
-                        <Input
-                            id="company-number"
-                            v-model="form.company_number"
-                            name="company_number"
-                            dir="ltr"
-                        />
-                        <InputError :message="form.errors.company_number" />
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="industry">{{ t('Industry') }}</Label>
-                        <Input
-                            id="industry"
-                            v-model="form.industry"
-                            name="industry"
-                            dir="auto"
-                        />
-                        <InputError :message="form.errors.industry" />
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="employee-range">{{ t('Team size') }}</Label>
-                        <Input
-                            id="employee-range"
-                            v-model="form.employee_range"
-                            name="employee_range"
-                            :placeholder="t('e.g. 11-50')"
-                            dir="auto"
-                        />
-                        <InputError :message="form.errors.employee_range" />
-                    </div>
-                </div>
-            </section>
+            <FormSection step="02" :title="t('Where they are')">
+                <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                    <FormField
+                        id="locality"
+                        :label="t('Town or city')"
+                        :error="form.errors.locality"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.locality"
+                                name="locality"
+                                autocomplete="address-level2"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                dir="auto"
+                                data-test="locality"
+                            />
+                        </template>
+                    </FormField>
 
-            <!-- Where they are -->
-            <section
-                class="space-y-4 rounded-2xl border border-border bg-card p-6"
-            >
-                <h2
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                >
-                    {{ t('Where they are') }}
-                </h2>
+                    <FormField
+                        id="region"
+                        :label="t('Region')"
+                        :error="form.errors.region"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.region"
+                                name="region"
+                                autocomplete="address-level1"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                dir="auto"
+                            />
+                        </template>
+                    </FormField>
 
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div class="space-y-2">
-                        <Label for="locality">{{ t('Town or city') }}</Label>
-                        <Input
-                            id="locality"
-                            v-model="form.locality"
-                            name="locality"
-                            autocomplete="address-level2"
-                            dir="auto"
-                            data-test="locality"
-                        />
-                        <InputError :message="form.errors.locality" />
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="region">{{ t('Region') }}</Label>
-                        <Input
-                            id="region"
-                            v-model="form.region"
-                            name="region"
-                            autocomplete="address-level1"
-                            dir="auto"
-                        />
-                        <InputError :message="form.errors.region" />
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="postal-code">{{ t('Postcode') }}</Label>
-                        <Input
-                            id="postal-code"
-                            v-model="form.postal_code"
-                            name="postal_code"
-                            autocomplete="postal-code"
-                            dir="ltr"
-                        />
-                        <InputError :message="form.errors.postal_code" />
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="country">{{ t('Country') }}</Label>
-                        <NativeSelect
-                            id="country"
-                            v-model="form.country"
-                            name="country"
-                            aria-describedby="country-hint"
-                            data-test="country"
-                        >
-                            <option value="">
-                                {{ t('Not sure yet') }}
-                            </option>
-                            <option
-                                v-for="country in props.countries"
-                                :key="country.code"
-                                :value="country.code"
+                    <FormField
+                        id="postal-code"
+                        :label="t('Postcode')"
+                        :error="form.errors.postal_code"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.postal_code"
+                                name="postal_code"
+                                autocomplete="postal-code"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                dir="ltr"
+                            />
+                        </template>
+                    </FormField>
+
+                    <FormField
+                        id="country"
+                        :label="t('Country')"
+                        :error="form.errors.country"
+                        :hint="
+                            t(
+                                'Leave it if they are somewhere else — Alima works it out when it looks them up.',
+                            )
+                        "
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <NativeSelect
+                                :id="id"
+                                v-model="form.country"
+                                name="country"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                data-test="country"
                             >
-                                {{ t(country.name) }}
-                            </option>
-                        </NativeSelect>
-                        <p
-                            id="country-hint"
-                            class="text-xs text-muted-foreground"
-                        >
-                            {{
-                                t(
-                                    'Leave it if they are somewhere else — Alima works it out when it looks them up.',
-                                )
-                            }}
-                        </p>
-                        <InputError :message="form.errors.country" />
-                    </div>
+                                <option value="">
+                                    {{ t('Not sure yet') }}
+                                </option>
+                                <option
+                                    v-for="country in props.countries"
+                                    :key="country.code"
+                                    :value="country.code"
+                                >
+                                    {{ t(country.name) }}
+                                </option>
+                            </NativeSelect>
+                        </template>
+                    </FormField>
                 </div>
-            </section>
+            </FormSection>
 
-            <!-- Who you spoke to -->
-            <section
-                class="space-y-4 rounded-2xl border border-border bg-card p-6"
+            <FormSection
+                step="03"
+                :title="t('Who you spoke to')"
+                :description="
+                    t(
+                        'Optional. If you came away with a card, this is where it goes.',
+                    )
+                "
             >
-                <div class="space-y-1">
-                    <h2
-                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                    <FormField
+                        id="contact-name"
+                        :label="t('Their name')"
+                        :error="form.errors.contact_name"
                     >
-                        {{ t('Who you spoke to') }}
-                    </h2>
-                    <p class="text-sm text-muted-foreground">
-                        {{
-                            t(
-                                'Optional. If you came away with a card, this is where it goes.',
-                            )
-                        }}
-                    </p>
-                </div>
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.contact_name"
+                                name="contact_name"
+                                autocomplete="name"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                dir="auto"
+                                data-test="contact-name"
+                            />
+                        </template>
+                    </FormField>
 
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div class="space-y-2">
-                        <Label for="contact-name">{{ t('Their name') }}</Label>
-                        <Input
-                            id="contact-name"
-                            v-model="form.contact_name"
-                            name="contact_name"
-                            autocomplete="name"
-                            dir="auto"
-                            data-test="contact-name"
-                        />
-                        <InputError :message="form.errors.contact_name" />
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="contact-title">{{ t('Their role') }}</Label>
-                        <Input
-                            id="contact-title"
-                            v-model="form.contact_title"
-                            name="contact_title"
-                            autocomplete="organization-title"
-                            dir="auto"
-                        />
-                        <InputError :message="form.errors.contact_title" />
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="contact-email">{{ t('Email') }}</Label>
-                        <Input
-                            id="contact-email"
-                            v-model="form.contact_email"
-                            name="contact_email"
-                            type="email"
-                            autocomplete="email"
-                            dir="ltr"
-                            data-test="contact-email"
-                        />
-                        <InputError :message="form.errors.contact_email" />
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="contact-phone">{{ t('Phone') }}</Label>
-                        <Input
-                            id="contact-phone"
-                            v-model="form.contact_phone"
-                            name="contact_phone"
-                            type="tel"
-                            autocomplete="tel"
-                            dir="ltr"
-                        />
-                        <InputError :message="form.errors.contact_phone" />
-                    </div>
+                    <FormField
+                        id="contact-title"
+                        :label="t('Their role')"
+                        :error="form.errors.contact_title"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.contact_title"
+                                name="contact_title"
+                                autocomplete="organization-title"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                dir="auto"
+                            />
+                        </template>
+                    </FormField>
+
+                    <FormField
+                        id="contact-email"
+                        :label="t('Email')"
+                        :error="form.errors.contact_email"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.contact_email"
+                                name="contact_email"
+                                type="email"
+                                autocomplete="email"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                dir="ltr"
+                                data-test="contact-email"
+                            />
+                        </template>
+                    </FormField>
+
+                    <FormField
+                        id="contact-phone"
+                        :label="t('Phone')"
+                        :error="form.errors.contact_phone"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.contact_phone"
+                                name="contact_phone"
+                                type="tel"
+                                autocomplete="tel"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                dir="ltr"
+                            />
+                        </template>
+                    </FormField>
                 </div>
 
                 <!-- What the member is agreeing to by typing someone in. Not dismissible. -->
-                <div
-                    class="flex items-start gap-3 rounded-2xl bg-warning/12 p-4"
-                    role="note"
-                    data-test="contact-notice"
-                >
-                    <span
-                        class="flex size-8 shrink-0 items-center justify-center rounded-full text-warning"
-                        aria-hidden="true"
+                <template #aside>
+                    <div
+                        class="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/12 p-4"
+                        role="note"
+                        data-test="contact-notice"
                     >
-                        <ShieldCheck class="size-4" />
-                    </span>
-                    <div class="space-y-0.5">
-                        <p
-                            class="text-sm font-semibold text-foreground rtl:font-bold"
-                        >
-                            {{ t('Only details they gave you') }}
-                        </p>
-                        <p class="text-sm text-muted-foreground">
-                            {{
-                                t(
-                                    'A card, a conversation or something already public. Alima will not treat this as checked, and your team is responsible for it.',
-                                )
-                            }}
-                        </p>
+                        <ShieldCheck
+                            class="mt-0.5 size-5 shrink-0 text-warning"
+                            aria-hidden="true"
+                        />
+                        <div class="space-y-0.5">
+                            <p
+                                class="text-sm font-semibold text-foreground rtl:font-bold"
+                            >
+                                {{ t('Only details they gave you') }}
+                            </p>
+                            <!-- `foreground/80`, not `muted`: muted is about 4.4:1 on
+                                 this tint, under AA (brand-tokens.md §7f.3). -->
+                            <p class="text-sm text-foreground/80">
+                                {{
+                                    t(
+                                        'A card, a conversation or something already public. Alima will not treat this as checked, and your team is responsible for it.',
+                                    )
+                                }}
+                            </p>
+                        </div>
                     </div>
-                </div>
-            </section>
+                </template>
+            </FormSection>
 
-            <!-- Your workflow -->
-            <section
-                class="space-y-4 rounded-2xl border border-border bg-card p-6"
-            >
-                <h2
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+            <FormSection step="04" :title="t('Your workflow')">
+                <FormField
+                    id="stage"
+                    :label="t('Pipeline stage')"
+                    :error="form.errors.pipeline_stage_id"
+                    class="sm:max-w-xs"
                 >
-                    {{ t('Your workflow') }}
-                </h2>
-
-                <div class="space-y-2">
-                    <Label for="stage">{{ t('Pipeline stage') }}</Label>
-                    <NativeSelect
-                        id="stage"
-                        v-model="form.pipeline_stage_id"
-                        name="pipeline_stage_id"
-                        class="sm:max-w-xs"
-                        data-test="stage"
-                    >
-                        <!-- A stage name is the team's own word, never translated. -->
-                        <option
-                            v-for="stage in props.stages"
-                            :key="stage.id"
-                            :value="stage.id"
+                    <template #default="{ id, describedBy, invalid }">
+                        <NativeSelect
+                            :id="id"
+                            v-model="form.pipeline_stage_id"
+                            name="pipeline_stage_id"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="invalid"
+                            data-test="stage"
                         >
-                            {{ stage.name }}
-                        </option>
-                    </NativeSelect>
-                    <InputError :message="form.errors.pipeline_stage_id" />
-                </div>
+                            <!-- A stage name is the team's own word, never translated. -->
+                            <option
+                                v-for="stage in props.stages"
+                                :key="stage.id"
+                                :value="stage.id"
+                            >
+                                {{ stage.name }}
+                            </option>
+                        </NativeSelect>
+                    </template>
+                </FormField>
 
                 <div
                     class="space-y-2"
@@ -524,13 +624,12 @@ function submit(): void {
                         {{ tagAnnouncement }}
                     </p>
 
-                    <div class="flex gap-2">
+                    <div ref="tagInput" class="flex gap-2">
                         <Label for="new-tag" class="sr-only">{{
                             t('Add a tag')
                         }}</Label>
                         <Input
                             id="new-tag"
-                            ref="tagInput"
                             v-model="newTag"
                             class="h-9 flex-1 text-sm sm:max-w-xs"
                             maxlength="40"
@@ -570,42 +669,56 @@ function submit(): void {
                             "
                             @click="addTag(tag.name)"
                         >
-                            <Badge variant="outline" dir="auto">{{
-                                tag.name
-                            }}</Badge>
+                            <Badge
+                                variant="outline"
+                                class="border-input hover:bg-accent"
+                                dir="auto"
+                                >{{ tag.name }}</Badge
+                            >
                         </button>
                     </div>
 
-                    <InputError :message="form.errors.tags" />
-                </div>
-
-                <div class="space-y-2">
-                    <Label for="note">{{ t('Note') }}</Label>
-                    <Textarea
-                        id="note"
-                        v-model="form.note"
-                        name="note"
-                        rows="3"
-                        aria-describedby="note-hint"
-                        class="lg:max-w-3xl"
-                        :placeholder="
-                            t('What you talked about, and what happens next…')
-                        "
+                    <p
+                        v-if="form.errors.tags"
+                        class="text-sm text-destructive"
                         dir="auto"
-                        data-test="note"
-                    />
-                    <p id="note-hint" class="text-xs text-muted-foreground">
-                        {{
-                            t(
-                                'Write it now while it is fresh — it lands on the lead’s timeline.',
-                            )
-                        }}
+                    >
+                        {{ form.errors.tags }}
                     </p>
-                    <InputError :message="form.errors.note" />
                 </div>
-            </section>
 
-            <div class="flex flex-wrap items-center justify-end gap-3">
+                <FormField
+                    id="note"
+                    :label="t('Note')"
+                    :error="form.errors.note"
+                    :hint="
+                        t(
+                            'Write it now while it is fresh — it lands on the lead’s timeline.',
+                        )
+                    "
+                    class="lg:max-w-3xl"
+                >
+                    <template #default="{ id, describedBy, invalid }">
+                        <Textarea
+                            :id="id"
+                            v-model="form.note"
+                            name="note"
+                            rows="3"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="invalid"
+                            :placeholder="
+                                t(
+                                    'What you talked about, and what happens next…',
+                                )
+                            "
+                            dir="auto"
+                            data-test="note"
+                        />
+                    </template>
+                </FormField>
+            </FormSection>
+
+            <FormActions :dirty="form.isDirty" :processing="form.processing">
                 <Button variant="outline" as-child>
                     <Link href="/leads">{{ t('Cancel') }}</Link>
                 </Button>
@@ -618,7 +731,7 @@ function submit(): void {
                     <Plus class="size-4" />
                     {{ form.processing ? t('Adding…') : t('Add this lead') }}
                 </Button>
-            </div>
+            </FormActions>
         </form>
 
         <p
@@ -636,5 +749,11 @@ function submit(): void {
                 </Link>
             </span>
         </p>
+
+        <UnsavedChangesDialog
+            :open="guard.isPrompting.value"
+            @stay="guard.stay"
+            @discard="guard.discard"
+        />
     </div>
 </template>

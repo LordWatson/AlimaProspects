@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import {
+    ArrowRight,
     CheckCircle2,
     Download,
     ExternalLink,
@@ -147,8 +148,13 @@ function months(days: number): number {
                     </h2>
                 </div>
 
+                <!-- Named market, not a bare path: the editor shows one market at a time, and
+                     a link with none quietly means "whichever is the team's own" — which is right
+                     for this button and wrong for the cards below, where it was the only way in. -->
                 <Button v-if="can.manage_assessment" as-child>
-                    <Link href="/compliance/lawful-basis">
+                    <Link
+                        :href="`/compliance/lawful-basis?market=${team_market}`"
+                    >
                         <FileText class="size-4" />
                         {{
                             primary?.in_force
@@ -160,16 +166,35 @@ function months(days: number): number {
             </div>
 
             <div class="grid gap-4 md:grid-cols-2">
+                <!--
+                  One card per market, and each one **opens its own record**. It did not: the only
+                  way in was the single button above, which has no market on it and therefore
+                  always opened the team's own — so a UK team looking at the UAE card read
+                  "discovery is closed for this market" with nothing to click. The editor's own
+                  dropdown could reach it, but only once you were already inside the editor.
+                  `relative` carries the card-wide hit area; there is nothing else interactive in
+                  the card, so one stretched link is safe here.
+                -->
                 <article
                     v-for="assessment in assessments"
                     :key="assessment.market"
-                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                    class="group/card relative space-y-3 rounded-2xl border border-border bg-card p-6 transition-colors focus-within:border-brand/40 hover:border-brand/40"
                     :data-test="`lia-${assessment.market}`"
                 >
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <h3 class="font-semibold text-foreground">
-                                {{ t(assessment.market_label) }}
+                                <Link
+                                    :href="`/compliance/lawful-basis?market=${assessment.market}`"
+                                    class="rounded-sm underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                                    :data-test="`open-lia-${assessment.market}`"
+                                >
+                                    {{ t(assessment.market_label) }}
+                                    <span
+                                        class="absolute inset-0"
+                                        aria-hidden="true"
+                                    />
+                                </Link>
                             </h3>
                             <p
                                 v-if="assessment.market === team_market"
@@ -249,6 +274,24 @@ function months(days: number): number {
                                 'Nothing recorded for this market yet. You only need one for the markets you actually source in.',
                             )
                         }}
+                    </p>
+
+                    <!-- What opening the card does, in the words of the act it leads to. The
+                         arrow appears on hover and focus; the whole card is the target. -->
+                    <p
+                        class="flex items-center gap-1 pt-1 text-sm font-medium text-brand"
+                    >
+                        {{
+                            assessment.id === null
+                                ? t('Write it')
+                                : can.manage_assessment
+                                  ? t('Open and edit it')
+                                  : t('Read it')
+                        }}
+                        <ArrowRight
+                            class="size-4 transition-transform group-hover/card:translate-x-0.5 rtl:rotate-180 rtl:group-hover/card:-translate-x-0.5"
+                            aria-hidden="true"
+                        />
                     </p>
                 </article>
             </div>

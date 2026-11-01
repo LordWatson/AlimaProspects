@@ -429,3 +429,203 @@ never had and then shifting that midnight into a team's timezone is two mistakes
 `tracking-wide` rather than `tracking-eyebrow` and carries no `scope="col"`, so a table header reads
 with slightly different tracking from the DM Mono eyebrow beside it. Product-wide and pre-existing;
 worth a ticket rather than a local override.
+
+### 7h. Added 2026-11-01 (the list and form rebuild)
+
+The screens members live in — every list, and the create/edit forms behind them — were rebuilt onto
+two shared sets of components, `resources/js/components/list/` and `resources/js/components/forms/`
+(catalogued on `/design`). Nothing in the book covers list furniture, so the decisions are recorded
+here rather than taken silently per screen. They are **product-wide**: a filter, a column header and
+a required field now look the same wherever a member meets one.
+
+1. **A filter panel folds away, and what it is doing is said in words.** The leads list opened with
+   every filter it has permanently expanded — six chip groups, about 300px, above the first row. The
+   panel is now behind a disclosure that carries the count of filters in force, and the filters
+   themselves are summarised as removable chips (`ActiveFilters`) in the toolbar. The chips are the
+   non-negotiable half: a folded panel that hid what it was doing would be worse than an open one.
+   Each chip names its **group** as well as its value ("Fit A", "Stage In conversation"), because
+   values are not self-explanatory side by side. Chip tint is `bg-brand/10` with `text-brand`
+   (7.5:1 on canvas, and the tint is 10% of the same hue rather than a new colour).
+2. **The table header band is opaque `--accent`, not `--accent/50`.** The header is sticky, so rows
+   pass underneath it; a 50% tint let them show through. This is the one place the band's weight
+   changed, and it is a consequence of the stickiness rather than a taste. It cost contrast, and
+   the **text moved rather than the band**: `text-muted-foreground` is 4.8:1 on Cloud Cream but
+   **4.47:1 on the band**, under AA, so a column header is `text-foreground/80` (7.9:1 light,
+   8.5:1 dark) and the ordered column is full `text-foreground`. For the same reason the
+   table card is `overflow-clip` rather than `overflow-hidden` (`hidden` makes the card its own
+   scroll container and the sticky header then has nothing to stick to), and the table is
+   `border-separate` with borders on the cells (`border-collapse` loses a sticky header's own rule
+   as soon as it lifts).
+3. **Row density is the member's choice, not ours**, remembered in `localStorage` like the
+   appearance toggle: `comfortable` keeps the 16/12 rhythm (`px-4 py-3`), `compact` tightens the
+   vertical to `py-1.5` and leaves the horizontal alone. Two people use a leads list completely
+   differently — twice a day, readable; or for an hour, forty rows on screen — and there is no
+   single right row height. Both steps are already product-wide (§7e).
+4. **A row is clickable across its whole width, and still holds one link.** The primary link
+   stretches its hit area with an absolute `<span>` against the row; the focus ring stays on the
+   _text_, so a keyboard user sees where they are rather than a ring around the row. A trailing
+   chevron appears on hover as the affordance. A cell with its own control is lifted clear
+   (`ListCell raised`).
+5. **A list says when it is thinking.** Filtering is a server round trip, so the table dims to
+   `bg-background/55` behind a pointer-transparent veil while a request is in flight, `aria-busy`
+   on the table, and the record count is a live region announced once the answer lands. 55% is not
+   a token; it is the lightest veil that reads as "not yet" on Cloud Cream without hiding the rows.
+6. **Selection is never colour alone.** A filter chip that is on carries a tick as well as the
+   brand tint (WCAG 1.4.1) — the old chips differed only by hue. The same rule already applied to
+   the signals event-type chips and now comes from the one component.
+7. **The `/` shortcut was built and then withdrawn.** The search box focused on `/`, with the key
+   shown in a `<kbd>` at the end of the field so it was discoverable rather than folklore. It is
+   gone: a single-character shortcut bound to the document fails **WCAG 2.1.4 (Level A)** unless it
+   can be turned off, remapped, or is active only while the component has focus, and guarding it
+   against fields and dialogs — which it did — is none of those three. Recorded rather than
+   quietly dropped, because it is worth having: it comes back the way GitHub's does, as a
+   preference a member can switch off, which needs a settings surface this pass did not have.
+8. **"Required" and "optional" are words.** `FormField` sets them as a muted `text-xs` note beside
+   the label, never a red asterisk: Signal Orange is decorative only (§2.1), a colour is not a
+   label, and an asterisk is a convention people have to have been taught.
+9. **A form section's number is a solid Deep Teal mono square** (`bg-brand`,
+   `text-brand-foreground`, `size-7`, `rounded-sm`) — the page hero's index device, one level
+   quieter. It is what tells somebody halfway down a four-section form that there are two sections
+   left. It began as `text-brand` on `bg-brand/10` and was changed: that pair is **4.3:1 on the
+   dark card**, under AA at 12px, because the dark `--brand` is the unapproved §7.10 value. Cream
+   on Teal is 7.5:1 light and 5.5:1 dark.
+10. **The error summary follows the status-panel rules** already written down in §7f.2–3: a 12%
+    tint of `status.error` with a `/30` border, the icon in `destructive`, and **the words in
+    `text-foreground`** because `destructive` over a tint of itself does not clear AA at this size.
+    It is `role="alert"`, focused and scrolled to when it appears, and each failure links into its
+    field.
+11. **"Unsaved changes" is not a status.** The sticky `FormActions` bar marks it with a Deep Teal
+    dot and muted words. It is the normal condition of a form being filled in; spending the amber
+    on it is how a real warning stops being noticed (the same argument as §7f.5's override badge).
+    Leaving a dirty form opens a `Dialog`, never `window.confirm` — a native prompt cannot be
+    translated, cannot be set in the brand's type, and says "Leave site?" about a navigation that
+    never leaves the site. The leaving button is `outline`, not `destructive`: discarding a draft
+    nobody has saved is not destructive to anybody's data.
+12. **`ScoreDial` colours follow the grade, from the status tokens** — the same mapping
+    `GradeBadge` uses, so a grade is one colour everywhere, with **D as a neutral Ink 60** rather
+    than `error`: a lead that does not match your profile is nobody's fault (§7.7). The ring is
+    `stroke-width 8` on a 100-unit viewBox at `size-24`/`size-32`; `size-32` is off the spacing
+    scale and is there because the arc needs to read at a glance beside an H3. Grade B inherits
+    §7.7's open dependency on **`--info`**, still PENDING under §7.6.
+13. **`MeterBar` tones are states, not decoration**: `success` for a criterion that matched,
+    `neutral` for one that did not, `brand` for a plain magnitude with no verdict attached. It
+    replaced bare weight figures on the ideal-customer screens and in the score breakdown, where
+    the number alone made the reader do the comparison. The neutral tone is
+    **`--muted-foreground`, not Ink 60**, and the difference is the surface: §7.7's Ink 60 figures
+    are measured against the **card**, while a bar sits on `--border`, where Ink 60 is **2.3:1 on
+    the dark track** — under the 3:1 non-text minimum. Muted is 3.7:1 light and 5.4:1 dark. The
+    meaning is unchanged: a criterion a lead fails is neutral, never `error`. A bar whose value
+    changes while it is on screen (a discovery run's progress) passes `live` and becomes a real
+    `role="progressbar"`, because a static `sr-only` phrase is read once and a climbing bar then
+    says nothing.
+14. **The leads hero now has one primary.** It carried five buttons of equal weight against §2.3's
+    one-CTA rule: discovery is the primary (`lime`), the two ways into the list are `hero`
+    outlines, and import/export moved into a `More` menu — occasional, operational actions that
+    read as two more ways to _look_ at leads when they sit in the row.
+15. **Relative time, and days grouped as "Today"/"Yesterday".** `useFormat().relative()` and
+    `dayKey()` (team timezone, `numeric: 'auto'`). For a list of twenty notifications the
+    _distance_ is the point, and a column of absolute timestamps makes the reader do the
+    arithmetic twenty times; the exact instant stays as the element's `title`, because for "did
+    anyone know about this?" it is the only thing that matters.
+
+Two things this pass **resolved** rather than added:
+
+- §7g's loose end on table headers is fixed for every tenant list: `ListHead` sets
+  `tracking-eyebrow` (not `tracking-wide`) and carries `scope="col"` by construction.
+  `components/ui/table/TableHead.vue` still has the original values and is still used by the admin
+  panel, so the ticket stands for that surface.
+- The ~15 call sites still hand-rolling a `<select>`, recorded as an app-wide follow-up in
+  `signals.md`, are down to a handful: the leads filter bar, the bulk-action bar, the ICP editor,
+  the discovery form and the do-not-contact form all use `NativeSelect` now.
+
+**Off-scale values introduced, listed for the record** (§7c already holds the product-wide ones):
+`size-32` on the large dial, `opacity-55` on the busy veil, `line-clamp-5` on a folded brief,
+`min-w-56` on the toolbar's search column, and `w-6`/`w-8`/`w-20`/`w-24`/`w-28` label columns beside
+bars and figures. Each is a measurement of a specific piece of type, not a new step.
+
+#### 7h.2 Added 2026-11-01 (the lead record page)
+
+The lead detail screen was rebuilt on the same pass. Four decisions sit outside the book.
+
+1. **A record opens with a header card, not a hero.** `leads/Show.vue` uses the hero's own
+   composition — a tracked mono eyebrow with a right-hand meta, a hairline rule, then the name —
+   on the **cream card surface** rather than the Ink panel. The reason is §5's own scope: the hero
+   belongs to the numbered destinations in the sidebar, and a record reached _from_ one has no
+   number, which is the same reading §7a already applied to `leads/Create` and `leads/Import`. (It
+   is **not** about avoiding a second peek: a screen with no hero carries no peek, which §5 allows
+   perfectly well.) The card takes none of the hero's Lime or Orange accents, so §1.2's one-hero-
+   accent rule is untouched. The name is the page's one `<h1>`, as the hero's statement is
+   elsewhere, and it carries **no Orange full stop**: a company name is a data value, not a
+   statement, and one that already ends in a stop would read "Acme Ltd..". `scoring/Show.vue` still
+   sets the same company name _with_ the stop — see §7h.1's open item 3, which should be decided
+   once for both screens.
+2. **A read-only rail of five figures under the name**: fit, stage, who's on it, contacts, and the
+   state of the data, as `dt`/`dd` pairs with DM Mono eyebrow labels. The stage and the owner are
+   **also** in the work panel, which is where they are changed. That duplication is deliberate: the
+   summary is what somebody needs before they scroll, and one control in one place beats the same
+   control in two. The rail's chips are the product's existing ones — `GradeBadge`, the enrichment
+   `status.*` badge — so a grade and a data state look the same here as in the list.
+3. **The warnings are one list of tinted rows**, each `/12` with a `/30` border and the words in
+   `text-foreground` (§7f.2–3). The `info` level is used for "still filling this in", and — per
+   §7g.2 — `status.info` appears only as the row's icon and border, never as text or a badge. Each
+   row carries a visually hidden level word, because colour alone is not a distinction.
+4. **A copy button** (`components/CopyButton.vue`) beside an email address, a phone number and the
+   registry number. It renders only where the browser will allow the clipboard, confirms with a
+   toast **and** a two-second tick, and its accessible name is the value's _kind_ ("Copy the email
+   address") rather than the value, so twenty rows do not produce twenty unreadable button names.
+   The glyph is 24px — WCAG 2.5.8's minimum exactly, and under the 44px touch guidance — so the hit
+   area is taken to about 40px by an invisible `before` pseudo-element rather than by growing the
+   button and unsettling the row. The tag-remove button in `LeadWorkPanel` is the same 24px and
+   should get the same treatment when it is next touched.
+
+The review of this screen found two things that were **fixed product-wide** rather than locally,
+and both are worth knowing about before writing the next tinted panel:
+
+- **Body copy on a status tint is `text-foreground/80`, not `text-muted-foreground`.** Muted is
+  4.8:1 on Cloud Cream but about **4.4:1** on a 12% warning or info tint — under AA at 14px. §7f.3
+  already said the _words_ on a tint are the foreground colour; only the titles had been obeying it.
+  Fixed here and in `leads/Create`'s compliance note.
+- **`enriching` is no longer an `info` badge.** `status.info` over its own 12% tint is about 4.4:1,
+  which is why §7g.2 restricts info to a non-text icon until §7.6 approves the token — and the
+  leads list and the lead's rail were both setting it as a badge. Both are now an `outline` badge
+  with a `Spinner`, which says "in progress" without leaning on the colour at all. **`GradeBadge`
+  still maps grade B to `info`**; it is shared, pre-existing, and already recorded under §7.7 and
+  §7h.1, and it is the last thing in the product waiting on that token.
+
+One judgement left standing: the rail shows **five** figures, and two of them repeat something
+nearby — the data state is also in the eyebrow and the notices, and the contacts count is also the
+section below. The count was made an **anchor** to that section so it earns its place; the data
+state stays, because "is this lead's data all here" is the question the eyebrow's date only hints
+at. Confirm, or the rail drops to four.
+
+#### 7h.1 What the brand review changed, and what it left standing
+
+The `brand-reviewer` pass over this work found no brand violation — Signal Orange is on no state,
+there is no raw hex and the 12px floor holds — and four contrast failures, all now fixed and
+recorded above: the header text on the opaque band (4.47:1), the step square on its own tint
+(4.3:1 dark), the neutral meter fill on the track (2.3:1 dark), and the filter chip. The chip is
+worth its own line, because the fix is a **rule** rather than a value:
+
+- **A brand tint does not carry its own words.** The active-filter chip set the group name in
+  `text-brand/70` (3.4:1) and the value in `text-brand` on `bg-brand/10` (4.3:1 on the dark card).
+  Both words are now `text-foreground`, with the brand kept to the tint and the remove button —
+  exactly what §7f.3 already says about the status tints, applied to the brand. A filter's group
+  name is information, not decoration.
+
+Four things were left as judgements rather than changed, and are flagged here for the brand owner:
+
+1. **The busy veil lets text fall below AA while it is up** (`bg-background/55` over the rows is
+   about 2:1). It is transient, the table is `aria-busy`, and the rows it covers are about to be
+   replaced — dimming them is the point. Confirm, or the veil becomes a spinner beside the count.
+2. **The full-row click target has two side effects**: text in a non-raised cell cannot be
+   selected, and a cell's own `title` tooltip is covered unless it is raised (the notifications
+   timestamp is, so hovering the time still shows the exact instant). Both are the usual price of
+   a row-sized target, and the row still holds exactly one link.
+3. **An orange full stop after a record's name.** `scoring/Show.vue` sets the lead's company name
+   as the page statement and closes it with the Orange stop, as the sibling screens do with their
+   own statements. A company name is not a statement, so §3's rule is being stretched; it is
+   pre-existing and consistent with its siblings, so it was left. **Confirm, or those headings lose
+   the stop.**
+4. **Grade B still depends on `--info`** (§7.6, §7.7) and the dark `--brand`, `--warning`, `--info`
+   and `--destructive` values remain unapproved (§7.10). Nothing new was built on them; the two
+   places that had been were moved off (items 9 and 13 above).
