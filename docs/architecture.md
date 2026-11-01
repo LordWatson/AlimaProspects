@@ -12,7 +12,9 @@ A multi-tenant SaaS that helps businesses find, qualify and contact prospects wi
 - **Web:** Inertia v2 + Vue 3 (`<script setup>`) + TypeScript + Tailwind v4 (official Vue starter kit; `vite-plus` toolchain).
 - **Mobile:** Capacitor + Ionic Vue + TS in `/mobile` (its own npm project; **built in Phase 18**), consuming `/api/v1` with a scoped Sanctum token. A field companion rather than a second web app — see `modules/mobile-app.md` for what it deliberately leaves on the web, and `runbooks/mobile-dev.md` for how to run it.
 - **Shared FE:** `resources/js/shared/` for web + mobile — `types/` (the API payload types, moved here in Phase 17 and re-exported by `@/types`), `api/` (the error envelope, pagination shapes and a typed `fetch` client), `tokens.ts` (brand tokens), and `brand/artwork.ts` (the master logo path data, moved here in Phase 18 so one mark serves both apps and the native icons). The mobile project reaches it by Vite alias (`@shared`), never by copy; `lang/` is shared the same way (`@lang`).
-- **Obs:** Sentry (BE/FE/mobile), Pulse (ops). **CI:** GitHub Actions (Pint, Larastan L7, Pest, vue-tsc, build).
+- **Obs:** Sentry (BE/FE/mobile — three projects, scrubbed), Pulse (ops, behind the admin door), and `security:posture` as a deploy gate. **Wired in Phase 20, ADR 0017**; §5 and `docs/runbooks/observability.md` have the detail.
+- **Shared FE adds `observability/`** (Phase 20): the browser Sentry init and its scrubber, compiled by both the web app and the mobile app, because a scrubbing rule that exists in two files is wrong in one of them.
+- **CI:** GitHub Actions. `tests` (Pint, Larastan L7, Pest, vue-tsc, build) and — since Phase 20 — `security`, on a **weekly schedule** as well as on pull requests: `composer audit`, `npm audit` for both projects, and gitleaks over the full history. A dependency that was clean when a pull request merged is not clean for ever, and nobody opens a pull request to tell us.
 
 ## 3. Request → logic → response
 
@@ -154,9 +156,37 @@ flowchart TD
 - **Lists:** every tenant list is the shell in `resources/js/components/list/` — `ListToolbar` (search, ordering, the filters folded behind a disclosure, the record count, and `ActiveFilters`’ summary of what is in force) over `ListTable`/`ListHead`/`ListRow`/`ListCell`/`ListRowLink`. Ordering, filtering and paging are **server-side**: the URL is the truth about what is on screen, so a list can be shared, bookmarked and walked back through with the browser’s own buttons, and nothing in the set holds list state. The filters fold away but **what they are doing is always said in words** — a filtered list that cannot say why it is short is a list that lies about what it holds. Density is the member’s own setting (`useListDensity`), and `useNavigating()` is what lets a list dim while the server rebuilds it. Decisions in brand-tokens.md §7h; catalogued on `/design`.
 - **Forms:** the long forms are `resources/js/components/forms/` — `FormSection` per part, `FormField` per field (which is where the `for`/`id`/`aria-describedby`/`aria-invalid` wiring comes from, by construction rather than by being typed out forty times), `FormErrorSummary` announcing what the server rejected and linking each failure into its field, `FormActions` keeping the save within reach, and `useUnsavedGuard` + `UnsavedChangesDialog` holding back a navigation that would discard a draft. Never `window.confirm`: it cannot be translated, cannot be set in the brand’s type, and says “Leave site?” about a navigation that never leaves the site.
 - **Charts:** hand-built in `resources/js/components/charts/`, no charting dependency, on the validated `--chart-*` tokens (brand-tokens.md §7.7) and the `dataviz` guidance. At most two series per chart; everything else is single-series magnitude.
-- **AI safety:** scraped/web content is **data, never instructions**; structured JSON output validated; per-team cost/credit logging (AI Platform).
+- **AI safety:** scraped/web content is **data, never instructions**; structured JSON output validated; per-team cost/credit logging (AI Platform). **Bounded on input since Phase 20** (ADR 0017), in two places for two problems: an oversized untrusted block is _truncated_ (a scraped page arriving too big is a normal Tuesday) and the whole rendered prompt being over the limit is _refused_ with a 413 before the transport — a near-context-limit call is slow, is charged to the team's allowance whatever comes back, and is the shape a prompt-injection attempt takes when the aim is to push the system instructions out of the model's attention. Characters, not tokens, because a token count is only knowable by making the call the bound exists to avoid.
 - **Compliance:** suppression/opt-out/retention/DSAR enforced by the system (Compliance & Privacy + `docs/compliance.md`). **Built in Phase 15**, and it reaches other modules through three seams rather than by them knowing about it: `LeadSourcingContractsLeadInterestGate` (no recorded lawful basis, no discovery), `OutreachContractsLeadRestrictionResolver` (how a prospect may be approached, from their jurisdiction as well as any flag on the lead), and `SignalsServicesSignalsPersonalDataExporter` (which Signals answers a data-subject request with). The do-not-contact table stays in Outreach — see that module's doc for why.
-- **Observability:** structured logs with `team_id`/`user_id`/`request_id`; channels `ai`, `lead_sourcing`, `outreach`, `notifications`, `insights`, `signals`, `compliance`, `billing`; Sentry + Pulse. `compliance` is kept for 90 days, the longest of any channel: "did you honour the erasure, and when" is a question an authority may ask a year later.
+- **Observability (Phase 20, ADR 0017):** structured logs with `team_id`/`user_id`/`request_id`;
+  channels `ai`, `lead_sourcing`, `outreach`, `notifications`, `insights`, `signals`, `compliance`,
+  `billing`. `compliance` is kept for 90 days, the longest of any channel: "did you honour the
+  erasure, and when" is a question an authority may ask a year later.
+  **Sentry** is wired for three surfaces (backend, browser, mobile — three projects, because a 500
+  in a worker, a `TypeError` in a browser and a crash on a handset are triaged by different people)
+  and sends **an id, a tenant and a stack trace, and nothing about a person**: `send_default_pii` is
+  off, and `Core\Observability\SentryOptions` redacts every sensitive key at any depth across request
+  data, extra context, breadcrumb metadata and the user bag — aimed at _our own_ `Log::error`
+  contexts, which is the realistic leak, rather than at the vendor's collection. Expected refusals
+  (a wrong password, a 404, a throttle, a plan refusal, an exhausted allowance) are filtered
+  declaratively by `ignore_exceptions`, because an error tracker full of the application working is
+  one nobody reads. Session replay is off and stays off. **Pulse** is live at `/pulse`, behind the
+  admin panel's own door (platform admin or 404, enforced 2FA, the IP allowlist, then
+  `AdminAbility::ManageOperations`), with queues, slow queries and an **AI usage** card of ours.
+  Pulse answers _"is something happening right now"_ at a per-minute resolution over a 7-day window;
+  `/admin` answers _"which tenant, and what did it cost"_ — **a clock and a tenant**, and neither
+  can answer the other's question. See `docs/runbooks/observability.md`.
+- **Response security headers (Core, Phase 20, ADR 0017):** `SecurityHeaders` is **global**
+  middleware, so `/up`, a CSV download, a 500 page, the Pulse dashboard and an `/api/v1` error
+  envelope all carry `nosniff`, frame denial, a referrer policy, a feature-denying
+  `Permissions-Policy`, the cross-origin policies and — on HTML — a **nonce-based
+  Content-Security-Policy** with no `unsafe-inline` on scripts. Affordable only because this app has
+  no third-party script: exactly two inline tags, both ours, both nonce'd. It is skipped in two
+  places on purpose — under the Vite dev server (Vue injects component styles with no nonce, so a
+  policy that held locally would hold by breaking the page) and on the vendor dashboards, which
+  inject inline Livewire we cannot nonce. HSTS follows the **connection**, not the environment.
+  `php artisan security:posture [--strict]` asserts the production settings that are correct in
+  `.env.example` and silently wrong on a hurriedly configured box, and fails a deploy on them.
 
 ## 6. Environments
 

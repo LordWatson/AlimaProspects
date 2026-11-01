@@ -1,11 +1,74 @@
 <?php
 
+use App\Modules\AiPlatform\Exceptions\AiCreditExceededException;
+use App\Modules\AiPlatform\Exceptions\AiInputTooLargeException;
+use App\Modules\Core\Exceptions\CapabilityException;
+use App\Modules\Core\Observability\SentryOptions;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Illuminate\Session\TokenMismatchException;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+
 /**
  * Sentry Laravel SDK configuration file.
+ *
+ * **Every key in here is handed to Sentry's own option resolver, which throws on a key it does not
+ * know** — so this file holds the SDK's settings and nothing else. Ours live in
+ * `config/observability.php`: the browser and mobile DSNs, the scrub list, and the transactions the
+ * sampler drops. A `frontend_dsn` added here would stop the application booting (Phase 20).
+ *
+ * The three callables below are static methods rather than closures for an equally unglamorous
+ * reason: a closure in a config file makes `php artisan config:cache` fail, and the first symptom
+ * of that is a deploy that will not boot. See {@see SentryOptions} for what they do.
  *
  * @see https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/
  */
 return [
+
+    /*
+    | Scrub and annotate (Phase 20, ADR 0017). Nothing is dropped here — expected exceptions are
+    | filtered declaratively by `ignore_exceptions` below, which is cheaper because the event is
+    | never built.
+    */
+    'before_send' => [SentryOptions::class, 'beforeSend'],
+    'before_send_transaction' => [SentryOptions::class, 'beforeSendTransaction'],
+
+    /*
+    | The sampling decision, so a health check and the two polling operator dashboards are never
+    | measured rather than measured and thrown away. It honours a parent's decision — a trace that
+    | is half sampled is not a trace — and otherwise falls back to `traces_sample_rate` below.
+    */
+    'traces_sampler' => [SentryOptions::class, 'tracesSampler'],
+
+    /*
+    | Expected refusals, not faults. Every one of these is the application working: a wrong
+    | password, a stale CSRF token, a 404, a rate limit, a plan that does not include the feature,
+    | a team over its AI allowance. Reporting them trains an ops team to ignore the error tracker,
+    | which is the one failure mode that makes every other alert useless.
+    |
+    | Note what is **not** here: no blanket `DomainException`. An AI transport failure and an
+    | invalid provider response are domain exceptions too, and both are things we want to be told
+    | about. Matching is by `instanceof`, so a subclass is covered — which is exactly why the
+    | base class must not be listed.
+    */
+    'ignore_exceptions' => [
+        AuthenticationException::class,
+        AuthorizationException::class,
+        ValidationException::class,
+        TokenMismatchException::class,
+        ThrottleRequestsException::class,
+        NotFoundHttpException::class,
+        MethodNotAllowedHttpException::class,
+        CapabilityException::class,
+        AiCreditExceededException::class,
+        // A prompt over the size bound is a refusal, not a fault: the caller sent too much and the
+        // 413 tells them so. Added in the review round — without it every oversized paste would be
+        // reported as a bug in the AI platform.
+        AiInputTooLargeException::class,
+    ],
 
     // @see https://docs.sentry.io/concepts/key-terms/dsn-explainer/
     'dsn' => env('SENTRY_LARAVEL_DSN', env('SENTRY_DSN')),
@@ -52,6 +115,24 @@ return [
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#send_default_pii
     'send_default_pii' => env('SENTRY_SEND_DEFAULT_PII', false),
+
+    /*
+    | **The request body is never collected** (Phase 20 security review).
+    |
+    | Not a hardening extra — it closes a real hole, and the reason it is worth the comment is that
+    | `send_default_pii => false` above does **not** do this. That option gates the cookies, the
+    | headers and the IP address. The *body* is governed by this option, whose SDK default is
+    | `medium` — ten kilobytes of it, attached to every error event, with `data_collection` left at
+    | `null` (legacy mode).
+    |
+    | In this product that body is the prospect record somebody was saving or the outreach copy they
+    | were writing: `name`, `company_name`, `notes`, `body`. Those are not credential-shaped words,
+    | so no deny-list was ever going to catch them — and they are third-party personal data this
+    | company is a **processor** for (docs/compliance.md), which an error tracker is not in the
+    | processing record for. `SentryOptions::scrubRequest()` also drops `data` if it is somehow
+    | present, so changing this line alone cannot reopen it silently.
+    */
+    'max_request_body_size' => env('SENTRY_MAX_REQUEST_BODY_SIZE', 'none'),
 
     // Configures which data is collected automatically, `null` keeps collecting data based on `send_default_pii`
     'data_collection' => null,

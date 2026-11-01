@@ -1,5 +1,9 @@
 <?php
 
+use App\Modules\Admin\Http\Middleware\AdminIpAllowlist;
+use App\Modules\Admin\Http\Middleware\EnsureAdminTwoFactor;
+use App\Modules\Admin\Http\Middleware\EnsurePlatformAdmin;
+use App\Modules\AiPlatform\Observability\AiUsageRecorder;
 use Laravel\Pulse\Http\Middleware\Authorize;
 use Laravel\Pulse\Pulse;
 use Laravel\Pulse\Recorders;
@@ -120,8 +124,24 @@ return [
     |
     */
 
+    /*
+    | The same door as the admin panel (Phase 20, ADR 0017).
+    |
+    | `EnsurePlatformAdmin` answers **404** for anybody who is not an operator — including a
+    | signed-in customer who has guessed `/pulse` — so the dashboard does not confirm its own
+    | existence; `EnsureAdminTwoFactor` and `AdminIpAllowlist` are the same two controls the panel
+    | puts in front of every tenant's data, and this surface shows every tenant's queries. Pulse's
+    | own `Authorize` middleware then checks the `viewPulse` gate (`PulseServiceProvider`), which
+    | maps to `AdminAbility::ManageOperations` — the 2am incident ability, not the Stripe switch.
+    |
+    | Order matters: the three admin guards run before the gate, so an unauthenticated or
+    | out-of-network request never reaches a gate that would answer 403 and admit the path exists.
+    */
     'middleware' => [
         'web',
+        EnsurePlatformAdmin::class,
+        EnsureAdminTwoFactor::class,
+        AdminIpAllowlist::class,
         Authorize::class,
     ],
 
@@ -137,6 +157,16 @@ return [
     */
 
     'recorders' => [
+        /*
+        | Ours (Phase 20, ADR 0017). Live AI spend, failures and latency per prompt, feeding the
+        | `ai-usage` card on the dashboard. It listens to AiPlatform's `AiRequestRecorded` event,
+        | so the ledger's write path knows nothing about Pulse — see the recorder's docblock for
+        | why this exists alongside the nightly rollup rather than instead of it.
+        */
+        AiUsageRecorder::class => [
+            'enabled' => env('PULSE_AI_USAGE_ENABLED', true),
+        ],
+
         Recorders\CacheInteractions::class => [
             'enabled' => env('PULSE_CACHE_INTERACTIONS_ENABLED', true),
             'sample_rate' => env('PULSE_CACHE_INTERACTIONS_SAMPLE_RATE', 1),
@@ -211,7 +241,12 @@ return [
             'sample_rate' => env('PULSE_SLOW_REQUESTS_SAMPLE_RATE', 1),
             'threshold' => env('PULSE_SLOW_REQUESTS_THRESHOLD', 1000),
             'ignore' => [
-                '#^/'.env('PULSE_PATH', 'pulse').'$#', // Pulse dashboard...
+                // `#` and not `$#` (Phase 20): the published default only matched the dashboard's
+                // own index, so every one of its polling XHRs was being recorded as a slow request
+                // by the screen somebody opened to look at slow requests.
+                '#^/'.env('PULSE_PATH', 'pulse').'#', // Pulse dashboard, and its own XHRs...
+                '#^/horizon#', // Horizon dashboard, which also polls...
+                '#^/up$#', // The health check, every ten seconds...
                 '#^/telescope#', // Telescope dashboard...
             ],
         ],
@@ -228,7 +263,11 @@ return [
             'enabled' => env('PULSE_USER_REQUESTS_ENABLED', true),
             'sample_rate' => env('PULSE_USER_REQUESTS_SAMPLE_RATE', 1),
             'ignore' => [
-                '#^/'.env('PULSE_PATH', 'pulse').'$#', // Pulse dashboard...
+                // An operator polling a dashboard is not product usage, and counting it would put
+                // whoever is on support at the top of the most-active-users card every day.
+                '#^/'.env('PULSE_PATH', 'pulse').'#', // Pulse dashboard, and its own XHRs...
+                '#^/horizon#', // Horizon dashboard...
+                '#^/up$#', // The health check...
                 '#^/telescope#', // Telescope dashboard...
             ],
         ],

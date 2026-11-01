@@ -1,8 +1,19 @@
 <?php
 
 use App\Models\User;
+use App\Modules\AiPlatform\Contracts\AiClient;
+use App\Modules\AiPlatform\Contracts\AiTransport;
+use App\Modules\AiPlatform\Enums\AiTier;
+use App\Modules\AiPlatform\Models\AiPromptTemplate;
+use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Auth\Actions\CreatePersonalTeamAction;
+use App\Modules\Core\Models\Team;
+use App\Modules\Core\Support\TeamContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Route as RoutingRoute;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
 use Tests\Support\ApiAssertions;
 use Tests\TestCase;
@@ -55,6 +66,32 @@ ApiAssertions::register();
 function something()
 {
     // ..
+}
+
+/**
+ * Every `/api/v1` route, HEAD duplicates dropped.
+ *
+ * Here rather than in a test file because two files read the same route table — Phase 17's
+ * `RouteContractTest` (does every endpoint have a scope?) and Phase 20's `TokenAbilityAuditTest`
+ * (is it the right *kind* of scope?) — and a helper defined inside one of them only exists when
+ * that file happens to have been loaded.
+ *
+ * @return Collection<int, RoutingRoute>
+ */
+function apiRoutes(): Collection
+{
+    return collect(Route::getRoutes()->getRoutes())
+        ->filter(fn (RoutingRoute $route): bool => Str::startsWith($route->uri(), 'api/'))
+        ->filter(fn (RoutingRoute $route): bool => $route->methods() !== ['HEAD'])
+        ->values();
+}
+
+/**
+ * A route as it should read in a failure message: `POST|PUT api/v1/leads/{lead}`.
+ */
+function routeLabel(RoutingRoute $route): string
+{
+    return implode('|', $route->methods()).' '.$route->uri();
 }
 
 /**
@@ -118,4 +155,35 @@ function createUserWithTeam(array $attributes = []): User
     }
 
     return $user->refresh();
+}
+
+/**
+ * Bind the fake transport and return [client, fake], with a team made active so usage logs and the
+ * credit guard behave as they would in a real (team-scoped) call.
+ *
+ * @return array{AiClient, FakeAiTransport, Team}
+ */
+function bootAi(): array
+{
+    $team = Team::factory()->create();
+    app(TeamContext::class)->set($team);
+
+    $fake = new FakeAiTransport;
+    app()->instance(AiTransport::class, $fake);
+    app()->forgetInstance(AiClient::class);
+
+    return [app(AiClient::class), $fake, $team];
+}
+
+function summaryTemplate(): AiPromptTemplate
+{
+    return AiPromptTemplate::factory()->key('test.summary')->create([
+        'tier' => AiTier::Reasoning,
+        'body' => 'Summarise: {{subject}}',
+        'schema' => [
+            'type' => 'object',
+            'properties' => ['summary' => ['type' => 'string']],
+            'required' => ['summary'],
+        ],
+    ]);
 }

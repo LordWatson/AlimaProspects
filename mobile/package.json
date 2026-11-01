@@ -30,6 +30,7 @@
         "@capacitor/status-bar": "^7.0.0",
         "@ionic/vue": "^8.4.0",
         "@ionic/vue-router": "^8.4.0",
+        "@sentry/vue": "^11.10.0",
         "ionicons": "^7.4.0",
         "vue": "^3.5.13",
         "vue-router": "^4.5.0"
@@ -45,7 +46,7 @@
         "oxlint": "^1.0.0",
         "typescript": "^5.2.2",
         "vite": "^7.0.0",
-        "vitest": "^3.0.0",
+        "vitest": "^5.0.5",
         "vue-tsc": "^3.3.13"
     },
     "allowScripts": {

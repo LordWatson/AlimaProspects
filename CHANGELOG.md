@@ -5,6 +5,165 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-11-01 — Phase 20, the review round
+
+`security-review`, `laravel-module-reviewer` and `brand-reviewer` on the finished phase. Three real
+holes, all of them in this phase's own new code, plus the corrections. ADR 0017 has the full list;
+these are the three worth reading.
+
+**Sentry was scrubbing the request bag by key only**, and `url`, `query_string`, `cookies` and
+`data` are four fields whose _keys_ do not look sensitive while three of the values are. So a 500 on
+a signed invitation link would have shipped `GET /invitations/<secret-token>?expires=…&signature=…`
+— a replayable credential — to a third-party error tracker readable by more people than the admin
+panel is, and a failed save would have shipped the prospect record that was being saved, because
+`name`, `company_name` and `notes` are not credential-shaped words and were never going to be on a
+deny-list. Those four are now handled **by name** in `SentryOptions::scrubRequest()`.
+
+The premise behind the omission was also simply wrong, and it was written into three comments and
+the ADR: `send_default_pii => false` gates the cookies, the request headers and the IP address, and
+**not** the URL, the query string, or the body. The body is governed by `max_request_body_size`,
+whose SDK default is `medium` — ten kilobytes attached to every error event. It is now `none`, with
+its own `security:posture` row, and the claim in the docs now matches what the code does. The
+general lesson is kept in the ADR: a deny-list works where the key names the value's sensitivity and
+fails where it does not. `password` says what it holds; `data` does not.
+
+**`/horizon` had the gate but not the door.** `config/horizon.php` was `['web']` alone, which was
+safe only because the published `viewHorizon` gate read `in_array($user->email, [])` and therefore
+denied everybody — and this phase made that gate _pass_. For that window, `/horizon` and every
+`/horizon/api/*` route (each tenant's serialised job payloads, plus retrying and deleting queued
+work) was reachable with **a password alone**, from any network, by an operator who had not finished
+two-factor enrolment — while `/admin` and `/pulse` refused the same session. It now carries the same
+three admin middlewares as Pulse, asserted over Horizon's **whole route table**. That last detail is
+its own small lesson: Horizon attaches its stack as a middleware _group_, so a test reading the
+route's unexpanded middleware list would have passed before the fix and after it.
+
+**And the corrections.** The CSP's `connect-src` derived the realtime origin from
+`broadcasting.connections.reverb` — where _Laravel publishes to_ — rather than the `VITE_REVERB_*`
+values the browser connects to; identical on one host, different behind a proxy, and wrong in the
+direction that silently blocks the socket. The CSP exemption hard-coded `pulse` while `PULSE_PATH`
+is configurable. `ignore_transactions` mixed path-shaped and method-prefixed patterns, so `/up`
+would not have matched `GET /up` and the health check would have been traced every ten seconds for
+ever. The `request_id` tag was gated behind "not console", which is false for a queue worker _and_
+for the test asserting it. `security:posture` never reset its results between runs in one process.
+An oversize-prompt refusal was being reported as a fault. The five Pulse entry types were string
+literals in two files, which is a contract where a rename does not error — the column comes back
+null and a dashboard figure quietly becomes zero — and are now an enum. The AI usage card's
+aggregation moved into `AiUsageSummary`, because all three of its sums go wrong quietly and each
+wanted a test. `Observability/` and `Support/` are now in ADR 0002's directory list, with why a
+Pulse recorder is not a `Listeners/` listener. And the card's failure count was `text-red-500`,
+about 3.8:1 on Pulse's white card and below WCAG AA.
+
+**One limitation is now written down rather than fixed.** An exception that escapes a **queue job**
+carries no `team_id`: every job activates its tenant with `TeamContext::run()`, which restores the
+previous value in a `finally`, so the context has unwound by the time the worker reports. That fails
+in the safe direction — a missing tag, never a false one, which is exactly why `run()` is right —
+and a test pins the direction so nobody "fixes" it into a stale tag. Giving the queue layer a
+durable notion of which tenant a job belongs to is the real answer and is not Phase 20's.
+
+The missing tests the reviewers asked for are in too: the Pulse recorder round-tripped through real
+storage, the latency mean (two calls at 300ms and 500ms plus three cache hits must read 400, not
+160), the divide-by-zero guard, the card through Livewire with lazy loading off, truncation
+exercised through `ClaudeAiClient` rather than only the interpolator, `DB::afterCommit` proven by
+rolling the ledger write back, and a "never throws while annotating" test that now actually forces
+a failure instead of passing whether or not the guard is there.
+
+### Added — 2026-11-01 — Phase 20: observability and security hardening (ADR 0017)
+
+Nineteen phases produced eighteen modules, a queue, five providers, an operator panel, a mobile app
+and an `/api/v1` surface — and almost none of it was watched. `sentry/sentry-laravel` and
+`laravel/pulse` had been in `composer.json` since Phase 0 and neither was wired: Sentry had a
+published config file and no `Integration::handles()`, so an unhandled exception went to a log file
+on one box; Pulse had a published config and a gate reading `in_array(optional($user)->email, [])`.
+
+**Error reporting that sends an id, a tenant and a stack trace, and nothing about a person.** Three
+Sentry projects — backend, browser, mobile — because a 500 in a worker, a `TypeError` in a browser
+and a crash on a handset are triaged by different people with different questions. `send_default_pii`
+is off, and `Core\Observability\SentryOptions` (the callables `config/sentry.php` points
+`before_send`, `before_send_transaction` and `traces_sampler` at — static methods, because a closure
+in config breaks `config:cache` and the first symptom is a deploy that will not boot) redacts every
+sensitive key **at any depth** across request data, extra context, contexts, tags, breadcrumb
+metadata and the user bag, and nulls the user's name, email and IP whatever set them. That second
+layer matters more than the first: the realistic way a prospect's email address reaches an error
+tracker is not the SDK, it is a `Log::error` payload three modules away becoming a breadcrumb.
+**The scrubber is aimed at our own code.** It also tags `team_id`, `request_id` and `impersonated`
+from `TeamContext` and `AuditContext`, which both hold the answer in a **queue job** as well as in a
+request — and queue jobs are where the interesting failures are. Expected refusals (a wrong
+password, a stale CSRF token, a 404, a throttle, a plan refusal, an exhausted AI allowance) are
+filtered declaratively by `ignore_exceptions`, because an error tracker full of the application
+working is one an ops team learns to ignore — which is the failure mode that makes every other alert
+useless. Session replay is off and stays off: it records the screen of somebody working a list of
+named prospects, and a debugging convenience is not a lawful basis.
+
+**The browser DSN is served, not built in.** `HandleInertiaRequests` shares it as a prop, so one
+`.env` value configures staging and production with no rebuild — and the CSP derives the Sentry
+ingest origin from the same value, so the policy cannot allow a host the SDK does not post to. The
+browser SDK is **dynamically imported**: no DSN, no 90 kB. Its `BrowserSession` and `Console`
+integrations are removed, because a session envelope is the one thing the browser SDK sends with an
+inferred IP address (and `before_send` never sees it) and a console breadcrumb is free text no
+key-based scrubber can inspect.
+
+**A nonce-based Content-Security-Policy, and the rest of the headers, on every response.**
+`Core\Http\Middleware\SecurityHeaders` is **global** middleware rather than on the web or API
+group: the headers belong to the HTTP response, so `/up`, a CSV download, a 500 page, the Pulse
+dashboard and an `/api/v1` error envelope all carry `nosniff`, `X-Frame-Options: DENY`, a referrer
+policy, a feature-denying `Permissions-Policy` and the two cross-origin policies. Registering it on
+the groups is how the one route nobody thought about becomes the one route without a header. On HTML
+it adds a CSP with `script-src 'self'` plus a per-request nonce and **no `unsafe-inline`** — which is
+only affordable because this app has no third-party script: exactly two inline tags in
+`app.blade.php`, both ours, both now nonce'd. `connect-src` is **derived** from the Reverb and
+Sentry configuration rather than listed again, because a second copy of a hostname is a second place
+to forget. Two skips, both deliberate and both written down: under the Vite dev server (Vue injects
+component styles from JavaScript with no nonce, so a policy that held locally would hold _by
+breaking the page_, which teaches a developer to switch it off) and on `pulse`/`horizon`, whose
+inline Livewire bootstrapping we cannot nonce. HSTS follows the **connection**, not the environment —
+sent from a `.test` domain it would pin a developer's browser to HTTPS for a year.
+
+**Pulse and Horizon went behind the admin panel's own door.** `/pulse` shows every tenant's slow
+queries, every tenant's exceptions and the shape of every tenant's queue; that is not a lesser
+surface than `/admin`. `config/pulse.php` now runs `EnsurePlatformAdmin` (**404**, not 403),
+`EnsureAdminTwoFactor` and `AdminIpAllowlist` ahead of Pulse's own `Authorize`, and
+`ObservabilityServiceProvider` defines `viewPulse` **and** `viewHorizon` as platform admin plus
+`AdminAbility::ManageOperations` — the 2am incident ability, not the Stripe switch.
+`HorizonServiceProvider::gate()` is emptied so there is one definition rather than two. The
+dashboard leads with the three cards Phase 20 asked for: queues, slow queries and an **AI usage**
+card of ours, fed by a new `AiRequestRecorded` event so the billing ledger's write path never learns
+that Pulse exists. It is keyed by **prompt key, not team**, and says on its face that it is not the
+billing figure — it samples and trims after seven days, and the `ai_requests` ledger is
+authoritative. Pulse is a clock, the panel is a tenant.
+
+**The AI surface is bounded on input.** Phase 8 capped the _fetcher_; nothing capped the _assembled
+prompt_, which is built from several fetched inputs plus free text a member typed. Now an oversized
+untrusted block is **truncated** (`mb_substr`, because this text is Arabic as often as English, with
+the notice _inside_ the data block after the content, where anything that tried to end with its own
+instructions no longer is — and the nonce scrub still runs first, so the injection defence and the
+truncation compose), and a whole prompt over the limit is **refused** with a 413
+`AiInputTooLargeException` before the transport, so nothing is sent and nothing is charged. In
+characters rather than tokens, because a token count is only knowable by making the call the bound
+exists to avoid.
+
+**A posture check, and a scheduled security workflow.** `php artisan security:posture [--strict]`
+asserts what has to be true of a production _machine_ rather than of the repository: debug off, an
+HTTPS `APP_URL`, a secure session cookie, CSP and HSTS on, admin 2FA required, a DSN present,
+`send_default_pii` off. Every one of those is correct in `.env.example` and silently wrong on a box
+somebody configured in a hurry, and several are switched off for an afternoon and left off. Warnings
+(a report-only policy, an empty IP allowlist) do not fail a deploy, because a check that cries wolf
+gets a `|| true` appended to it. `.github/workflows/security.yml` runs `composer audit`, `npm audit`
+for both JavaScript projects and gitleaks over the **full history** — on pull requests and **every
+Monday**, because a dependency that was clean when a pull request merged is not clean for ever.
+Gitleaks runs as the release binary verified against the release's own checksums file rather than
+through its action, whose v2 asks organisations for a licence key: a dependency on a vendor's
+billing state inside the job that tells us about leaked keys. Dependabot now covers Composer and
+both npm projects, not just Actions.
+
+**And the token-abilities audit.** `RouteContractTest` already asserted that every `/api/v1` route
+has a scope; `TokenAbilityAuditTest` asks whether it is the right _kind_. `EnsureTokenAbility` passes
+a token carrying **any one** of the listed abilities, so `ability:leads:read,leads:write` on a `POST`
+is a read-only token that can write — and it passes every Phase 17 assertion. No violations were
+found; the test is there so the next one fails a build.
+
+One real vulnerability was fixed in passing: a **critical** advisory in Vitest's worker pool, closed
+by upgrading the mobile app's test runner to Vitest 5.
+
 ### Changed — 2026-11-01 — Lists and create/edit forms: one shared shell (UI pass, not an mvp phase)
 
 The screens a team actually lives in — every list, and the forms behind them — were rebuilt onto two

@@ -21,11 +21,15 @@ use App\Modules\Signals\Providers\SignalsServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
 use App\Providers\HorizonServiceProvider;
+use App\Providers\ObservabilityServiceProvider;
 
 return [
     AppServiceProvider::class,
     FortifyServiceProvider::class,
     HorizonServiceProvider::class,
+    // Who may open Pulse and Horizon (Phase 20, ADR 0017). After Horizon's own provider, whose
+    // `gate()` it replaces.
+    ObservabilityServiceProvider::class,
 
     // Domain modules (ADR 0002) — register each module's provider here.
     CoreServiceProvider::class,

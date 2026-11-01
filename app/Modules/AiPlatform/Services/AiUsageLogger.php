@@ -6,6 +6,7 @@ namespace App\Modules\AiPlatform\Services;
 
 use App\Modules\AiPlatform\Enums\AiRequestStatus;
 use App\Modules\AiPlatform\Enums\AiTier;
+use App\Modules\AiPlatform\Events\AiRequestRecorded;
 use App\Modules\AiPlatform\Models\AiPromptTemplate;
 use App\Modules\AiPlatform\Models\AiRequest;
 use App\Modules\Core\Concerns\BelongsToTeam;
@@ -14,6 +15,7 @@ use App\Modules\Core\Support\TeamContext;
 use DateTimeInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -90,6 +92,25 @@ final class AiUsageLogger
             'status' => $status->value,
             'error_code' => $errorCode,
         ]);
+
+        // Observability's hook into AI spend (Phase 20). `afterCommit`, so a listener never counts
+        // a call whose ledger row is rolled back — and so this module stays ignorant of who is
+        // listening: the live Pulse card reads this event, the ledger does not know Pulse exists,
+        // and an installation without it is unaffected.
+        DB::afterCommit(fn () => event(new AiRequestRecorded(
+            teamId: $request->team_id,
+            promptKey: $request->prompt_key,
+            promptVersion: $request->prompt_version,
+            tier: $tier,
+            model: $model,
+            inputTokens: $inputTokens,
+            outputTokens: $outputTokens,
+            costMicros: $costMicros,
+            latencyMs: $latencyMs,
+            cacheHit: $cacheHit,
+            status: $status,
+            errorCode: $errorCode,
+        )));
 
         return $request;
     }

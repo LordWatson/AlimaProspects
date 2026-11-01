@@ -43,6 +43,29 @@ return [
     ],
 
     /*
+    | Input bounds (Phase 20, ADR 0017). Two of them, because there are two different problems.
+    |
+    | `max_untrusted_chars` is a **truncation**: a scraped page or a lead's own web copy arriving
+    | too big is a normal Tuesday, and the right answer is to use the first N characters of it.
+    | `PromptInterpolator` applies it per untrusted block, and says in the block that it did.
+    |
+    | `max_prompt_chars` is a **refusal**: if the whole assembled prompt is still too big — a
+    | hundred leads in one list, a pasted spreadsheet — `ClaudeAiClient` throws before any provider
+    | call. A near-context-limit request is slow, expensive, charged to the team's allowance
+    | whether its answer is useful or not, and is the shape a prompt-injection attempt takes when
+    | somebody is trying to push the system instructions out of the model's attention.
+    |
+    | Both are characters, not tokens, deliberately: tokens are only knowable by asking the
+    | provider, which is the call we are trying not to make. ~4 chars per token puts the default
+    | refusal around 15k tokens — well inside every tier's window, and far above any legitimate
+    | prompt this product assembles (`docs/ai-prompts.md`).
+    */
+    'limits' => [
+        'max_prompt_chars' => (int) env('AI_MAX_PROMPT_CHARS', 60_000),
+        'max_untrusted_chars' => (int) env('AI_MAX_UNTRUSTED_CHARS', 20_000),
+    ],
+
+    /*
     | Schema-validation retries. On an invalid/malformed response the request is retried this many
     | times before an InvalidAiResponseException is thrown (total attempts = schema + 1).
     */

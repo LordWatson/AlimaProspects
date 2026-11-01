@@ -7,6 +7,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
+import { initializeSentry } from '@/shared/observability/sentry';
 import { palette } from '@/shared/tokens';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
@@ -40,7 +41,14 @@ void createInertiaApp({
                 return AppLayout;
         }
     },
-    withApp: (app) => {
+    withApp: (app, { page }) => {
+        // Browser error reporting (Phase 20, ADR 0017). Configured from the shared `observability`
+        // prop rather than a build-time env var, so one `.env` covers staging and production
+        // without a rebuild — and `null` (no DSN) means the SDK is never imported at all. First in
+        // this callback, so an error thrown while the app is still wiring itself up is still
+        // reported.
+        void initializeSentry(app, page.props.observability?.sentry);
+
         app.directive('focus', {
             mounted: (el: HTMLElement, shouldFocus) => {
                 if (shouldFocus.value !== false) {

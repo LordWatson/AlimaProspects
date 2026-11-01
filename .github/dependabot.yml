@@ -1,3 +1,13 @@
+# Dependency updates (Phase 20, ADR 0017 extended the GitHub Actions entry to the three
+# ecosystems this repository actually has).
+#
+# The point is not to be on the newest version of everything - it is that a moderate advisory in
+# build tooling, which the `security` workflow deliberately does not fail a build over, still gets
+# raised somewhere a person will see it. `cooldown` keeps a release that is pulled within a few
+# days of publication from ever reaching a pull request here.
+#
+# Each ecosystem groups everything into one pull request: twenty open dependency pull requests is
+# the state in which none of them gets read.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -8,5 +18,58 @@ updates:
       default-days: 5
     groups:
       github-actions:
+        patterns:
+          - "*"
+
+  # PHP. `composer audit --locked` in the security workflow is what *fails* on an advisory; this
+  # is what offers the fix.
+  - package-ecosystem: "composer"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 5
+    groups:
+      # Laravel and its first-party packages move together, and a Cashier that is one minor behind
+      # the framework is the kind of mismatch that only shows up at runtime.
+      laravel:
+        patterns:
+          - "laravel/*"
+          - "illuminate/*"
+          - "inertiajs/*"
+      php-dev:
+        dependency-type: "development"
+        patterns:
+          - "*"
+      php-production:
+        dependency-type: "production"
+        patterns:
+          - "*"
+
+  # The web frontend.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  # The mobile app, which is its own npm project with its own lockfile (Phase 18) and therefore
+  # its own entry - the root one does not reach it.
+  - package-ecosystem: "npm"
+    directory: "/mobile"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 5
+    groups:
+      mobile-npm:
         patterns:
           - "*"

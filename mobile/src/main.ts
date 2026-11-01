@@ -25,6 +25,7 @@ import { router } from '@/router';
 import { restoreApiUrl } from '@/lib/config';
 import { restoreAppearance } from '@/lib/appearance';
 import { restoreLocale } from '@/lib/i18n';
+import { initializeErrorReporting } from '@/lib/observability';
 import { sessionReady } from '@/lib/session';
 
 /**
@@ -53,6 +54,11 @@ async function boot(): Promise<void> {
             mode: 'ios',
         })
         .use(router);
+
+    // Error reporting (Phase 20). Before `router.isReady()`, so a route guard that throws on the
+    // first navigation is still reported — and not awaited, because loading an SDK must never sit
+    // in front of the first frame.
+    initializeErrorReporting(app);
 
     await router.isReady();
 

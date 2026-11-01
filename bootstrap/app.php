@@ -10,6 +10,7 @@ use App\Modules\Core\Exceptions\ApiExceptionRenderer;
 use App\Modules\Core\Exceptions\DomainException;
 use App\Modules\Core\Http\Middleware\EnsureCapability;
 use App\Modules\Core\Http\Middleware\LogContext;
+use App\Modules\Core\Http\Middleware\SecurityHeaders;
 use App\Modules\Core\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -18,6 +19,7 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -28,6 +30,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Response security headers (Phase 20, ADR 0017). **Global**, not on a group: the headers
+        // belong to the HTTP response rather than to the web or the API stack, so `/up`, a CSV
+        // download, the Pulse dashboard, a 500 page and an `/api/v1` error envelope all carry them.
+        // It also mints the CSP nonce the blade tags read, which has to happen before the view
+        // renders.
+        $middleware->append(SecurityHeaders::class);
+
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'locale']);
 
         // RFC 8058 one-click unsubscribe (Compliance, Phase 15). A mail client posting
@@ -86,6 +95,13 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Send unhandled exceptions to Sentry (Phase 20, ADR 0017). First in the closure, because
+        // it registers a *reporting* callback and the renderers below decide what the user sees —
+        // the two are independent, and a report that depends on render order is a report that goes
+        // missing the day somebody reorders this file. What is reported, what is scrubbed and what
+        // is deliberately ignored is `config/sentry.php` + Core\Observability\SentryOptions.
+        Integration::handles($exceptions);
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

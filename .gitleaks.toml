@@ -1,0 +1,39 @@
+# Secret scanning configuration (Phase 20, ADR 0017).
+#
+# Gitleaks' own rule set, plus the narrowest allowlist that makes a clean run meaningful. It is
+# read automatically by `gitleaks git .` in the `security` workflow.
+#
+# The allowlist is deliberately **not** path-based beyond the two `.env.example` files. Test
+# fixtures are exactly where somebody pastes a real key "just to see if it works", so `tests/` and
+# `mobile/src/**` stay scanned - and a fixture that does trip a rule gets a `gitleaks:allow`
+# comment on its own line, which is a reviewed diff, rather than a directory exemption nobody
+# revisits.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+The documented environment keys. Both files exist to list every setting with a placeholder value;
+`REVERB_APP_SECRET=local-reverb-secret` is not a credential, it is the shape of one. A real
+secret still cannot hide here, because these files hold values for local development only - the
+deployment runbook is explicit that production values are generated per environment and never
+committed.
+"""
+paths = ['''^\.env\.example$''', '''^mobile/\.env\.example$''']
+
+[[allowlists]]
+description = """
+Obvious placeholders, wherever they appear. Each stem is one this repository already uses in its
+fixtures and documentation, and none is a value any provider would ever issue: Stripe's own test
+prefixes, and the `example`/`placeholder` strings the suite builds its fakes from.
+"""
+regexTarget = "match"
+regexes = [
+    '''(?i)example\.(com|test|org)''',
+    '''(?i)placeholder''',
+    '''(?i)your[-_](key|secret|token|dsn)''',
+    '''price_test_''',
+    '''sk_test_''',
+    '''pk_test_''',
+]

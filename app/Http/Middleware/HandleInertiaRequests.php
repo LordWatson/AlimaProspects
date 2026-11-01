@@ -77,6 +77,17 @@ class HandleInertiaRequests extends Middleware
             'announcements' => fn (): array => $user instanceof User
                 ? app(AnnouncementBoard::class)->forUser($user, $this->resolveTeam($user), $locale)
                 : [],
+            // Browser error reporting (Phase 20, ADR 0017). **Served rather than built in**: the
+            // SDK's configuration arrives with the page, so one `.env` value configures staging and
+            // production without a rebuild per environment — and the Content-Security-Policy
+            // derives the Sentry ingest origin from the same config value, so the policy cannot
+            // allow a different host than the one the SDK posts to. A DSN authorises writing an
+            // event and nothing else, which is why it is safe to send to the browser at all.
+            //
+            // Not lazy: `resources/js/observability/sentry.ts` reads it once while the app mounts,
+            // before any page component, and a lazy prop is absent from that first payload.
+            'observability' => $this->observability(),
+
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             // For the handful of places that need a **real browser form POST** rather than an
             // Inertia visit — a file download, where an XHR response cannot reach the user's disk
@@ -86,6 +97,36 @@ class HandleInertiaRequests extends Middleware
             // Lazy, like `translations`: it is sent on a full page load and omitted from partial
             // reloads, and a public page with no session never touches the session at all.
             'csrfToken' => fn (): ?string => $request->hasSession() ? $request->session()->token() : null,
+        ];
+    }
+
+    /**
+     * What the browser SDK needs to initialise itself, or `null` where no DSN is configured.
+     *
+     * `null` rather than an object with an empty DSN, because the client branches on this prop to
+     * decide whether to dynamically import the SDK at all — an installation that is not using
+     * Sentry should not pay for its bundle, and that only works if "not configured" is one check.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function observability(): ?array
+    {
+        /** @var mixed $dsn */
+        $dsn = config('observability.sentry.frontend.dsn');
+
+        if (! is_string($dsn) || trim($dsn) === '') {
+            return null;
+        }
+
+        return [
+            'sentry' => [
+                'dsn' => trim($dsn),
+                'environment' => (string) config('observability.sentry.frontend.environment', 'production'),
+                'release' => config('observability.sentry.frontend.release'),
+                'tracesSampleRate' => (float) config('observability.sentry.frontend.traces_sample_rate', 0.0),
+                'replaysSessionSampleRate' => (float) config('observability.sentry.frontend.replays_session_sample_rate', 0.0),
+                'replaysOnErrorSampleRate' => (float) config('observability.sentry.frontend.replays_on_error_sample_rate', 0.0),
+            ],
         ];
     }
 

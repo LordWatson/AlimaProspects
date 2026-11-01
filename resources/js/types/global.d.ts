@@ -9,6 +9,7 @@ import type {
 import type { LocaleShared } from '@/shared/types/locale';
 import type { NotificationBell } from '@/shared/types/notifications';
 import type { OnboardingShared } from '@/shared/types/onboarding';
+import type { SentryConfig } from '@/shared/observability/sentry';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -52,6 +53,13 @@ declare module '@inertiajs/core' {
              */
             provision_preview?: ProvisionPreview | null;
             csrfToken: string | null;
+            /**
+             * The browser error reporter's configuration, or `null` where no DSN is set (Phase 20).
+             * Served rather than built into the bundle, so one `.env` value covers staging and
+             * production — and so the Content-Security-Policy derives the ingest origin from the
+             * same value the SDK posts to.
+             */
+            observability: { sentry: SentryConfig } | null;
             /**
              * Present only while an operator is impersonating a customer (Phase 19a). Shared on
              * every web request by `ShareImpersonation`, so the banner cannot be missing from a

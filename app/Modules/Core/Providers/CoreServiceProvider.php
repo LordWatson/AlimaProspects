@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Core\Providers;
 
+use App\Modules\Core\Console\SecurityPostureCommand;
 use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Contracts\WebContentFetcher;
 use App\Modules\Core\Services\AllCapabilitiesEnabled;
@@ -58,6 +59,13 @@ final class CoreServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         $this->registerApiDocumentation();
+
+        if ($this->app->runningInConsole()) {
+            // The production posture check (Phase 20, ADR 0017). Core's, because what it asserts —
+            // debug mode, the session cookie, the headers, the admin door, the error tracker — is
+            // nobody's domain and everybody's problem.
+            $this->commands([SecurityPostureCommand::class]);
+        }
     }
 
     /**

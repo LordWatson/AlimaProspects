@@ -21,6 +21,25 @@ use Stringable;
 final class PromptInterpolator
 {
     /**
+     * The untrusted-block bound used when nobody says otherwise.
+     *
+     * A constant and a constructor argument rather than a `config()` call inside the method, and
+     * the reason is not style: this service is pure — it takes a string and returns a string — and
+     * its unit tests construct it with `new`, outside any application. A config lookup in here
+     * would make a pure renderer require a booted framework. `AiPlatformServiceProvider` is where
+     * the configured value is read, which is the right edge for it.
+     */
+    public const int DEFAULT_MAX_UNTRUSTED_CHARS = 20_000;
+
+    /**
+     * @param  int  $maxUntrustedChars  Characters allowed per untrusted block; 0 or less disables
+     *                                  truncation entirely.
+     */
+    public function __construct(
+        private readonly int $maxUntrustedChars = self::DEFAULT_MAX_UNTRUSTED_CHARS,
+    ) {}
+
+    /**
      * Render a template against the given input.
      *
      * @param  array<string, mixed>  $input
@@ -45,7 +64,7 @@ final class PromptInterpolator
 
         // Remove any occurrence of the (secret, random) nonce from the content so it cannot
         // reproduce — and therefore cannot forge — the closing marker.
-        $safe = str_replace($nonce, '', $content);
+        $safe = $this->truncate(str_replace($nonce, '', $content));
 
         $open = "<untrusted-data nonce=\"{$nonce}\">";
         $close = "</untrusted-data nonce=\"{$nonce}\">";
@@ -57,6 +76,35 @@ final class PromptInterpolator
             $safe,
             $close,
         ]);
+    }
+
+    /**
+     * Bound one untrusted block to `ai-platform.limits.max_untrusted_chars` (Phase 20, ADR 0017).
+     *
+     * A **truncation, not a refusal**: a scraped page or a lead's own web copy arriving too big is
+     * a normal Tuesday, and the first twenty thousand characters of a company's website is where
+     * the answer is anyway. The hard bound on the *assembled* prompt is `ClaudeAiClient`'s, which
+     * throws.
+     *
+     * Two details that are not cosmetic. The notice says it was truncated **inside** the data
+     * block, so the model is not left to infer that a sentence ending mid-word means the page
+     * ended — and it is the last thing in the block, where content that tried to end with its own
+     * instructions no longer is. And the cut uses `mb_substr`: this text is Arabic as often as it
+     * is English (ADR 0007), and a byte-wise cut would hand the provider a broken code point.
+     *
+     * A limit of 0 or less switches truncation off, which is what a test that wants to assert on
+     * the whole block sets.
+     */
+    private function truncate(string $content): string
+    {
+        $limit = $this->maxUntrustedChars;
+
+        if ($limit <= 0 || mb_strlen($content) <= $limit) {
+            return $content;
+        }
+
+        return mb_substr($content, 0, $limit)
+            ."\n[This content was truncated at {$limit} characters.]";
     }
 
     private function stringify(mixed $value): string

@@ -1,5 +1,8 @@
 <?php
 
+use App\Modules\Admin\Http\Middleware\AdminIpAllowlist;
+use App\Modules\Admin\Http\Middleware\EnsureAdminTwoFactor;
+use App\Modules\Admin\Http\Middleware\EnsurePlatformAdmin;
 use Illuminate\Support\Str;
 
 return [
@@ -83,7 +86,30 @@ return [
     |
     */
 
-    'middleware' => ['web'],
+    /*
+    | The same door as `/pulse` and `/admin` (Phase 20 security review, ADR 0017).
+    |
+    | This was `['web']` alone, and that was safe only by accident: the published `viewHorizon` gate
+    | was `in_array($user->email, [])`, which denied everybody. Phase 20 made that gate *pass* — for
+    | a platform admin with `AdminAbility::ManageOperations` — and a gate is one control where the
+    | panel has four. Without these three, `/horizon` and every `/horizon/api/*` route (including
+    | retrying and deleting queued work across all tenants) would have been reachable with **a
+    | password alone**, with no enrolled second factor and from any network, while `/admin` and
+    | `/pulse` refused the same session.
+    |
+    | A failed job's payload is the serialised job: lead ids, outreach recipients, notification
+    | payloads. That is tenant data, so this is not a lesser surface than the panel.
+    |
+    | It also neutralises Horizon's own `|| app()->environment('local')` escape hatch
+    | (`HorizonApplicationServiceProvider::authorization()`), because middleware runs before the
+    | controller's auth check: a box left on a non-production `APP_ENV` no longer opens the door.
+    */
+    'middleware' => [
+        'web',
+        EnsurePlatformAdmin::class,
+        EnsureAdminTwoFactor::class,
+        AdminIpAllowlist::class,
+    ],
 
     /*
     |--------------------------------------------------------------------------

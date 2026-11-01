@@ -1,6 +1,9 @@
 import vue from '@vitejs/plugin-vue';
 import { fileURLToPath, URL } from 'node:url';
-import { defineConfig } from 'vite';
+// `vitest/config` rather than `vite`, because Vitest 5 no longer augments Vite's own config type
+// with a `test` key (Phase 20 upgraded it past a critical advisory in its worker pool). Same
+// `defineConfig`, one that knows about the `test` block below.
+import { defineConfig } from 'vitest/config';
 
 /*
  * The mobile bundle. A plain Vite + Vue build rather than the root's vite-plus/Inertia/Tailwind

@@ -5,7 +5,6 @@ declare(strict_types=1);
 use App\Modules\Auth\Enums\TokenAbility;
 use App\Modules\Core\Http\Middleware\ApiVersion;
 use Illuminate\Routing\Route as RoutingRoute;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
@@ -18,22 +17,11 @@ use Illuminate\Support\Str;
  * the name or the documentation finds out here instead of in the mobile app.
  */
 
-/**
- * @return Collection<int, RoutingRoute>
+/*
+ * `apiRoutes()` and `routeLabel()` live in `tests/Pest.php` — Phase 20's token-abilities audit
+ * reads the same route table, and a helper defined inside one test file is only loaded when that
+ * file is, which makes running that file on its own fail with "undefined function".
  */
-function apiRoutes(): Collection
-{
-    return collect(Route::getRoutes()->getRoutes())
-        ->filter(fn (RoutingRoute $route): bool => Str::startsWith($route->uri(), 'api/'))
-        // HEAD duplicates GET.
-        ->filter(fn (RoutingRoute $route): bool => $route->methods() !== ['HEAD'])
-        ->values();
-}
-
-function routeLabel(RoutingRoute $route): string
-{
-    return implode('|', $route->methods()).' '.$route->uri();
-}
 
 it('serves nothing outside the versioned prefix', function (): void {
     // An unversioned route would sit outside the version policy, the error envelope and the
