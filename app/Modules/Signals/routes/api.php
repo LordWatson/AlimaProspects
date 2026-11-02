@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Auth\Enums\TokenAbility;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalController;
+use App\Modules\Signals\Http\Controllers\Api\V1\SignalDefinitionController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalWatchController;
 use Illuminate\Support\Facades\Route;
 
@@ -35,6 +36,38 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->whereNumber('signal')
         ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signals.restore');
+
+    // Signal definitions (S7, ADR 0018). Scoped with the module's existing abilities: a signal
+    // type is part of Signals, and inventing `signal-definitions:*` would make a token that could
+    // read the feed but not the types it is grouped by - a scope nobody would mean to issue.
+    //
+    // `presets` is before `{definition}` because the segment would otherwise be matched as an id;
+    // `whereNumber` would reject it, but relying on a constraint to disambiguate a literal is the
+    // kind of thing that breaks the day somebody loosens the constraint.
+    Route::get('signal-definitions', [SignalDefinitionController::class, 'index'])
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-definitions.index');
+    Route::get('signal-definitions/presets', [SignalDefinitionController::class, 'presets'])
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-definitions.presets');
+    Route::post('signal-definitions', [SignalDefinitionController::class, 'store'])
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-definitions.store');
+    Route::post('signal-definitions/clone', [SignalDefinitionController::class, 'clone'])
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-definitions.clone');
+    Route::get('signal-definitions/{definition}', [SignalDefinitionController::class, 'show'])
+        ->whereNumber('definition')
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-definitions.show');
+    Route::patch('signal-definitions/{definition}', [SignalDefinitionController::class, 'update'])
+        ->whereNumber('definition')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-definitions.update');
+    Route::delete('signal-definitions/{definition}', [SignalDefinitionController::class, 'destroy'])
+        ->whereNumber('definition')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-definitions.destroy');
 
     Route::get('signal-watches', [SignalWatchController::class, 'index'])
         ->middleware('ability:'.TokenAbility::SignalsRead->value)

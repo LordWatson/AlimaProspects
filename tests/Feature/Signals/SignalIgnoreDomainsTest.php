@@ -5,9 +5,9 @@ declare(strict_types=1);
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Data\SignalQuery;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalQueryBuilder;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 
@@ -29,18 +29,31 @@ function watchIgnoring(array $ignore): SignalWatch
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
 
-    return app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()->create([
-        'team_id' => $team->getKey(),
-        'location' => 'Dubai',
-        'event_types' => ['funding_round'],
-        'ignore_domains' => $ignore,
-    ]));
+    return app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()
+        ->watchingPresets([SignalPresetCatalogue::FUNDING_ROUND])
+        ->create([
+            'team_id' => $team->getKey(),
+            'location' => 'Dubai',
+            'ignore_domains' => $ignore,
+        ]));
+}
+
+/**
+ * The queries that watch would run. Since S7 the builder takes the definitions as an argument
+ * rather than loading them (ADR 0018), so a caller has to say which types it is building for - here,
+ * whatever the watch is attached to.
+ *
+ * @return list<SignalQuery>
+ */
+function queriesFor(SignalWatch $watch): array
+{
+    return app(SignalQueryBuilder::class)->build($watch, $watch->activeDefinitions()->all());
 }
 
 it('carries a watch’s own ignore list onto every query it builds', function (): void {
     $watch = watchIgnoring(['rival.ae']);
 
-    $queries = app(SignalQueryBuilder::class)->build($watch);
+    $queries = queriesFor($watch);
 
     expect($queries)->not->toBeEmpty();
 
@@ -60,7 +73,7 @@ it('normalises whatever the team typed into a bare host', function (): void {
         'RIVAL.ae',
     ]);
 
-    $queries = app(SignalQueryBuilder::class)->build($watch);
+    $queries = queriesFor($watch);
 
     expect($queries[0]->ignoreDomains)->toBe(['rival.ae', 'other-rival.com']);
 });
@@ -68,7 +81,7 @@ it('normalises whatever the team typed into a bare host', function (): void {
 it('leaves the list empty when the watch has none', function (): void {
     $watch = watchIgnoring([]);
 
-    expect(app(SignalQueryBuilder::class)->build($watch)[0]->ignoreDomains)->toBe([]);
+    expect(queriesFor($watch)[0]->ignoreDomains)->toBe([]);
 });
 
 it('drops results from a team’s own ignored domain as well as the global list', function (): void {
@@ -102,7 +115,7 @@ it('drops results from a team’s own ignored domain as well as the global list'
     ]);
 
     $items = app(NewsSearchClient::class)->search(new SignalQuery(
-        eventType: SignalEventType::FundingRound,
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         q: 'Dubai startup raises funding',
         gl: 'ae',
         hl: 'en',
@@ -132,7 +145,7 @@ it('still applies the global list when a watch adds none', function (): void {
     ]);
 
     $items = app(NewsSearchClient::class)->search(new SignalQuery(
-        eventType: SignalEventType::FundingRound,
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         q: 'Dubai startup raises funding',
         gl: 'ae',
         hl: 'en',

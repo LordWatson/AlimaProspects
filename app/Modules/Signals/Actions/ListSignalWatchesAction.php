@@ -33,6 +33,10 @@ final class ListSignalWatchesAction
             ->where('team_id', $team->getKey())
             ->with([
                 'icp:id,name',
+                // The watched types (S7, ADR 0018). Eager-loaded rather than left to the resource:
+                // `SignalWatchResource` sends them with their explainers, and a `whenLoaded` that
+                // nobody loaded would quietly leave a watch looking like it watches for nothing.
+                'definitions',
                 // Capped per watch via a window over the relation, so one busy watch can't drag
                 // the whole screen's query down. The newest run is what "last run" reads.
                 'runs' => static fn ($query) => $query->latest('id')->limit(self::RECENT_RUNS),

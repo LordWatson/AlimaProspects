@@ -7,7 +7,6 @@ namespace App\Modules\Signals\Actions;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Data\SignalFilters;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Models\Signal;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -45,14 +44,15 @@ final class ListSignalsAction
                 ->where('team_id', $team->getKey())
                 ->where('status', $filters->status)
                 // The converted tab links straight through to the lead, and the card needs the
-                // watch's name to say which watch found this.
-                ->with(['watch:id,name', 'lead:id,company_name']);
+                // watch's name to say which watch found this. `definition` is what the card's event
+                // label reads (S7, ADR 0018) - eager-loaded, because a page of cards would
+                // otherwise be a page of queries, and `preventLazyLoading` would say so.
+                ->with(['watch:id,name', 'lead:id,company_name', 'definition']);
 
-            if ($filters->eventTypes !== []) {
-                $query->whereIn(
-                    'event_type',
-                    array_map(static fn (SignalEventType $type): string => $type->value, $filters->eventTypes),
-                );
+            if ($filters->eventKeys !== []) {
+                // The stored key, not the FK: a signal whose definition has been deleted keeps its
+                // key and must stay filterable by it.
+                $query->whereIn('event_key', $filters->eventKeys);
             }
 
             if ($filters->from !== null) {

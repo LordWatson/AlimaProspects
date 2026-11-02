@@ -68,12 +68,16 @@ function cannedResponses(): array
 it('seeds every prompt from docs/ai-prompts.md', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    // Ten **rows** for eight keys: `outreach.draft_message` has a version 2 (Phase 11) and
-    // `business_intel.background_check` a version 2 (Phase 7c, which split the team's own industry
-    // from its customers'). Both v1 rows stay seeded so a report or message that recorded
-    // `prompt_version: 1` can still be traced back to what produced it. The registry resolves the
-    // highest active version.
-    expect(AiPromptTemplate::query()->count())->toBe(10)
+    // Eleven **rows** for eight keys. Three have a v2, and all three v1 rows stay seeded so a
+    // report, message or signal that recorded `prompt_version: 1` can still be traced back to what
+    // produced it; the registry resolves the highest active version.
+    //
+    // - `outreach.draft_message` v2 (Phase 11)
+    // - `business_intel.background_check` v2 (Phase 7c — split the team's own industry from its
+    //   customers')
+    // - `signals.extract_event` v2 (Phase S7 — signal types became rows, so the schema's
+    //   `event_type` enum had to go; ADR 0018 section 7)
+    expect(AiPromptTemplate::query()->count())->toBe(11)
         ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.refine_suggestions',
@@ -116,5 +120,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(10);
+    expect(AiPromptTemplate::query()->count())->toBe(11);
 });

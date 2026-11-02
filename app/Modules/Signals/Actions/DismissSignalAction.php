@@ -57,7 +57,7 @@ final class DismissSignalAction
             // The reason and the event type, never the headline or the person's name: the audit
             // trail records what the team decided, not a second copy of the article.
             $this->audit->log('signals.dismissed', $locked, [
-                'event_type' => $locked->event_type->value,
+                'event_type' => $locked->event_key,
                 'reason' => $reason?->value,
             ], $actor);
 

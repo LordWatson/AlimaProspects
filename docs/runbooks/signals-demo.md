@@ -31,7 +31,10 @@ someone who has just had a liquidity event and may well be looking for somewhere
 2. **Check there is AI credit.** A team out of credit gets a clean Failed run saying so, which is
    correct behaviour and a terrible demo.
 3. **Set up the watch and let it run overnight.** Signals → Watch settings → **"Watch Dubai for
-   me"**. That creates the broadest useful watch: Dubai, all three event types, daily. The hourly
+   me"**. That adds Alima's three library signal types to the team and creates the broadest useful
+   watch over them: Dubai, every type, daily. (Since S7 a watch is built from the team's **own**
+   signal types — this button clones the library first so the shortest path stays one click.)
+   The hourly
    scheduler picks it up within the hour.
 4. **The next morning, read the feed yourself** and pick two or three signals you would be happy to
    be asked about. Know which article each came from.
@@ -125,7 +128,9 @@ per-team export and erase for exactly that (see `docs/modules/compliance-privacy
 
 ## 7. What to promise, and what not to
 
-**Safe to promise (it is built):** Dubai/UAE watches, daily or weekly; the three event types; the
+**Safe to promise (it is built):** Dubai/UAE watches, daily or weekly; **signal types the client
+writes themselves** on `/signals/types`, or clones from Alima's library and tunes (S7) — including
+their own confidence and relevance floors per type; the
 feed with filters; convert-to-lead into the existing pipeline with enrichment and scoring; dismiss
 with reasons; English and Arabic with full RTL; the API for their own tooling; retention and the
 data-subject export.

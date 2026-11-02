@@ -27,6 +27,7 @@ use App\Modules\Signals\Events\SignalRunProgressed;
 use App\Modules\Signals\Events\SignalsDetected;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalQueryBuilder;
@@ -36,13 +37,29 @@ use Illuminate\Support\Str;
 
 /**
  * Runs one signal watch end to end (ADR 0011, S3). Must run inside the watch's {@see TeamContext}
- * (the job does this). In order: open/claim the run (Running), build queries from the watch + active
- * ICP and search Serper, drop already-seen articles, batch the rest through the `signals.extract_event`
- * prompt (each item wrapped as {@see UntrustedContent}), keep genuine events clearing the confidence
- * and relevance floors, then persist the kept signals + the run totals in one transaction (idempotent
- * via `insertOrIgnore` on `(team_id, url_hash)`). Serper and the AI are **never** called inside a
+ * (the job does this). In order: open/claim the run (Running), resolve the watch's signal
+ * definitions, build queries from them + the active ICP and search Serper, drop already-seen
+ * articles, batch the rest through the `signals.extract_event` prompt (each item wrapped as
+ * {@see UntrustedContent}), keep genuine events clearing their own type's confidence and relevance
+ * floors, then persist the kept signals + the run totals in one transaction (idempotent via
+ * `insertOrIgnore` on `(team_id, url_hash)`). Serper and the AI are **never** called inside a
  * transaction (CLAUDE.md). A non-retryable provider failure or AI-credit exhaustion fails the run
  * cleanly; a transient Serper failure bubbles so the job can retry.
+ *
+ * **Since S7 the event types are rows, not an enum** (ADR 0018), and two things about this Action
+ * follow from that:
+ *
+ * 1. **It is the guard the AI schema used to be.** v1 constrained `event_type` to a JSON-schema
+ *    `enum`, so a hijacked or hallucinated response could not name a type outside the set. With
+ *    types as data that enum cannot exist, so v2 of the prompt bounds the string and
+ *    {@see self::resolveDefinition()} refuses any key that was not offered for the batch. A prompt
+ *    cannot be trusted to enforce a constraint it merely describes.
+ * 2. **Thresholds are per type.** A team that finds one of their types noisy raises *its* floor;
+ *    {@see SignalDefinition::effectiveThresholds()} falls back to the global `signals.*` config, so
+ *    an untuned definition behaves exactly as v1 did.
+ *
+ * A watch whose every type has been paused produces an **empty, completed run**, not a failed one:
+ * nothing went wrong, there was simply nothing to look for.
  */
 final class RunSignalWatchAction
 {
@@ -73,10 +90,27 @@ final class RunSignalWatchAction
         $run = $this->claimOrCreateRun($watch);
         $this->broadcast($run, SignalRunStatus::Running, 10, 'Searching the news');
 
+        // Resolved through a team-scoped query rather than read off the relation, because the
+        // pivot's FK is not team-qualified at the database level and this job runs with no request
+        // behind it (`docs/modules/signals.md`, "Cross-team parent references").
+        $definitions = $this->definitions($watch);
+
+        if ($definitions === []) {
+            // Every type paused, or the last one removed. Nothing to search for, nothing spent, and
+            // a completed run is the honest record of that — a Failed one would read as the news
+            // provider having broken.
+            Log::channel('signals')->info('Signal run had no active signal types to look for.', [
+                'team_id' => (int) $watch->team_id,
+                'signal_watch_id' => (int) $watch->getKey(),
+            ]);
+
+            return $this->complete($run, $watch, [], 0, 0, 0);
+        }
+
         $icp = $this->activeIcp($watch->team_id);
         $profile = BusinessProfile::query()->where('team_id', $watch->team_id)->first();
 
-        $queries = $this->queries->build($watch, $icp);
+        $queries = $this->queries->build($watch, $definitions, $icp);
         $queriesCount = count($queries);
         $serperCostMicros = $queriesCount * (int) config('signals.cost_micros_per_request', 1_000);
 
@@ -98,7 +132,7 @@ final class RunSignalWatchAction
         $this->broadcast($run, SignalRunStatus::Running, 55, 'Analysing what we found');
 
         // --- External work: AI extraction (outside any transaction) ---
-        [$kept, $aiCostMicros, $creditExhausted] = $this->extract($watch, $icp, $profile, $items);
+        [$kept, $aiCostMicros, $creditExhausted] = $this->extract($watch, $definitions, $icp, $profile, $items);
         $costMicros = $serperCostMicros + $aiCostMicros;
 
         if ($creditExhausted) {
@@ -159,6 +193,39 @@ final class RunSignalWatchAction
     }
 
     /**
+     * The watch's **active** signal types, team-scoped, in pivot order.
+     *
+     * A paused type stays attached to the watch (un-pausing it should put the watch back the way it
+     * was) but is not run, which is what `is_active` is for. The `team_id` constraint is explicit
+     * beside the global scope for the usual reason, and a more pressing one here: a definition row
+     * may belong to the platform rather than to a team, and a run must never execute a preset
+     * directly — a team runs their own clone of it (ADR 0018 §3).
+     *
+     * @return list<SignalDefinition>
+     */
+    private function definitions(SignalWatch $watch): array
+    {
+        // Read off the pivot directly rather than through the relation, so **both** sides of the
+        // join carry an explicit `team_id` and neither depends on a global scope being active.
+        $ids = DB::table('signal_watch_definition')
+            ->where('signal_watch_id', $watch->getKey())
+            ->where('team_id', $watch->team_id)
+            ->pluck('signal_definition_id');
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        return array_values(SignalDefinition::query()
+            ->where('team_id', $watch->team_id)
+            ->where('is_active', true)
+            ->whereIn('id', $ids)
+            ->orderBy('id')
+            ->get()
+            ->all());
+    }
+
+    /**
      * Run every query, flatten, and de-duplicate by `url_hash` within this run.
      *
      * @param  list<SignalQuery>  $queries
@@ -216,13 +283,17 @@ final class RunSignalWatchAction
      * On AI-credit exhaustion, stop batching and return what was gathered plus a `creditExhausted`
      * flag and the cost already spent, so the caller can fail the run *and record the spend*.
      *
+     * @param  list<SignalDefinition>  $definitions  The types offered to the model for this run.
      * @param  list<NewsItem>  $items
-     * @return array{0: list<array{0: ExtractedSignal, 1: NewsItem}>, 1: int, 2: bool} kept pairs, AI cost, credit-exhausted
+     * @return array{0: list<array{0: ExtractedSignal, 1: NewsItem, 2: SignalDefinition}>, 1: int, 2: bool} kept triples, AI cost, credit-exhausted
      */
-    private function extract(SignalWatch $watch, ?Icp $icp, ?BusinessProfile $profile, array $items): array
+    private function extract(SignalWatch $watch, array $definitions, ?Icp $icp, ?BusinessProfile $profile, array $items): array
     {
-        $minConfidence = (int) config('signals.min_confidence', 60);
-        $minRelevance = (int) config('signals.min_relevance', 40);
+        /** @var array<string, SignalDefinition> $offered */
+        $offered = [];
+        foreach ($definitions as $definition) {
+            $offered[$definition->key] = $definition;
+        }
 
         $kept = [];
         $costMicros = 0;
@@ -232,7 +303,11 @@ final class RunSignalWatchAction
                 $response = $this->ai->structured('signals.extract_event', [
                     'business_profile' => $this->profileSummary($profile),
                     'location' => $watch->location,
-                    'event_types' => implode(', ', $watch->event_types),
+                    // The types, with their names, explainers and the rules that tell this kind of
+                    // event from the round-ups that look like it. This is what the enum's three
+                    // hard-coded descriptions used to do, now authored per team.
+                    'event_types' => $this->eventTypesPrompt($definitions),
+                    'event_type_keys' => implode(', ', array_keys($offered)),
                     'icp_geographies' => $this->joinIcp($icp, CriterionType::Geography),
                     'icp_buying_signals' => $this->joinIcp($icp, CriterionType::BuyingSignal),
                     'news_items' => UntrustedContent::from($this->itemsJson($batch)),
@@ -267,8 +342,20 @@ final class RunSignalWatchAction
                 $extracted = ExtractedSignal::fromAiItem($raw);
                 $item = $batch[$extracted->itemIndex] ?? null;
 
-                if ($item instanceof NewsItem && $extracted->meetsThreshold($minConfidence, $minRelevance)) {
-                    $kept[] = [$extracted, $item];
+                if (! $item instanceof NewsItem) {
+                    continue;
+                }
+
+                $definition = $this->resolveDefinition($watch, $offered, $extracted->eventKey);
+
+                if (! $definition instanceof SignalDefinition) {
+                    continue;
+                }
+
+                $thresholds = $definition->effectiveThresholds();
+
+                if ($extracted->meetsThreshold($thresholds['min_confidence'], $thresholds['min_relevance'])) {
+                    $kept[] = [$extracted, $item, $definition];
                 }
             }
         }
@@ -277,27 +364,94 @@ final class RunSignalWatchAction
     }
 
     /**
+     * The definition a returned `event_type` names — **only** if it was one offered for this run.
+     *
+     * This is the guard that replaced the JSON schema's `enum` (ADR 0018 §7). An unoffered key is
+     * either a hallucination or a response somebody steered, and in both cases the item is dropped
+     * rather than written under a type the team never asked to watch for. Logged as a count with
+     * the key, because a type the model keeps inventing is a signal about the prompt — but never
+     * with the article's text.
+     *
+     * @param  array<string, SignalDefinition>  $offered
+     */
+    private function resolveDefinition(SignalWatch $watch, array $offered, ?string $key): ?SignalDefinition
+    {
+        if ($key === null) {
+            return null;
+        }
+
+        if (isset($offered[$key])) {
+            return $offered[$key];
+        }
+
+        Log::channel('signals')->warning('Signal extraction returned a signal type that was not offered; item dropped.', [
+            'team_id' => (int) $watch->team_id,
+            'signal_watch_id' => (int) $watch->getKey(),
+            'event_key' => $key,
+        ]);
+
+        return null;
+    }
+
+    /**
+     * The watched types as the prompt reads them: one block per type with its key, name, explainer
+     * and its include/exclude rules.
+     *
+     * Trusted input — a team's own wording about their own business, the same trust the business
+     * profile gets. The article text is the untrusted half and is wrapped separately.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     */
+    private function eventTypesPrompt(array $definitions): string
+    {
+        $blocks = [];
+
+        foreach ($definitions as $definition) {
+            $lines = ['- '.$definition->key.' ('.$definition->name.'): '.$definition->description];
+
+            $includes = $definition->includes();
+            if ($includes !== []) {
+                $lines[] = '  Counts as this type: '.implode('; ', $includes).'.';
+            }
+
+            $excludes = $definition->excludes();
+            if ($excludes !== []) {
+                $lines[] = '  Does NOT count: '.implode('; ', $excludes).'.';
+            }
+
+            $hint = $definition->suggested_approach_hint;
+            if ($hint !== null && trim($hint) !== '') {
+                $lines[] = '  Approach hint: '.trim($hint);
+            }
+
+            $blocks[] = implode("\n", $lines);
+        }
+
+        return implode("\n", $blocks);
+    }
+
+    /**
      * Persist the kept signals + the run totals in one transaction. `insertOrIgnore` on
      * `(team_id, url_hash)` makes a re-run idempotent and never overwrites an existing (possibly
      * converted) signal. Fires {@see SignalsDetected} after commit.
      *
-     * @param  list<array{0: ExtractedSignal, 1: NewsItem}>  $kept
+     * @param  list<array{0: ExtractedSignal, 1: NewsItem, 2: SignalDefinition}>  $kept
      */
     private function complete(SignalRun $run, SignalWatch $watch, array $kept, int $queriesCount, int $resultsCount, int $costMicros): SignalRun
     {
         // De-duplicate by url_hash within this run, keeping the highest-confidence result when the
         // model returns more than one for the same article.
         $best = [];
-        foreach ($kept as [$extracted, $item]) {
+        foreach ($kept as [$extracted, $item, $definition]) {
             $existing = $best[$item->urlHash][0] ?? null;
             if (! $existing instanceof ExtractedSignal || $extracted->confidence > $existing->confidence) {
-                $best[$item->urlHash] = [$extracted, $item];
+                $best[$item->urlHash] = [$extracted, $item, $definition];
             }
         }
 
         $rows = [];
-        foreach ($best as [$extracted, $item]) {
-            $rows[] = $this->toRow($run, $watch, $extracted, $item);
+        foreach ($best as [$extracted, $item, $definition]) {
+            $rows[] = $this->toRow($run, $watch, $extracted, $item, $definition);
         }
 
         $created = DB::transaction(function () use ($run, $watch, $rows, $queriesCount, $resultsCount, $costMicros): int {
@@ -338,24 +492,23 @@ final class RunSignalWatchAction
      * here. The news item's title is the factual headline; the AI summary is separate. `published_at`
      * falls back to the run time when Serper gave no parseable date.
      *
+     * Both the definition's id **and** its key are written: the id is the live attribution and the
+     * key is what survives the definition being deleted (ADR 0018 §4). The key comes off the
+     * resolved definition rather than off the model's answer, so a row can never carry a key the
+     * run did not offer.
+     *
      * @return array<string, mixed>
      */
-    private function toRow(SignalRun $run, SignalWatch $watch, ExtractedSignal $extracted, NewsItem $item): array
+    private function toRow(SignalRun $run, SignalWatch $watch, ExtractedSignal $extracted, NewsItem $item, SignalDefinition $definition): array
     {
         $now = now();
-
-        $eventType = $extracted->eventType;
-        if ($eventType === null) {
-            // Unreachable: only threshold-passing items (which require a non-null event type) are
-            // kept. Guarded so the not-null column can never be written empty.
-            throw new \LogicException('Cannot persist a signal without an event type.');
-        }
 
         return [
             'team_id' => $watch->team_id,
             'signal_watch_id' => $watch->getKey(),
             'signal_run_id' => $run->getKey(),
-            'event_type' => $eventType->value,
+            'signal_definition_id' => $definition->getKey(),
+            'event_key' => $definition->key,
             'status' => SignalStatus::New->value,
             'headline' => Str::limit($item->title, 255, ''),
             'summary' => $extracted->summary,

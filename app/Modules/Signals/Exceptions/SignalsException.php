@@ -120,6 +120,83 @@ final class SignalsException extends DomainException
     }
 
     /**
+     * A signal type is still attached to one or more watches, so removing it would quietly change
+     * what those watches look for.
+     *
+     * The count is named rather than just "it's in use", because the next thing the member needs to
+     * know is how much work detaching it is.
+     */
+    public static function definitionInUse(int $watches): self
+    {
+        $e = new self($watches === 1
+            ? 'This signal type is used by one of your watches. Take it off that watch first, or pause the type instead.'
+            : "This signal type is used by {$watches} of your watches. Take it off those watches first, or pause the type instead.");
+        $e->errorCode = 'signals.definition_in_use';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * The team already has as many signal types as they are allowed.
+     *
+     * Same reasoning as the watch ceiling: a type is multiplied by every watch that uses it and by
+     * every location S8 lets a watch cover, so each one is a standing instruction to spend money on
+     * searches. Pausing is the way out, which is why the message says so.
+     */
+    public static function tooManyDefinitions(int $max): self
+    {
+        $e = new self("You can have up to {$max} signal types. Remove or pause one to add another.");
+        $e->errorCode = 'signals.too_many_definitions';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * Someone tried to edit or delete a platform preset.
+     *
+     * A preset belongs to the product, not to a team — a team *clones* one and tunes their copy
+     * (ADR 0018 §3). This is the policy's answer rendered for a client that asked anyway; the
+     * message names the way forward rather than just refusing.
+     */
+    public static function presetNotEditable(): self
+    {
+        $e = new self('This is one of Alima’s standard signal types. Add it to your own types first, then tune your copy.');
+        $e->errorCode = 'signals.preset_not_editable';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * A preset was asked for by a key the library doesn't have.
+     */
+    public static function unknownPreset(): self
+    {
+        $e = new self('That signal type isn’t in the library any more.');
+        $e->errorCode = 'signals.unknown_preset';
+        $e->status = 404;
+
+        return $e;
+    }
+
+    /**
+     * A watch was saved naming no signal type that this team actually has.
+     *
+     * Distinct from a validation error on purpose: ids are dropped rather than rejected when they
+     * belong to another team (the same treatment as an out-of-team ICP), so "none of them were
+     * yours" has to be caught here rather than by a rule.
+     */
+    public static function noDefinitionsOnWatch(): self
+    {
+        $e = new self('Choose at least one signal type for this watch.');
+        $e->errorCode = 'signals.no_definitions';
+
+        return $e;
+    }
+
+    /**
      * The signal names no company to build a lead from, and none was supplied.
      */
     public static function noSubjectToConvert(): self

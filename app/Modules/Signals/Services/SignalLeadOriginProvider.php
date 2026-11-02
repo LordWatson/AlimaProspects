@@ -43,6 +43,9 @@ final class SignalLeadOriginProvider implements LeadOriginProvider
 
         $signal = Signal::query()
             ->where('team_id', $lead->team_id)
+            // Eager-loaded because `eventLabel()` reads it, and a lazy read would trip
+            // `preventLazyLoading` on the lead detail screen (S7, ADR 0018).
+            ->with('definition')
             ->whereKey((int) $signalId)
             ->first();
 
@@ -56,7 +59,9 @@ final class SignalLeadOriginProvider implements LeadOriginProvider
             kind: self::KIND,
             label: LeadSource::Signal->label(),
             headline: $signal->headline,
-            detail: $signal->event_type->label(),
+            // The definition's name, or a humanised key where the type has since been deleted -
+            // a lead's origin panel must not go blank because the team tidied up their library.
+            detail: $signal->eventLabel(),
             url: $signal->source_url,
             sourceName: $signal->source_name,
             occurredAt: $signal->published_at?->utc()->toIso8601String(),

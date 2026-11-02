@@ -59,10 +59,28 @@ return [
     // this is the per-member cap, because a run spends real money.
     'run_rate_limit' => (int) env('SIGNALS_RUN_RATE_LIMIT', 10),
 
+    // How many signal types one team may have (S7, ADR 0018). Same reasoning as the watch
+    // ceiling, one level up: a type is multiplied by every watch that uses it and - from S8 - by
+    // every location those watches cover, so each one is a standing instruction to spend money on
+    // searches. Platform presets don't count against it; only the team's own rows do. The real
+    // plan-driven limit arrives in S16; this is the floor that keeps S7 from shipping unbounded.
+    'max_definitions_per_team' => (int) env('SIGNALS_MAX_DEFINITIONS_PER_TEAM', 25),
+
     // How many watches one team may have (S6). A watch is a standing instruction to spend money,
     // so the ceiling is on *creating* them, not just on running them — the per-watch run throttle
     // doesn't help against a team with two hundred watches.
     'max_watches_per_team' => (int) env('SIGNALS_MAX_WATCHES_PER_TEAM', 10),
+
+    // The most paid searches one run of one watch may make (S7). v1 could not exceed 8: three
+    // event types with three, three and two templates. A team can now hold 25 types of up to 10
+    // templates each, so the same arithmetic reaches ~250 searches per run per watch — a 30x cost
+    // exposure that S7 opened and that nothing else closes, since the per-watch 15-minute throttle
+    // and the per-member rate limit both bound how *often* a run happens, not how big one is.
+    //
+    // The run trims to this ceiling in a deterministic order and **records that it trimmed**, which
+    // the watch card shows: a silent trim is a lie about coverage. S8 keeps this ceiling and makes
+    // it bite harder, since a watch there multiplies templates by locations.
+    'max_queries_per_run' => (int) env('SIGNALS_MAX_QUERIES_PER_RUN', 40),
 
     // AI thresholds applied in S3 (declared here so the whole feature's knobs live together): a kept
     // signal needs is_event && confidence >= min_confidence && relevance >= min_relevance.
@@ -96,6 +114,13 @@ return [
      * exact-phrase quoting and no `-based`, which returned 0 results on /news + qdr:w). `{location}`
      * is substituted from the watch's location. Keep breadth (several per type) rather than one
      * clever query.
+     *
+     * **SEED DATA ONLY since S7.** `SignalQueryBuilder` no longer reads this: a signal type is a
+     * row a team owns, and its templates live on that row (ADR 0018). These are the templates the
+     * three platform presets were created with, kept here as the record of where they came from and
+     * because `SignalPresetCatalogue` is checked against them. Editing them changes **nothing** for
+     * any existing team — change a preset in that catalogue and re-run `SignalPresetSeeder`, or
+     * edit the team's own type on /signals/types.
      */
     'templates' => [
         'uae' => [

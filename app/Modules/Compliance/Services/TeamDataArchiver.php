@@ -231,7 +231,7 @@ final class TeamDataArchiver
                     $signal->id,
                     $signal->lead_id,
                     $signal->status->value,
-                    $signal->event_type->value,
+                    $signal->event_key,
                     $signal->subject_person_name,
                     $signal->subject_person_role,
                     $signal->subject_company_name,

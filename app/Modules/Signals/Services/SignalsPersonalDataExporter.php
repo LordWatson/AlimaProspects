@@ -77,7 +77,9 @@ final class SignalsPersonalDataExporter
                 $rows[] = [
                     'signal_id' => (int) $signal->getKey(),
                     'status' => $signal->status->value,
-                    'event_type' => $signal->event_type->value,
+                    // The key, not the label: a DSAR export is a record of what is held, and a
+                    // key is stable where a team-authored name is not.
+                    'event_type' => $signal->event_key,
                     'subject_person_name' => $signal->subject_person_name,
                     'subject_person_role' => $signal->subject_person_role,
                     'subject_company_name' => $signal->subject_company_name,

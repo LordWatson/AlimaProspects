@@ -9,13 +9,13 @@ use App\Modules\Core\Concerns\BelongsToTeam;
 use App\Modules\Core\Enums\Currency;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Signals\Enums\SignalDismissReason;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use Database\Factories\SignalFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * A single wealth/liquidity event kept from a {@see SignalRun} (ADR 0011): an AI-classified,
@@ -23,15 +23,21 @@ use Illuminate\Support\Carbon;
  * never email or phone (data minimisation). Unique per team on `url_hash`. On conversion (S4) it
  * points one-way at the {@see Lead} it created. Tenant-scoped via {@see BelongsToTeam}.
  *
- * `signal_watch_id` and `signal_run_id` are **nullable**: a converted signal is the provenance of
- * a real lead, so deleting the watch that found it nulls the attribution rather than destroying
- * the record (see the S6 migration and `DeleteSignalWatchAction`).
+ * `signal_watch_id`, `signal_run_id` and `signal_definition_id` are all **nullable**: a converted
+ * signal is the provenance of a real lead, so deleting the watch that found it — or the definition
+ * that classified it — nulls the attribution rather than destroying the record (the S6 migration,
+ * `DeleteSignalWatchAction`, and ADR 0018 §4).
+ *
+ * `event_key` is the definition's key, **copied** rather than only referenced, for that same
+ * reason: a signal whose definition is gone must still render, group and report. It is v1's
+ * `event_type` column renamed; the enum it used to hold is gone (ADR 0018 §1).
  *
  * @property int $id
  * @property int $team_id
  * @property int|null $signal_watch_id
  * @property int|null $signal_run_id
- * @property SignalEventType $event_type
+ * @property int|null $signal_definition_id
+ * @property string $event_key
  * @property SignalStatus $status
  * @property SignalDismissReason|null $dismiss_reason
  * @property string $headline
@@ -71,7 +77,8 @@ class Signal extends Model
         'team_id',
         'signal_watch_id',
         'signal_run_id',
-        'event_type',
+        'signal_definition_id',
+        'event_key',
         'status',
         'dismiss_reason',
         'headline',
@@ -117,6 +124,56 @@ class Signal extends Model
     }
 
     /**
+     * The definition that classified this signal, when it still exists. Nullable and
+     * `nullOnDelete`, so the signal outlives it — {@see self::eventLabel()} is what a screen reads,
+     * and it falls back to the stored key.
+     *
+     * @return BelongsTo<SignalDefinition, $this>
+     */
+    public function definition(): BelongsTo
+    {
+        // **`withTrashed`, and this is the whole point of the relation.** `SignalDefinition` soft
+        // deletes, and the soft-delete global scope applies to a relation read as much as to a
+        // query — so without this, deleting a type makes `$signal->definition` null and every card,
+        // report row and lead-origin panel for the signals it found falls back to a humanised key.
+        // ADR 0018 §4 promises the opposite: a signal outlives its definition **with** its
+        // attribution. (Found in review; the first version was a plain `belongsTo` and the test
+        // only checked that the row still existed, not that the signal could still reach it.)
+        return $this->belongsTo(SignalDefinition::class, 'signal_definition_id')->withTrashed();
+    }
+
+    /**
+     * What to call this kind of event on screen.
+     *
+     * Reads the definition's name where the relation is loaded and the row still exists, and
+     * otherwise humanises the stored key. The fallback is the point: a team that deleted a signal
+     * type should see "Funding round" on the signals it already found, not a blank or a slug.
+     *
+     * Call sites must eager-load `definition` (`preventLazyLoading` is on outside production), which
+     * is why this is a method rather than an accessor that could quietly N+1 a page of cards.
+     */
+    public function eventLabel(): string
+    {
+        $definition = $this->relationLoaded('definition') ? $this->definition : null;
+
+        return $definition instanceof SignalDefinition
+            ? $definition->name
+            : Str::headline($this->event_key);
+    }
+
+    /**
+     * The one-line explainer for this kind of event, or null when the definition is gone — a
+     * humanised key is a fair label but it is not a description, and inventing one would be worse
+     * than leaving the line out.
+     */
+    public function eventDescription(): ?string
+    {
+        $definition = $this->relationLoaded('definition') ? $this->definition : null;
+
+        return $definition instanceof SignalDefinition ? $definition->description : null;
+    }
+
+    /**
      * The lead this signal was converted into (S4), if any. One-way: Lead Sourcing never depends on
      * Signals.
      *
@@ -143,7 +200,6 @@ class Signal extends Model
     protected function casts(): array
     {
         return [
-            'event_type' => SignalEventType::class,
             'status' => SignalStatus::class,
             'dismiss_reason' => SignalDismissReason::class,
             'amount_minor' => 'integer',

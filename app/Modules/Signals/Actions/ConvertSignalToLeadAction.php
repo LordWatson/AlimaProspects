@@ -180,7 +180,10 @@ final class ConvertSignalToLeadAction
             subject: $locked,
             properties: [
                 'signal_id' => (int) $locked->getKey(),
-                'event_type' => $locked->event_type->value,
+                // The property key stays `event_type` although the column is now `event_key`:
+                // timeline rows written before S7 use this name, and renaming it would strand
+                // every lead converted up to now. The value is the definition's key either way.
+                'event_type' => $locked->event_key,
                 // The article's own headline, so the timeline says which event this was. A value,
                 // not a sentence — the wording around it is composed at render time (EN/AR).
                 'headline' => Str::limit($locked->headline, 160),
@@ -195,7 +198,7 @@ final class ConvertSignalToLeadAction
 
         $this->audit->log('signals.converted', $locked, [
             'lead_id' => (int) $survivor->getKey(),
-            'event_type' => $locked->event_type->value,
+            'event_type' => $locked->event_key,
             'attached' => $attached,
             // Whether a person was recorded, never who: the audit trail has no business holding a
             // second copy of a named individual (CLAUDE.md logging rules).
@@ -269,7 +272,9 @@ final class ConvertSignalToLeadAction
     {
         $payload = [
             'signal_id' => (int) $signal->getKey(),
-            'event_type' => $signal->event_type->value,
+            // Same reasoning as the timeline above: this is a key inside `leads.raw`, read back by
+            // `SignalLeadOriginProvider` and present on every lead converted before S7.
+            'event_type' => $signal->event_key,
             'headline' => Str::limit($signal->headline, 255),
         ];
 

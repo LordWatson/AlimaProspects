@@ -6,7 +6,6 @@ namespace App\Modules\Signals\Http\Requests;
 
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Data\SignalFilters;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -33,8 +32,12 @@ final class ListSignalsRequest extends FormRequest
     {
         return [
             'status' => ['nullable', 'string', 'in:'.implode(',', SignalStatus::values())],
-            'event_types' => ['nullable', 'array', 'max:'.count(SignalEventType::cases())],
-            'event_types.*' => ['string', 'max:32'],
+            // Signal definition keys since S7 (ADR 0018). The bound is a team's library ceiling
+            // rather than a fixed set of cases, and membership is not checked here for the reason
+            // `SignalFilters` gives: an unknown key narrows to nothing, which is what a stale
+            // shared link should do rather than 422.
+            'event_keys' => ['nullable', 'array', 'max:'.max(1, (int) config('signals.max_definitions_per_team', 25))],
+            'event_keys.*' => ['string', 'max:32'],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'min_relevance' => ['nullable', 'integer', 'min:0', 'max:100'],

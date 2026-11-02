@@ -83,7 +83,14 @@ Scopes are one read/write pair per resource group, defined in `App\Modules\Auth\
 and enforced per route by `EnsureTokenAbility`:
 
 `leads:*` · `discovery:*` · `icp:*` · `scoring:*` · `outreach:*` · `signals:*` · `insights:*` ·
-`notifications:*` · `reports:read` · `team:*`
+
+> **`signals:*` covers signal definitions too** (S7, ADR 0018). A signal type is part of
+> Signals, so `/signal-definitions` reuses `signals:read`/`signals:write` rather than getting
+> a scope of its own: a token that could read the feed but not the types it is grouped by is a
+> credential nobody would mean to issue. `GET /signal-definitions/presets` is the read-only
+> platform library and is **not paginated** — it is a curated set measured in tens, and making a
+> client page through it to render a picker would be work for nothing.
+> `notifications:*` · `reports:read` · `team:*`
 
 A token without the ability gets `403 insufficient_token_ability`, with what would have been enough
 in `error.details.required_abilities` — so a client can say "reissue this token with `leads:write`"

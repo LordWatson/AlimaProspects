@@ -5,6 +5,80 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-02 — Signals S7: signal types became data
+
+**You can write your own signal types.** v1 shipped three — acquisition, funding round, relocation —
+in a PHP enum, chosen for one customer. Adding a fourth meant a code change in nine files, a new
+case in an AI schema's `enum`, a release and a deploy, which made "the feature is generic" a claim
+rather than a fact. It is now a fact: a signal type is a `SignalDefinition` row, created and tuned
+on **`/signals/types`** — its name, the plain-keyword searches that find it, the rules that tell it
+from the round-ups and trackers that read just like it, and its own confidence and relevance floors.
+
+v1's three types are the first three entries in a **platform preset library** teams clone from.
+They clone rather than reference, and that is the decision rather than an implementation detail: a
+definition is a standing instruction to spend money on searches, so a change we make must not
+silently alter what a team is paying to run, and a team's own tuning must not leak back upward.
+ADR 0018 records all of it, including the test for when a "type" should be an enum and when it
+should be a row — **does the application branch on the value?** — which is the only reason
+`CLAUDE.md` §2 is set aside here.
+
+The one real safety change is worth stating plainly. v1 constrained the AI's `event_type` with a
+JSON-schema `enum`, so a hijacked or hallucinated response naming an unknown type was refused before
+our code saw it: the schema was the guard. Per-team keys make that enum impossible, so
+`signals.extract_event` **v2** injects the watch's own keys and rules into the prompt body and
+`RunSignalWatchAction::resolveDefinition()` rejects any key the run did not offer. A prompt
+describes a constraint; it does not enforce one. There is a test that feeds a hostile key back.
+
+Three bugs found while building it, each worth remembering:
+
+- **A stored generated column refuses a cascading foreign key on its base column in MySQL.**
+  `scope_id` (which makes `unique(scope_id, key)` mean "one key per scope", something
+  `unique(team_id, key)` cannot because MySQL treats NULLs as distinct) was `STORED`. SQLite
+  accepted it and the whole suite passed; `php artisan migrate` against MySQL failed on the first
+  statement with error 1215. It is `VIRTUAL` now.
+- **Laravel's generated index name for the new pivot is 67 characters** against MySQL's 64-character
+  identifier limit. Both pivot indexes are named explicitly.
+- **`Event::fake()` suppresses Eloquent model events.** `scope_id` had been maintained by a model
+  `creating` hook, so every row written by a test that fakes events landed in the platform scope and
+  collided. A column carrying a uniqueness invariant cannot depend on anything a caller might skip —
+  bulk `insert()` fires no model events either — so the database computes it.
+
+The migrations were run round-trip against the local MySQL (apply, verify, roll back, verify,
+re-apply) because the data migration touches every existing team's live watches. Nine watches and
+eight signals repointed with no cross-tenant rows and no losses either way.
+
+**The review round found three more**, all of them in this phase's own new code:
+
+- **Deleting a signal type and re-adding it from the library was a 500.** `unique(scope_id, key)`
+  knows nothing about `deleted_at`, so the soft-deleted row still held its key while the clone path
+  looked for an existing one with the default scope and could not see what it was about to collide
+  with. The same collision arrived from a team writing their own type called "Acquisition". Both go
+  through one place now, which restores a deleted clone rather than re-creating it and gives a clone
+  a suffixed key when somebody else took its own.
+- **A deleted type stopped naming the signals it had found.** `Signal::definition()` was a plain
+  `belongsTo`, and the soft-delete scope applies to a relation read — so every card, report row and
+  lead-origin panel for those signals quietly degraded from the team's own words to a humanised
+  slug, which is the opposite of what ADR 0018 §4 promises.
+- **Filtering the feed by a deleted type's key returned everything.** An unknown key was _dropped_,
+  which was right when a key could only be a removed enum case and meaningless — and wrong now that
+  the signals of a deleted type are still in the feed carrying that key. A filtered request was
+  being answered with the unfiltered page, and those signals could not be isolated at all. Keys are
+  honoured as given; a key matching nothing gives an empty page, which the screen already explains.
+
+Plus a cost ceiling this phase needed and did not have. v1 could not exceed eight paid searches per
+run, because the three event types had three, three and two templates between them. A team can now
+hold 25 types of up to ten templates, so the same arithmetic reaches ~250 — and neither the
+per-watch 15-minute throttle nor the per-member rate limit helps, because both bound how _often_ a
+run happens rather than how big one is. `signals.max_queries_per_run` (default 40) is that bound,
+and a run that trims says so rather than quietly covering less.
+
+On the frontend the editor could not scroll — `DialogContent` is a fixed, centred panel with no
+overflow, and a ten-field form puts Save out of reach on a laptop and at 200% zoom (WCAG 1.4.10) —
+and closing it discarded a long hand-written form with no prompt. It is now the scrolling variant,
+guarded by the same unsaved-changes dialog as the product's other long forms, and rebuilt on the
+shared `FormField` set so it has `aria-invalid`, an error summary and required-or-optional in words
+rather than an asterisk.
+
 ### Fixed — 2026-11-01 — Phase 20, the review round
 
 `security-review`, `laravel-module-reviewer` and `brand-reviewer` on the finished phase. Three real

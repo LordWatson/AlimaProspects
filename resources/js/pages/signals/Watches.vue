@@ -26,8 +26,7 @@ import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import type {
     SignalCadenceOption,
-    SignalEventType,
-    SignalEventTypeOption,
+    SignalDefinition,
     SignalRunProgressPayload,
     SignalRunStatus,
     SignalWatch,
@@ -47,7 +46,8 @@ defineOptions({
 const props = defineProps<{
     watches: SignalWatch[];
     options: {
-        event_types: SignalEventTypeOption[];
+        /** The team's own signal types — what a watch is built from since S7 (ADR 0018). */
+        definitions: SignalDefinition[];
         cadences: SignalCadenceOption[];
         icps: { id: number; name: string; is_active: boolean }[];
     };
@@ -67,12 +67,32 @@ const showEditor = ref(false);
 const form = useForm<SignalWatchForm>({
     name: '',
     location: props.defaults.location,
-    event_types: [...props.defaults.event_types],
+    signal_definition_ids: [],
     ignore_domains: [],
     cadence: props.defaults.cadence,
     is_active: true,
     icp_id: null,
 });
+
+/**
+ * A type's name is Alima's words or the team's, and only the server knows which — see
+ * `SignalDefinition::usesPlatformWording()`. Translating the team's own wording would be the app
+ * overwriting what somebody typed.
+ */
+function typeLabel(definition: SignalDefinition): string {
+    return definition.translatable ? t(definition.name) : definition.name;
+}
+
+function typeExplainer(definition: SignalDefinition): string {
+    return definition.translatable
+        ? t(definition.description)
+        : definition.description;
+}
+
+/** Every active type the team has, which is what a new watch starts ticked. */
+const everyTypeId = computed(() =>
+    props.options.definitions.map((definition) => definition.id),
+);
 
 /**
  * The exclusion list is edited as one domain per line, which is how a team thinks about it, and
@@ -94,7 +114,9 @@ function openNew(): void {
     form.defaults({
         name: '',
         location: props.defaults.location,
-        event_types: [...props.defaults.event_types],
+        // Pre-ticked: the broadest useful watch is the one most likely to find something, and a
+        // first watch that finds nothing teaches the team that Signals doesn't work.
+        signal_definition_ids: [...everyTypeId.value],
         ignore_domains: [],
         cadence: props.defaults.cadence,
         is_active: true,
@@ -110,7 +132,9 @@ function openEdit(watch: SignalWatch): void {
     form.defaults({
         name: watch.name,
         location: watch.location,
-        event_types: watch.event_types.map((type) => type.value),
+        signal_definition_ids: (watch.definitions ?? []).map(
+            (definition) => definition.id,
+        ),
         ignore_domains: [...watch.ignore_domains],
         cadence: watch.cadence,
         is_active: watch.is_active,
@@ -120,10 +144,10 @@ function openEdit(watch: SignalWatch): void {
     showEditor.value = true;
 }
 
-function toggleEventType(type: SignalEventType): void {
-    form.event_types = form.event_types.includes(type)
-        ? form.event_types.filter((t) => t !== type)
-        : [...form.event_types, type];
+function toggleDefinition(id: number): void {
+    form.signal_definition_ids = form.signal_definition_ids.includes(id)
+        ? form.signal_definition_ids.filter((candidate) => candidate !== id)
+        : [...form.signal_definition_ids, id];
 }
 
 function submit(): void {
@@ -148,7 +172,9 @@ function toggleActive(watch: SignalWatch): void {
         {
             name: watch.name,
             location: watch.location,
-            event_types: watch.event_types.map((type) => type.value),
+            signal_definition_ids: (watch.definitions ?? []).map(
+                (definition) => definition.id,
+            ),
             // Carried through unchanged: this posts the whole watch, and dropping the list here
             // would quietly clear it every time someone paused a watch.
             ignore_domains: watch.ignore_domains,
@@ -371,6 +397,11 @@ onBeforeUnmount(() => {
                 >
                     {{ t('New watch') }}
                 </Button>
+                <Button variant="outline" as-child>
+                    <Link href="/signals/types">
+                        {{ t('Signal types') }}
+                    </Link>
+                </Button>
                 <Button variant="hero" as-child>
                     <Link href="/signals">
                         <ArrowLeft
@@ -401,7 +432,7 @@ onBeforeUnmount(() => {
             "
             :description="
                 t(
-                    'We’ll watch :location every day for company sales, funding rounds and founders moving in. You can change any of it afterwards.',
+                    'We’ll add Alima’s signal types and watch :location every day — company sales, funding rounds, founders moving in. You can change any of it afterwards.',
                     { location: defaults.location },
                 )
             "
@@ -603,11 +634,12 @@ onBeforeUnmount(() => {
                     <!-- What it watches for -->
                     <div class="flex flex-wrap gap-2">
                         <Badge
-                            v-for="type in watch.event_types"
-                            :key="type.value"
+                            v-for="definition in watch.definitions ?? []"
+                            :key="definition.id"
                             variant="lilac"
+                            dir="auto"
                         >
-                            {{ t(type.label) }}
+                            {{ typeLabel(definition) }}
                         </Badge>
                     </div>
 
@@ -783,36 +815,68 @@ onBeforeUnmount(() => {
                             >
                                 {{ t('What counts as an event') }}
                             </legend>
-                            <div class="space-y-2">
+
+                            <!-- A checkbox per type the team has, rather than three fixed ones
+                                 (S7, ADR 0018). A team with none is sent to the library instead of
+                                 shown an empty fieldset — the one-click first watch is the path
+                                 that never reaches this state. -->
+                            <div
+                                v-if="options.definitions.length"
+                                class="space-y-2"
+                            >
                                 <Label
-                                    v-for="option in options.event_types"
-                                    :key="option.value"
+                                    v-for="definition in options.definitions"
+                                    :key="definition.id"
                                     class="flex cursor-pointer items-start gap-3 rounded-2xl border border-border p-3 transition-colors has-[:checked]:border-brand has-[:checked]:bg-brand/5 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring"
                                 >
                                     <input
                                         type="checkbox"
                                         class="mt-0.5 size-4 accent-brand"
-                                        :value="option.value"
+                                        :value="definition.id"
                                         :checked="
-                                            form.event_types.includes(
-                                                option.value,
+                                            form.signal_definition_ids.includes(
+                                                definition.id,
                                             )
                                         "
-                                        @change="toggleEventType(option.value)"
+                                        @change="
+                                            toggleDefinition(definition.id)
+                                        "
                                     />
-                                    <span class="space-y-0.5">
+                                    <span class="space-y-0.5" dir="auto">
                                         <span
-                                            class="block text-sm font-medium text-foreground"
-                                            >{{ t(option.label) }}</span
+                                            class="block text-base font-semibold text-foreground rtl:font-bold"
+                                            >{{ typeLabel(definition) }}</span
                                         >
                                         <span
-                                            class="block text-xs text-muted-foreground"
-                                            >{{ t(option.description) }}</span
+                                            class="block text-base text-muted-foreground"
+                                            >{{
+                                                typeExplainer(definition)
+                                            }}</span
                                         >
                                     </span>
                                 </Label>
                             </div>
-                            <InputError :message="form.errors.event_types" />
+                            <div
+                                v-else
+                                class="space-y-3 rounded-2xl border border-border p-4"
+                                data-test="no-types-for-watch"
+                            >
+                                <p class="text-base text-foreground">
+                                    {{
+                                        t(
+                                            'You have no signal types yet, so there is nothing for a watch to look for.',
+                                        )
+                                    }}
+                                </p>
+                                <Button variant="outline" size="sm" as-child>
+                                    <Link href="/signals/types">
+                                        {{ t('Pick your signal types') }}
+                                    </Link>
+                                </Button>
+                            </div>
+                            <InputError
+                                :message="form.errors.signal_definition_ids"
+                            />
                         </fieldset>
 
                         <div class="grid gap-4 sm:grid-cols-2">

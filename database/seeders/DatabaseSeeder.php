@@ -14,12 +14,17 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Global spatie roles + the AI prompt registry first, then the platform operator, then a
-        // full, explorable demo tenancy.
+        // Global spatie roles, the AI prompt registry and the signal-definition presets first,
+        // then the platform operator, then a full, explorable demo tenancy.
         //
+        // All three of the first group are **platform reference data**: they belong to the product
+        // rather than to any tenant, and every install needs them. The signal presets in particular
+        // are what a team clones to get their own signal types (ADR 0018), so a box without them
+        // has a Signals feature nobody can set up.
         $this->call([
             TeamRolesSeeder::class,
             AiPromptTemplateSeeder::class,
+            SignalPresetSeeder::class,
         ]);
 
         // **Skipped in production rather than attempted and refused.** `SuperAdminSeeder` throws

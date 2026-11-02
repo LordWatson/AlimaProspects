@@ -8,12 +8,13 @@ use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\AuditLog;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\ICP\Models\Icp;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalWatchCadence;
 use App\Modules\Signals\Jobs\RunSignalWatchJob;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -33,11 +34,13 @@ it('lists the team’s watches with their recent runs and options', function ():
     $team = $user->currentTeam()->firstOrFail();
 
     app(TeamContext::class)->run($team, function () use ($team): void {
-        $watch = SignalWatch::factory()->create([
-            'team_id' => $team->getKey(),
-            'name' => 'Dubai wealth events',
-            'last_run_at' => now()->subHours(3),
-        ]);
+        $watch = SignalWatch::factory()
+            ->watchingPresets(SignalPresetCatalogue::keys())
+            ->create([
+                'team_id' => $team->getKey(),
+                'name' => 'Dubai wealth events',
+                'last_run_at' => now()->subHours(3),
+            ]);
 
         SignalRun::factory()->completed()->count(2)->create([
             'team_id' => $team->getKey(),
@@ -60,12 +63,14 @@ it('lists the team’s watches with their recent runs and options', function ():
             ->where('watches.0.signals_count', 1)
             // A plain list, not a `{ data: [...] }` wrapper — the screen reads `watch.runs.length`.
             ->has('watches.0.runs', 2)
-            // Event types arrive with their labels and descriptions, so the checkboxes have their
-            // explainers without the client holding a copy of the wording.
-            ->has('watches.0.event_types.0.description')
+            // The watched types arrive as full definitions, so the checkboxes have their
+            // explainers without the client fetching the library (S7, ADR 0018).
+            ->has('watches.0.definitions', 3)
+            ->has('watches.0.definitions.0.description')
+            ->where('watches.0.definitions.0.is_preset', false)
             // Computed from the cadence, not stored.
             ->where('watches.0.next_due_at', fn (?string $due): bool => $due !== null)
-            ->has('options.event_types', 3)
+            ->has('options.definitions', 3)
             ->has('options.cadences', 2)
             ->has('defaults.location')
             ->where('can.manage', true));
@@ -97,7 +102,10 @@ it('creates a watch and audits it', function (): void {
         ->post(route('signal-watches.store'), [
             'name' => 'Dubai founders',
             'location' => 'Dubai',
-            'event_types' => ['acquisition', 'funding_round'],
+            'signal_definition_ids' => signalDefinitionIds($team, [
+                SignalPresetCatalogue::ACQUISITION,
+                SignalPresetCatalogue::FUNDING_ROUND,
+            ]),
             'cadence' => 'weekly',
             'is_active' => true,
         ])
@@ -106,7 +114,11 @@ it('creates a watch and audits it', function (): void {
     $watch = SignalWatch::withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
 
     expect($watch->name)->toBe('Dubai founders')
-        ->and($watch->event_types)->toBe(['acquisition', 'funding_round'])
+        // The types live in the pivot since S7, so this is a relation rather than a column.
+        ->and($watch->eventKeys())->toBe([
+            SignalPresetCatalogue::ACQUISITION,
+            SignalPresetCatalogue::FUNDING_ROUND,
+        ])
         ->and($watch->cadence)->toBe(SignalWatchCadence::Weekly)
         ->and($watch->is_active)->toBeTrue()
         // v1 is UAE-only: the market is set by the DTO, not taken from the form.
@@ -127,7 +139,7 @@ it('ignores a market posted by a tampered form', function (): void {
         ->post(route('signal-watches.store'), [
             'name' => 'London founders',
             'location' => 'London',
-            'event_types' => ['acquisition'],
+            'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
             'cadence' => 'daily',
             'market' => 'uk',
         ])
@@ -149,18 +161,31 @@ it('creates the one-click default watch for a team with none', function (): void
 
     // Deliberately the broadest useful watch: a first watch that finds nothing teaches the team
     // that Signals doesn't work.
+    //
+    // Since S7 this also has to **clone the library presets first** - the team had no signal types
+    // a moment ago, and a watch is built from theirs (ADR 0018). That is what keeps the shortest
+    // path one click instead of making them assemble a library before they can look at anything.
     expect($watch->location)->toBe('Dubai')
-        ->and($watch->event_types)->toBe(SignalEventType::values())
+        ->and($watch->eventKeys())->toBe(SignalPresetCatalogue::keys())
         ->and($watch->cadence)->toBe(SignalWatchCadence::Daily)
         ->and($watch->is_active)->toBeTrue();
+
+    $definitions = SignalDefinition::withoutGlobalScopes()->where('team_id', $team->getKey())->get();
+
+    expect($definitions)->toHaveCount(3)
+        // Clones, carrying the provenance that lets S15 offer the diff when a preset moves on.
+        ->and($definitions->pluck('preset_key')->sort()->values()->all())
+        ->toBe(SignalPresetCatalogue::keys());
 });
 
 it('validates a watch', function (): void {
     $user = createUserWithTeam();
 
     $this->actingAs($user)
-        ->post(route('signal-watches.store'), ['name' => '', 'location' => '', 'event_types' => [], 'cadence' => 'hourly'])
-        ->assertSessionHasErrors(['name', 'location', 'event_types', 'cadence']);
+        ->post(route('signal-watches.store'), [
+            'name' => '', 'location' => '', 'signal_definition_ids' => [], 'cadence' => 'hourly',
+        ])
+        ->assertSessionHasErrors(['name', 'location', 'signal_definition_ids', 'cadence']);
 });
 
 it('refuses an ICP from another team', function (): void {
@@ -176,7 +201,10 @@ it('refuses an ICP from another team', function (): void {
         ->post(route('signal-watches.store'), [
             'name' => 'Dubai',
             'location' => 'Dubai',
-            'event_types' => ['acquisition'],
+            'signal_definition_ids' => signalDefinitionIds(
+                $user->currentTeam()->firstOrFail(),
+                [SignalPresetCatalogue::ACQUISITION],
+            ),
             'cadence' => 'daily',
             'icp_id' => $foreign->getKey(),
         ])
@@ -196,7 +224,7 @@ it('updates a watch without making a reactivated one instantly due', function ()
         ->patch(route('signal-watches.update', ['watch' => $watch->getKey()]), [
             'name' => 'Back on',
             'location' => 'Dubai',
-            'event_types' => ['funding_round'],
+            'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::FUNDING_ROUND]),
             'cadence' => 'daily',
             'is_active' => true,
         ])
@@ -328,7 +356,9 @@ it('stops a read-only member managing or running watches', function (): void {
         ->assertInertia(fn ($page) => $page->where('can.manage', false));
 
     $this->actingAs($readOnly)->post(route('signal-watches.store'), [
-        'name' => 'Nope', 'location' => 'Dubai', 'event_types' => ['acquisition'], 'cadence' => 'daily',
+        'name' => 'Nope', 'location' => 'Dubai',
+        'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
+        'cadence' => 'daily',
     ])->assertForbidden();
 
     $this->actingAs($readOnly)
@@ -355,7 +385,9 @@ it('404s on another team’s watch rather than admitting it exists', function ()
 
     $this->actingAs($user)
         ->patch(route('signal-watches.update', ['watch' => $watch->getKey()]), [
-            'name' => 'Mine now', 'location' => 'Dubai', 'event_types' => ['acquisition'], 'cadence' => 'daily',
+            'name' => 'Mine now', 'location' => 'Dubai',
+            'signal_definition_ids' => signalDefinitionIds($user->currentTeam()->firstOrFail(), [SignalPresetCatalogue::ACQUISITION]),
+            'cadence' => 'daily',
         ])
         ->assertNotFound();
 

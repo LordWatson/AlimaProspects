@@ -10,16 +10,17 @@ use App\Modules\LeadsWorkspace\Http\Resources\PipelineStageResource;
 use App\Modules\Signals\Actions\ConvertSignalToLeadAction;
 use App\Modules\Signals\Actions\CountSignalWatchesAction;
 use App\Modules\Signals\Actions\DismissSignalAction;
+use App\Modules\Signals\Actions\ListSignalDefinitionsAction;
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Actions\RestoreSignalAction;
 use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Enums\SignalDismissReason;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
 use App\Modules\Signals\Http\Requests\ConvertSignalRequest;
 use App\Modules\Signals\Http\Requests\DismissSignalRequest;
 use App\Modules\Signals\Http\Requests\ListSignalsRequest;
+use App\Modules\Signals\Http\Resources\SignalDefinitionResource;
 use App\Modules\Signals\Http\Resources\SignalResource;
 use App\Modules\Signals\Policies\SignalPolicy;
 use Illuminate\Http\RedirectResponse;
@@ -44,6 +45,7 @@ final class SignalController extends Controller
         ListSignalsRequest $request,
         ListSignalsAction $list,
         CountSignalWatchesAction $countWatches,
+        ListSignalDefinitionsAction $listDefinitions,
         EnsureDefaultPipelineStagesAction $ensureStages,
     ): Response {
         $team = $this->team($request);
@@ -51,6 +53,15 @@ final class SignalController extends Controller
 
         $this->authorize('view', $this->transientSignal($team));
 
+        // The team's own signal types, which the filter chips are drawn from and which the
+        // filters are narrowed against. All of them, paused included: a paused type stops finding
+        // new events, it does not stop the ones it already found from being worth filtering to.
+        $definitions = $listDefinitions->handle($team);
+
+        // The event keys are honoured as given, including one whose type the team has since
+        // deleted: its signals are still in the feed and still carry the key, so filtering by it is
+        // a real question (`SignalFilters`). A key matching nothing gives an empty page, which the
+        // screen reads as "nothing matches these filters" rather than as a quiet week.
         $filters = $request->filters();
         $signals = $list->handle($team, $filters, $request->perPage());
 
@@ -65,11 +76,7 @@ final class SignalController extends Controller
             'filters' => $filters->toFormState(),
             'counts' => $this->counts($list->counts($team)),
             'options' => [
-                'event_types' => array_map(static fn (SignalEventType $type): array => [
-                    'value' => $type->value,
-                    'label' => $type->label(),
-                    'description' => $type->description(),
-                ], SignalEventType::cases()),
+                'definitions' => SignalDefinitionResource::collection($definitions)->resolve($request),
                 'dismiss_reasons' => array_map(static fn (SignalDismissReason $reason): array => [
                     'value' => $reason->value,
                     'label' => $reason->label(),

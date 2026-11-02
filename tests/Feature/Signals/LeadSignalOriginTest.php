@@ -9,7 +9,6 @@ use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\Signals\Actions\ConvertSignalToLeadAction;
 use App\Modules\Signals\Data\ConvertSignalData;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalLeadOriginProvider;
@@ -54,7 +53,7 @@ it('describes the event a converted lead came from', function (): void {
         ->and($origin->kind)->toBe('signal')
         ->and($origin->label)->toBe(LeadSource::Signal->label())
         ->and($origin->headline)->toBe($signal->headline)
-        ->and($origin->detail)->toBe(SignalEventType::Acquisition->label())
+        ->and($origin->detail)->toBe('Acquisition')
         ->and($origin->url)->toBe($signal->source_url)
         ->and($origin->sourceName)->toBe('Gulf Business')
         ->and($origin->occurredAt)->not->toBeNull()

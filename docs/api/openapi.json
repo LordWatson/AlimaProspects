@@ -4830,7 +4830,7 @@
                         }
                     },
                     {
-                        "name": "event_types[]",
+                        "name": "event_keys[]",
                         "in": "query",
                         "schema": {
                             "type": "array",
@@ -5316,6 +5316,522 @@
                     },
                     "422": {
                         "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-definitions": {
+            "get": {
+                "operationId": "v1.signal-definitions.index",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `SignalDefinitionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SignalDefinitionResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "v1.signal-definitions.store",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SaveSignalDefinitionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "`SignalDefinitionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalDefinitionResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-definitions/presets": {
+            "get": {
+                "operationId": "v1.signal-definitions.presets",
+                "summary": "The platform preset library, filtered to the market a watch can be created in",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `SignalDefinitionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SignalDefinitionResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-definitions/clone": {
+            "post": {
+                "operationId": "v1.signal-definitions.clone",
+                "summary": "Copy library presets into the team's own types. 201, because it creates rows",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CloneSignalPresetsRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Array of `SignalDefinitionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SignalDefinitionResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-definitions/{definition}": {
+            "get": {
+                "operationId": "v1.signal-definitions.show",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "parameters": [
+                    {
+                        "name": "definition",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`SignalDefinitionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalDefinitionResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "v1.signal-definitions.update",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "parameters": [
+                    {
+                        "name": "definition",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SaveSignalDefinitionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`SignalDefinitionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalDefinitionResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "v1.signal-definitions.destroy",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "parameters": [
+                    {
+                        "name": "definition",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -6852,6 +7368,26 @@
                     "updated_at"
                 ],
                 "title": "BusinessProfileResource"
+            },
+            "CloneSignalPresetsRequest": {
+                "type": "object",
+                "description": "Validates \"add these library types to my own\" (S7, ADR 0018 \u00a73).\n\nThe keys are bounded strings and nothing more \u2014 whether a key names a live preset is\n{@see PlatformPresetReader}'s question, and a key that has since\nleft the library produces a shorter list rather than a 422, because a form posted against last\nmonth's library is the member's bad luck rather than their mistake. A request naming **no** live\npreset is where it fails, and that comes back as `signals.unknown_preset`.",
+                "properties": {
+                    "keys": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "maxLength": 32
+                        },
+                        "minItems": 1,
+                        "maxItems": 25,
+                        "uniqueItems": true
+                    }
+                },
+                "required": [
+                    "keys"
+                ],
+                "title": "CloneSignalPresetsRequest"
             },
             "CompleteLeadTaskRequest": {
                 "type": "object",
@@ -8454,6 +8990,9 @@
                             "signals_detected",
                             "insights_ready",
                             "credit_low",
+                            "payment_failed",
+                            "assessment_review_due",
+                            "announcement",
                             "digest",
                             null
                         ]
@@ -9213,6 +9752,139 @@
                 ],
                 "title": "SaveOutreachTemplateRequest"
             },
+            "SaveSignalDefinitionRequest": {
+                "type": "object",
+                "description": "Validates a signal definition on create and update (S7, ADR 0018). The rules come from\n{@see SignalDefinitionData::rules()} so the web and API endpoints can't drift apart on what a\ndefinition may be. Authorisation lives in the controller via `SignalDefinitionPolicy`.\n\nThere is nothing to add to those rules here \u2014 unlike the watch request, which has to scope the\nICP's existence to the caller's team. A definition owns nothing outside itself.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "description": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "liquidity",
+                            "growth",
+                            "movement",
+                            "distress",
+                            "hiring",
+                            "regulatory",
+                            "custom"
+                        ]
+                    },
+                    "icon": {
+                        "type": "string",
+                        "enum": [
+                            "satellite",
+                            "handshake",
+                            "trending-up",
+                            "plane",
+                            "building-2",
+                            "users",
+                            "file-text",
+                            "triangle-alert",
+                            "landmark",
+                            "trophy"
+                        ]
+                    },
+                    "query_templates": {
+                        "type": "array",
+                        "description": "At least one: a definition with no template is a type that can never find anything,\nwhich is a worse outcome than a validation message.",
+                        "items": {
+                            "type": "string",
+                            "maxLength": 200
+                        },
+                        "minItems": 1,
+                        "maxItems": 10
+                    },
+                    "match_keywords": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "maxLength": 60
+                        },
+                        "maxItems": 20
+                    },
+                    "includes": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "maxLength": 200
+                        },
+                        "maxItems": 10
+                    },
+                    "excludes": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "maxLength": 200
+                        },
+                        "maxItems": 10
+                    },
+                    "min_confidence": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "min_relevance": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "suggested_approach_hint": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "markets": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "uk",
+                                "uae"
+                            ]
+                        },
+                        "maxItems": 2,
+                        "uniqueItems": true
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "name",
+                    "description",
+                    "category",
+                    "icon",
+                    "query_templates"
+                ],
+                "title": "SaveSignalDefinitionRequest"
+            },
             "SaveSignalWatchRequest": {
                 "type": "object",
                 "description": "Validates a watch on create and update. The rules come from {@see SignalWatchData::rules()} so\nthe web (S5) and API (S6) endpoints can't drift apart on what a watch may be, with the ICP's\nexistence scoped to the member's own team here \u2014 the one check that needs the request to know\nwho is asking. Authorisation lives in the controller via `SignalWatchPolicy`.\n\n`market` is deliberately **not** accepted: v1 is UAE-only and the value is set by the DTO (see\n{@see SignalWatchData::DEFAULT_MARKET}), so a posted market is ignored rather than honoured into\na watch that would silently find nothing.",
@@ -9225,18 +9897,14 @@
                         "type": "string",
                         "maxLength": 120
                     },
-                    "event_types": {
+                    "signal_definition_ids": {
                         "type": "array",
                         "items": {
-                            "type": "string",
-                            "enum": [
-                                "acquisition",
-                                "funding_round",
-                                "relocation"
-                            ]
+                            "type": "integer",
+                            "minimum": 1
                         },
                         "minItems": 1,
-                        "maxItems": 3,
+                        "maxItems": 50,
                         "uniqueItems": true
                     },
                     "cadence": {
@@ -9270,7 +9938,7 @@
                 "required": [
                     "name",
                     "location",
-                    "event_types",
+                    "signal_definition_ids",
                     "cadence"
                 ],
                 "title": "SaveSignalWatchRequest"
@@ -9304,35 +9972,215 @@
                 ],
                 "title": "SetLeadAssigneesRequest"
             },
+            "SignalDefinitionResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "key": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "liquidity",
+                            "growth",
+                            "movement",
+                            "distress",
+                            "hiring",
+                            "regulatory",
+                            "custom"
+                        ]
+                    },
+                    "category_label": {
+                        "type": "string",
+                        "enum": [
+                            "Liquidity",
+                            "Growth",
+                            "Movement",
+                            "Distress",
+                            "Hiring",
+                            "Regulatory",
+                            "Your own"
+                        ]
+                    },
+                    "icon": {
+                        "type": "string",
+                        "enum": [
+                            "satellite",
+                            "handshake",
+                            "trending-up",
+                            "plane",
+                            "building-2",
+                            "users",
+                            "file-text",
+                            "triangle-alert",
+                            "landmark",
+                            "trophy"
+                        ]
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "is_preset": {
+                        "type": "boolean"
+                    },
+                    "translatable": {
+                        "type": "boolean",
+                        "description": "A preset's wording - and an untouched clone's - is Alima's English and goes through\n`t()` on the client; a team's own wording is theirs and must not be looked up in a\ntranslation file. See `SignalDefinition::usesPlatformWording()`."
+                    },
+                    "query_templates": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "match_keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "includes": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "excludes": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "min_confidence": {
+                        "description": "Both the stored value (null = \"use the product's floor\", which the form has to be\nable to show as empty) and the floor that actually applies.",
+                        "type": [
+                            "integer",
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "min_relevance": {
+                        "type": [
+                            "integer",
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "effective_min_confidence": {
+                        "type": "integer"
+                    },
+                    "effective_min_relevance": {
+                        "type": "integer"
+                    },
+                    "suggested_approach_hint": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "markets": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "preset_key": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "Provenance of a clone: which preset, at which version. S15 compares the version to\nthe library's and offers the diff; until then it tells a member where a type came\nfrom, which is why it is here now rather than later."
+                    },
+                    "preset_version": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "version": {
+                        "type": "integer"
+                    },
+                    "watches_count": {
+                        "type": "integer",
+                        "description": "What deleting it would cost, and whether it is doing anything. Only present when the\ncaller asked for the counts \u2014 `whenCounted` rather than a lazy count, because this\nresource serialises a list."
+                    },
+                    "signals_count": {
+                        "type": "integer"
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "key",
+                    "name",
+                    "description",
+                    "category",
+                    "category_label",
+                    "icon",
+                    "is_active",
+                    "is_preset",
+                    "translatable",
+                    "query_templates",
+                    "match_keywords",
+                    "includes",
+                    "excludes",
+                    "min_confidence",
+                    "min_relevance",
+                    "effective_min_confidence",
+                    "effective_min_relevance",
+                    "suggested_approach_hint",
+                    "markets",
+                    "preset_key",
+                    "preset_version",
+                    "version",
+                    "created_at"
+                ],
+                "title": "SignalDefinitionResource"
+            },
             "SignalResource": {
                 "type": "object",
                 "properties": {
                     "id": {
                         "type": "integer"
                     },
-                    "event_type": {
-                        "type": "string",
-                        "enum": [
-                            "acquisition",
-                            "funding_round",
-                            "relocation"
+                    "event_key": {
+                        "type": "string"
+                    },
+                    "event_label": {
+                        "type": "string"
+                    },
+                    "event_description": {
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
-                    "event_type_label": {
-                        "type": "string",
-                        "enum": [
-                            "Acquisition",
-                            "Funding round",
-                            "Relocation"
-                        ]
+                    "event_label_translatable": {
+                        "type": "boolean"
                     },
-                    "event_type_description": {
-                        "type": "string",
-                        "enum": [
-                            "A company is sold or a founder exits \u2014 a classic liquidity event.",
-                            "A business raises a funding round, putting fresh capital in founders\u2019 hands.",
-                            "A founder, executive or family office relocates to the market."
-                        ]
+                    "signal_definition_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "Null when the definition has been deleted, which the library screen reads as \"this\n type is gone\" rather than offering a link to nothing."
                     },
                     "status": {
                         "type": "string",
@@ -9507,9 +10355,11 @@
                 },
                 "required": [
                     "id",
-                    "event_type",
-                    "event_type_label",
-                    "event_type_description",
+                    "event_key",
+                    "event_label",
+                    "event_description",
+                    "event_label_translatable",
+                    "signal_definition_id",
                     "status",
                     "status_label",
                     "dismiss_reason",
@@ -9561,27 +10411,9 @@
                     "location": {
                         "type": "string"
                     },
-                    "event_types": {
+                    "definitions": {
                         "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "value": {
-                                    "type": "string"
-                                },
-                                "label": {
-                                    "type": "string"
-                                },
-                                "description": {
-                                    "type": "string"
-                                }
-                            },
-                            "required": [
-                                "value",
-                                "label",
-                                "description"
-                            ]
-                        }
+                        "items": {}
                     },
                     "ignore_domains": {
                         "type": "array",
@@ -9656,7 +10488,6 @@
                     "market",
                     "market_label",
                     "location",
-                    "event_types",
                     "ignore_domains",
                     "cadence",
                     "cadence_label",

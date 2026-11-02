@@ -18,6 +18,29 @@
 - Backup schedule + restore test; log shipping.
 - Secrets management; CI/CD (GitHub Actions deploy job).
 
+## Platform reference data is a deploy step, not a migration (Signals S7)
+
+**`php artisan db:seed --class=SignalPresetSeeder --force` runs after `migrate --force`**, and the
+order matters in one specific way worth knowing before it bites.
+
+Signals' preset library and the versioned AI prompt registry are both **platform reference data**
+written by seeders rather than migrations — `TeamRolesSeeder`, `AiPromptTemplateSeeder` and
+`SignalPresetSeeder`, all idempotent and all safe to re-run. The one that is order-sensitive is the
+prompt registry: `signals.extract_event` **v2** ships through the seeder, and `PromptRegistry`
+resolves the highest active version. So a deploy that ships S7's code without running the seeder
+leaves runs using **v1**, whose JSON-schema `enum` only accepts the three original event keys. The
+three migrated presets keep working; a signal type a team wrote themselves fails schema validation
+and `RunSignalWatchAction` skips the whole batch with a logged warning rather than an error anybody
+would notice.
+
+So: seed in the same release step as the migration, not afterwards and not by hand. Verify with
+
+```
+php artisan tinker --execute="echo App\Modules\AiPlatform\Models\AiPromptTemplate::where('key','signals.extract_event')->max('version');"
+```
+
+which must print `2` or higher.
+
 ## Already decided, waiting for this phase (Phase 20, ADR 0017)
 
 Four things exist and need wiring into the deploy rather than designing:

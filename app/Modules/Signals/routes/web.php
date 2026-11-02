@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Signals\Http\Controllers\Web\SignalController;
+use App\Modules\Signals\Http\Controllers\Web\SignalDefinitionController;
 use App\Modules\Signals\Http\Controllers\Web\SignalWatchController;
 use Illuminate\Support\Facades\Route;
 
@@ -32,6 +33,22 @@ Route::middleware(['auth', 'verified', 'capability:signals'])->group(function ()
     Route::post('signals/{signal}/restore', [SignalController::class, 'restore'])
         ->whereNumber('signal')
         ->name('signals.restore');
+
+    // The signal-type library (S7, ADR 0018). Nested under `signals/` for the same sidebar
+    // reason as the watch settings, and placed **before** `signals/watches` only incidentally -
+    // both are literal segments, so there is no ordering trap between them.
+    Route::get('signals/types', [SignalDefinitionController::class, 'index'])
+        ->name('signal-definitions.index');
+    Route::post('signals/types', [SignalDefinitionController::class, 'store'])
+        ->name('signal-definitions.store');
+    Route::post('signals/types/clone', [SignalDefinitionController::class, 'clone'])
+        ->name('signal-definitions.clone');
+    Route::patch('signals/types/{definition}', [SignalDefinitionController::class, 'update'])
+        ->whereNumber('definition')
+        ->name('signal-definitions.update');
+    Route::delete('signals/types/{definition}', [SignalDefinitionController::class, 'destroy'])
+        ->whereNumber('definition')
+        ->name('signal-definitions.destroy');
 
     // Nested under `signals/` so the sidebar's `startsWith` match keeps Signals lit while a
     // member is in its settings — it is one destination as far as they are concerned. The route

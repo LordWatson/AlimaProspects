@@ -8,37 +8,41 @@ use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
 use App\Modules\Signals\Data\SignalQuery;
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Turns a {@see SignalWatch} (plus the team's active ICP, if any) into the set of Serper `/news`
- * queries a run executes. Deterministic — no AI. The watch's `location` overrides the ICP geography;
- * its `event_types` select the config templates (loosened plain-keyword templates, S0 spike); and an
- * ICP Buying-signal criterion is **appended as an extra query** only when it maps to a watched event
- * type — otherwise it is ignored and the reason logged (IDs/counts only, never names).
+ * Turns a {@see SignalWatch} and the {@see SignalDefinition}s it watches for (plus the team's active
+ * ICP, if any) into the set of Serper `/news` queries a run executes. Deterministic — no AI.
+ *
+ * Since S7 the templates and the ICP keyword map come off the **definition rows**, not from
+ * `config/signals.php` (ADR 0018): a signal type is data a team owns, and the config templates are
+ * now seed data for the platform presets only. The watch still supplies the location, which
+ * overrides the ICP geography, and its own `ignore_domains`.
+ *
+ * **The definitions are passed in, not loaded.** That is what keeps this a pure function of its
+ * inputs: the caller resolves them through a team-scoped query (which
+ * `docs/modules/signals.md` requires of every parent reference, since the FKs are not
+ * team-qualified), and S9's "preview this type before you save it" can call the same builder with a
+ * definition that has no row yet.
+ *
+ * An ICP Buying-signal criterion is **appended as an extra query** only when it maps to one of the
+ * watched definitions — otherwise it is ignored and the reason logged (IDs/counts only, never
+ * names). The mapping is first-match-wins over the definitions in the order given, which is how v1
+ * behaved over the enum's declaration order; `SignalWatch::definitions()` orders by definition id
+ * for exactly that reason.
  */
 final class SignalQueryBuilder
 {
     private const int MAX_QUERY = 200;
 
     /**
-     * Keyword fragments (lower-case, substring match) that map an ICP buying signal to an event type.
-     *
-     * @var array<string, list<string>>
-     */
-    private const KEYWORDS = [
-        SignalEventType::Acquisition->value => ['acqui', 'sold', 'exit', 'merger', 'm&a', 'buyout', 'takeover', 'stake sale'],
-        SignalEventType::FundingRound->value => ['fund', 'rais', 'series ', 'seed', 'investment', 'venture'],
-        SignalEventType::Relocation->value => ['relocat', 'moving', 'moves to', 'move to', 'family office', 'headquarter', 'opens office'],
-    ];
-
-    /**
+     * @param  list<SignalDefinition>  $definitions  The types to build for, in priority order.
      * @return list<SignalQuery>
      */
-    public function build(SignalWatch $watch, ?Icp $icp = null): array
+    public function build(SignalWatch $watch, array $definitions, ?Icp $icp = null): array
     {
         $market = $watch->market->value;
         $location = $this->resolveLocation($watch, $market);
@@ -48,29 +52,57 @@ final class SignalQueryBuilder
         $num = max(1, min((int) config('signals.results_per_query', 20), 100));
         $ignoreDomains = $this->resolveIgnoreDomains($watch);
 
-        /** @var array<string, mixed> $templatesByType */
-        $templatesByType = (array) config("signals.templates.{$market}", []);
-
-        /** @var array<string, SignalQuery> $queries keyed by eventType|q to dedupe */
+        /** @var array<string, SignalQuery> $queries keyed by eventKey|q to dedupe */
         $queries = [];
 
-        $watchedTypes = $this->watchedEventTypes($watch);
-
-        foreach ($watchedTypes as $eventType) {
-            /** @var list<string> $templates */
-            $templates = (array) ($templatesByType[$eventType->value] ?? []);
-
-            foreach ($templates as $template) {
-                $q = $this->compose((string) $template, $location);
-                $this->push($queries, $eventType, $q, $gl, $hl, $tbs, $num, $ignoreDomains);
+        foreach ($definitions as $definition) {
+            foreach ($definition->query_templates as $template) {
+                $q = $this->compose($template, $location);
+                $this->push($queries, $definition->key, $q, $gl, $hl, $tbs, $num, $ignoreDomains);
             }
         }
 
         if ($icp instanceof Icp) {
-            $this->appendBuyingSignalQueries($watch, $icp, $watchedTypes, $location, $gl, $hl, $tbs, $num, $queries, $ignoreDomains);
+            $this->appendBuyingSignalQueries($watch, $icp, $definitions, $location, $gl, $hl, $tbs, $num, $queries, $ignoreDomains);
         }
 
-        return array_values($queries);
+        return $this->trim(array_values($queries), $watch);
+    }
+
+    /**
+     * Hold a run to `signals.max_queries_per_run`.
+     *
+     * v1 could not exceed eight queries, because the three event types had three, three and two
+     * templates between them. S7 lets a team hold 25 types of up to 10 templates each, which is
+     * ~250 paid searches for one run of one watch — and neither the per-watch 15-minute throttle
+     * nor the per-member rate limit helps, because both bound how *often* a run happens rather than
+     * how big one is. This is the ceiling S7 therefore has to carry; S8 keeps it and leans on it
+     * harder, since a watch there multiplies templates by locations.
+     *
+     * The trim is **deterministic** (it keeps the first N, and the definitions arrive in a fixed
+     * order) so a team gets the same coverage every run rather than a different slice each time,
+     * and it is **logged with a count** so the watch screen can say coverage was reduced. A silent
+     * trim is a lie about what was searched.
+     *
+     * @param  list<SignalQuery>  $queries
+     * @return list<SignalQuery>
+     */
+    private function trim(array $queries, SignalWatch $watch): array
+    {
+        $max = max(1, (int) config('signals.max_queries_per_run', 40));
+
+        if (count($queries) <= $max) {
+            return $queries;
+        }
+
+        Log::channel('signals')->warning('Signal run trimmed to the per-run query ceiling.', [
+            'team_id' => (int) $watch->team_id,
+            'signal_watch_id' => $watch->getKey(),
+            'wanted' => count($queries),
+            'ceiling' => $max,
+        ]);
+
+        return array_slice($queries, 0, $max);
     }
 
     /**
@@ -84,34 +116,16 @@ final class SignalQueryBuilder
     }
 
     /**
-     * The watch's event types as enum cases, ignoring any stored value that is no longer a case.
+     * Append an extra query per ICP buying signal that maps to one of the watched definitions.
      *
-     * @return list<SignalEventType>
-     */
-    private function watchedEventTypes(SignalWatch $watch): array
-    {
-        $types = [];
-        foreach ($watch->event_types as $value) {
-            $type = SignalEventType::tryFrom((string) $value);
-            if ($type !== null) {
-                $types[] = $type;
-            }
-        }
-
-        return $types;
-    }
-
-    /**
-     * Append an extra query per ICP buying signal that maps to a watched event type.
-     *
-     * @param  list<SignalEventType>  $watchedTypes
+     * @param  list<SignalDefinition>  $definitions
      * @param  array<string, SignalQuery>  $queries
      * @param  list<string>  $ignoreDomains
      */
     private function appendBuyingSignalQueries(
         SignalWatch $watch,
         Icp $icp,
-        array $watchedTypes,
+        array $definitions,
         string $location,
         string $gl,
         string $hl,
@@ -120,30 +134,19 @@ final class SignalQueryBuilder
         array &$queries,
         array $ignoreDomains = [],
     ): void {
-        $watchedValues = array_map(static fn (SignalEventType $t): string => $t->value, $watchedTypes);
-
         foreach ($this->buyingSignals($icp) as $signal) {
-            $eventType = $this->matchEventType($signal);
+            $definition = $this->matchDefinition($signal, $definitions);
 
-            if ($eventType === null) {
-                Log::channel('signals')->debug('ICP buying signal ignored for query building: no event keyword matched.', [
+            if (! $definition instanceof SignalDefinition) {
+                Log::channel('signals')->debug('ICP buying signal ignored for query building: no watched signal type matched its keywords.', [
                     'signal_watch_id' => $watch->getKey(),
-                ]);
-
-                continue;
-            }
-
-            if (! in_array($eventType->value, $watchedValues, strict: true)) {
-                Log::channel('signals')->debug('ICP buying signal maps to an event type this watch does not watch; ignored.', [
-                    'signal_watch_id' => $watch->getKey(),
-                    'event_type' => $eventType->value,
                 ]);
 
                 continue;
             }
 
             $q = $this->compose(trim($location.' '.$signal), $location);
-            $this->push($queries, $eventType, $q, $gl, $hl, $tbs, $num, $ignoreDomains);
+            $this->push($queries, $definition->key, $q, $gl, $hl, $tbs, $num, $ignoreDomains);
         }
     }
 
@@ -164,16 +167,27 @@ final class SignalQueryBuilder
     }
 
     /**
-     * Map a buying-signal phrase to an event type by keyword, or null when none matches.
+     * Map a buying-signal phrase onto one of the watched definitions by keyword, or null when none
+     * matches.
+     *
+     * Substring, case-insensitive, first definition wins — kept exactly as v1's behaviour (`rais`
+     * matches "raises/raised", `exit` matches "exits") because it is deterministic and testable.
+     * What changed is where the keywords live: on the definition, so a team that writes their own
+     * type can say which of their buying signals it answers. Word-boundary matching remains the
+     * post-v1 refinement `docs/modules/signals.md` records.
+     *
+     * @param  list<SignalDefinition>  $definitions
      */
-    private function matchEventType(string $text): ?SignalEventType
+    private function matchDefinition(string $text, array $definitions): ?SignalDefinition
     {
         $haystack = Str::lower($text);
 
-        foreach (self::KEYWORDS as $eventType => $keywords) {
-            foreach ($keywords as $keyword) {
-                if (Str::contains($haystack, $keyword)) {
-                    return SignalEventType::from($eventType);
+        foreach ($definitions as $definition) {
+            foreach ($definition->match_keywords ?? [] as $keyword) {
+                $needle = Str::lower(trim($keyword));
+
+                if ($needle !== '' && Str::contains($haystack, $needle)) {
+                    return $definition;
                 }
             }
         }
@@ -193,28 +207,25 @@ final class SignalQueryBuilder
     }
 
     /**
-     * Add a query, de-duplicating identical (event type + text) pairs.
+     * Add a query, de-duplicating identical (event key + text) pairs.
      *
-     * @param  array<string, SignalQuery>  $queries
-     */
-    /**
      * @param  array<string, SignalQuery>  $queries
      * @param  list<string>  $ignoreDomains
      */
-    private function push(array &$queries, SignalEventType $eventType, string $q, string $gl, string $hl, string $tbs, int $num, array $ignoreDomains = []): void
+    private function push(array &$queries, string $eventKey, string $q, string $gl, string $hl, string $tbs, int $num, array $ignoreDomains = []): void
     {
         if ($q === '') {
             return;
         }
 
-        $key = $eventType->value.'|'.$q;
+        $key = $eventKey.'|'.$q;
 
         if (isset($queries[$key])) {
             return;
         }
 
         $queries[$key] = new SignalQuery(
-            eventType: $eventType,
+            eventKey: $eventKey,
             q: $q,
             gl: $gl,
             hl: $hl,

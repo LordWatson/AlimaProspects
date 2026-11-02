@@ -65,7 +65,12 @@ final class SignalWatchResource extends AdminResource
     public function detailColumns(): array
     {
         return [
-            ResourceColumn::text('event_types', 'Event types'),
+            // The watched types are **not** here any more. Since S7 they are rows in
+            // `signal_watch_definition` (ADR 0018 section 5), and the registry's columns read a
+            // column or an eager-loaded `relation.attribute` — neither of which is a count over a
+            // pivot. Teaching the registry `withCount` for one read-only detail panel is more
+            // machinery than the answer is worth, and `/admin/signals` already shows each signal's
+            // own `event_key`, which is the question an operator actually asks.
             ResourceColumn::text('ignore_domains', 'Ignored domains'),
             ResourceColumn::text('location', 'Location'),
         ];

@@ -15,10 +15,10 @@ use App\Modules\Reporting\Enums\ReportKey;
 use App\Modules\Reporting\Enums\ReportRange;
 use App\Modules\Scoring\Enums\ScoreGrade;
 use App\Modules\Scoring\Models\LeadScore;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -363,21 +363,28 @@ it('counts undismissed signals by event type', function (): void {
     app(TeamContext::class)->run($team, function () use ($team): void {
         $watch = SignalWatch::factory()->create(['team_id' => $team->getKey()]);
 
-        Signal::factory()->count(2)->create([
-            'team_id' => $team->getKey(),
-            'signal_watch_id' => $watch->getKey(),
-            'status' => SignalStatus::New,
-            'event_type' => SignalEventType::FundingRound,
-        ]);
+        // The team's own signal types, which is what the breakdown labels its slices from since S7
+        // (ADR 0018) — it groups by the stored `event_key` and looks the name up.
+        $funding = signalDefinition($team, SignalPresetCatalogue::FUNDING_ROUND);
+        $acquisition = signalDefinition($team, SignalPresetCatalogue::ACQUISITION);
+
+        Signal::factory()->count(2)
+            ->forDefinition($funding)
+            ->create([
+                'team_id' => $team->getKey(),
+                'signal_watch_id' => $watch->getKey(),
+                'status' => SignalStatus::New,
+            ]);
 
         // Dismissed signals are a judgement that the event was not worth acting on; counting them
         // would make a noisy watch look productive.
-        Signal::factory()->create([
-            'team_id' => $team->getKey(),
-            'signal_watch_id' => $watch->getKey(),
-            'status' => SignalStatus::Dismissed,
-            'event_type' => SignalEventType::Acquisition,
-        ]);
+        Signal::factory()
+            ->forDefinition($acquisition)
+            ->create([
+                'team_id' => $team->getKey(),
+                'signal_watch_id' => $watch->getKey(),
+                'status' => SignalStatus::Dismissed,
+            ]);
     });
 
     $this->actingAs($user)
@@ -385,7 +392,8 @@ it('counts undismissed signals by event type', function (): void {
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->has('report.signal_types', 1)
-            ->where('report.signal_types.0.key', 'funding_round')
+            ->where('report.signal_types.0.key', SignalPresetCatalogue::FUNDING_ROUND)
+            ->where('report.signal_types.0.label', 'Funding round')
             ->where('report.signal_types.0.value', 2)
             ->where('report.kpis.2.value', 2));
 });

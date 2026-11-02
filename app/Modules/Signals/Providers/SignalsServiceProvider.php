@@ -11,7 +11,9 @@ use App\Modules\Signals\Console\DispatchDueSignalWatchesCommand;
 use App\Modules\Signals\Console\PruneSignalsCommand;
 use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Policies\SignalDefinitionPolicy;
 use App\Modules\Signals\Policies\SignalPolicy;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
 use App\Modules\Signals\Services\SerperNewsClient;
@@ -32,6 +34,7 @@ final class SignalsServiceProvider extends ModuleServiceProvider
     protected array $policies = [
         SignalWatch::class => SignalWatchPolicy::class,
         Signal::class => SignalPolicy::class,
+        SignalDefinition::class => SignalDefinitionPolicy::class,
     ];
 
     public function boot(): void

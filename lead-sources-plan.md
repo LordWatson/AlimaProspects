@@ -53,25 +53,25 @@ exception to ADR 0006 and goes in ADR 0018 (L0).
 
 ## The sources
 
-| #   | Source                                    | Seam                          | Market | Auth                  | What it gives                                                                         |
-| --- | ----------------------------------------- | ----------------------------- | ------ | --------------------- | ------------------------------------------------------------------------------------- |
-| 1   | Companies House **Streaming API**         | SignalSource (push)           | UK     | Free stream key       | Incorporations, officer appointments, PSC (control) changes, new charges, filings     |
-| 2   | HM Land Registry **CCOD / OCOD**          | Reference dataset + provider  | UK     | Free account+licence  | Every UK / overseas company owning property in England & Wales, with title addresses  |
-| 3   | **DIFC** public register                  | Provider                      | UAE    | None (verify)         | DIFC-registered companies                                                             |
-| 4   | **ADGM** public register                  | Provider                      | UAE    | None (verify)         | ADGM-registered companies                                                             |
-| 5   | **DMCC** member directory                 | Provider (**only if ToS allows**) | UAE | None (verify)         | DMCC free-zone companies                                                              |
-| 6   | **Food Standards Agency** ratings API     | Provider                      | UK     | None                  | Almost every UK food business, by type and area                                       |
-| 7   | **CQC** API                               | Provider                      | UK     | Free subscription key | Care providers and locations                                                          |
-| 8   | **FCA** Financial Services Register API   | Provider                      | UK     | Free key              | Authorised financial firms                                                            |
-| 9   | **Charity Commission** API                | Provider                      | UK     | Free key              | Registered charities                                                                  |
-| 10  | **OpenStreetMap** (Overpass API)          | Provider                      | UK+UAE | None                  | Local businesses by tag + area, as a free supplement to Google Places                 |
-| 11  | **Adzuna** API                            | SignalSource (pull)           | UK     | Free app id + key     | Job ads, giving hiring-surge signals                                                  |
-| 12  | **Reed** API                              | SignalSource (pull)           | UK     | Free key              | Job ads (a second hiring source)                                                      |
-| 13  | **Contracts Finder** + **Find a Tender**  | SignalSource (pull)           | UK     | None                  | Public contract awards (supplier won) and tenders (buyer is buying), as OCDS          |
-| 14  | **PlanIt** planning applications          | SignalSource (pull)           | UK     | None                  | Planning applications aggregated across UK councils                                   |
-| 15  | **The Gazette**                           | SignalSource + lead hygiene   | UK     | None                  | Corporate insolvency notices                                                          |
-| 16  | **Dubai Pulse** DLD transactions          | Market context (not leads)    | UAE    | Open dataset (verify) | Anonymised property transactions: area, price, type. **No buyer identities**          |
-| 17  | **Tech-stack detection** (in-house)       | Enrichment                    | Both   | None                  | Technologies detected from pages the app already fetches                              |
+| #   | Source                                   | Seam                              | Market | Auth                  | What it gives                                                                        |
+| --- | ---------------------------------------- | --------------------------------- | ------ | --------------------- | ------------------------------------------------------------------------------------ |
+| 1   | Companies House **Streaming API**        | SignalSource (push)               | UK     | Free stream key       | Incorporations, officer appointments, PSC (control) changes, new charges, filings    |
+| 2   | HM Land Registry **CCOD / OCOD**         | Reference dataset + provider      | UK     | Free account+licence  | Every UK / overseas company owning property in England & Wales, with title addresses |
+| 3   | **DIFC** public register                 | Provider                          | UAE    | None (verify)         | DIFC-registered companies                                                            |
+| 4   | **ADGM** public register                 | Provider                          | UAE    | None (verify)         | ADGM-registered companies                                                            |
+| 5   | **DMCC** member directory                | Provider (**only if ToS allows**) | UAE    | None (verify)         | DMCC free-zone companies                                                             |
+| 6   | **Food Standards Agency** ratings API    | Provider                          | UK     | None                  | Almost every UK food business, by type and area                                      |
+| 7   | **CQC** API                              | Provider                          | UK     | Free subscription key | Care providers and locations                                                         |
+| 8   | **FCA** Financial Services Register API  | Provider                          | UK     | Free key              | Authorised financial firms                                                           |
+| 9   | **Charity Commission** API               | Provider                          | UK     | Free key              | Registered charities                                                                 |
+| 10  | **OpenStreetMap** (Overpass API)         | Provider                          | UK+UAE | None                  | Local businesses by tag + area, as a free supplement to Google Places                |
+| 11  | **Adzuna** API                           | SignalSource (pull)               | UK     | Free app id + key     | Job ads, giving hiring-surge signals                                                 |
+| 12  | **Reed** API                             | SignalSource (pull)               | UK     | Free key              | Job ads (a second hiring source)                                                     |
+| 13  | **Contracts Finder** + **Find a Tender** | SignalSource (pull)               | UK     | None                  | Public contract awards (supplier won) and tenders (buyer is buying), as OCDS         |
+| 14  | **PlanIt** planning applications         | SignalSource (pull)               | UK     | None                  | Planning applications aggregated across UK councils                                  |
+| 15  | **The Gazette**                          | SignalSource + lead hygiene       | UK     | None                  | Corporate insolvency notices                                                         |
+| 16  | **Dubai Pulse** DLD transactions         | Market context (not leads)        | UAE    | Open dataset (verify) | Anonymised property transactions: area, price, type. **No buyer identities**         |
+| 17  | **Tech-stack detection** (in-house)      | Enrichment                        | Both   | None                  | Technologies detected from pages the app already fetches                             |
 
 **Every row is "verify in L0".** Terms, rate limits, auth and licences change. L0 records the live
 answer for each, and **any source whose terms don't permit our use is dropped**. Its phase is marked
@@ -696,7 +696,7 @@ touched docs.
 6. [ ] **Mobile:** the mobile app is a field companion. Confirm new signal types and sources render
        (labels and icons) and that no new screens are needed. Shared types move through `@shared`,
        never by copying.
-7. [ ] **Sentry:** add any new *expected* refusal (e.g. "source disabled on plan") to
+7. [ ] **Sentry:** add any new _expected_ refusal (e.g. "source disabled on plan") to
        `sentry.ignore_exceptions` with a comment. Never add the base `DomainException`.
 8. [ ] Docs: every module doc's Code map, Data model, Key flows and Changelog row; `architecture.md`;
        `CHANGELOG.md`; `CLAUDE.md` §3 (a short "Free lead sources" paragraph like the other phase

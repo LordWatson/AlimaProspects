@@ -19,9 +19,9 @@ import type {
     PaginationLink,
     PipelineStage,
     Signal,
+    SignalDefinition,
     SignalDismissReasonOption,
-    SignalEventType,
-    SignalEventTypeOption,
+    SignalEventKey,
     SignalFilterState,
     SignalsDetectedPayload,
     SignalStatus,
@@ -48,7 +48,8 @@ const props = defineProps<{
     filters: SignalFilterState;
     counts: Record<SignalStatus, number>;
     options: {
-        event_types: SignalEventTypeOption[];
+        /** The team's own signal types — the chips are drawn from these since S7 (ADR 0018). */
+        definitions: SignalDefinition[];
         dismiss_reasons: SignalDismissReasonOption[];
     };
     stages: PipelineStage[];
@@ -86,15 +87,23 @@ const tabs: { value: SignalStatus; label: string }[] = [
 // Every change is a real navigation, so the URL always reproduces what is on screen and a shared
 // link opens the same feed.
 const showFilters = ref(
-    props.filters.event_types.length > 0 ||
+    props.filters.event_keys.length > 0 ||
         props.filters.from !== null ||
         props.filters.to !== null ||
         props.filters.min_relevance !== null,
 );
 
+/**
+ * A type's name is Alima's words or the team's, and only the server knows which. Translating the
+ * team's own wording would be the app overwriting what somebody typed.
+ */
+function typeLabel(definition: SignalDefinition): string {
+    return definition.translatable ? t(definition.name) : definition.name;
+}
+
 type SignalQueryParams = {
     status: SignalStatus;
-    event_types: SignalEventType[];
+    event_keys: SignalEventKey[];
     from?: string;
     to?: string;
     min_relevance?: number;
@@ -106,7 +115,7 @@ function queryFor(changes: Partial<SignalFilterState>): SignalQueryParams {
 
     return {
         status: next.status,
-        event_types: next.event_types,
+        event_keys: next.event_keys,
         from: next.from ?? undefined,
         to: next.to ?? undefined,
         min_relevance: next.min_relevance ?? undefined,
@@ -119,7 +128,7 @@ function tabHref(status: SignalStatus): string {
     const params = new URLSearchParams();
 
     params.set('status', query.status);
-    query.event_types.forEach((type) => params.append('event_types[]', type));
+    query.event_keys.forEach((key) => params.append('event_keys[]', key));
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
     if (query.min_relevance !== undefined) {
@@ -137,17 +146,17 @@ function navigate(changes: Partial<SignalFilterState>): void {
     });
 }
 
-function toggleEventType(type: SignalEventType): void {
+function toggleEventKey(key: SignalEventKey): void {
     navigate({
-        event_types: props.filters.event_types.includes(type)
-            ? props.filters.event_types.filter((t) => t !== type)
-            : [...props.filters.event_types, type],
+        event_keys: props.filters.event_keys.includes(key)
+            ? props.filters.event_keys.filter((candidate) => candidate !== key)
+            : [...props.filters.event_keys, key],
     });
 }
 
 function clearFilters(): void {
     navigate({
-        event_types: [],
+        event_keys: [],
         from: null,
         to: null,
         min_relevance: null,
@@ -156,7 +165,7 @@ function clearFilters(): void {
 
 const isNarrowed = computed(
     () =>
-        props.filters.event_types.length > 0 ||
+        props.filters.event_keys.length > 0 ||
         props.filters.from !== null ||
         props.filters.to !== null ||
         props.filters.min_relevance !== null,
@@ -176,15 +185,17 @@ const busy = useNavigating();
 const activeChips = computed<ActiveFilterChip[]>(() => {
     const chips: ActiveFilterChip[] = [];
 
-    for (const type of props.filters.event_types) {
-        const option = props.options.event_types.find(
-            (candidate) => candidate.value === type,
+    for (const key of props.filters.event_keys) {
+        const definition = props.options.definitions.find(
+            (candidate) => candidate.key === key,
         );
 
         chips.push({
-            id: 'event_types:' + type,
-            group: t('Event type'),
-            label: option ? t(option.label) : type,
+            id: 'event_keys:' + key,
+            group: t('Signal type'),
+            // The server drops a key the team no longer has, so a chip without a definition should
+            // not happen — the key is shown rather than a blank if it ever does.
+            label: definition ? typeLabel(definition) : key,
         });
     }
 
@@ -214,10 +225,10 @@ const activeChips = computed<ActiveFilterChip[]>(() => {
 function removeChip(chip: ActiveFilterChip): void {
     const [key, raw] = chip.id.split(':');
 
-    if (key === 'event_types') {
+    if (key === 'event_keys') {
         navigate({
-            event_types: props.filters.event_types.filter(
-                (type) => type !== raw,
+            event_keys: props.filters.event_keys.filter(
+                (candidate) => candidate !== raw,
             ),
         });
 
@@ -424,16 +435,19 @@ onBeforeUnmount(() => {
                     <!-- The same chip as the leads list, so a filter looks like a filter
                          wherever a member meets one. The tick is what keeps the on state from
                          being colour alone (WCAG 1.4.1). -->
-                    <FilterGroup :legend="t('Event type')">
+                    <FilterGroup
+                        v-if="options.definitions.length"
+                        :legend="t('Signal type')"
+                    >
                         <FilterToggle
-                            v-for="option in options.event_types"
-                            :key="option.value"
+                            v-for="definition in options.definitions"
+                            :key="definition.id"
                             :pressed="
-                                filters.event_types.includes(option.value)
+                                filters.event_keys.includes(definition.key)
                             "
-                            :label="t(option.label)"
-                            :data-test="'filter-event-' + option.value"
-                            @toggle="toggleEventType(option.value)"
+                            :label="typeLabel(definition)"
+                            :data-test="'filter-event-' + definition.key"
+                            @toggle="toggleEventKey(definition.key)"
                         />
                     </FilterGroup>
 

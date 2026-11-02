@@ -10,7 +10,6 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
 use App\Modules\Signals\Contracts\NewsSearchClient;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalRunStatus;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalRunProgressed;
@@ -19,6 +18,7 @@ use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use App\Modules\Signals\Testing\FakeNewsSearchClient;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -52,7 +52,7 @@ function fundingEvent(int $index = 0, int $confidence = 90, int $relevance = 80)
     return [
         'item_index' => $index,
         'is_event' => true,
-        'event_type' => SignalEventType::FundingRound->value,
+        'event_type' => SignalPresetCatalogue::FUNDING_ROUND,
         'subject_person_name' => 'Jane Founder',
         'subject_person_role' => 'Founder & CEO',
         'subject_company_name' => 'Acme DMCC',
@@ -72,13 +72,23 @@ function runWatchFor(Team $team, SignalWatch $watch): SignalRun
     return app(TeamContext::class)->run($team, fn (): SignalRun => app(RunSignalWatchAction::class)->handle($watch));
 }
 
-function dubaiWatch(Team $team, array $eventTypes = ['funding_round']): SignalWatch
+/**
+ * A Dubai watch over the team's own clones of the named library presets.
+ *
+ * Since S7 the watched types are rows reached through a pivot (ADR 0018), so the factory attaches
+ * them rather than the watch carrying a JSON list - `watchingPresets()` creates the clones the team
+ * would have if they had taken those types from the library.
+ *
+ * @param  list<string>  $keys
+ */
+function dubaiWatch(Team $team, array $keys = [SignalPresetCatalogue::FUNDING_ROUND]): SignalWatch
 {
-    return app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()->create([
-        'team_id' => $team->getKey(),
-        'location' => 'Dubai',
-        'event_types' => $eventTypes,
-    ]));
+    return app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()
+        ->watchingPresets($keys)
+        ->create([
+            'team_id' => $team->getKey(),
+            'location' => 'Dubai',
+        ]));
 }
 
 it('creates signals from genuine in-threshold events and records the run', function (): void {
@@ -109,7 +119,9 @@ it('creates signals from genuine in-threshold events and records the run', funct
     $signal = app(TeamContext::class)->run($team, fn (): ?Signal => Signal::query()->first());
 
     expect($signal)->not->toBeNull()
-        ->and($signal->event_type)->toBe(SignalEventType::FundingRound)
+        ->and($signal->event_key)->toBe(SignalPresetCatalogue::FUNDING_ROUND)
+        // The live attribution as well as the stored key: a run writes both (ADR 0018 section 4).
+        ->and($signal->signal_definition_id)->not->toBeNull()
         ->and($signal->status)->toBe(SignalStatus::New)
         ->and($signal->subject_person_name)->toBe('Jane Founder')
         ->and($signal->amount_minor)->toBe(4_000_000_000) // $40m in minor units

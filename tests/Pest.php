@@ -9,6 +9,8 @@ use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Auth\Actions\CreatePersonalTeamAction;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Collection;
@@ -155,6 +157,38 @@ function createUserWithTeam(array $attributes = []): User
     }
 
     return $user->refresh();
+}
+
+/**
+ * The team's own clone of a library signal preset, created if they do not have it yet.
+ *
+ * Here rather than in one test file because six of them need it: since S7 a watch is built from
+ * signal **definition ids** (ADR 0018), so almost every test that posts a watch, filters the feed or
+ * runs a watch has to name a type the team actually owns. Idempotent, so a test can ask twice.
+ */
+function signalDefinition(Team $team, string $key = SignalPresetCatalogue::FUNDING_ROUND): SignalDefinition
+{
+    return app(TeamContext::class)->run($team, function () use ($team, $key): SignalDefinition {
+        $existing = SignalDefinition::query()
+            ->where('team_id', $team->getKey())
+            ->where('key', $key)
+            ->first();
+
+        return $existing ?? SignalDefinition::factory()
+            ->fromCatalogue($key)
+            ->create(['team_id' => $team->getKey()]);
+    });
+}
+
+/**
+ * The ids of the team's clones of the named presets — what a watch form posts.
+ *
+ * @param  list<string>  $keys
+ * @return list<int>
+ */
+function signalDefinitionIds(Team $team, array $keys = [SignalPresetCatalogue::FUNDING_ROUND]): array
+{
+    return array_map(static fn (string $key): int => (int) signalDefinition($team, $key)->getKey(), $keys);
 }
 
 /**

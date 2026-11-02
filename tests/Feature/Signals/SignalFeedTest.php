@@ -11,10 +11,11 @@ use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Models\PipelineStage;
 use App\Modules\Signals\Enums\SignalDismissReason;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -27,20 +28,44 @@ beforeEach(function (): void {
 });
 
 /**
+ * A signal in the team's feed, of one of the team's own signal types.
+ *
+ * Since S7 the type is a row the team owns (ADR 0018), so a fixture has to give them one - both
+ * because the card reads its name and because the feed's filters are narrowed against the team's
+ * library (`SignalFilters::onlyKnownKeys()`).
+ *
  * @param  array<string, mixed>  $attributes
  */
 function feedSignal(Team $team, array $attributes = []): Signal
 {
-    return app(TeamContext::class)->run($team, function () use ($team, $attributes): Signal {
+    $key = is_string($attributes['event_key'] ?? null)
+        ? $attributes['event_key']
+        : SignalPresetCatalogue::FUNDING_ROUND;
+
+    $definition = signalDefinition($team, $key);
+
+    return app(TeamContext::class)->run($team, function () use ($team, $definition, $attributes): Signal {
         $watch = SignalWatch::query()->where('team_id', $team->getKey())->first()
             ?? SignalWatch::factory()->create(['team_id' => $team->getKey(), 'name' => 'Dubai watch']);
 
-        return Signal::factory()->create([
-            'team_id' => $team->getKey(),
-            'signal_watch_id' => $watch->getKey(),
-            ...$attributes,
-        ]);
+        return Signal::factory()
+            ->forDefinition($definition)
+            ->create([
+                'team_id' => $team->getKey(),
+                'signal_watch_id' => $watch->getKey(),
+                ...$attributes,
+            ]);
     });
+}
+
+/**
+ * Give the team the whole library, for the tests that assert on the filter options.
+ */
+function feedDefinitions(Team $team): void
+{
+    foreach (SignalPresetCatalogue::keys() as $key) {
+        signalDefinition($team, $key);
+    }
 }
 
 // --- The feed -----------------------------------------------------------------------------------
@@ -48,6 +73,8 @@ function feedSignal(Team $team, array $attributes = []): Signal
 it('renders the feed with the new signals, tab counts and filter options', function (): void {
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
+
+    feedDefinitions($team);
 
     feedSignal($team);
     feedSignal($team, ['status' => SignalStatus::Dismissed, 'dismiss_reason' => SignalDismissReason::NotRelevant]);
@@ -70,7 +97,7 @@ it('renders the feed with the new signals, tab counts and filter options', funct
             ->where('counts.new', 1)
             ->where('counts.dismissed', 1)
             ->where('counts.converted', 1)
-            ->has('options.event_types', 3)
+            ->has('options.definitions', 3)
             ->has('options.dismiss_reasons', 3)
             ->has('stages')
             ->where('watchCount', 1)
@@ -111,14 +138,14 @@ it('filters by event type, relevance floor and date range', function (): void {
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
 
-    feedSignal($team, ['event_type' => SignalEventType::FundingRound, 'relevance' => 90, 'published_at' => now()->subDay()]);
-    feedSignal($team, ['event_type' => SignalEventType::Acquisition, 'relevance' => 20, 'published_at' => now()->subDays(40)]);
+    feedSignal($team, ['event_key' => SignalPresetCatalogue::FUNDING_ROUND, 'relevance' => 90, 'published_at' => now()->subDay()]);
+    feedSignal($team, ['event_key' => SignalPresetCatalogue::ACQUISITION, 'relevance' => 20, 'published_at' => now()->subDays(40)]);
 
     $this->actingAs($user)
-        ->get(route('signals.index', ['event_types' => ['funding_round']]))
+        ->get(route('signals.index', ['event_keys' => [SignalPresetCatalogue::FUNDING_ROUND]]))
         ->assertOk()
         ->assertInertia(fn ($page) => $page->has('signals.data', 1)
-            ->where('signals.data.0.event_type', 'funding_round'));
+            ->where('signals.data.0.event_key', SignalPresetCatalogue::FUNDING_ROUND));
 
     $this->actingAs($user)
         ->get(route('signals.index', ['min_relevance' => 50]))
@@ -138,14 +165,47 @@ it('opens the feed rather than erroring on a filter value that no longer exists'
 
     feedSignal($team);
 
-    // A link someone shared last month should still open the feed, minus the filter.
+    // A link someone shared last month still **opens** - no 404, no 422 - and the unparseable
+    // `min_relevance` is still dropped. What changed in S7 is the event key: it is honoured rather
+    // than dropped, so a key matching nothing narrows to nothing. That is the honest answer now
+    // that a key is not necessarily meaningless (see the next test); an earlier version dropped it
+    // and answered a filtered request with the whole feed.
     $this->actingAs($user)
-        ->get(route('signals.index', ['event_types' => ['ipo'], 'min_relevance' => 0]))
+        ->get(route('signals.index', ['event_keys' => ['ipo'], 'min_relevance' => 0]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('signals.data', 0)
+            ->where('filters.event_keys', ['ipo'])
+            ->where('filters.min_relevance', null)
+            // Which is what lets the screen say "nothing matches these filters" with a way to clear
+            // them, rather than showing everything and explaining nothing.
+            ->where('counts.new', 1));
+});
+
+it('still filters by the key of a signal type the team has deleted', function (): void {
+    $user = createUserWithTeam();
+    $team = $user->currentTeam()->firstOrFail();
+
+    $custom = app(TeamContext::class)->run($team, fn (): SignalDefinition => SignalDefinition::factory()
+        ->custom('hiring_surge', 'Hiring surge')
+        ->create(['team_id' => $team->getKey()]));
+
+    feedSignal($team, ['event_key' => 'hiring_surge']);
+    feedSignal($team);
+
+    app(TeamContext::class)->run($team, fn () => $custom->delete());
+
+    // The signals it found keep the key and stay in the feed (ADR 0018 section 4), so filtering by
+    // it is a real question with a real answer. This is the case that makes "drop an unknown key"
+    // wrong: it would have made these signals impossible to isolate.
+    $this->actingAs($user)
+        ->get(route('signals.index', ['event_keys' => ['hiring_surge']]))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->has('signals.data', 1)
-            ->where('filters.event_types', [])
-            ->where('filters.min_relevance', null));
+            ->where('signals.data.0.event_key', 'hiring_surge')
+            // And it still names itself, because the relation is `withTrashed()`.
+            ->where('signals.data.0.event_label', 'Hiring surge'));
 });
 
 it('orders the feed by when the event happened, newest first', function (): void {

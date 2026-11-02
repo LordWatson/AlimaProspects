@@ -5,8 +5,8 @@ declare(strict_types=1);
 use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Data\NewsItem;
 use App\Modules\Signals\Data\SignalQuery;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function (): void {
@@ -20,7 +20,7 @@ beforeEach(function (): void {
 function newsQuery(string $q = 'Dubai startup raises funding'): SignalQuery
 {
     return new SignalQuery(
-        eventType: SignalEventType::FundingRound,
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         q: $q,
         gl: 'ae',
         hl: 'en',

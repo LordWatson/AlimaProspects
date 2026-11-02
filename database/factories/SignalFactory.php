@@ -7,11 +7,12 @@ namespace Database\Factories;
 use App\Modules\Core\Enums\Currency;
 use App\Modules\Core\Models\Team;
 use App\Modules\Signals\Enums\SignalDismissReason;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -22,6 +23,11 @@ class SignalFactory extends Factory
     protected $model = Signal::class;
 
     /**
+     * `signal_definition_id` is **null by default** and `event_key` carries the type, which is the
+     * shape a signal whose definition has been deleted has (ADR 0018 §4) - the harder case, and so
+     * the better default for a fixture. A test that needs the live attribution asks for it with
+     * {@see self::forDefinition()}.
+     *
      * @return array<string, mixed>
      */
     public function definition(): array
@@ -32,7 +38,8 @@ class SignalFactory extends Factory
             'team_id' => Team::factory(),
             'signal_watch_id' => SignalWatch::factory(),
             'signal_run_id' => SignalRun::factory(),
-            'event_type' => SignalEventType::FundingRound,
+            'signal_definition_id' => null,
+            'event_key' => SignalPresetCatalogue::FUNDING_ROUND,
             'status' => SignalStatus::New,
             'dismiss_reason' => null,
             'headline' => 'Dubai startup closes a Series A funding round',
@@ -67,10 +74,31 @@ class SignalFactory extends Factory
     public function acquisition(): static
     {
         return $this->state(fn (array $attributes): array => [
-            'event_type' => SignalEventType::Acquisition,
+            'event_key' => SignalPresetCatalogue::ACQUISITION,
             'headline' => 'Dubai company acquired in a regional deal',
             'counterparty_name' => 'Regional Holdings PJSC',
         ]);
+    }
+
+    /**
+     * Attributed to a real signal definition: both the FK and the key, so the row is the shape a
+     * run actually writes.
+     */
+    public function forDefinition(SignalDefinition $definition): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'team_id' => $definition->team_id,
+            'signal_definition_id' => $definition->getKey(),
+            'event_key' => $definition->key,
+        ]);
+    }
+
+    /**
+     * A signal of a type the team wrote themselves, keyed by whatever that type's key is.
+     */
+    public function withEventKey(string $key): static
+    {
+        return $this->state(fn (array $attributes): array => ['event_key' => $key]);
     }
 
     public function dismissed(): static

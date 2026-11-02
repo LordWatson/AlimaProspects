@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Data;
 
 use App\Modules\Core\Enums\Market;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalWatchCadence;
 use App\Modules\Signals\Http\Requests\SaveSignalWatchRequest;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Services\SignalQueryBuilder;
 use Illuminate\Support\Str;
 use Spatie\LaravelData\Data;
 
@@ -20,7 +20,12 @@ use Spatie\LaravelData\Data;
  * the `gl` code and the outreach posture are all per-market, and a market with none of those would
  * produce a watch that silently finds nothing. It is set from {@see self::DEFAULT_MARKET} until a
  * second market's templates exist, and the decision is recorded here rather than in a controller
- * so there is one place to change when that happens.
+ * so there is one place to change when that happens (S8).
+ *
+ * Since S7 the watched types are **definition ids**, not enum values (ADR 0018): a signal type is a
+ * row the team owns. The ids are carried as plain integers here and resolved to the team's own rows
+ * by `SaveSignalWatchAction` — a DTO that queried would be a DTO that could not be built from a
+ * request.
  */
 final class SignalWatchData extends Data
 {
@@ -35,13 +40,20 @@ final class SignalWatchData extends Data
     private const int MAX_IGNORE_DOMAINS = 50;
 
     /**
-     * @param  list<SignalEventType>  $eventTypes
+     * How many types one watch may name. The real ceiling is the team's library
+     * (`signals.max_definitions_per_team`); this is the shape bound, so a tampered form cannot
+     * post ten thousand ids for the Action to resolve.
+     */
+    public const int MAX_DEFINITIONS = 50;
+
+    /**
+     * @param  list<int>  $definitionIds  The team's signal types this watch watches for.
      * @param  list<string>  $ignoreDomains  Sources this team never wants to hear from (S6).
      */
     public function __construct(
         public readonly string $name,
         public readonly string $location,
-        public readonly array $eventTypes,
+        public readonly array $definitionIds,
         public readonly SignalWatchCadence $cadence = SignalWatchCadence::Daily,
         public readonly bool $isActive = true,
         public readonly ?int $icpId = null,
@@ -54,20 +66,10 @@ final class SignalWatchData extends Data
      */
     public static function fromValidated(array $validated): self
     {
-        $eventTypes = [];
-
-        foreach ((array) ($validated['event_types'] ?? []) as $candidate) {
-            $type = is_string($candidate) ? SignalEventType::tryFrom($candidate) : null;
-
-            if ($type !== null && ! in_array($type, $eventTypes, strict: true)) {
-                $eventTypes[] = $type;
-            }
-        }
-
         return new self(
             name: self::text($validated['name'] ?? null, self::MAX_NAME) ?? self::defaultName(),
             location: self::text($validated['location'] ?? null, self::MAX_LOCATION) ?? self::defaultLocation(),
-            eventTypes: $eventTypes,
+            definitionIds: self::ids($validated['signal_definition_ids'] ?? null),
             cadence: SignalWatchCadence::tryFrom((string) ($validated['cadence'] ?? '')) ?? SignalWatchCadence::Daily,
             // A missing checkbox is false in a form post, so "absent" has to mean the default
             // rather than being read as "switch it off".
@@ -78,22 +80,31 @@ final class SignalWatchData extends Data
     }
 
     /**
-     * The one-click default watch offered to a team with none (S5): the market's default location,
-     * every event type, daily. Deliberately the broadest useful watch — a first watch that finds
-     * nothing teaches the team that Signals doesn't work.
+     * The one-click default watch for a team that has none (S5): the market's default location,
+     * every type the team has, daily. Deliberately the broadest useful watch — a first watch that
+     * finds nothing teaches the team that Signals doesn't work.
+     *
+     * The ids come from the caller rather than from here, because "every type" is now a question
+     * about the team's library: the controller clones the market's presets first
+     * (`CloneSignalPresetsAction`) and passes what it got.
+     *
+     * @param  list<int>  $definitionIds
      */
-    public static function defaultWatch(): self
+    public static function defaultWatch(array $definitionIds = []): self
     {
         return new self(
             name: self::defaultName(),
             location: self::defaultLocation(),
-            eventTypes: SignalEventType::cases(),
+            definitionIds: $definitionIds,
             cadence: SignalWatchCadence::Daily,
         );
     }
 
     /**
      * The attributes for the model, ready to create or fill with.
+     *
+     * The watched types are **not** here: they live in the `signal_watch_definition` pivot, and
+     * attaching them is a separate statement inside the Action's transaction (ADR 0018 §5).
      *
      * @return array<string, mixed>
      */
@@ -103,7 +114,6 @@ final class SignalWatchData extends Data
             'name' => $this->name,
             'market' => $this->market,
             'location' => $this->location,
-            'event_types' => array_map(static fn (SignalEventType $type): string => $type->value, $this->eventTypes),
             'cadence' => $this->cadence,
             'is_active' => $this->isActive,
             'icp_id' => $this->icpId,
@@ -117,6 +127,11 @@ final class SignalWatchData extends Data
      * The validation rules a saved watch must satisfy, beside the shape they validate so the web
      * (S5) and API (S6) endpoints can't drift apart on what a watch may be.
      *
+     * The ids are **not** checked against the team's own rows here, and that is deliberate: an id
+     * from another team is dropped and logged by the Action rather than rejected, exactly as an
+     * out-of-team ICP is. It can only arrive from a tampered form, and dropping it saves a watch
+     * the member had every right to save.
+     *
      * @return array<string, mixed>
      */
     public static function rules(): array
@@ -124,8 +139,8 @@ final class SignalWatchData extends Data
         return [
             'name' => ['required', 'string', 'max:'.self::MAX_NAME],
             'location' => ['required', 'string', 'max:'.self::MAX_LOCATION],
-            'event_types' => ['required', 'array', 'min:1', 'max:'.count(SignalEventType::cases())],
-            'event_types.*' => ['string', 'distinct', 'in:'.implode(',', SignalEventType::values())],
+            'signal_definition_ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_DEFINITIONS],
+            'signal_definition_ids.*' => ['integer', 'distinct', 'min:1'],
             'cadence' => ['required', 'string', 'in:'.implode(',', SignalWatchCadence::values())],
             'is_active' => ['boolean'],
             'icp_id' => ['nullable', 'integer'],
@@ -145,6 +160,34 @@ final class SignalWatchData extends Data
         $location = config("signals.markets.{$market}.default_location", 'Dubai');
 
         return is_string($location) && $location !== '' ? $location : 'Dubai';
+    }
+
+    /**
+     * A de-duplicated list of positive integer ids, bounded.
+     *
+     * @return list<int>
+     */
+    private static function ids(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $ids = [];
+
+        foreach ($value as $entry) {
+            if (! is_numeric($entry)) {
+                continue;
+            }
+
+            $id = (int) $entry;
+
+            if ($id > 0 && ! in_array($id, $ids, strict: true)) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_slice($ids, 0, self::MAX_DEFINITIONS);
     }
 
     /**

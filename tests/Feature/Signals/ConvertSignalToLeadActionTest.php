@@ -18,12 +18,12 @@ use App\Modules\LeadsWorkspace\Models\LeadNote;
 use App\Modules\LeadsWorkspace\Models\PipelineStage;
 use App\Modules\Signals\Actions\ConvertSignalToLeadAction;
 use App\Modules\Signals\Data\ConvertSignalData;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalConverted;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -75,7 +75,7 @@ it('creates a lead and a contact with no email or phone', function (): void {
         ->and($lead->collected_at)->not->toBeNull()
         ->and($lead->has_personal_data)->toBeTrue()
         ->and($lead->raw['signal_id'])->toBe($signal->id)
-        ->and($lead->raw['event_type'])->toBe(SignalEventType::FundingRound->value)
+        ->and($lead->raw['event_type'])->toBe(SignalPresetCatalogue::FUNDING_ROUND)
         ->and($lead->raw['headline'])->toBe($signal->headline);
 
     $contact = $lead->contacts()->sole();
@@ -351,7 +351,7 @@ it('records the conversion on the timeline and in the audit trail', function ():
 
     expect($activity->user_id)->toBe($actor->id)
         ->and($activity->properties['signal_id'])->toBe($signal->id)
-        ->and($activity->properties['event_type'])->toBe(SignalEventType::FundingRound->value)
+        ->and($activity->properties['event_type'])->toBe(SignalPresetCatalogue::FUNDING_ROUND)
         ->and($activity->properties['attached'])->toBeFalse()
         ->and($activity->properties['headline'])->toBe($signal->headline);
 
@@ -388,7 +388,7 @@ it('refuses to convert a signal with no company to name', function (): void {
 
     // A relocation signal often names a person and no company at all.
     $signal = signalFor($team, [
-        'event_type' => SignalEventType::Relocation,
+        'event_key' => SignalPresetCatalogue::RELOCATION,
         'subject_company_name' => null,
     ]);
 

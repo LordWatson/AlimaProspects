@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Http\Resources;
 
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Services\SignalRetention;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -21,6 +22,13 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * keys** passed through `t()` on the client — the feed is EN/AR (ADR 0007), so no finished English
  * is baked into a response.
  *
+ * The **event label is the exception**, and since S7 it has to be: a signal's type is a row the team
+ * owns (ADR 0018), so its name may be the team's own words in their own language and must not be
+ * looked up in a translation file. `event_label_translatable` says which it is — true for a type
+ * cloned from a preset and still carrying Alima's wording, false once a team has renamed it. Where
+ * the definition has been deleted the label falls back to the stored `event_key`, humanised, which
+ * is why a card never goes blank.
+ *
  * @mixin Signal
  */
 final class SignalResource extends JsonResource
@@ -35,9 +43,13 @@ final class SignalResource extends JsonResource
 
         return [
             'id' => $signal->id,
-            'event_type' => $signal->event_type->value,
-            'event_type_label' => $signal->event_type->label(),
-            'event_type_description' => $signal->event_type->description(),
+            'event_key' => $signal->event_key,
+            'event_label' => $signal->eventLabel(),
+            'event_description' => $signal->eventDescription(),
+            'event_label_translatable' => $this->labelIsOurs($signal),
+            // Null when the definition has been deleted, which the library screen reads as "this
+            // type is gone" rather than offering a link to nothing.
+            'signal_definition_id' => $signal->signal_definition_id,
             'status' => $signal->status->value,
             'status_label' => $signal->status->label(),
             'dismiss_reason' => $signal->dismiss_reason?->value,
@@ -79,5 +91,20 @@ final class SignalResource extends JsonResource
             ]),
             'created_at' => $signal->created_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Whether the event label is Alima's English - and so safe to pass through `t()` - or the
+     * team's own wording, which must be rendered as typed.
+     *
+     * One rule, shared with `SignalDefinitionResource` via the model
+     * ({@see SignalDefinition::usesPlatformWording()}). Where the definition is gone the label is a
+     * humanised version of our own slug, which reads as ours.
+     */
+    private function labelIsOurs(Signal $signal): bool
+    {
+        $definition = $signal->relationLoaded('definition') ? $signal->definition : null;
+
+        return ! $definition instanceof SignalDefinition || $definition->usesPlatformWording();
     }
 }

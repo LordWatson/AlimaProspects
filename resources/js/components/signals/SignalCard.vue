@@ -87,9 +87,29 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                  belongs here because it is the number the feed is ordered by. -->
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="flex flex-wrap items-center gap-2">
-                    <Badge variant="lilac">{{
-                        t(signal.event_type_label)
-                    }}</Badge>
+                    <!-- The type's name. Translated only when it is Alima's own wording: once a
+                         team renames their type the name is theirs, in whatever language they wrote
+                         it, and looking it up in a translation file would overwrite what they typed
+                         (S7, ADR 0018). -->
+                    <!-- `Badge` is `whitespace-nowrap shrink-0 overflow-hidden`, which was fine
+                         for three fixed labels and is not for a name a team typed: it would clip
+                         with no indication on a narrow card. Truncated with the full name in
+                         `title`, so nothing is lost. -->
+                    <Badge
+                        variant="lilac"
+                        class="max-w-full truncate"
+                        dir="auto"
+                        :title="
+                            signal.event_label_translatable
+                                ? t(signal.event_label)
+                                : signal.event_label
+                        "
+                        >{{
+                            signal.event_label_translatable
+                                ? t(signal.event_label)
+                                : signal.event_label
+                        }}</Badge
+                    >
                     <span
                         v-if="signal.location"
                         class="text-xs text-muted-foreground"

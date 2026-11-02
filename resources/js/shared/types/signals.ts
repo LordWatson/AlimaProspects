@@ -1,6 +1,93 @@
-// Signals (trigger-event prospecting, UAE v1) shared types — ADR 0011, phases S4–S6.
+// Signals (trigger-event prospecting) shared types — ADR 0011, phases S4–S7.
 
-export type SignalEventType = 'acquisition' | 'funding_round' | 'relocation';
+/**
+ * A signal definition's stable key — `funding_round`, `hiring_surge`, whatever a team called theirs.
+ *
+ * A plain string since S7 (ADR 0018), where it used to be a union of three literals: a signal type
+ * is a row a team owns, so the set is not knowable at build time. Aliased rather than written as
+ * `string` everywhere so the intent still reads at every call site.
+ */
+export type SignalEventKey = string;
+
+/** How the signal-type library groups itself. A closed set — the UI renders a section per case. */
+export type SignalCategory =
+    | 'liquidity'
+    | 'growth'
+    | 'movement'
+    | 'distress'
+    | 'hiring'
+    | 'regulatory'
+    | 'custom';
+
+/**
+ * The icon a signal definition wears.
+ *
+ * An allowlist rather than a free string (ADR 0018 §8), because the client maps it to an imported
+ * component — `components/signals/SignalTypeIcon.vue` holds the one exhaustive map, and `vue-tsc`
+ * fails the build if a case is added here and forgotten there.
+ */
+export type SignalIcon =
+    | 'satellite'
+    | 'handshake'
+    | 'trending-up'
+    | 'plane'
+    | 'building-2'
+    | 'users'
+    | 'file-text'
+    | 'triangle-alert'
+    | 'landmark'
+    | 'trophy';
+
+/**
+ * One signal type: what Alima looks for, and the rules it looks by.
+ *
+ * Two of these matter when rendering. **`is_preset`** says this row belongs to Alima's library
+ * rather than to the team, so it is read-only until cloned. **`translatable`** says whose words the
+ * `name` and `description` are: ours (pass them through `t()`) or the team's own, in whichever
+ * language they wrote them — translating those would be the app overwriting what somebody typed.
+ */
+export type SignalDefinition = {
+    id: number;
+    key: SignalEventKey;
+    /** The team's own words unless `translatable` is true. */
+    name: string;
+    description: string;
+    category: SignalCategory;
+    /** Translation key, not a finished string. */
+    category_label: string;
+    icon: SignalIcon;
+    is_active: boolean;
+    /** Alima's library, not the team's — read-only until cloned. */
+    is_preset: boolean;
+    /** Whether `name` and `description` are ours to translate. */
+    translatable: boolean;
+    /** Plain-keyword search templates; `{location}` is substituted per watch. */
+    query_templates: string[];
+    /** Lower-case fragments that map an ICP buying signal onto this type. */
+    match_keywords: string[];
+    /** What counts as this kind of event, for the classifier. */
+    includes: string[];
+    /** What does not — the half that does the work. */
+    excludes: string[];
+    /** The team's own floor, or null to use the product's. */
+    min_confidence: number | null;
+    min_relevance: number | null;
+    /** The floor that actually applies, after the null fallback. */
+    effective_min_confidence: number;
+    effective_min_relevance: number;
+    suggested_approach_hint: string | null;
+    /** Market codes this type is worth running in, or null for any. */
+    markets: string[] | null;
+    /** Which library preset this was cloned from, and at which version. */
+    preset_key: SignalEventKey | null;
+    preset_version: number | null;
+    version: number;
+    /** How many watches use it — what removing it would cost. Present when the server counted. */
+    watches_count?: number;
+    /** How many signals it has found — the only honest measure of whether it earns its keep. */
+    signals_count?: number;
+    created_at?: string | null;
+};
 
 export type SignalStatus = 'new' | 'dismissed' | 'converted';
 
@@ -24,11 +111,15 @@ export type SignalRunStatus = 'queued' | 'running' | 'completed' | 'failed';
  */
 export type Signal = {
     id: number;
-    event_type: SignalEventType;
-    /** Translation key, not a finished string. */
-    event_type_label: string;
-    /** Translation key, not a finished string. */
-    event_type_description: string;
+    /** The signal type's key — copied onto the row, so it survives the type being deleted. */
+    event_key: SignalEventKey;
+    /** The type's name, or a humanised key where the definition has been deleted. */
+    event_label: string;
+    event_description: string | null;
+    /** Whether `event_label` is Alima's wording (pass through `t()`) or the team's own. */
+    event_label_translatable: boolean;
+    /** The definition that classified it, or null once that type has been removed. */
+    signal_definition_id: number | null;
     status: SignalStatus;
     /** Translation key, not a finished string. */
     status_label: string;
@@ -73,20 +164,12 @@ export type Signal = {
 /** The feed's tab + filter state, mirroring `SignalFilters::toFormState()`. */
 export type SignalFilterState = {
     status: SignalStatus;
-    event_types: SignalEventType[];
+    /** Signal definition keys. Any the team no longer has is dropped by the server. */
+    event_keys: SignalEventKey[];
     /** `Y-m-d`, as a date input speaks it. */
     from: string | null;
     to: string | null;
     min_relevance: number | null;
-};
-
-/** An event type with the one-line explainer shown beside its checkbox. */
-export type SignalEventTypeOption = {
-    value: SignalEventType;
-    /** Translation key, not a finished string. */
-    label: string;
-    /** Translation key, not a finished string. */
-    description: string;
 };
 
 export type SignalDismissReasonOption = {
@@ -128,7 +211,8 @@ export type SignalWatch = {
     /** Translation key, not a finished string. */
     market_label: string;
     location: string;
-    event_types: SignalEventTypeOption[];
+    /** The types this watch looks for. Absent when the server didn't load them. */
+    definitions?: SignalDefinition[];
     /** Sources this team never wants to hear from — their competitors (S6). */
     ignore_domains: string[];
     cadence: SignalWatchCadence;
@@ -163,7 +247,8 @@ export type ConvertSignalForm = {
 export type SignalWatchForm = {
     name: string;
     location: string;
-    event_types: SignalEventType[];
+    /** The team's own signal types to look for (S7, ADR 0018). */
+    signal_definition_ids: number[];
     /** One domain per line in the form; sent as a list. */
     ignore_domains: string[];
     cadence: SignalWatchCadence;
@@ -171,11 +256,57 @@ export type SignalWatchForm = {
     icp_id: number | null;
 };
 
-/** What the one-click "first watch" button will create. */
+/**
+ * What a new watch starts as.
+ *
+ * No types: the editor pre-ticks every active type the team has, and the one-click button creates
+ * them by cloning the library first (S7) — neither of which the server can state here.
+ */
 export type SignalWatchDefaults = {
     location: string;
-    event_types: SignalEventType[];
     cadence: SignalWatchCadence;
+};
+
+/** The form state the signal-type editor binds to, mirroring `SignalDefinitionData::rules()`. */
+export type SignalDefinitionForm = {
+    name: string;
+    description: string;
+    category: SignalCategory;
+    icon: SignalIcon;
+    /** One template per line in the form; sent as a list. */
+    query_templates: string[];
+    match_keywords: string[];
+    includes: string[];
+    excludes: string[];
+    min_confidence: number | null;
+    min_relevance: number | null;
+    suggested_approach_hint: string | null;
+    is_active: boolean;
+};
+
+/** A category with its section explainer, for grouping the library. */
+export type SignalCategoryOption = {
+    value: SignalCategory;
+    /** Translation key, not a finished string. */
+    label: string;
+    /** Translation key, not a finished string. */
+    description: string;
+};
+
+/** An icon with its label, for the picker. */
+export type SignalIconOption = {
+    value: SignalIcon;
+    /** Translation key, not a finished string. */
+    label: string;
+};
+
+/** The floors and ceilings the type editor needs to explain itself. */
+export type SignalDefinitionDefaults = {
+    /** The product's confidence floor, used when a type sets none. */
+    min_confidence: number;
+    min_relevance: number;
+    /** How many types this team may have. */
+    max_definitions: number;
 };
 
 /** The payload broadcast on `teams.{id}` as `signals.detected`. */

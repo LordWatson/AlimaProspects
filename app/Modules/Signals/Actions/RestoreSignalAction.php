@@ -60,7 +60,7 @@ final class RestoreSignalAction
             ])->save();
 
             $this->audit->log('signals.restored', $locked, [
-                'event_type' => $locked->event_type->value,
+                'event_type' => $locked->event_key,
             ], $actor);
 
             return $locked;

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use Illuminate\Http\Request;
 
@@ -65,6 +66,35 @@ trait ResolvesSignals
             ->where('team_id', $team->getKey())
             ->with(['team', ...$with])
             ->findOrFail($watchId));
+    }
+
+    /**
+     * @param  list<string>  $with  Extra relations the response needs loaded.
+     */
+    protected function definition(Request $request, int $definitionId, array $with = []): SignalDefinition
+    {
+        $team = $this->team($request);
+
+        return app(TeamContext::class)->run($team, fn (): SignalDefinition => SignalDefinition::query()
+            // The explicit `team_id` matters more on this table than on the others: a row here may
+            // belong to the **platform** rather than to a team (ADR 0018 §2), and a definition
+            // endpoint must never resolve a preset - a team clones one, it does not edit it. The
+            // global scope already hides presets; this says so out loud.
+            ->where('team_id', $team->getKey())
+            ->with(['team', ...$with])
+            ->findOrFail($definitionId));
+    }
+
+    /**
+     * A transient, team-scoped definition for authorising list/create, which needs no stored row.
+     */
+    protected function transientDefinition(Team $team): SignalDefinition
+    {
+        $definition = new SignalDefinition;
+        $definition->forceFill(['team_id' => $team->getKey()]);
+        $definition->setRelation('team', $team);
+
+        return $definition;
     }
 
     /**
