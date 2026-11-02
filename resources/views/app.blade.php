@@ -8,8 +8,11 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        {{-- Inline script to detect system dark mode preference and apply it immediately --}}
-        <script>
+        {{-- Inline script to detect system dark mode preference and apply it immediately.
+             The nonce is what lets the Content-Security-Policy stay strict — `script-src` allows
+             `'self'` and this nonce, and nothing else (ADR 0017, Core\Http\Middleware\
+             SecurityHeaders). It is empty, and harmlessly ignored, wherever no policy is sent. --}}
+        <script nonce="{{ Vite::cspNonce() }}">
             (function() {
                 const appearance = '{{ $appearance ?? "light" }}';
 
@@ -24,8 +27,9 @@
         </script>
 
         {{-- Inline style sets the page background to brand Cloud Cream / Midnight Ink
-             before the stylesheet loads, so there is no flash of the wrong colour. --}}
-        <style>
+             before the stylesheet loads, so there is no flash of the wrong colour.
+             Nonce'd for the same reason as the script above. --}}
+        <style nonce="{{ Vite::cspNonce() }}">
             html {
                 background-color: #f5f2e8;
             }

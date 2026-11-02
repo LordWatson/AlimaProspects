@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Alima Prospects</string>
+    <string name="title_activity_main">Alima Prospects</string>
+    <string name="package_name">app.alima.prospects</string>
+    <string name="custom_url_scheme">app.alima.prospects</string>
+</resources>

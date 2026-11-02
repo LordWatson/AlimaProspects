@@ -8,6 +8,10 @@ use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\AiPlatform\Exceptions\AiCreditExceededException;
 use App\Modules\AiPlatform\Exceptions\InvalidAiResponseException;
 use App\Modules\AiPlatform\Support\UntrustedContent;
+use App\Modules\Core\Contracts\CapabilityGate;
+use App\Modules\Core\Enums\Capability;
+use App\Modules\Core\Exceptions\CapabilityException;
+use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
@@ -48,10 +52,24 @@ final class RunSignalWatchAction
         private readonly SignalQueryBuilder $queries,
         private readonly NewsSearchClient $news,
         private readonly AiClient $ai,
+        private readonly CapabilityGate $capabilities,
     ) {}
 
     public function handle(SignalWatch $watch): SignalRun
     {
+        // **The capability check, in the Action rather than in middleware** (Phase 19b, ADR 0015).
+        // This path is reachable from a queued job and from the scheduler, so there is no request
+        // to hang middleware on — ADR 0012's argument, unchanged. The route middleware beside it is
+        // the courtesy that gives a member a sentence; this is what makes the refusal true.
+        //
+        // Before the run is claimed, deliberately: a refused run should leave no `signal_runs` row
+        // at all, rather than a failed one that reads as the news provider having broken.
+        $team = Team::query()->findOrFail($watch->team_id);
+
+        if (! $this->capabilities->allows($team, Capability::Signals)) {
+            throw CapabilityException::unavailable(Capability::Signals);
+        }
+
         $run = $this->claimOrCreateRun($watch);
         $this->broadcast($run, SignalRunStatus::Running, 10, 'Searching the news');
 

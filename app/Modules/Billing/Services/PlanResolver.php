@@ -7,6 +7,7 @@ namespace App\Modules\Billing\Services;
 use App\Modules\Billing\Data\Entitlements;
 use App\Modules\Billing\Data\PlanData;
 use App\Modules\Billing\Enums\SubscriptionState;
+use App\Modules\Billing\Models\PlanGrant;
 use App\Modules\Core\Models\Team;
 use Carbon\CarbonImmutable;
 use Laravel\Cashier\Subscription;
@@ -97,8 +98,45 @@ final class PlanResolver
             ->first();
     }
 
+    /**
+     * The grant in force for a team, if any — read with an explicit query for the same two reasons
+     * {@see self::subscriptionFor()} is: a lazy relation would blow up under
+     * `preventLazyLoading()` when the console commands walk every team, and a cached relation would
+     * answer with the grant a team had before the Action that just changed it.
+     */
+    public function grantFor(Team $team): ?PlanGrant
+    {
+        return PlanGrant::query()
+            ->withoutGlobalScopes()
+            ->where('team_id', $team->getKey())
+            ->inForce()
+            ->first();
+    }
+
     private function resolve(Team $team): Entitlements
     {
+        // **A grant outranks Stripe**, and the order is the point of the whole feature: it is how
+        // an operator fixes a billing problem, entitles an invoiced customer, or runs an internal
+        // tenant — without any of those depending on us being willing to talk to Stripe. It is also
+        // what makes “turn Stripe off” and “take somebody's plan away” two different acts.
+        $grant = $this->grantFor($team);
+
+        if ($grant instanceof PlanGrant) {
+            return new Entitlements(
+                // The grant's allowances replace the plan's where it names them. Null means
+                // “use the plan's” — see PlanData::withAllowances().
+                plan: $this->plans->get($grant->plan)->withAllowances(
+                    seats: $grant->seats,
+                    leads: $grant->leads,
+                    credits: $grant->credits,
+                ),
+                state: SubscriptionState::Granted,
+                trialEndsAt: null,
+                endsAt: $this->immutable($grant->ends_at),
+                stripePrice: null,
+            );
+        }
+
         $subscription = $this->subscriptionFor($team);
 
         if ($subscription instanceof Subscription && $subscription->valid()) {

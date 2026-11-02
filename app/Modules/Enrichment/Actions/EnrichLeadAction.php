@@ -8,7 +8,10 @@ use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\AiPlatform\Exceptions\AiCreditExceededException;
 use App\Modules\AiPlatform\Exceptions\InvalidAiResponseException;
 use App\Modules\AiPlatform\Support\UntrustedContent;
+use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Contracts\WebContentFetcher;
+use App\Modules\Core\Enums\Capability;
+use App\Modules\Core\Models\Team;
 use App\Modules\Enrichment\Data\EmailVerificationResult;
 use App\Modules\Enrichment\Data\ExtractedFacts;
 use App\Modules\Enrichment\Data\SourcedValue;
@@ -48,6 +51,7 @@ final class EnrichLeadAction
         private readonly EmailVerifier $verifier,
         private readonly CompanyNormaliser $normaliser,
         private readonly LeadDeduplicator $deduplicator,
+        private readonly CapabilityGate $capabilities,
     ) {}
 
     /**
@@ -56,6 +60,20 @@ final class EnrichLeadAction
     public function execute(Lead $lead, bool $force = false): Lead
     {
         if (! $force && $lead->enrichment_status->isTerminal()) {
+            return $lead;
+        }
+
+        // **The capability check, in the Action rather than in middleware** (Phase 19b, ADR 0015).
+        // This path is reachable from a queued job and from the scheduler, so there is no request
+        // to hang middleware on — ADR 0012's argument, unchanged. The route middleware beside it is
+        // the courtesy that gives a member a sentence; this is what makes the refusal true.
+        //
+        // The lead is returned untouched rather than marked failed: a plan without enrichment is
+        // not an enrichment that went wrong, and leaving `enrichment_status` as it was means the
+        // lead enriches normally the day the team upgrades.
+        $team = Team::query()->find($lead->team_id);
+
+        if ($team instanceof Team && ! $this->capabilities->allows($team, Capability::Enrichment)) {
             return $lead;
         }
 

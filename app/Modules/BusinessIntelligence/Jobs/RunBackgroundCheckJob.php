@@ -12,7 +12,10 @@ use App\Modules\BusinessIntelligence\Data\BackgroundCheckFindings;
 use App\Modules\BusinessIntelligence\Enums\BackgroundCheckStatus;
 use App\Modules\BusinessIntelligence\Events\BackgroundCheckProgressed;
 use App\Modules\BusinessIntelligence\Models\BusinessIntelReport;
+use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Contracts\WebContentFetcher;
+use App\Modules\Core\Enums\Capability;
+use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Onboarding\Models\BusinessProfile;
 use Illuminate\Bus\Queueable;
@@ -77,8 +80,26 @@ final class RunBackgroundCheckJob implements ShouldBeUnique, ShouldQueue
         return (string) $this->teamId;
     }
 
-    public function handle(AiClient $ai, WebContentFetcher $fetcher, TeamContext $teamContext): void
-    {
+    public function handle(
+        AiClient $ai,
+        WebContentFetcher $fetcher,
+        TeamContext $teamContext,
+        CapabilityGate $capabilities,
+    ): void {
+        // **The capability check, in the Action rather than in middleware** (Phase 19b, ADR 0015).
+        // This path is reachable from a queued job and from the scheduler, so there is no request
+        // to hang middleware on — ADR 0012's argument, unchanged. The route middleware beside it is
+        // the courtesy that gives a member a sentence; this is what makes the refusal true.
+        //
+        // Returns rather than throws, so a plan without the background check does not leave a
+        // failed job and a retry schedule behind it. The report stays pending, which is the honest
+        // state: nothing has gone wrong, and nothing is going to happen.
+        $team = Team::query()->find($this->teamId);
+
+        if ($team instanceof Team && ! $capabilities->allows($team, Capability::BusinessIntelligence)) {
+            return;
+        }
+
         $teamContext->run($this->teamId, function () use ($ai, $fetcher): void {
             $report = $this->resolveReport();
 

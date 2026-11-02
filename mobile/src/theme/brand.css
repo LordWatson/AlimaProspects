@@ -1,0 +1,301 @@
+/*
+ * The Alima brand, expressed as Ionic's variables.
+ *
+ * Ionic components read --ion-* custom properties, so encoding the brand means redefining those
+ * rather than writing component CSS: set --ion-background-color once and every toolbar, card,
+ * list and modal in the app is on Cloud Cream. The values come from `docs/brand/brand-tokens.md`
+ * by way of `@shared/tokens.ts` — this file is the CSS face of the same numbers, and the one
+ * place in the mobile app where a hex literal is allowed to appear (CLAUDE.md §2a: build with
+ * tokens, never raw hex).
+ *
+ * Three brand rules are load-bearing here:
+ *   1. Lead with Cloud Cream. The canvas is cream, surfaces are the lighter cream tint, and Ink
+ *      is text — not a background.
+ *   2. Signal Orange is DECORATIVE ONLY. It is defined as --alima-orange for accents and is
+ *      deliberately NOT mapped to --ion-color-danger, warning, or any other status role.
+ *   3. Arabic is set in Tajawal, ~10% larger, and never letter-spaced (see app.css below).
+ */
+
+:root {
+    /* ---- Master palette (brand-tokens.md §1) ------------------------------------------- */
+    --alima-teal: #205557;
+    --alima-teal-80: #4b7474;
+    --alima-teal-60: #759491;
+    --alima-teal-40: #a0b3ae;
+    --alima-teal-20: #cad3cb;
+
+    --alima-ink: #181723;
+    --alima-ink-80: #44434a;
+    --alima-ink-60: #706f72;
+    --alima-ink-40: #9d9a99;
+    --alima-ink-20: #c9c6c1;
+
+    --alima-cream: #f5f2e8;
+    --alima-cream-surface: #fbfaf6;
+    --alima-cream-sunken: #ece9df;
+
+    /* The single-series data mark — brand Teal at 8.1:1 on the cream surface
+       (brand-tokens.md §7.7, `chart-2`). A token rather than a literal in each
+       component, because the dark value is a *different hex* and not a tint:
+       base Teal is 1.9:1 on Ink, i.e. invisible. */
+    --alima-chart-teal: var(--alima-teal);
+
+    /* Accents. Orange is decorative — never a status, never a value in a chart. */
+    --alima-orange: #f03d2a;
+    --alima-blue: #4e91d4;
+    --alima-lilac: #c9a4d8;
+    --alima-lime: #d2e842;
+
+    /* ---- Semantic digital tokens (brand-tokens.md §2.1) -------------------------------- */
+    --alima-bg-canvas: var(--alima-cream);
+    --alima-bg-surface: var(--alima-cream-surface);
+    --alima-text-primary: var(--alima-ink);
+    --alima-text-secondary: #4a4857;
+    --alima-text-muted: #6b6977;
+    --alima-border: #ddd9cc;
+    --alima-border-control: #8c8a8f;
+    --alima-focus-ring: #2c6cad;
+    --alima-brand-hover: #173f41;
+
+    --alima-status-error: #b52a1b;
+    --alima-status-warning: #8a5a00;
+    --alima-status-success: #276b43;
+    --alima-status-info: #2c6cad;
+
+    /* ---- Type (brand-tokens.md §3) ----------------------------------------------------- */
+    --alima-font-sans: 'Poppins', 'Arial', ui-sans-serif, system-ui, sans-serif;
+    --alima-font-mono: 'DM Mono', ui-monospace, 'Segoe UI Mono', monospace;
+    --alima-font-arabic:
+        'Tajawal', 'Arial', ui-sans-serif, system-ui, sans-serif;
+    --alima-tracking-eyebrow: 0.25em;
+
+    /* ---- Radius, depth, motion (brand-tokens.md §5) ------------------------------------ */
+    --alima-radius-sm: 8px;
+    --alima-radius-md: 16px;
+    --alima-radius-lg: 24px;
+    /* Buttons and chips are pill (brand-tokens.md §2.2). */
+    --alima-radius-pill: 9999px;
+    --alima-shadow-sm: 0 1px 2px 0 rgb(24 23 35 / 0.06);
+    --alima-shadow-md: 0 8px 24px -4px rgb(24 23 35 / 0.1);
+    --alima-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+    /* ---- Ionic: surfaces and text ------------------------------------------------------ */
+    --ion-background-color: var(--alima-bg-canvas);
+    --ion-background-color-rgb: 245, 242, 232;
+    --ion-text-color: var(--alima-text-primary);
+    --ion-text-color-rgb: 24, 23, 35;
+
+    --ion-font-family: var(--alima-font-sans);
+
+    --ion-border-color: var(--alima-border);
+    --ion-item-background: var(--alima-bg-surface);
+    --ion-toolbar-background: var(--alima-bg-canvas);
+    --ion-toolbar-color: var(--alima-text-primary);
+    --ion-card-background: var(--alima-bg-surface);
+    --ion-overlay-background-color: var(--alima-bg-surface);
+    --ion-placeholder-color: var(--alima-text-muted);
+
+    /* Ionic's neutral steps, re-cut from Cloud Cream up to Midnight Ink so every borrowed
+       --ion-color-step-* lands on a brand neutral rather than on a grey. */
+    --ion-color-step-50: #f1eee3;
+    --ion-color-step-100: #ece9df;
+    --ion-color-step-150: #e6e3d8;
+    --ion-color-step-200: #e0dcd0;
+    --ion-color-step-250: #d9d5c8;
+    --ion-color-step-300: #d3cec0;
+    --ion-color-step-350: #c9c6c1;
+    --ion-color-step-400: #b8b5b2;
+    --ion-color-step-500: #9d9a99;
+    --ion-color-step-600: #807e80;
+    --ion-color-step-700: #6b6977;
+    --ion-color-step-800: #4a4857;
+    --ion-color-step-900: #302f3d;
+    --ion-color-step-950: #211f2e;
+
+    /* ---- Ionic: colour roles ------------------------------------------------------------
+       primary   = the main action, Midnight Ink on cream (§2.1 action.primary).
+       secondary = Deep Teal, which the brand reserves for links and structure.
+       tertiary  = Teal 80, for quieter structural chrome.
+       Status roles use the status ramp; none of them is Orange.                            */
+    --ion-color-primary: var(--alima-ink);
+    --ion-color-primary-rgb: 24, 23, 35;
+    --ion-color-primary-contrast: var(--alima-cream);
+    --ion-color-primary-contrast-rgb: 245, 242, 232;
+    --ion-color-primary-shade: #0f0e18;
+    --ion-color-primary-tint: #302f3d;
+
+    --ion-color-secondary: var(--alima-teal);
+    --ion-color-secondary-rgb: 32, 85, 87;
+    --ion-color-secondary-contrast: var(--alima-cream);
+    --ion-color-secondary-contrast-rgb: 245, 242, 232;
+    --ion-color-secondary-shade: #173f41;
+    --ion-color-secondary-tint: #366668;
+
+    --ion-color-tertiary: var(--alima-teal-80);
+    --ion-color-tertiary-rgb: 75, 116, 116;
+    --ion-color-tertiary-contrast: var(--alima-cream);
+    --ion-color-tertiary-contrast-rgb: 245, 242, 232;
+    --ion-color-tertiary-shade: #426666;
+    --ion-color-tertiary-tint: #5d8282;
+
+    --ion-color-success: var(--alima-status-success);
+    --ion-color-success-rgb: 39, 107, 67;
+    --ion-color-success-contrast: var(--alima-cream-surface);
+    --ion-color-success-contrast-rgb: 251, 250, 246;
+    --ion-color-success-shade: #225e3b;
+    --ion-color-success-tint: #3d7a56;
+
+    --ion-color-warning: var(--alima-status-warning);
+    --ion-color-warning-rgb: 138, 90, 0;
+    --ion-color-warning-contrast: var(--alima-cream-surface);
+    --ion-color-warning-contrast-rgb: 251, 250, 246;
+    --ion-color-warning-shade: #794f00;
+    --ion-color-warning-tint: #966b1a;
+
+    --ion-color-danger: var(--alima-status-error);
+    --ion-color-danger-rgb: 181, 42, 27;
+    --ion-color-danger-contrast: var(--alima-cream-surface);
+    --ion-color-danger-contrast-rgb: 251, 250, 246;
+    --ion-color-danger-shade: #9f2518;
+    --ion-color-danger-tint: #bc3f31;
+
+    --ion-color-medium: var(--alima-text-muted);
+    --ion-color-medium-rgb: 107, 105, 119;
+    --ion-color-medium-contrast: var(--alima-cream-surface);
+    --ion-color-medium-contrast-rgb: 251, 250, 246;
+    --ion-color-medium-shade: #5e5c69;
+    --ion-color-medium-tint: #7a7885;
+
+    --ion-color-light: var(--alima-cream-sunken);
+    --ion-color-light-rgb: 236, 233, 223;
+    --ion-color-light-contrast: var(--alima-ink);
+    --ion-color-light-contrast-rgb: 24, 23, 35;
+    --ion-color-light-shade: #d0cdc4;
+    --ion-color-light-tint: #eeebe2;
+
+    --ion-color-dark: var(--alima-ink);
+    --ion-color-dark-rgb: 24, 23, 35;
+    --ion-color-dark-contrast: var(--alima-cream);
+    --ion-color-dark-contrast-rgb: 245, 242, 232;
+    --ion-color-dark-shade: #151420;
+    --ion-color-dark-tint: #302f3d;
+}
+
+/*
+ * Dark theme — PENDING BRAND-OWNER APPROVAL (brand-tokens.md §7.1), the same caveat the web app
+ * carries. The book defines Ink *sections*, not a full dark mode; these are the web app's
+ * proposed values, so at least the two surfaces agree while approval is outstanding.
+ *
+ * Driven by a class on <html> rather than the media query alone, because the appearance setting
+ * is the member's and is remembered (`lib/appearance.ts`).
+ */
+.alima-dark {
+    --alima-bg-canvas: #181723;
+    --alima-bg-surface: #211f2e;
+    --alima-cream-sunken: #2c2a3a;
+    --alima-text-primary: #f5f2e8;
+    --alima-text-secondary: #c9c6c1;
+    --alima-text-muted: #b4b1ad;
+    --alima-border: #3a3847;
+    --alima-border-control: #514f5c;
+    --alima-focus-ring: #6fa4d8;
+    --alima-brand-hover: #a0b3ae;
+
+    --alima-status-error: #ef9a9a;
+    --alima-status-warning: #d9b15a;
+    --alima-status-success: #5fb07e;
+    --alima-status-info: #6fa4d8;
+
+    /* Teal, lightened to 5.0:1 on Ink — the dark `chart-2`. */
+    --alima-chart-teal: #2f9e9b;
+
+    --ion-background-color: var(--alima-bg-canvas);
+    --ion-background-color-rgb: 24, 23, 35;
+    --ion-text-color: var(--alima-text-primary);
+    --ion-text-color-rgb: 245, 242, 232;
+
+    --ion-color-step-50: #1e1d2a;
+    --ion-color-step-100: #211f2e;
+    --ion-color-step-150: #272533;
+    --ion-color-step-200: #2c2a3a;
+    --ion-color-step-250: #322f41;
+    --ion-color-step-300: #3a3847;
+    --ion-color-step-350: #45434f;
+    --ion-color-step-400: #514f5c;
+    --ion-color-step-500: #6b6977;
+    --ion-color-step-600: #8c8a95;
+    --ion-color-step-700: #b4b1ad;
+    --ion-color-step-800: #c9c6c1;
+    --ion-color-step-900: #e3e0d7;
+    --ion-color-step-950: #f5f2e8;
+
+    /* Cream buttons on Ink, and Teal 60 for links — base Teal is 1.9:1 here, i.e. invisible. */
+    --ion-color-primary: var(--alima-cream);
+    --ion-color-primary-rgb: 245, 242, 232;
+    --ion-color-primary-contrast: var(--alima-ink);
+    --ion-color-primary-contrast-rgb: 24, 23, 35;
+    --ion-color-primary-shade: #d8d5cc;
+    --ion-color-primary-tint: #f7f4eb;
+
+    --ion-color-secondary: var(--alima-teal-60);
+    --ion-color-secondary-rgb: 117, 148, 145;
+    --ion-color-secondary-contrast: var(--alima-ink);
+    --ion-color-secondary-contrast-rgb: 24, 23, 35;
+    --ion-color-secondary-shade: #678280;
+    --ion-color-secondary-tint: #83a09d;
+
+    --ion-color-tertiary: var(--alima-teal-40);
+    --ion-color-tertiary-rgb: 160, 179, 174;
+    --ion-color-tertiary-contrast: var(--alima-ink);
+    --ion-color-tertiary-contrast-rgb: 24, 23, 35;
+    --ion-color-tertiary-shade: #8d9e99;
+    --ion-color-tertiary-tint: #aabbb6;
+
+    --ion-color-success: var(--alima-status-success);
+    --ion-color-success-rgb: 95, 176, 126;
+    --ion-color-success-contrast: var(--alima-ink);
+    --ion-color-success-contrast-rgb: 24, 23, 35;
+    --ion-color-success-shade: #549b6f;
+    --ion-color-success-tint: #6fb88b;
+
+    --ion-color-warning: var(--alima-status-warning);
+    --ion-color-warning-rgb: 217, 177, 90;
+    --ion-color-warning-contrast: var(--alima-ink);
+    --ion-color-warning-contrast-rgb: 24, 23, 35;
+    --ion-color-warning-shade: #bf9c4f;
+    --ion-color-warning-tint: #ddb96b;
+
+    --ion-color-danger: var(--alima-status-error);
+    --ion-color-danger-rgb: 239, 154, 154;
+    --ion-color-danger-contrast: var(--alima-ink);
+    --ion-color-danger-contrast-rgb: 24, 23, 35;
+    --ion-color-danger-shade: #d28888;
+    --ion-color-danger-tint: #f1a4a4;
+
+    --ion-color-medium: var(--alima-text-muted);
+    --ion-color-medium-rgb: 180, 177, 173;
+    --ion-color-medium-contrast: var(--alima-ink);
+    --ion-color-medium-contrast-rgb: 24, 23, 35;
+    --ion-color-medium-shade: #9e9c98;
+    --ion-color-medium-tint: #bcb9b5;
+
+    --ion-color-light: #2c2a3a;
+    --ion-color-light-rgb: 44, 42, 58;
+    --ion-color-light-contrast: var(--alima-cream);
+    --ion-color-light-contrast-rgb: 245, 242, 232;
+    --ion-color-light-shade: #272533;
+    --ion-color-light-tint: #413f4e;
+
+    --ion-color-dark: var(--alima-cream);
+    --ion-color-dark-rgb: 245, 242, 232;
+    --ion-color-dark-contrast: var(--alima-ink);
+    --ion-color-dark-contrast-rgb: 24, 23, 35;
+    --ion-color-dark-shade: #d8d5cc;
+    --ion-color-dark-tint: #f7f4eb;
+
+    --ion-item-background: var(--alima-bg-surface);
+    --ion-toolbar-background: var(--alima-bg-canvas);
+    --ion-card-background: var(--alima-bg-surface);
+    --ion-overlay-background-color: var(--alima-bg-surface);
+    --ion-border-color: var(--alima-border);
+}

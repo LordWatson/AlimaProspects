@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Admin\Providers\AdminServiceProvider;
 use App\Modules\AiInsights\Providers\AiInsightsServiceProvider;
 use App\Modules\AiPlatform\Providers\AiPlatformServiceProvider;
 use App\Modules\Auth\Providers\AuthServiceProvider as AuthModuleServiceProvider;
@@ -20,11 +21,15 @@ use App\Modules\Signals\Providers\SignalsServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
 use App\Providers\HorizonServiceProvider;
+use App\Providers\ObservabilityServiceProvider;
 
 return [
     AppServiceProvider::class,
     FortifyServiceProvider::class,
     HorizonServiceProvider::class,
+    // Who may open Pulse and Horizon (Phase 20, ADR 0017). After Horizon's own provider, whose
+    // `gate()` it replaces.
+    ObservabilityServiceProvider::class,
 
     // Domain modules (ADR 0002) — register each module's provider here.
     CoreServiceProvider::class,
@@ -48,4 +53,8 @@ return [
     // Also last, and for the same reason: it replaces AI Platform's credit stub, Lead Sourcing's
     // lead-quota stub and Auth's seat stub with plan-backed sources (Phase 16).
     BillingServiceProvider::class,
+    // Last of all. It decorates (never replaces) the credit, lead-quota and team-sending guards
+    // that Billing and Outreach bind, so a suspended tenant stops sourcing, spending and sending
+    // without Admin having to know what a plan is (Phase 19a, ADR 0014).
+    AdminServiceProvider::class,
 ];

@@ -11,7 +11,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import type { Passkey } from '@/types/auth';
+import type { Passkey } from '@/shared/types/auth';
 
 const props = defineProps<{
     passkey: Passkey;

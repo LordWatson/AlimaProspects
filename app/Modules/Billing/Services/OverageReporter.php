@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Billing\Services;
 
 use App\Modules\Billing\Contracts\BillingGateway;
+use App\Modules\Billing\Contracts\StripeSwitch;
 use App\Modules\Billing\Data\BillingPeriod;
 use App\Modules\Billing\Enums\BillingMetric;
+use App\Modules\Billing\Enums\BillingMode;
 use App\Modules\Billing\Exceptions\BillingException;
 use App\Modules\Billing\Models\UsageMeter;
 use App\Modules\Core\Models\Team;
@@ -54,6 +56,7 @@ final class OverageReporter
         private readonly UsageLedger $ledger,
         private readonly PlanResolver $plans,
         private readonly TeamContext $teamContext,
+        private readonly StripeSwitch $stripe,
     ) {}
 
     /**
@@ -64,6 +67,30 @@ final class OverageReporter
     {
         $period ??= BillingPeriod::containing();
         $isCurrent = $period->contains(now());
+
+        // Nothing to meter when Stripe is switched off, or when this tenant is not billed through
+        // it at all (Phase 19b). The meters still **sync** either way — `usage_meters` is a record
+        // over the `ai_requests`/`discovery_runs` ledgers and has nothing to do with Stripe
+        // (ADR 0012), so a team's allowance, its warnings and its guards all keep working. What
+        // stops is telling Stripe about the excess, which is the only part Stripe is involved in.
+        //
+        // A no-op with a log line, exactly as this already does when the meter prices are unset: an
+        // invoiced customer's overage is a conversation, not a metered event, and reporting usage
+        // against a subscription that does not exist is how this command ends up logging an error
+        // every morning.
+        $mode = BillingMode::of($team);
+
+        if (! $this->stripe->isEnabled() || ! $mode->isMetered()) {
+            Log::channel('billing')->info('Overage not reported: Stripe is unavailable for this team.', [
+                'team_id' => $team->getKey(),
+                'stripe_enabled' => $this->stripe->isEnabled(),
+                'billing_mode' => $mode->value,
+            ]);
+
+            $this->teamContext->run($team, fn () => $this->ledger->sync($team, $period));
+
+            return 0;
+        }
 
         // The plan gate applies to the **current** period only. Whether overage was permitted in a
         // month that has closed was decided by the plan the team was on then, and that decision is

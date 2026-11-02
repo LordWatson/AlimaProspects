@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue';
 import BrandArtwork from '@/components/BrandArtwork.vue';
-import { logoArtwork } from '@/components/brand/artwork';
+import { logoArtwork } from '@/shared/brand/artwork';
 
 /*
  * The Alima primary signature — the master horizontal lock-up, panda mark + "alima" wordmark

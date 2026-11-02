@@ -13,7 +13,14 @@ use Illuminate\Support\Facades\Route;
  * `TriggerSignalWatchAction`: the throttle stops a watch being re-run, this stops a member
  * hammering every watch they have. A run costs money.
  */
-Route::middleware(['auth', 'verified'])->group(function (): void {
+/*
+ * `capability:` is the **courtesy** half of plan gating (Phase 19b, ADR 0015): a member whose plan
+ * does not include this gets a sentence about their plan rather than a half-rendered screen. The
+ * guard inside the Action is what makes the refusal true, because the same work is reachable from a
+ * queued job and the scheduler, which have no request to put middleware on. Both ask the same
+ * `CapabilityGate`, so they cannot disagree.
+ */
+Route::middleware(['auth', 'verified', 'capability:signals'])->group(function (): void {
     Route::get('signals', [SignalController::class, 'index'])->name('signals.index');
 
     Route::post('signals/{signal}/convert', [SignalController::class, 'convert'])

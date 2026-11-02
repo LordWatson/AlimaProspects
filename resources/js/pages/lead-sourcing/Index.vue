@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { Check, Radar, Search } from '@lucide/vue';
+import { Check, ChevronRight, Radar, Search } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { FormField } from '@/components/forms';
 import InputError from '@/components/InputError.vue';
+import MeterBar from '@/components/MeterBar.vue';
 import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import { Spinner } from '@/components/ui/spinner';
+import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import type {
     DiscoveryIcpOption,
@@ -21,6 +24,20 @@ import type {
     LeadSource,
 } from '@/types';
 
+/*
+ * Start a discovery, and see the ones that have run.
+ *
+ * What the rebuild changed in the runs list: it said *what* had run and *how many* it found, and
+ * nothing about **when** — so three completed runs of the same source read as three identical
+ * rows, and the one somebody started two minutes ago was indistinguishable from last month's. Each
+ * row now carries its own time, how many of the leads it found were new, and — while it is still
+ * going — the live step and percentage that were already arriving over Reverb and being used only
+ * to flip a badge.
+ *
+ * The form's fields went through `FormField`, which is where the `aria-invalid` and
+ * `aria-describedby` wiring they were missing comes from, and the hand-rolled `<select>` became a
+ * `NativeSelect` — the one that keeps the native picker on a phone.
+ */
 defineOptions({
     layout: {
         breadcrumbs: [{ title: 'Lead discovery', href: '/discovery' }],
@@ -36,6 +53,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const { number, relative, dateTime } = useFormat();
 const page = usePage();
 
 const activeIcp = computed(() => props.icps.find((i) => i.is_active) ?? null);
@@ -96,6 +114,25 @@ function isRunning(run: DiscoveryRun): boolean {
     return status === 'pending' || status === 'running';
 }
 
+/** The live step and percentage, for a run still going. */
+function progressFor(run: DiscoveryRun): DiscoveryRunProgress | null {
+    return liveProgress.value[run.id] ?? null;
+}
+
+/** How many leads this run found, and how many of them the team didn't already have. */
+function foundLabel(run: DiscoveryRun): string {
+    const found = liveProgress.value[run.id]?.leads_found ?? run.leads_found;
+
+    if (found === 0) {
+        return t(':count leads', { count: number(found) });
+    }
+
+    return t(':found found · :created new', {
+        found: number(found),
+        created: number(run.leads_created),
+    });
+}
+
 let channelName: string | null = null;
 
 function onProgress(payload: DiscoveryRunProgress): void {
@@ -125,7 +162,7 @@ onBeforeUnmount(() => {
 <template>
     <Head :title="t('Lead discovery')" />
 
-    <div class="flex flex-col gap-8 py-2">
+    <div class="flex flex-col gap-6 py-2">
         <PageHero
             index="05"
             :eyebrow="t('Lead discovery')"
@@ -223,78 +260,100 @@ onBeforeUnmount(() => {
                     </fieldset>
 
                     <div class="grid gap-5 sm:grid-cols-2">
-                        <!-- ICP -->
-                        <div class="grid gap-2">
-                            <Label for="icp">{{
-                                t('Ideal customer profile')
-                            }}</Label>
-                            <select
-                                id="icp"
-                                v-model="form.icp_id"
-                                class="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                            >
-                                <option :value="null">
-                                    {{
-                                        activeIcp
-                                            ? t('Active profile (:name)', {
-                                                  name: activeIcp.name,
-                                              })
-                                            : t('No active profile')
-                                    }}
-                                </option>
-                                <option
-                                    v-for="icp in icps"
-                                    :key="icp.id"
-                                    :value="icp.id"
+                        <FormField
+                            id="icp"
+                            :label="t('Ideal customer profile')"
+                            :error="form.errors.icp_id"
+                        >
+                            <template #default="{ id, describedBy, invalid }">
+                                <NativeSelect
+                                    :id="id"
+                                    v-model="form.icp_id"
+                                    :aria-describedby="describedBy"
+                                    :aria-invalid="invalid"
                                 >
-                                    {{ icp.name }}
-                                </option>
-                            </select>
-                            <InputError :message="form.errors.icp_id" />
-                        </div>
+                                    <option :value="null">
+                                        {{
+                                            activeIcp
+                                                ? t('Active profile (:name)', {
+                                                      name: activeIcp.name,
+                                                  })
+                                                : t('No active profile')
+                                        }}
+                                    </option>
+                                    <option
+                                        v-for="icp in icps"
+                                        :key="icp.id"
+                                        :value="icp.id"
+                                    >
+                                        {{ icp.name }}
+                                    </option>
+                                </NativeSelect>
+                            </template>
+                        </FormField>
 
-                        <!-- Limit -->
-                        <div class="grid gap-2">
-                            <Label for="limit">{{ t('Maximum leads') }}</Label>
-                            <Input
-                                id="limit"
-                                v-model.number="form.limit"
-                                type="number"
-                                min="1"
-                                :max="defaults.max_limit"
-                            />
-                            <InputError :message="form.errors.limit" />
-                        </div>
+                        <FormField
+                            id="limit"
+                            :label="t('Maximum leads')"
+                            :error="form.errors.limit"
+                            :hint="
+                                t('Up to :max in one run.', {
+                                    max: number(defaults.max_limit),
+                                })
+                            "
+                        >
+                            <template #default="{ id, describedBy, invalid }">
+                                <Input
+                                    :id="id"
+                                    v-model.number="form.limit"
+                                    type="number"
+                                    min="1"
+                                    :max="defaults.max_limit"
+                                    :aria-describedby="describedBy"
+                                    :aria-invalid="invalid"
+                                />
+                            </template>
+                        </FormField>
 
-                        <!-- Terms -->
-                        <div class="grid gap-2">
-                            <Label for="terms">{{
-                                t('Search terms (optional)')
-                            }}</Label>
-                            <Input
-                                id="terms"
-                                v-model="form.terms"
-                                :placeholder="
-                                    t('Left blank, Alima uses your profile')
-                                "
-                                autocomplete="off"
-                            />
-                            <InputError :message="form.errors.terms" />
-                        </div>
+                        <FormField
+                            id="terms"
+                            :label="t('Search terms')"
+                            optional
+                            :error="form.errors.terms"
+                        >
+                            <template #default="{ id, describedBy, invalid }">
+                                <Input
+                                    :id="id"
+                                    v-model="form.terms"
+                                    :aria-describedby="describedBy"
+                                    :aria-invalid="invalid"
+                                    :placeholder="
+                                        t('Left blank, Alima uses your profile')
+                                    "
+                                    autocomplete="off"
+                                    dir="auto"
+                                />
+                            </template>
+                        </FormField>
 
-                        <!-- Location -->
-                        <div class="grid gap-2">
-                            <Label for="location">{{
-                                t('Location (optional)')
-                            }}</Label>
-                            <Input
-                                id="location"
-                                v-model="form.location"
-                                :placeholder="t('e.g. London, Dubai')"
-                                autocomplete="off"
-                            />
-                            <InputError :message="form.errors.location" />
-                        </div>
+                        <FormField
+                            id="location"
+                            :label="t('Location')"
+                            optional
+                            :error="form.errors.location"
+                        >
+                            <template #default="{ id, describedBy, invalid }">
+                                <Input
+                                    :id="id"
+                                    v-model="form.location"
+                                    :aria-describedby="describedBy"
+                                    :aria-invalid="invalid"
+                                    :placeholder="t('e.g. London, Dubai')"
+                                    autocomplete="off"
+                                    dir="auto"
+                                />
+                            </template>
+                        </FormField>
                     </div>
 
                     <div class="flex justify-end">
@@ -333,25 +392,68 @@ onBeforeUnmount(() => {
                 <li v-for="run in runs" :key="run.id">
                     <Link
                         :href="`/discovery/${run.id}`"
-                        class="flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-card px-5 py-4 transition-colors hover:border-brand/40 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        class="group/row block rounded-2xl border border-border bg-card px-5 py-4 transition-colors hover:border-brand/40 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                         :data-test="`run-${run.id}`"
                     >
-                        <Badge :variant="statusVariant[statusFor(run)]">
-                            <Spinner v-if="isRunning(run)" class="size-3" />
-                            {{ t(statusLabel[statusFor(run)]) }}
-                        </Badge>
-                        <span class="text-sm font-medium text-foreground">{{
-                            t(run.source_label)
-                        }}</span>
                         <span
-                            v-if="run.icp"
-                            class="text-sm text-muted-foreground"
-                            dir="auto"
-                            >{{ run.icp.name }}</span
+                            class="flex flex-wrap items-center gap-x-4 gap-y-2"
                         >
-                        <span class="flex-1" />
-                        <span class="font-mono text-xs text-muted-foreground">
-                            {{ t(':count leads', { count: run.leads_found }) }}
+                            <Badge :variant="statusVariant[statusFor(run)]">
+                                <Spinner v-if="isRunning(run)" class="size-3" />
+                                {{ t(statusLabel[statusFor(run)]) }}
+                            </Badge>
+                            <span class="text-sm font-medium text-foreground">{{
+                                t(run.source_label)
+                            }}</span>
+                            <span
+                                v-if="run.icp"
+                                class="text-sm text-muted-foreground"
+                                dir="auto"
+                                >{{ run.icp.name }}</span
+                            >
+                            <span class="flex-1" />
+                            <!-- When it ran. Relative for reading, exact on hover for the
+                                 record — three runs of one source are otherwise identical rows. -->
+                            <span
+                                v-if="run.created_at"
+                                class="font-mono text-xs text-muted-foreground"
+                                :title="dateTime(run.created_at)"
+                                >{{ relative(run.created_at) }}</span
+                            >
+                            <span
+                                class="font-mono text-xs text-muted-foreground tabular-nums"
+                                >{{ foundLabel(run) }}</span
+                            >
+                            <ChevronRight
+                                class="size-4 text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-100 rtl:rotate-180"
+                                aria-hidden="true"
+                            />
+                        </span>
+
+                        <!-- A run in flight: what it is doing now, and how far through. The
+                             payload was already arriving and was only flipping a badge. -->
+                        <span
+                            v-if="isRunning(run) && progressFor(run)"
+                            class="mt-3 flex items-center gap-3"
+                        >
+                            <!-- `live`, because this value climbs while the row is on screen: a
+                                 one-off spoken phrase would be read at 10% and never again. -->
+                            <MeterBar
+                                live
+                                :value="progressFor(run)?.percent ?? 0"
+                                width="full"
+                                class="flex-1"
+                                :label="
+                                    t(':percent per cent done', {
+                                        percent: progressFor(run)?.percent ?? 0,
+                                    })
+                                "
+                            />
+                            <span
+                                class="shrink-0 text-xs text-muted-foreground"
+                                dir="auto"
+                                >{{ t(progressFor(run)?.step ?? '') }}</span
+                            >
                         </span>
                     </Link>
                 </li>

@@ -263,6 +263,71 @@ it('re-affirming after a withdrawal clears it and starts a new version', functio
         ->and(app(LegitimateInterestGate::class)->isOpen($team))->toBeTrue();
 });
 
+it('opens the assessment the query asks for, not only the team’s own', function (): void {
+    [$user, $team] = Fixtures::team();
+    Fixtures::activeLia($team);
+
+    // The compliance centre lists one card per market and each one links here with its own
+    // `market`. Before those links existed the only way to this record was the editor’s own
+    // dropdown, so a team could see "discovery is closed for this market" with nothing to open.
+    $this->actingAs($user)
+        ->get(route('compliance.lia.edit', ['market' => Market::Uae->value]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('compliance/Lia')
+            ->where('assessment.market', 'uae')
+            // A market with nothing recorded yet is a transient record, not a 404: the screen is
+            // reached from a card that says exactly that.
+            ->where('assessment.id', null)
+            ->where('assessment.in_force', false)
+            ->where('team_market', 'uk')
+            ->where('can.manage', true));
+});
+
+it('saves a second market’s assessment without touching the team’s own', function (): void {
+    [$user, $team] = Fixtures::team();
+    Fixtures::activeLia($team);
+
+    $this->actingAs($user)
+        ->put(route('compliance.lia.update'), liaPayload(['market' => Market::Uae->value]))
+        ->assertRedirect();
+
+    $records = LiaRecord::withoutGlobalScopes()
+        ->orderBy('market')
+        ->get()
+        ->keyBy('market');
+
+    // Two independent records, which is the whole reason the screen is per market: the UK runs on
+    // legitimate interest and the UAE expects prior consent (ADR 0007).
+    expect($records)->toHaveCount(2)
+        ->and($records['uae']->status)->toBe(LiaStatus::Active)
+        ->and($records['uk']->status)->toBe(LiaStatus::Active)
+        ->and($records['uk']->version)->toBe(1);
+
+    // And the gate is still keyed on the team’s **own** market, so signing the other one off
+    // neither opens nor closes anything for them.
+    expect(app(LegitimateInterestGate::class)->isOpen($team))->toBeTrue();
+});
+
+it('refuses a second market’s assessment from a member who may not write one', function (): void {
+    [, $team] = Fixtures::team();
+
+    $plainMember = Fixtures::member($team, TeamRole::Member);
+
+    // The read is deliberately wide and the write is not, and that has to hold for every market
+    // rather than only the one the policy was first exercised against.
+    $this->actingAs($plainMember)
+        ->get(route('compliance.lia.edit', ['market' => Market::Uae->value]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('can.manage', false));
+
+    $this->actingAs($plainMember)
+        ->put(route('compliance.lia.update'), liaPayload(['market' => Market::Uae->value]))
+        ->assertForbidden();
+
+    expect(LiaRecord::withoutGlobalScopes()->count())->toBe(0);
+});
+
 it('lets any member read the assessment but only an admin write it', function (): void {
     [, $team] = Fixtures::team();
     Fixtures::activeLia($team);

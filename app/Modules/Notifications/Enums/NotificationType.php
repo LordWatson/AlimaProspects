@@ -68,6 +68,39 @@ enum NotificationType: string
      */
     case CreditLow = 'credit_low';
 
+    // --- Billing (Phase 19b) ---
+    /**
+     * A payment failed.
+     *
+     * The gap `billing-plans.md` recorded: Stripe's own dunning email was the only signal, so a
+     * team whose card had expired found out from a third party or not at all. Owners and Admins
+     * only, and **not digestible** — Stripe retries for a fortnight and then cancels, and a notice
+     * that arrives in tomorrow's round-up has spent a day of that window.
+     */
+    case PaymentFailed = 'payment_failed';
+
+    // --- Compliance (Phase 19b) ---
+    /**
+     * A lawful-basis assessment is due for review.
+     *
+     * The inverted gap `compliance-privacy.md` recorded: the compliance screen says so and the
+     * discovery gate closes, but nothing *tells* anybody — so a team that has stopped visiting the
+     * compliance centre discovers it when sourcing stops. Owners and Admins, because it is a legal
+     * record only they can sign.
+     */
+    case AssessmentReviewDue = 'assessment_review_due';
+
+    // --- Admin (Phase 19b) ---
+    /**
+     * Something the platform wants every affected tenant to know: maintenance, a price change, a
+     * regulatory note.
+     *
+     * **Aggregated by construction** — one per team, never one per member per team (the
+     * `AnnounceTopLeadsJob` shape). Not configurable: a tenant cannot switch off being told that we
+     * are taking the product down on Sunday.
+     */
+    case Announcement = 'announcement';
+
     // --- Notifications itself ---
     /** The daily or weekly round-up. Never itself digestible, for obvious reasons. */
     case Digest = 'digest';
@@ -82,6 +115,9 @@ enum NotificationType: string
             self::SignalsDetected => 'New signals arrive',
             self::InsightsReady => 'The daily insights are ready',
             self::CreditLow => 'An allowance is running low',
+            self::PaymentFailed => 'A payment fails',
+            self::AssessmentReviewDue => 'A compliance review falls due',
+            self::Announcement => 'Platform announcements',
             self::Digest => 'The round-up',
         };
     }
@@ -96,6 +132,9 @@ enum NotificationType: string
             self::SignalsDetected => 'When a watch finds a new trigger event.',
             self::InsightsReady => 'Each morning: who is going cold, and who is worth a call today.',
             self::CreditLow => 'Owners and admins only — work stops when a plan allowance runs out.',
+            self::PaymentFailed => 'Owners and admins only — a card was declined and the subscription is at risk.',
+            self::AssessmentReviewDue => 'Owners and admins only — your lawful-basis record needs reviewing, and lead discovery stops without it.',
+            self::Announcement => 'Maintenance, changes and notices from us. Cannot be switched off.',
             self::Digest => 'Everything that happened, in one message.',
         };
     }
@@ -108,7 +147,7 @@ enum NotificationType: string
         return match ($this) {
             self::DiscoveryComplete, self::TopLeads, self::SignalsDetected => NotificationGroup::Finding,
             self::TaskDue, self::LeadAssigned => NotificationGroup::MyWork,
-            self::CreditLow => NotificationGroup::Account,
+            self::CreditLow, self::PaymentFailed, self::AssessmentReviewDue, self::Announcement => NotificationGroup::Account,
             // With the digest rather than with Finding: both are a round-up a member reads once a
             // day, and both are the kind of thing somebody switches off together.
             self::InsightsReady, self::Digest => NotificationGroup::Summary,
@@ -130,10 +169,18 @@ enum NotificationType: string
                 NotificationChannel::Push,
             ],
             // Money, and the work stops when it runs out.
-            self::CreditLow => [
+            //
+            // The same two channels for a failed payment and a due assessment, for the same
+            // reason: both end with the product refusing to do something, and both have a window
+            // in which somebody can prevent that. An in-app badge alone would be seen by whoever
+            // happened to log in.
+            self::CreditLow, self::PaymentFailed, self::AssessmentReviewDue => [
                 NotificationChannel::InApp,
                 NotificationChannel::Mail,
             ],
+            // In-app only. An announcement is us talking, not something the tenant has to act on
+            // today, and emailing every tenant on every notice is how we become a filter rule.
+            self::Announcement => [NotificationChannel::InApp],
             // The member asked for it explicitly by turning it on.
             self::Digest => [NotificationChannel::Mail],
             // Useful, not urgent. In-app by default; an email per finished search would train
@@ -160,8 +207,13 @@ enum NotificationType: string
         return match ($this) {
             // Reminders and assignments are about *now*; holding one until 8am tomorrow would make
             // the reminder useless and the assignment rude.
-            self::TaskDue, self::LeadAssigned, self::CreditLow, self::Digest => false,
-            self::DiscoveryComplete, self::TopLeads, self::SignalsDetected, self::InsightsReady => true,
+            // A failed payment and a due assessment both have a clock on them: Stripe retries for
+            // a fortnight, and a lapsed assessment stops discovery. Holding either until 8am
+            // tomorrow spends a day of a window somebody needed.
+            self::TaskDue, self::LeadAssigned, self::CreditLow, self::Digest,
+            self::PaymentFailed, self::AssessmentReviewDue => false,
+            self::DiscoveryComplete, self::TopLeads, self::SignalsDetected, self::InsightsReady,
+            self::Announcement => true,
         };
     }
 
@@ -171,7 +223,13 @@ enum NotificationType: string
      */
     public function isAdminOnly(): bool
     {
-        return $this === self::CreditLow;
+        return in_array($this, [
+            self::CreditLow,
+            // Money, and only an Owner or Admin can act on it.
+            self::PaymentFailed,
+            // A legal record, signed by a named person. A Member cannot complete it.
+            self::AssessmentReviewDue,
+        ], strict: true);
     }
 
     /**
@@ -181,7 +239,12 @@ enum NotificationType: string
      */
     public function isConfigurable(): bool
     {
-        return $this !== self::Digest;
+        return ! in_array($this, [
+            self::Digest,
+            // A tenant cannot switch off being told we are taking the product down on Sunday. The
+            // operator's own `announcements.enabled` kill switch is the only off there is.
+            self::Announcement,
+        ], strict: true);
     }
 
     /**

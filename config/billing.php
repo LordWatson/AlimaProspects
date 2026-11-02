@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Billing\Enums\PlanKey;
+use App\Modules\Core\Enums\Capability;
 
 /*
 |--------------------------------------------------------------------------
@@ -58,6 +59,22 @@ return [
     | The plans themselves, cheapest first. `seats`, `leads` and `credits` are the monthly
     | entitlements; `null` means unlimited.
     |
+
+    | **The lists start permissive, and that is a decision.** Which features a plan includes is a
+    | *pricing* decision, and only two of them are ones the price list above already makes a promise
+    | about: AI insights ("AI scoring, drafting and insights", Starter and up) and Signals
+    | ("Signals — trigger-event prospecting", Team and up). The rest — the background check,
+    | enrichment, CSV export, API access — are on **every** plan, so nothing a customer can do today
+    | stops working. Tightening one is a line deleted from a plan below, which is where a pricing
+    | decision belongs.
+    |
+    | **`capabilities` is not `features`.** `features` above is marketing copy for the pricing page;
+    | `capabilities` is a list of `Core\Enums\Capability` values that gates actually consult
+    | (ADR 0015). Overloading one key would have made rewording the pricing page switch a feature
+    | off. A plan that declares the key is read as **exhaustive** — anything not listed is excluded;
+    | a plan that omits it entirely entitles the team to everything, which is how the product
+    | behaved before capabilities existed.
+    |
     | Overage: a paid plan keeps working past its allowance and meters the excess to Stripe, up to
     | `overage.multiplier` x the allowance — a ceiling, because an unbounded metered plan is a way
     | to hand a customer a bill they never agreed to. Free and trial teams have no overage at all:
@@ -74,6 +91,12 @@ return [
             'leads' => (int) env('BILLING_FREE_LEADS', 25),
             'credits' => (int) env('BILLING_FREE_CREDITS', 2_000),
             'overage' => false,
+            'capabilities' => [
+                Capability::BusinessIntelligence->value,
+                Capability::Enrichment->value,
+                Capability::CsvExport->value,
+                Capability::ApiAccess->value,
+            ],
             'features' => [
                 'Lead discovery and scoring',
                 'One seat',
@@ -90,6 +113,14 @@ return [
             'leads' => (int) env('BILLING_STARTER_LEADS', 500),
             'credits' => (int) env('BILLING_STARTER_CREDITS', 20_000),
             'overage' => true,
+            'capabilities' => [
+                Capability::BusinessIntelligence->value,
+                Capability::Enrichment->value,
+                Capability::CsvExport->value,
+                Capability::ApiAccess->value,
+                // The price list promises “AI scoring, drafting and insights” from here up.
+                Capability::AiInsights->value,
+            ],
             'features' => [
                 'Everything in Free',
                 '500 new companies a month',
@@ -107,6 +138,15 @@ return [
             'leads' => (int) env('BILLING_TEAM_LEADS', 2_000),
             'credits' => (int) env('BILLING_TEAM_CREDITS', 75_000),
             'overage' => true,
+            'capabilities' => [
+                Capability::BusinessIntelligence->value,
+                Capability::Enrichment->value,
+                Capability::CsvExport->value,
+                Capability::ApiAccess->value,
+                Capability::AiInsights->value,
+                // And “Signals — trigger-event prospecting” from here up.
+                Capability::Signals->value,
+            ],
             'features' => [
                 'Everything in Starter',
                 'Three seats',
@@ -124,6 +164,7 @@ return [
             'leads' => (int) env('BILLING_SCALE_LEADS', 8_000),
             'credits' => (int) env('BILLING_SCALE_CREDITS', 250_000),
             'overage' => true,
+            'capabilities' => Capability::values(),
             'features' => [
                 'Everything in Team',
                 'Ten seats',
@@ -144,6 +185,9 @@ return [
             'leads' => null,
             'credits' => null,
             'overage' => false,
+            // Everything. Listed rather than omitted, because omitting the key means
+            // “no declaration” and this plan's answer is a decision, not an absence.
+            'capabilities' => Capability::values(),
             'features' => [
                 'Everything in Scale',
                 'Unlimited seats and allowances',

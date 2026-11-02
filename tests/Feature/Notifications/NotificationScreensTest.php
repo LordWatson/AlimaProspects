@@ -270,7 +270,7 @@ it('reads notifications and the unread count over the API', function (): void {
 
     notify($user, $team, 3);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.notifications.index'))->assertOk()->assertJsonCount(3, 'data');
     $this->getJson(route('api.v1.notifications.unread'))->assertOk()->assertJsonPath('data.unread', 3);

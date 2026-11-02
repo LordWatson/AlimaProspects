@@ -72,7 +72,7 @@ it('never lists another team’s leads', function (): void {
             ->has('leads.data', 1)
             ->where('leads.data.0.company_name', 'Mine Ltd'));
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.index'))
         ->assertOk()
         ->assertJsonCount(1, 'data');
@@ -86,7 +86,7 @@ it('404s when a member opens another team’s lead', function (): void {
         ->get(route('leads.show', ['lead' => $foreign->getKey()]))
         ->assertNotFound();
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.leads.show', ['lead' => $foreign->getKey()]))
         ->assertNotFound();
 });

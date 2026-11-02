@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+
+        <!--
+            Push (Phase 18), wired to the Notifications module. FCM reads both of
+            these when it builds a notification itself — which it does whenever one
+            arrives with the app in the background, i.e. the case the member
+            actually sees. Without them Android draws a grey square and tints it
+            with the system accent.
+
+            The small icon is the panda mark; FCM masks it to a silhouette and tints
+            it, so it has to be the mark alone on transparency rather than the
+            launcher's teal tile.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/alima_notification_tint" />
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        Android 13+ requires this before a single notification can be posted, and
+        it is a runtime prompt rather than an install-time grant. The app asks for
+        it from Settings on a deliberate tap (src/lib/push.ts) rather than at
+        launch: asking before the member has seen anything worth being told about
+        is how an app collects a permanent "no" on its first screen.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>

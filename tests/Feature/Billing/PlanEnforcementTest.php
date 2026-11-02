@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Modules\Admin\Services\SuspensionAwareCreditSource;
+use App\Modules\Admin\Services\SuspensionAwareLeadQuotaSource;
+use App\Modules\Admin\Services\TeamSuspension;
 use App\Modules\AiPlatform\Contracts\CreditSource;
 use App\Modules\AiPlatform\Enums\AiRequestStatus;
 use App\Modules\AiPlatform\Exceptions\AiCreditExceededException;
@@ -10,8 +13,6 @@ use App\Modules\AiPlatform\Services\AiCreditGuard;
 use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Billing\Enums\PlanKey;
 use App\Modules\Billing\Models\UsageMeter;
-use App\Modules\Billing\Services\PlanCreditSource;
-use App\Modules\Billing\Services\PlanLeadQuotaSource;
 use App\Modules\Billing\Services\PlanResolver;
 use App\Modules\Billing\Services\UsageLedger;
 use App\Modules\Core\Models\Team;
@@ -65,8 +66,38 @@ function recordCredits(Team $team, int $credits): void
 // --- The bindings ---------------------------------------------------------------------------------
 
 it('replaces the Phase 5 and Phase 7 stubs with plan-backed sources', function (): void {
-    expect(app(CreditSource::class))->toBeInstanceOf(PlanCreditSource::class)
-        ->and(app(LeadQuotaSource::class))->toBeInstanceOf(PlanLeadQuotaSource::class);
+    // Since Phase 19a, Admin **decorates** both seams rather than replacing them, so the bound
+    // instance is its suspension-aware wrapper. Asserting the wrapper is bound and that the limit
+    // it reports is still the plan's is the whole property: a decorator that answered on its own
+    // would silently drop every plan allowance in the product, and the class name alone would not
+    // show it.
+    expect(app(CreditSource::class))->toBeInstanceOf(SuspensionAwareCreditSource::class)
+        ->and(app(LeadQuotaSource::class))->toBeInstanceOf(SuspensionAwareLeadQuotaSource::class);
+
+    [, $team] = Fixtures::team();
+    Fixtures::onFreePlan($team);
+
+    expect(app(CreditSource::class)->allowanceFor($team)->limitMicros)
+        ->toBe(BillingMetric::AiCredits->toMicros((int) config('billing.plans.free.credits')))
+        ->and(app(LeadQuotaSource::class)->quotaFor($team)->limit)
+        ->toBe((int) config('billing.plans.free.leads'));
+});
+
+it('reports no allowance at all for a suspended team', function (): void {
+    // Suspension bites in the guards, not in middleware (ADR 0012's argument): a queued discovery
+    // job and a scheduled watch spend a team's allowance with no request behind them.
+    [, $team] = Fixtures::team();
+    Fixtures::subscribe($team, PlanKey::Scale);
+
+    expect(app(CreditSource::class)->allowanceFor($team)->limitMicros)->toBeGreaterThan(0);
+
+    $team->forceFill(['suspended_at' => now(), 'suspension_reason' => 'Non-payment.'])->save();
+    app(TeamSuspension::class)->forget();
+
+    expect(app(CreditSource::class)->allowanceFor($team)->limitMicros)->toBe(0)
+        ->and(app(CreditSource::class)->allowanceFor($team)->isExhausted())->toBeTrue()
+        ->and(app(LeadQuotaSource::class)->quotaFor($team)->limit)->toBe(0)
+        ->and(app(LeadQuotaSource::class)->quotaFor($team)->isExhausted())->toBeTrue();
 });
 
 // --- Lead discovery -------------------------------------------------------------------------------

@@ -1,0 +1,59 @@
+# The mobile app's ignores.
+#
+# Capacitor scaffolds a `.gitignore` inside `android/` and `ios/` and those are committed, so the
+# ordinary native build output — `.gradle/`, `build/`, `local.properties`, `App/Pods`, `DerivedData`,
+# `xcuserdata`, the copied web assets and the `capacitor.config.json` that `cap sync` writes — is
+# already handled there and is deliberately not repeated here.
+#
+# What is here is what those templates do NOT cover: this npm project, and secrets.
+
+# ---------------------------------------------------------------------------- the npm project
+node_modules/
+dist/
+
+# Vite's cache when it lands outside node_modules, and vitest coverage output.
+.vite/
+coverage/
+
+# ---------------------------------------------------------------------------------- environment
+# `VITE_API_URL` and anything else build-time. `.env.example` is the committed one, and Vite reads
+# every `.env.*.local` variant, not just `.env.local`.
+.env
+.env.local
+.env.*.local
+
+# ------------------------------------------------------------------------------------- secrets
+# SIGNING KEYS. Android's template lists these and leaves them **commented out**, so without this
+# block a release keystore dropped next to the Gradle files is committed on the next `git add`.
+# That is not a tidiness problem: whoever holds the upload key can publish an update to the app
+# under our name, and Google will not let us rotate it without a support request.
+*.jks
+*.keystore
+*.p12
+*.p8
+*.mobileprovision
+*.cer
+*.certSigningRequest
+
+# Where the keystore's passwords conventionally go, read by `android/app/build.gradle`.
+keystore.properties
+signing.properties
+
+# Firebase's client configs. The Android one is per-project and the iOS one per-bundle; both
+# identify the project to anyone who reads them, and both are something each developer downloads
+# for themselves (docs/runbooks/mobile-dev.md §3.5). The **server** credential is a service-account
+# JSON that lives outside the repository entirely, pointed at by FCM_CREDENTIALS in the root .env.
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist
+
+# ------------------------------------------------------------- native output the templates miss
+# `release/` is commented out in Android's template, and `app/.gitignore` only covers `/build/`,
+# so a `gradlew assembleRelease` or `bundleRelease` output would otherwise be committed.
+android/app/release/
+android/app/debug/
+
+# Kotlin 2.x / Gradle 8 session state, newer than the template.
+android/.kotlin/
+
+# A merge or a patch that went sideways in the Swift sources.
+ios/App/App/*.orig

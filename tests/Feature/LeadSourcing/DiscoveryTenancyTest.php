@@ -79,7 +79,7 @@ it('excludes other teams’ runs from the API index', function (): void {
     $otherTeam = Team::factory()->create();
     app(TeamContext::class)->run($otherTeam, fn () => DiscoveryRun::factory()->create(['team_id' => $otherTeam->getKey()]));
 
-    $this->actingAs($user, 'sanctum')
+    $this->actingAs($user)
         ->getJson(route('api.v1.lead-sourcing.runs.index'))
         ->assertOk()
         ->assertJsonCount(1, 'data');

@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, CheckCircle2, ShieldAlert } from '@lucide/vue';
+import { ArrowLeft, CheckCircle2, Lock, ShieldAlert } from '@lucide/vue';
 import { computed, ref } from 'vue';
-import InputError from '@/components/InputError.vue';
+import {
+    FormActions,
+    FormErrorSummary,
+    UnsavedChangesDialog,
+} from '@/components/forms';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,6 +22,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
+import { useUnsavedGuard } from '@/composables/useUnsavedGuard';
 import type { LiaForm, LiaRecord, Market } from '@/types';
 
 /*
@@ -32,6 +37,23 @@ import type { LiaForm, LiaRecord, Market } from '@/types';
  * basis should not be affirmable by pressing a button over three empty boxes. Signing is behind a
  * confirmation that says what it means, because it opens lead discovery and carries a name and a
  * date.
+ *
+ * Four things the rebuild changed, all of them about a long form holding a legal record:
+ *
+ *  - **A draft cannot be lost by accident any more.** This is the worst thing this screen could do
+ *    — a half-written assessment is twenty minutes of somebody's careful wording — and nothing
+ *    stopped a mis-clicked breadcrumb. `useUnsavedGuard` holds the navigation and asks. The
+ *    **market picker** is held separately, because switching market loads a different record from
+ *    the same URL, and a same-path visit is exactly what the guard lets through.
+ *  - **The save bar is within reach**, in a sticky footer that also says whether anything is
+ *    unsaved — on a form five textareas tall, the buttons were below the fold from the moment it
+ *    loaded.
+ *  - **What the server rejected is summarised and reachable**, instead of a red line beside
+ *    whichever box it belonged to.
+ *  - **A member who may not edit it gets the assessment to read, not a dead form.** Any member may
+ *    *view* this record by design (`LiaRecordPolicy` — "a member working a list is the one who
+ *    will be asked"), and they were being shown five disabled textareas with no explanation. They
+ *    now get the text as prose and a line saying who can change it.
  *
  * A **plain header, not a `PageHero`**: this is a sub-page reached from the compliance centre, and
  * brand-tokens.md §7a reads the hero as a sidebar destination's opening card, with sub-pages
@@ -62,6 +84,7 @@ const { t } = useI18n();
 const { date } = useFormat();
 
 const confirming = ref(false);
+const attempt = ref(0);
 
 const form = useForm<LiaForm>({
     market: props.assessment.market,
@@ -73,8 +96,22 @@ const form = useForm<LiaForm>({
     sign: false,
 });
 
-/** Switching market loads that market's own assessment — one record per regime. */
-function changeMarket(market: string): void {
+const guard = useUnsavedGuard(() => form.isDirty);
+
+/**
+ * The market picker, which is a navigation wearing a select.
+ *
+ * Switching market loads **a different record from the same URL**, and `useUnsavedGuard`
+ * deliberately lets a same-path visit through — that is how a list re-requests itself. So the
+ * draft has to be defended here instead: a dirty form parks the chosen market and asks first.
+ *
+ * `selectKey` is bumped when the member backs out, which remounts the select. Without it the
+ * control would go on showing the market they cancelled while the form still held the old one.
+ */
+const pendingMarket = ref<string | null>(null);
+const selectKey = ref(0);
+
+function openMarket(market: string): void {
     router.get(
         '/compliance/lawful-basis',
         { market },
@@ -82,12 +119,56 @@ function changeMarket(market: string): void {
     );
 }
 
+function changeMarket(market: string): void {
+    if (market === form.market) return;
+
+    if (form.isDirty) {
+        pendingMarket.value = market;
+
+        return;
+    }
+
+    openMarket(market);
+}
+
+/** Either prompt is open: leaving the screen, or switching to another market's record. */
+const isPrompting = computed(
+    () => guard.isPrompting.value || pendingMarket.value !== null,
+);
+
+function discardAndGo(): void {
+    const market = pendingMarket.value;
+
+    pendingMarket.value = null;
+
+    if (market !== null) {
+        openMarket(market);
+
+        return;
+    }
+
+    guard.discard();
+}
+
+function stay(): void {
+    if (pendingMarket.value !== null) {
+        pendingMarket.value = null;
+        selectKey.value += 1;
+
+        return;
+    }
+
+    guard.stay();
+}
+
 function saveDraft(): void {
+    attempt.value += 1;
     form.sign = false;
     form.put('/compliance/lawful-basis', { preserveScroll: true });
 }
 
 function sign(): void {
+    attempt.value += 1;
     form.sign = true;
     form.put('/compliance/lawful-basis', {
         preserveScroll: true,
@@ -111,6 +192,35 @@ const statusVariant = computed(() =>
         : props.assessment.has_expired
           ? 'warning'
           : 'outline',
+);
+
+const errorLabels = computed<Record<string, string>>(() => ({
+    market: t('Market'),
+    purpose: t('1. Purpose'),
+    necessity: t('2. Necessity'),
+    balancing: t('3. Balancing test'),
+    safeguards: t('Safeguards'),
+    signals_scope: t('Signals'),
+}));
+
+/**
+ * The record as prose, for a member who may read it but not change it.
+ *
+ * Five disabled textareas is not a document: the text is greyed, often clipped to the box, and in
+ * some browsers a disabled field cannot even be scrolled to read the rest. The questions are the
+ * same ones, in the same order — this is the record, not a summary of it.
+ */
+const answers = computed(() =>
+    [
+        { label: t('1. Purpose'), value: props.assessment.purpose },
+        { label: t('2. Necessity'), value: props.assessment.necessity },
+        { label: t('3. Balancing test'), value: props.assessment.balancing },
+        { label: t('Safeguards'), value: props.assessment.safeguards ?? '' },
+        { label: t('Signals'), value: props.assessment.signals_scope ?? '' },
+    ].map((answer) => ({
+        ...answer,
+        value: answer.value.trim(),
+    })),
 );
 </script>
 
@@ -144,6 +254,12 @@ const statusVariant = computed(() =>
                 </Link>
             </Button>
         </header>
+
+        <FormErrorSummary
+            :errors="form.errors"
+            :labels="errorLabels"
+            :attempt="attempt"
+        />
 
         <!-- Where it stands ---------------------------------------------------->
         <section
@@ -204,6 +320,7 @@ const statusVariant = computed(() =>
             <div class="space-y-2">
                 <Label for="market">{{ t('Market') }}</Label>
                 <NativeSelect
+                    :key="selectKey"
                     id="market"
                     :model-value="form.market"
                     class="min-w-52"
@@ -238,14 +355,23 @@ const statusVariant = computed(() =>
             </div>
         </section>
 
-        <!-- The assessment ---------------------------------------------------->
+        <!-- The assessment, for somebody who may change it ---------------------->
         <form
+            v-if="can.manage"
             class="space-y-6 rounded-2xl border border-border bg-card p-6"
             @submit.prevent="saveDraft"
         >
+            <!--
+              Each question keeps its own prompt as a full `text-sm` paragraph rather than going
+              through `FormField`, whose hint is `text-xs`: here the prompt *is* the question a
+              regulator asks, and shrinking it would make the screen a form with small print
+              instead of a document with questions. The wiring `FormField` would have supplied is
+              written out instead — `aria-describedby` naming the prompt, `aria-invalid` following
+              the error.
+            -->
             <div class="space-y-2">
                 <Label for="purpose">{{ t('1. Purpose') }}</Label>
-                <p class="text-sm text-muted-foreground">
+                <p id="purpose-prompt" class="text-sm text-muted-foreground">
                     {{
                         t(
                             'What are you using this data for, and whose interest does it serve? Be specific about the service you are offering and who you are offering it to.',
@@ -257,15 +383,22 @@ const statusVariant = computed(() =>
                     v-model="form.purpose"
                     rows="4"
                     dir="auto"
-                    :disabled="!can.manage"
+                    aria-describedby="purpose-prompt"
+                    :aria-invalid="form.errors.purpose ? true : undefined"
                     data-test="lia-purpose"
                 />
-                <InputError :message="form.errors.purpose" />
+                <p
+                    v-if="form.errors.purpose"
+                    id="purpose-error"
+                    class="text-sm text-destructive"
+                >
+                    {{ form.errors.purpose }}
+                </p>
             </div>
 
             <div class="space-y-2">
                 <Label for="necessity">{{ t('2. Necessity') }}</Label>
-                <p class="text-sm text-muted-foreground">
+                <p id="necessity-prompt" class="text-sm text-muted-foreground">
                     {{
                         t(
                             'Why is this the way to achieve it? Say what you would have to do instead, and why holding less data would not work.',
@@ -277,15 +410,21 @@ const statusVariant = computed(() =>
                     v-model="form.necessity"
                     rows="4"
                     dir="auto"
-                    :disabled="!can.manage"
+                    aria-describedby="necessity-prompt"
+                    :aria-invalid="form.errors.necessity ? true : undefined"
                     data-test="lia-necessity"
                 />
-                <InputError :message="form.errors.necessity" />
+                <p
+                    v-if="form.errors.necessity"
+                    class="text-sm text-destructive"
+                >
+                    {{ form.errors.necessity }}
+                </p>
             </div>
 
             <div class="space-y-2">
                 <Label for="balancing">{{ t('3. Balancing test') }}</Label>
-                <p class="text-sm text-muted-foreground">
+                <p id="balancing-prompt" class="text-sm text-muted-foreground">
                     {{
                         t(
                             'Weigh the prospect’s interests against yours. Would they expect to hear from you? What is the harm if they would rather not, and how easily can they stop it?',
@@ -297,10 +436,16 @@ const statusVariant = computed(() =>
                     v-model="form.balancing"
                     rows="5"
                     dir="auto"
-                    :disabled="!can.manage"
+                    aria-describedby="balancing-prompt"
+                    :aria-invalid="form.errors.balancing ? true : undefined"
                     data-test="lia-balancing"
                 />
-                <InputError :message="form.errors.balancing" />
+                <p
+                    v-if="form.errors.balancing"
+                    class="text-sm text-destructive"
+                >
+                    {{ form.errors.balancing }}
+                </p>
             </div>
 
             <div class="space-y-2">
@@ -310,7 +455,7 @@ const statusVariant = computed(() =>
                         {{ t('(optional)') }}
                     </span>
                 </Label>
-                <p class="text-sm text-muted-foreground">
+                <p id="safeguards-prompt" class="text-sm text-muted-foreground">
                     {{
                         t(
                             'What keeps this proportionate — preferring role-based addresses, honouring opt-outs, your retention windows.',
@@ -322,9 +467,15 @@ const statusVariant = computed(() =>
                     v-model="form.safeguards"
                     rows="3"
                     dir="auto"
-                    :disabled="!can.manage"
+                    aria-describedby="safeguards-prompt"
+                    :aria-invalid="form.errors.safeguards ? true : undefined"
                 />
-                <InputError :message="form.errors.safeguards" />
+                <p
+                    v-if="form.errors.safeguards"
+                    class="text-sm text-destructive"
+                >
+                    {{ form.errors.safeguards }}
+                </p>
             </div>
 
             <div class="space-y-2">
@@ -334,7 +485,10 @@ const statusVariant = computed(() =>
                         {{ t('(only if you run watches)') }}
                     </span>
                 </Label>
-                <p class="text-sm text-muted-foreground">
+                <p
+                    id="signals-scope-prompt"
+                    class="text-sm text-muted-foreground"
+                >
                     <!-- Signals processes a named individual's name and public role, which is a
                          different balance from company data (docs/compliance.md §5a). -->
                     {{
@@ -348,24 +502,40 @@ const statusVariant = computed(() =>
                     v-model="form.signals_scope"
                     rows="3"
                     dir="auto"
-                    :disabled="!can.manage"
+                    aria-describedby="signals-scope-prompt"
+                    :aria-invalid="form.errors.signals_scope ? true : undefined"
                 />
-                <InputError :message="form.errors.signals_scope" />
+                <p
+                    v-if="form.errors.signals_scope"
+                    class="text-sm text-destructive"
+                >
+                    {{ form.errors.signals_scope }}
+                </p>
             </div>
 
-            <div
-                v-if="can.manage"
-                class="flex flex-wrap items-center gap-3 border-t border-border pt-5"
+            <FormActions
+                :dirty="form.isDirty"
+                :processing="form.processing"
+                :bleed="false"
             >
+                <Button
+                    v-if="assessment.id !== null && assessment.in_force"
+                    type="button"
+                    variant="ghost"
+                    class="text-destructive"
+                    data-test="lia-withdraw"
+                    @click="withdraw"
+                >
+                    {{ t('Withdraw') }}
+                </Button>
                 <Button
                     type="submit"
                     variant="outline"
                     :disabled="form.processing"
                     data-test="lia-save"
                 >
-                    {{ t('Save draft') }}
+                    {{ form.processing ? t('Saving…') : t('Save draft') }}
                 </Button>
-
                 <Button
                     type="button"
                     :disabled="form.processing"
@@ -378,19 +548,62 @@ const statusVariant = computed(() =>
                             : t('Sign it off')
                     }}
                 </Button>
-
-                <Button
-                    v-if="assessment.id !== null && assessment.in_force"
-                    type="button"
-                    variant="ghost"
-                    class="ms-auto text-destructive"
-                    data-test="lia-withdraw"
-                    @click="withdraw"
-                >
-                    {{ t('Withdraw') }}
-                </Button>
-            </div>
+            </FormActions>
         </form>
+
+        <!-- The assessment, for somebody who may only read it ------------------->
+        <section
+            v-else
+            class="space-y-6 rounded-2xl border border-border bg-card p-6"
+            data-test="lia-readonly"
+        >
+            <!-- Who can change it, said plainly. The alternative — and what this screen used to
+                 do — is five disabled boxes and no explanation. This is information, not a
+                 warning, so it takes the neutral surface rather than a status tint. -->
+            <div
+                class="flex items-start gap-3 rounded-xl border border-border bg-background/60 p-4"
+                role="note"
+            >
+                <Lock
+                    class="mt-0.5 size-5 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                />
+                <div class="space-y-0.5">
+                    <p
+                        class="text-sm font-semibold text-foreground rtl:font-bold"
+                    >
+                        {{ t('Only an owner or an admin can change this') }}
+                    </p>
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            t(
+                                'It is here for you to read: this is the answer to “why are we allowed to hold this person’s details”, and you are the one who will be asked.',
+                            )
+                        }}
+                    </p>
+                </div>
+            </div>
+
+            <div
+                v-for="answer in answers"
+                :key="answer.label"
+                class="space-y-1"
+            >
+                <h2 class="text-sm font-semibold text-foreground rtl:font-bold">
+                    {{ answer.label }}
+                </h2>
+                <p
+                    v-if="answer.value"
+                    class="text-sm leading-relaxed whitespace-pre-line text-foreground"
+                    dir="auto"
+                >
+                    {{ answer.value }}
+                </p>
+                <p v-else class="text-sm text-muted-foreground">
+                    {{ t('Not written yet.') }}
+                </p>
+            </div>
+        </section>
     </div>
 
     <!-- Signing is a statement with a name and a date on it, so it is confirmed. -->
@@ -421,4 +634,11 @@ const statusVariant = computed(() =>
             </DialogFooter>
         </DialogContent>
     </Dialog>
+
+    <!-- Leaving, or switching to another market's record, with a draft unsaved. -->
+    <UnsavedChangesDialog
+        :open="isPrompting"
+        @stay="stay"
+        @discard="discardAndGo"
+    />
 </template>

@@ -2,6 +2,13 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { AlertTriangle, ArrowLeft, Building2, ExternalLink } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import {
+    ListCell,
+    ListHead,
+    ListRow,
+    ListRowLink,
+    ListTable,
+} from '@/components/list';
 import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -249,129 +256,93 @@ onBeforeUnmount(() => {
                 "
             />
 
-            <div
+            <ListTable
                 v-else
-                class="overflow-hidden rounded-2xl border border-border bg-card"
+                :caption="t('Companies found by this discovery run')"
             >
-                <table class="w-full text-sm">
-                    <caption class="sr-only">
-                        {{
-                            t('Companies found by this discovery run')
-                        }}
-                    </caption>
-                    <thead class="bg-accent/50 text-muted-foreground">
-                        <tr>
-                            <th
-                                scope="col"
-                                class="px-4 py-3 text-start font-medium"
+                <thead>
+                    <tr>
+                        <ListHead :label="t('Company')" />
+                        <ListHead :label="t('Company number')" hide="sm" />
+                        <ListHead :label="t('Location')" hide="md" />
+                        <ListHead :label="t('Fit')" />
+                        <ListHead :label="t('Source')" align="end" />
+                    </tr>
+                </thead>
+                <tbody>
+                    <ListRow
+                        v-for="lead in leads"
+                        :key="lead.id"
+                        :data-test="`lead-${lead.id}`"
+                    >
+                        <ListCell>
+                            <!-- The company name is the row's link. It was plain text before,
+                                 which left the one thing a reader wants to open as the one thing
+                                 they could not click. -->
+                            <ListRowLink :href="`/leads/${lead.id}`">
+                                {{ lead.company_name }}
+                            </ListRowLink>
+                            <span
+                                v-if="lead.company_status"
+                                class="block text-xs text-muted-foreground"
+                                >{{ lead.company_status }}</span
                             >
-                                {{ t('Company') }}
-                            </th>
-                            <th
-                                scope="col"
-                                class="hidden px-4 py-3 text-start font-medium sm:table-cell"
+                        </ListCell>
+                        <ListCell hide="sm" muted mono>
+                            <span dir="ltr">{{
+                                lead.company_number ?? '—'
+                            }}</span>
+                        </ListCell>
+                        <ListCell hide="md" muted>
+                            <span dir="auto">{{ lead.locality ?? '—' }}</span>
+                        </ListCell>
+                        <ListCell raised>
+                            <!-- The grade against the active ICP (Phase 9); the whole score,
+                                 breakdown and explanation live on the score screen. -->
+                            <Link
+                                :href="`/leads/${lead.id}/score`"
+                                class="inline-flex items-center gap-1.5 rounded-full focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                                :aria-label="
+                                    t('See the fit score for :company', {
+                                        company: lead.company_name,
+                                    })
+                                "
                             >
-                                {{ t('Company number') }}
-                            </th>
-                            <th
-                                scope="col"
-                                class="hidden px-4 py-3 text-start font-medium md:table-cell"
-                            >
-                                {{ t('Location') }}
-                            </th>
-                            <th
-                                scope="col"
-                                class="px-4 py-3 text-start font-medium"
-                            >
-                                {{ t('Fit') }}
-                            </th>
-                            <th
-                                scope="col"
-                                class="px-4 py-3 text-end font-medium"
-                            >
-                                {{ t('Source') }}
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr
-                            v-for="lead in leads"
-                            :key="lead.id"
-                            class="border-t border-border"
-                            :data-test="`lead-${lead.id}`"
-                        >
-                            <td class="px-4 py-3">
+                                <GradeBadge
+                                    v-if="lead.score"
+                                    :grade="lead.score.grade"
+                                    :score="lead.score.score"
+                                    :label="t(lead.score.grade_label)"
+                                />
                                 <span
-                                    class="font-medium text-foreground"
-                                    dir="auto"
-                                    >{{ lead.company_name }}</span
+                                    v-else
+                                    class="text-xs text-muted-foreground underline-offset-4 hover:underline"
                                 >
-                                <span
-                                    v-if="lead.company_status"
-                                    class="block text-xs text-muted-foreground"
-                                    >{{ lead.company_status }}</span
-                                >
-                            </td>
-                            <td
-                                class="hidden px-4 py-3 font-mono text-xs text-muted-foreground sm:table-cell"
-                                dir="ltr"
+                                    {{ t('Not graded') }}
+                                </span>
+                            </Link>
+                        </ListCell>
+                        <ListCell align="end" raised>
+                            <a
+                                v-if="lead.source_url"
+                                :href="lead.source_url"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex items-center gap-1 rounded text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                             >
-                                {{ lead.company_number ?? '—' }}
-                            </td>
-                            <td
-                                class="hidden px-4 py-3 text-muted-foreground md:table-cell"
-                                dir="auto"
-                            >
-                                {{ lead.locality ?? '—' }}
-                            </td>
-                            <td class="px-4 py-3">
-                                <!-- The grade against the active ICP (Phase 9); the whole score,
-                                     breakdown and explanation live on the score screen. -->
-                                <Link
-                                    :href="`/leads/${lead.id}/score`"
-                                    class="inline-flex items-center gap-1.5 rounded-full focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                                    :aria-label="
-                                        t('See the fit score for :company', {
-                                            company: lead.company_name,
-                                        })
-                                    "
-                                >
-                                    <GradeBadge
-                                        v-if="lead.score"
-                                        :grade="lead.score.grade"
-                                        :score="lead.score.score"
-                                        :label="t(lead.score.grade_label)"
-                                    />
-                                    <span
-                                        v-else
-                                        class="text-xs text-muted-foreground underline-offset-4 hover:underline"
-                                    >
-                                        {{ t('Not graded') }}
-                                    </span>
-                                </Link>
-                            </td>
-                            <td class="px-4 py-3 text-end">
-                                <a
-                                    v-if="lead.source_url"
-                                    :href="lead.source_url"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="inline-flex items-center gap-1 rounded text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                                >
-                                    {{ t(lead.source_label) }}
-                                    <ExternalLink class="size-3" />
-                                    <span class="sr-only">{{
-                                        t('(opens in a new tab)')
-                                    }}</span>
-                                </a>
-                                <span v-else class="text-muted-foreground">{{
-                                    t(lead.source_label)
+                                {{ t(lead.source_label) }}
+                                <ExternalLink class="size-3" />
+                                <span class="sr-only">{{
+                                    t('(opens in a new tab)')
                                 }}</span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+                            </a>
+                            <span v-else class="text-muted-foreground">{{
+                                t(lead.source_label)
+                            }}</span>
+                        </ListCell>
+                    </ListRow>
+                </tbody>
+            </ListTable>
         </template>
     </div>
 </template>

@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Models\User;
+use App\Modules\Admin\Services\AnnouncementBoard;
+use App\Modules\Core\Contracts\CapabilityGate;
+use App\Modules\Core\Enums\Capability;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\Locale;
 use Illuminate\Http\Request;
@@ -59,6 +62,32 @@ class HandleInertiaRequests extends Middleware
                 // loads but omitted from partial reloads that don't need it.
                 'translations' => fn (): array => Locale::messages($locale),
             ],
+            // **What this team's plan includes** (Phase 19b, ADR 0015) — the third caller of the
+            // one `CapabilityGate`, beside the guards and the `capability:` route middleware. It is
+            // here so the nav never advertises a feature the guard will refuse: a sidebar link to
+            // Signals on a plan without Signals is a promise the product then breaks.
+            //
+            // Lazy, like `translations`: it is six gate calls, each a config lookup and at most one
+            // indexed row, and a partial reload that does not re-render the shell has no use for
+            // them.
+            'capabilities' => fn (): array => $this->capabilities($user),
+            // Platform announcements for this reader (Phase 19b). Lazy, like the rest: one indexed
+            // read over a handful of rows, skipped entirely on a partial reload and short-circuited
+            // by the operator's `announcements.enabled` kill switch before the query happens.
+            'announcements' => fn (): array => $user instanceof User
+                ? app(AnnouncementBoard::class)->forUser($user, $this->resolveTeam($user), $locale)
+                : [],
+            // Browser error reporting (Phase 20, ADR 0017). **Served rather than built in**: the
+            // SDK's configuration arrives with the page, so one `.env` value configures staging and
+            // production without a rebuild per environment — and the Content-Security-Policy
+            // derives the Sentry ingest origin from the same config value, so the policy cannot
+            // allow a different host than the one the SDK posts to. A DSN authorises writing an
+            // event and nothing else, which is why it is safe to send to the browser at all.
+            //
+            // Not lazy: `resources/js/observability/sentry.ts` reads it once while the app mounts,
+            // before any page component, and a lazy prop is absent from that first payload.
+            'observability' => $this->observability(),
+
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             // For the handful of places that need a **real browser form POST** rather than an
             // Inertia visit — a file download, where an XHR response cannot reach the user's disk
@@ -69,6 +98,73 @@ class HandleInertiaRequests extends Middleware
             // reloads, and a public page with no session never touches the session at all.
             'csrfToken' => fn (): ?string => $request->hasSession() ? $request->session()->token() : null,
         ];
+    }
+
+    /**
+     * What the browser SDK needs to initialise itself, or `null` where no DSN is configured.
+     *
+     * `null` rather than an object with an empty DSN, because the client branches on this prop to
+     * decide whether to dynamically import the SDK at all — an installation that is not using
+     * Sentry should not pay for its bundle, and that only works if "not configured" is one check.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function observability(): ?array
+    {
+        /** @var mixed $dsn */
+        $dsn = config('observability.sentry.frontend.dsn');
+
+        if (! is_string($dsn) || trim($dsn) === '') {
+            return null;
+        }
+
+        return [
+            'sentry' => [
+                'dsn' => trim($dsn),
+                'environment' => (string) config('observability.sentry.frontend.environment', 'production'),
+                'release' => config('observability.sentry.frontend.release'),
+                'tracesSampleRate' => (float) config('observability.sentry.frontend.traces_sample_rate', 0.0),
+                'replaysSessionSampleRate' => (float) config('observability.sentry.frontend.replays_session_sample_rate', 0.0),
+                'replaysOnErrorSampleRate' => (float) config('observability.sentry.frontend.replays_on_error_sample_rate', 0.0),
+            ],
+        ];
+    }
+
+    /**
+     * Every capability, with whether this team has it.
+     *
+     * A map rather than a list of the enabled ones, so the client can distinguish "not included"
+     * from "I was not told" — an absent key would otherwise read as false and hide a feature from
+     * somebody on a page that did not send the prop.
+     *
+     * @return array<string, bool>
+     */
+    private function capabilities(?User $user): array
+    {
+        $team = $user instanceof User ? $this->resolveTeam($user) : null;
+        $gate = app(CapabilityGate::class);
+        $capabilities = [];
+
+        foreach (Capability::cases() as $capability) {
+            // With no team there is no plan to check against, so everything reads as available —
+            // the same answer Core's permissive default gives, and the right one for a screen that
+            // has no tenant anyway.
+            $capabilities[$capability->value] = ! $team instanceof Team
+                || $gate->allows($team, $capability);
+        }
+
+        return $capabilities;
+    }
+
+    private function resolveTeam(User $user): ?Team
+    {
+        if ($user->currentTeamId() === null) {
+            return null;
+        }
+
+        $team = $user->currentTeam()->first();
+
+        return $team instanceof Team ? $team : null;
     }
 
     /**

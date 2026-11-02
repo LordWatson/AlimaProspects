@@ -6,6 +6,7 @@ namespace App\Modules\Notifications\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Modules\Core\Http\Requests\PaginatedIndexRequest;
 use App\Modules\Core\Models\Team;
 use App\Modules\Notifications\Actions\MarkNotificationsReadAction;
 use App\Modules\Notifications\Http\Resources\NotificationResource;
@@ -22,10 +23,12 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  */
 final class NotificationController extends Controller
 {
-    public function index(Request $request, NotificationReader $reader): AnonymousResourceCollection
+    public function index(PaginatedIndexRequest $request, NotificationReader $reader): AnonymousResourceCollection
     {
+        // `per_page` through the shared request (Phase 17): a bell that pages differently from
+        // every other list is a pager the client has to special-case.
         return NotificationResource::collection(
-            $reader->paginate($this->user($request), $this->team($request)),
+            $reader->paginate($this->user($request), $this->team($request), $request->perPage()),
         );
     }
 

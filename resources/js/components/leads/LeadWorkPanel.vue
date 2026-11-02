@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useI18n } from '@/composables/useI18n';
 import type { Lead, PipelineStage, TeamMemberOption } from '@/types';
 
@@ -101,17 +102,12 @@ function toggleAssignee(userId: number): void {
         <!-- Stage -->
         <div class="grid gap-2">
             <Label for="lead-stage">{{ t('Stage') }}</Label>
-            <select
+            <NativeSelect
                 v-if="props.canWrite"
                 id="lead-stage"
-                class="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                :value="currentStageId ?? ''"
+                :model-value="currentStageId ?? ''"
                 data-test="lead-stage"
-                @change="
-                    moveStage(
-                        Number(($event.target as HTMLSelectElement).value),
-                    )
-                "
+                @update:model-value="moveStage(Number($event))"
             >
                 <option
                     v-for="stage in props.stages"
@@ -120,7 +116,7 @@ function toggleAssignee(userId: number): void {
                 >
                     {{ stage.name }}
                 </option>
-            </select>
+            </NativeSelect>
             <p v-else class="text-sm text-foreground" dir="auto">
                 {{
                     props.stages.find((s) => s.id === currentStageId)?.name ??
@@ -135,44 +131,19 @@ function toggleAssignee(userId: number): void {
                 {{ t('Who’s on it') }}
             </p>
 
-            <ul
-                v-if="props.lead.assignees?.length"
-                class="flex flex-wrap gap-1.5"
-            >
-                <li v-for="person in props.lead.assignees" :key="person.id">
-                    <Badge variant="brand" class="gap-1" dir="auto">
-                        {{ person.name }}
-                        <button
-                            v-if="props.canWrite"
-                            type="button"
-                            class="-me-1 flex size-6 items-center justify-center rounded-full focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                            :title="t('Remove')"
-                            :aria-label="
-                                t('Take :name off this lead', {
-                                    name: person.name,
-                                })
-                            "
-                            :data-test="`unassign-${person.id}`"
-                            @click="toggleAssignee(person.id)"
-                        >
-                            <X class="size-3" />
-                        </button>
-                    </Badge>
-                </li>
-            </ul>
-            <p v-else class="text-sm text-muted-foreground">
-                {{ t('Nobody yet.') }}
-            </p>
-
-            <div
-                v-if="props.canWrite"
-                class="flex flex-wrap gap-1.5 border-t border-border pt-2"
-            >
+            <!--
+              One row of toggles, which is both the display and the control. It used to be two: a
+              row of removable chips for the people on the lead, and then the whole team again
+              underneath as pressed toggles — so an assigned member appeared twice, with two
+              different ways to take them off. The pressed state is the answer to "who's on it",
+              and the tick keeps it from being colour alone (WCAG 1.4.1).
+            -->
+            <div v-if="props.canWrite" class="flex flex-wrap gap-1.5">
                 <button
                     v-for="member in props.members"
                     :key="member.id"
                     type="button"
-                    class="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    class="rounded-full transition-transform focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none active:scale-95"
                     :aria-pressed="assigneeIds.includes(member.id)"
                     :data-test="`assign-${member.id}`"
                     @click="toggleAssignee(member.id)"
@@ -186,7 +157,7 @@ function toggleAssignee(userId: number): void {
                         :class="
                             assigneeIds.includes(member.id)
                                 ? ''
-                                : 'border-input'
+                                : 'border-input hover:bg-accent'
                         "
                         class="gap-1"
                         dir="auto"
@@ -200,6 +171,19 @@ function toggleAssignee(userId: number): void {
                     </Badge>
                 </button>
             </div>
+
+            <!-- Read-only: the names, with nothing to press. -->
+            <ul
+                v-else-if="props.lead.assignees?.length"
+                class="flex flex-wrap gap-1.5"
+            >
+                <li v-for="person in props.lead.assignees" :key="person.id">
+                    <Badge variant="brand" dir="auto">{{ person.name }}</Badge>
+                </li>
+            </ul>
+            <p v-else class="text-sm text-muted-foreground">
+                {{ t('Nobody yet.') }}
+            </p>
         </div>
 
         <!-- Tags -->

@@ -25,7 +25,7 @@ it('returns the open insights as resources', function (): void {
         'dismissed_at' => now(),
     ]);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson('/api/v1/insights')
         ->assertOk()
@@ -51,7 +51,7 @@ it('filters to the dismissed tab', function (): void {
         'dismissed_at' => now(),
     ]);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson('/api/v1/insights?status=dismissed')
         ->assertOk()
@@ -62,11 +62,11 @@ it('filters to the dismissed tab', function (): void {
 it('rejects a page size beyond the ceiling', function (): void {
     [$user] = InsightFixtures::team();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson('/api/v1/insights?per_page=500')
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('per_page');
+        ->assertApiValidationErrors('per_page');
 });
 
 it('opens the default tab for an unknown status rather than refusing it', function (): void {
@@ -74,7 +74,7 @@ it('opens the default tab for an unknown status rather than refusing it', functi
 
     InsightFixtures::insight($team, InsightType::ContactToday);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     // Permissive on purpose: a client built against a status we later removed should still get a
     // feed. The bound-checking rules are there to keep rubbish out of a query, not to 422 a link.
@@ -89,7 +89,7 @@ it('shows and dismisses one insight, returning its new state', function (): void
 
     $insight = InsightFixtures::insight($team, InsightType::StaleLeads);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson("/api/v1/insights/{$insight->getKey()}")
         ->assertOk()
@@ -108,7 +108,7 @@ it('refuses to let a read-only member dismiss over the API', function (): void {
     $reader = LeadsWorkspaceFixtures::member($team, TeamRole::ReadOnly);
     $insight = InsightFixtures::insight($team, InsightType::ContactToday);
 
-    Sanctum::actingAs($reader);
+    Sanctum::actingAs($reader, ['*']);
 
     $this->postJson("/api/v1/insights/{$insight->getKey()}/dismiss")->assertForbidden();
 });

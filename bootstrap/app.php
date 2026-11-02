@@ -2,8 +2,15 @@
 
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Modules\Admin\Http\Middleware\EnsureAdminAbility;
+use App\Modules\Admin\Http\Middleware\RestrictImpersonatedSession;
+use App\Modules\Admin\Http\Middleware\ShareImpersonation;
+use App\Modules\Auth\Http\Middleware\EnsureTokenAbility;
+use App\Modules\Core\Exceptions\ApiExceptionRenderer;
 use App\Modules\Core\Exceptions\DomainException;
+use App\Modules\Core\Http\Middleware\EnsureCapability;
 use App\Modules\Core\Http\Middleware\LogContext;
+use App\Modules\Core\Http\Middleware\SecurityHeaders;
 use App\Modules\Core\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -12,6 +19,7 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -22,6 +30,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Response security headers (Phase 20, ADR 0017). **Global**, not on a group: the headers
+        // belong to the HTTP response rather than to the web or the API stack, so `/up`, a CSV
+        // download, the Pulse dashboard, a 500 page and an `/api/v1` error envelope all carry them.
+        // It also mints the CSP nonce the blade tags read, which has to happen before the view
+        // renders.
+        $middleware->append(SecurityHeaders::class);
+
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'locale']);
 
         // RFC 8058 one-click unsubscribe (Compliance, Phase 15). A mail client posting
@@ -39,15 +54,54 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             LogContext::class,
+            // Impersonation (Phase 19a). On the **web** group rather than the admin stack,
+            // because the screens an impersonating operator looks at are the tenant's own:
+            // ShareImpersonation expires the session, annotates the audit context and shares the
+            // banner; RestrictImpersonatedSession enforces the blocked-route list. Both
+            // short-circuit on a session that is not impersonating, which is every request but a
+            // handful.
+            ShareImpersonation::class,
+            RestrictImpersonatedSession::class,
         ]);
 
         // Structured log context + tenant resolution on the API too.
         $middleware->api(append: [
             SetLocale::class,
             LogContext::class,
+            // The blocked-route list covers `/api/v1` too: a session-authenticated API call from
+            // an impersonated browser must not be a way around the web restriction.
+            RestrictImpersonatedSession::class,
+            // `api_access` is a plan capability (Phase 19b, ADR 0015), so it is checked on **every**
+            // API request rather than only where a token is issued. Issuing alone would leave a
+            // token outliving the plan that justified it — and would leave the platform kill switch
+            // and tenant suspension unable to stop API traffic, which is the one thing a kill switch
+            // exists to do. Unauthenticated routes have no team and the middleware no-ops.
+            'capability:api_access',
+        ]);
+
+        // Token scopes on /api/v1 (Phase 17). `ability:leads:read,leads:write` passes if the
+        // acting token carries any one of them; a first-party session caller carries no token and
+        // is let through at the web app's trust level. See EnsureTokenAbility.
+        // `admin.can:<ability>` guards every admin route with exactly one ability from
+        // Admin\Enums\AdminAbility (Phase 19a). AdminRouteContractTest asserts it over the whole
+        // route table.
+        $middleware->alias([
+            'ability' => EnsureTokenAbility::class,
+            'admin.can' => EnsureAdminAbility::class,
+            // `capability:signals` on a route whose feature a plan may not include (Phase 19b).
+            // The courtesy half of enforcement — the guard inside the Action is what makes a
+            // refusal true, because a queued job has no request. Both ask the same gate.
+            'capability' => EnsureCapability::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Send unhandled exceptions to Sentry (Phase 20, ADR 0017). First in the closure, because
+        // it registers a *reporting* callback and the renderers below decide what the user sees —
+        // the two are independent, and a report that depends on render order is a report that goes
+        // missing the day somebody reorders this file. What is reported, what is scrubbed and what
+        // is deliberately ignored is `config/sentry.php` + Core\Observability\SentryOptions.
+        Integration::handles($exceptions);
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
@@ -64,4 +118,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return back();
         });
+
+        // Everything else on `api/*` — a failed validation, a 404, a throttle, an unhandled
+        // throwable — answers with the same envelope as a domain exception, so a client has one
+        // error shape to parse rather than three. Scoped by path, not by `expectsJson()`: the web
+        // forms depend on Laravel's native 422 for their error bags.
+        $exceptions->render(
+            fn (Throwable $e, Request $request) => app(ApiExceptionRenderer::class)->render($e, $request),
+        );
     })->create();

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Alima Prospects</title>
+        <!--
+            `viewport-fit=cover` is what lets the app paint behind the notch and the home
+            indicator; Ionic's `--ion-safe-area-*` variables then keep content out of them.
+            Zooming is left on deliberately — pinch-to-zoom is an accessibility feature, and
+            `maximum-scale=1` is the line that takes it away.
+        -->
+        <meta
+            name="viewport"
+            content="viewport-fit=cover, width=device-width, initial-scale=1.0"
+        />
+        <meta name="color-scheme" content="light dark" />
+        <meta name="format-detection" content="telephone=no" />
+        <meta name="theme-color" content="#f5f2e8" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <!--
+            Brand fonts via Bunny, exactly as `resources/views/app.blade.php` loads them —
+            Poppins (Latin), DM Mono (labels), Tajawal (Arabic). brand-tokens.md §3.
+
+            A CDN rather than bundled `woff2` files, which is a deliberate trade and not an
+            oversight: the app is an API client, so it has a network whenever it has anything to
+            show, and `display=swap` means the first paint falls through the token's own
+            Arial/system chain rather than blocking. Bundling them is the right move before the
+            store submission (one less third-party request on a cold launch, and a real offline
+            first paint) — noted in `docs/modules/mobile-app.md`.
+        -->
+        <link rel="preconnect" href="https://fonts.bunny.net" crossorigin />
+        <link
+            rel="stylesheet"
+            href="https://fonts.bunny.net/css?family=poppins:400,500,600,700|dm-mono:400,500|tajawal:400,500,700&display=swap"
+        />
+    </head>
+    <body>
+        <div id="app"></div>
+        <script type="module" src="/src/main.ts"></script>
+    </body>
+</html>

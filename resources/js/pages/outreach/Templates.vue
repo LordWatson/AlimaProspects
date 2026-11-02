@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { FileText, Plus, ShieldOff, Star, Trash2 } from '@lucide/vue';
-import { computed, ref } from 'vue';
-import InputError from '@/components/InputError.vue';
+import {
+    ChevronDown,
+    FileText,
+    Plus,
+    ShieldOff,
+    Star,
+    Trash2,
+} from '@lucide/vue';
+import { computed, nextTick, ref, useTemplateRef } from 'vue';
+import { FormErrorSummary, FormField } from '@/components/forms';
 import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,8 +37,16 @@ import type {
  * writes the message — a member who expects merge fields and finds none would otherwise think the
  * feature was unfinished.
  *
- * Brand: cream page, one card per brief, Acid Lime on the default marker. The "written by your
- * team" note uses `status.warning`, never Signal Orange (brand-tokens.md §2.1).
+ * Three things the rebuild fixed, all of them about the form being *above* a list of cards:
+ *
+ *  - **Deleting asks.** A brief took one click to destroy, with no confirmation and no undo, from a
+ *    button sitting a few pixels from "Edit".
+ *  - **Editing takes you to the form.** Pressing "Edit" on the sixth card opened the form at the
+ *    top of the page and left the member looking at the sixth card. Focus and the viewport now
+ *    follow the action, which is the whole contract of an inline form.
+ *  - **A long brief no longer owns the page.** The bodies are the point of this screen, but a
+ *    400-word one made its card four screens tall and buried the rest. They clamp, with a real
+ *    toggle — not hidden, just folded.
  */
 defineOptions({
     layout: {
@@ -56,6 +71,7 @@ const { t } = useI18n();
 /** Null while adding, the brief's id while editing. */
 const editing = ref<number | null>(null);
 const showForm = ref(false);
+const formCard = useTemplateRef<HTMLElement>('formCard');
 
 const form = useForm<OutreachTemplateForm>({
     name: '',
@@ -67,17 +83,53 @@ const form = useForm<OutreachTemplateForm>({
     is_default: false,
 });
 
+const errorLabels = computed<Record<string, string>>(() => ({
+    name: t('Name'),
+    channel: t('Channel'),
+    tone: t('Tone'),
+    locale: t('Language'),
+    subject: t('Subject line or angle'),
+    body: t('The brief'),
+    is_default: t('Use this one first on this channel'),
+}));
+
+const errorAnchors: Record<string, string> = {
+    name: 'brief-name',
+    channel: 'brief-channel',
+    tone: 'brief-tone',
+    locale: 'brief-locale',
+    subject: 'brief-subject',
+    body: 'brief-body',
+    is_default: 'brief-default',
+};
+
 const channelHasSubject = computed(
     () =>
         props.options.channels.find((c) => c.value === form.channel)
             ?.has_subject ?? false,
 );
 
+/**
+ * Open the form and go there.
+ *
+ * The form is one card at the top of a page of cards, so opening it from the bottom of the list
+ * otherwise changes something the member cannot see. Focus lands in the first field, which is both
+ * the courtesy and the accessible behaviour: a form that appears without focus is a form a screen
+ * reader never mentions.
+ */
+async function openForm(): Promise<void> {
+    showForm.value = true;
+
+    await nextTick();
+    formCard.value?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    formCard.value?.querySelector<HTMLInputElement>('#brief-name')?.focus();
+}
+
 function startAdding(): void {
     editing.value = null;
     form.reset();
     form.clearErrors();
-    showForm.value = true;
+    void openForm();
 }
 
 function startEditing(template: OutreachTemplate): void {
@@ -90,10 +142,16 @@ function startEditing(template: OutreachTemplate): void {
     form.subject = template.subject ?? '';
     form.body = template.body;
     form.is_default = template.is_default;
-    showForm.value = true;
+    void openForm();
 }
 
+// Bumped on every submit so the error summary announces a repeat rejection rather than
+// sitting still because the number of failures happens to be the same.
+const attempt = ref(0);
+
 function submit(): void {
+    attempt.value += 1;
+
     const onSuccess = () => {
         showForm.value = false;
         editing.value = null;
@@ -112,10 +170,28 @@ function submit(): void {
     });
 }
 
+/** Which brief is being asked about before it is destroyed. */
+const confirmingDelete = ref<number | null>(null);
+
 function remove(template: OutreachTemplate): void {
     router.delete(`/outreach/templates/${template.id}`, {
         preserveScroll: true,
+        onFinish: () => (confirmingDelete.value = null),
     });
+}
+
+// --- Folded bodies -------------------------------------------------------------------------
+// A brief is prose, and some are long. They are folded by default and opened one at a time.
+const expanded = ref<number[]>([]);
+
+function isExpanded(template: OutreachTemplate): boolean {
+    return expanded.value.includes(template.id);
+}
+
+function toggleBody(template: OutreachTemplate): void {
+    expanded.value = isExpanded(template)
+        ? expanded.value.filter((id) => id !== template.id)
+        : [...expanded.value, template.id];
 }
 
 /** Grouped by channel, because a brief is written for one channel and read next to its siblings. */
@@ -175,7 +251,8 @@ const grouped = computed(() => {
         <!-- The form -->
         <section
             v-if="showForm"
-            class="space-y-4 rounded-2xl border border-border bg-card p-6"
+            ref="formCard"
+            class="scroll-mt-6 space-y-4 rounded-2xl border border-brand/40 bg-card p-6"
             data-test="brief-form"
         >
             <h2
@@ -184,108 +261,156 @@ const grouped = computed(() => {
                 {{ editing === null ? t('New brief') : t('Edit brief') }}
             </h2>
 
-            <form class="space-y-4" @submit.prevent="submit">
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div class="space-y-2">
-                        <Label for="brief-name">{{ t('Name') }}</Label>
+            <form class="space-y-5" @submit.prevent="submit">
+                <FormErrorSummary
+                    :errors="form.errors"
+                    :labels="errorLabels"
+                    :anchors="errorAnchors"
+                    :attempt="attempt"
+                />
+
+                <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                    <FormField
+                        id="brief-name"
+                        :label="t('Name')"
+                        required
+                        :error="form.errors.name"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="form.name"
+                                required
+                                dir="auto"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                :placeholder="t('e.g. First touch')"
+                                data-test="brief-name"
+                            />
+                        </template>
+                    </FormField>
+
+                    <FormField
+                        id="brief-channel"
+                        :label="t('Channel')"
+                        :error="form.errors.channel"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <NativeSelect
+                                :id="id"
+                                v-model="form.channel"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                            >
+                                <option
+                                    v-for="channel in options.channels"
+                                    :key="channel.value"
+                                    :value="channel.value"
+                                >
+                                    {{ t(channel.label) }}
+                                </option>
+                            </NativeSelect>
+                        </template>
+                    </FormField>
+
+                    <FormField
+                        id="brief-tone"
+                        :label="t('Tone')"
+                        :error="form.errors.tone"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <NativeSelect
+                                :id="id"
+                                v-model="form.tone"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                            >
+                                <option
+                                    v-for="tone in options.tones"
+                                    :key="tone.value"
+                                    :value="tone.value"
+                                >
+                                    {{ t(tone.label) }}
+                                </option>
+                            </NativeSelect>
+                        </template>
+                    </FormField>
+
+                    <!-- One brief per language rather than one that reads oddly in the other. -->
+                    <FormField
+                        id="brief-locale"
+                        :label="t('Language')"
+                        :error="form.errors.locale"
+                        :hint="t('Keep one brief per language.')"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <NativeSelect
+                                :id="id"
+                                v-model="form.locale"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                            >
+                                <option
+                                    v-for="locale in options.locales"
+                                    :key="locale.value"
+                                    :value="locale.value"
+                                >
+                                    {{ locale.label }}
+                                </option>
+                            </NativeSelect>
+                        </template>
+                    </FormField>
+                </div>
+
+                <FormField
+                    v-if="channelHasSubject"
+                    id="brief-subject"
+                    :label="t('Subject line or angle')"
+                    optional
+                    :error="form.errors.subject"
+                    class="lg:max-w-2xl"
+                >
+                    <template #default="{ id, describedBy, invalid }">
                         <Input
-                            id="brief-name"
-                            v-model="form.name"
+                            :id="id"
+                            v-model="form.subject"
+                            dir="auto"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="invalid"
+                        />
+                    </template>
+                </FormField>
+
+                <FormField
+                    id="brief-body"
+                    :label="t('The brief')"
+                    required
+                    :error="form.errors.body"
+                    :hint="
+                        t(
+                            'Alima writes the message — this is what you would tell a new salesperson before their first call.',
+                        )
+                    "
+                    class="lg:max-w-3xl"
+                >
+                    <template #default="{ id, describedBy, invalid }">
+                        <Textarea
+                            :id="id"
+                            v-model="form.body"
+                            rows="6"
                             required
                             dir="auto"
-                            :placeholder="t('e.g. First touch')"
-                            data-test="brief-name"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="invalid"
+                            :placeholder="
+                                t(
+                                    'e.g. Lead with how long their onboarding takes. Mention our two-week setup. Ask for 15 minutes, never for a sale. Never promise a discount.',
+                                )
+                            "
+                            data-test="brief-body"
                         />
-                        <InputError :message="form.errors.name" />
-                    </div>
-
-                    <div class="space-y-2">
-                        <Label for="brief-channel">{{ t('Channel') }}</Label>
-                        <NativeSelect id="brief-channel" v-model="form.channel">
-                            <option
-                                v-for="channel in options.channels"
-                                :key="channel.value"
-                                :value="channel.value"
-                            >
-                                {{ t(channel.label) }}
-                            </option>
-                        </NativeSelect>
-                        <InputError :message="form.errors.channel" />
-                    </div>
-
-                    <div class="space-y-2">
-                        <Label for="brief-tone">{{ t('Tone') }}</Label>
-                        <NativeSelect id="brief-tone" v-model="form.tone">
-                            <option
-                                v-for="tone in options.tones"
-                                :key="tone.value"
-                                :value="tone.value"
-                            >
-                                {{ t(tone.label) }}
-                            </option>
-                        </NativeSelect>
-                        <InputError :message="form.errors.tone" />
-                    </div>
-
-                    <div class="space-y-2">
-                        <Label for="brief-locale">{{ t('Language') }}</Label>
-                        <NativeSelect id="brief-locale" v-model="form.locale">
-                            <option
-                                v-for="locale in options.locales"
-                                :key="locale.value"
-                                :value="locale.value"
-                            >
-                                {{ locale.label }}
-                            </option>
-                        </NativeSelect>
-                        <!-- One brief per language rather than one that reads oddly in the other. -->
-                        <p class="text-xs text-muted-foreground">
-                            {{ t('Keep one brief per language.') }}
-                        </p>
-                    </div>
-                </div>
-
-                <div v-if="channelHasSubject" class="space-y-2">
-                    <Label for="brief-subject">
-                        {{ t('Subject line or angle') }}
-                        <span class="text-xs font-normal text-muted-foreground">
-                            {{ t('(optional)') }}
-                        </span>
-                    </Label>
-                    <Input
-                        id="brief-subject"
-                        v-model="form.subject"
-                        class="lg:max-w-2xl"
-                        dir="auto"
-                    />
-                    <InputError :message="form.errors.subject" />
-                </div>
-
-                <div class="space-y-2">
-                    <Label for="brief-body">{{ t('The brief') }}</Label>
-                    <Textarea
-                        id="brief-body"
-                        v-model="form.body"
-                        rows="6"
-                        required
-                        class="lg:max-w-3xl"
-                        dir="auto"
-                        :placeholder="
-                            t(
-                                'e.g. Lead with how long their onboarding takes. Mention our two-week setup. Ask for 15 minutes, never for a sale. Never promise a discount.',
-                            )
-                        "
-                        data-test="brief-body"
-                    />
-                    <p class="text-xs text-muted-foreground lg:max-w-3xl">
-                        {{
-                            t(
-                                'Alima writes the message — this is what you would tell a new salesperson before their first call.',
-                            )
-                        }}
-                    </p>
-                    <InputError :message="form.errors.body" />
-                </div>
+                    </template>
+                </FormField>
 
                 <div class="flex items-start gap-3">
                     <Checkbox
@@ -310,10 +435,11 @@ const grouped = computed(() => {
                 <div class="flex flex-wrap gap-2">
                     <Button
                         type="submit"
+                        variant="brand"
                         :disabled="form.processing"
                         data-test="brief-save"
                     >
-                        {{ t('Save') }}
+                        {{ form.processing ? t('Saving…') : t('Save') }}
                     </Button>
                     <Button
                         type="button"
@@ -343,12 +469,13 @@ const grouped = computed(() => {
                     <li
                         v-for="template in group.templates"
                         :key="template.id"
-                        class="space-y-3 rounded-2xl border bg-card p-5"
+                        class="flex flex-col gap-3 rounded-2xl border bg-card p-5"
                         :class="
                             template.is_default
                                 ? 'border-lime'
                                 : 'border-border'
                         "
+                        :data-test="`brief-${template.id}`"
                     >
                         <header
                             class="flex flex-wrap items-start justify-between gap-2"
@@ -356,6 +483,7 @@ const grouped = computed(() => {
                             <div class="min-w-0">
                                 <p
                                     class="truncate font-semibold text-foreground"
+                                    dir="auto"
                                 >
                                     {{ template.name }}
                                 </p>
@@ -394,13 +522,50 @@ const grouped = computed(() => {
                                     v-if="template.can_delete"
                                     size="icon-sm"
                                     variant="ghost"
-                                    :aria-label="t('Delete')"
-                                    @click="remove(template)"
+                                    class="text-muted-foreground hover:text-destructive"
+                                    :aria-label="
+                                        t('Delete :name', {
+                                            name: template.name,
+                                        })
+                                    "
+                                    :data-test="`delete-brief-${template.id}`"
+                                    @click="confirmingDelete = template.id"
                                 >
                                     <Trash2 class="size-4" />
                                 </Button>
                             </div>
                         </header>
+
+                        <!-- Destroying a brief asks first: there is no undo, and the button sits
+                             beside "Edit". -->
+                        <div
+                            v-if="confirmingDelete === template.id"
+                            class="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/12 p-3"
+                            role="alert"
+                        >
+                            <p class="flex-1 text-sm text-foreground">
+                                {{
+                                    t(
+                                        'Delete this brief? Drafts already sent are not affected.',
+                                    )
+                                }}
+                            </p>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                @click="confirmingDelete = null"
+                            >
+                                {{ t('Cancel') }}
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="destructive"
+                                :data-test="`confirm-delete-brief-${template.id}`"
+                                @click="remove(template)"
+                            >
+                                {{ t('Delete') }}
+                            </Button>
+                        </div>
 
                         <p
                             v-if="template.subject"
@@ -411,11 +576,34 @@ const grouped = computed(() => {
                         </p>
 
                         <p
+                            :id="`brief-body-${template.id}`"
                             class="text-sm whitespace-pre-line text-muted-foreground"
+                            :class="isExpanded(template) ? '' : 'line-clamp-5'"
                             dir="auto"
                         >
                             {{ template.body }}
                         </p>
+
+                        <button
+                            type="button"
+                            class="-mt-1 inline-flex items-center gap-1 self-start rounded-sm text-xs font-medium text-brand underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                            :aria-expanded="isExpanded(template)"
+                            :aria-controls="`brief-body-${template.id}`"
+                            @click="toggleBody(template)"
+                        >
+                            {{
+                                isExpanded(template)
+                                    ? t('Show less')
+                                    : t('Read the whole brief')
+                            }}
+                            <ChevronDown
+                                class="size-3.5 transition-transform"
+                                :class="
+                                    isExpanded(template) ? 'rotate-180' : ''
+                                "
+                                aria-hidden="true"
+                            />
+                        </button>
                     </li>
                 </ul>
             </section>
@@ -432,7 +620,7 @@ const grouped = computed(() => {
             "
             data-test="no-briefs"
         >
-            <Button v-if="can.manage" @click="startAdding">
+            <Button v-if="can.manage" variant="brand" @click="startAdding">
                 <Plus class="size-4" />
                 {{ t('New brief') }}
             </Button>

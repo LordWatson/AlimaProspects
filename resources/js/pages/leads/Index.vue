@@ -1,24 +1,53 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { Columns3, Download, Plus, Radar, SearchX, Upload } from '@lucide/vue';
+import {
+    ChevronRight,
+    Columns3,
+    Download,
+    Ellipsis,
+    Plus,
+    Radar,
+    SearchX,
+    Upload,
+} from '@lucide/vue';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import BulkActionBar from '@/components/leads/BulkActionBar.vue';
 import LeadFilterBar from '@/components/leads/LeadFilterBar.vue';
 import SavedViewBar from '@/components/leads/SavedViewBar.vue';
+import {
+    ListCell,
+    ListHead,
+    ListRow,
+    ListRowLink,
+    ListSearch,
+    ListSort,
+    ListTable,
+    ListToolbar,
+} from '@/components/list';
 import PageHero from '@/components/PageHero.vue';
 import Pagination from '@/components/Pagination.vue';
 import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Spinner } from '@/components/ui/spinner';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
+import { useNavigating } from '@/composables/useNavigating';
 import type {
+    ActiveFilterChip,
     EnrichmentStatus,
     Lead,
     LeadFilterOptions,
     LeadFilterState,
+    LeadSort,
     LeadTag,
     Paginated,
     PipelineStage,
@@ -26,6 +55,27 @@ import type {
     TeamMemberOption,
 } from '@/types';
 
+/*
+ * The leads list — the screen a team spends most of its day on.
+ *
+ * What the rebuild changed, and why (the shared pieces live in `components/list`):
+ *
+ *  - **The filters fold away** and what they are doing is said in words above the table, as
+ *    removable chips. Before, every filter the screen has was permanently open above the first
+ *    row — six chip groups, about 300 pixels — so a laptop showed four leads, and a member who
+ *    scrolled past the panel had no way of telling whether eleven rows was the answer or the
+ *    leftovers of a filter set last Tuesday.
+ *  - **The columns are sortable from the columns.** The ordering select stays, because "newest
+ *    first" has no column, but Company, Fit and Updated now carry `aria-sort` and an arrow.
+ *  - **The header stays** as the list scrolls, and **a row is clickable across its whole width**
+ *    while still holding exactly one link.
+ *  - **The list says when it is thinking.** Every filter is a server round trip; the table dims
+ *    and the count is announced when the answer arrives.
+ *  - **One primary action.** The hero carried five buttons of equal weight; §2.3 allows one
+ *    primary CTA per view. Discovery is the primary, the two ways in are secondary, and import
+ *    and export — the occasional, operational pair — moved into a menu.
+ *  - **Each row carries its own summary on a phone**, where seven of the nine columns are hidden.
+ */
 defineOptions({
     layout: {
         breadcrumbs: [{ title: 'Leads', href: '/leads' }],
@@ -54,6 +104,10 @@ const props = defineProps<{
 const { t } = useI18n();
 const { number, date } = useFormat();
 
+// A filter change is a request, not a local toggle. Dim the rows while the server rebuilds them
+// rather than leaving stale ones looking like an answer.
+const busy = useNavigating();
+
 const isFiltering = computed(
     () =>
         props.filters.search !== '' ||
@@ -66,6 +120,133 @@ const isFiltering = computed(
         props.filters.assignees.length > 0 ||
         props.filters.unassigned,
 );
+
+// --- What is being filtered out ------------------------------------------------------------
+// Each chip names its group as well as its value, because "A", "Enriched" and "Dubai" are not
+// self-explanatory side by side. The id is what comes back on removal.
+function optionLabel(
+    options: LeadFilterOptions['sources'],
+    value: string,
+): string {
+    const option = options.find((candidate) => candidate.value === value);
+
+    return option ? t(option.label) : value;
+}
+
+const activeChips = computed<ActiveFilterChip[]>(() => {
+    const chips: ActiveFilterChip[] = [];
+
+    for (const grade of props.filters.grades) {
+        chips.push({ id: `grades:${grade}`, group: t('Fit'), label: grade });
+    }
+
+    for (const source of props.filters.sources) {
+        chips.push({
+            id: `sources:${source}`,
+            group: t('Source'),
+            label: optionLabel(props.options.sources, source),
+        });
+    }
+
+    for (const status of props.filters.enrichment_statuses) {
+        chips.push({
+            id: `enrichment_statuses:${status}`,
+            group: t('Data'),
+            label: optionLabel(props.options.enrichment_statuses, status),
+        });
+    }
+
+    for (const id of props.filters.stages) {
+        const stage = props.stages.find((candidate) => candidate.id === id);
+
+        chips.push({
+            id: `stages:${id}`,
+            group: t('Stage'),
+            // A stage, a tag and a person are the team's own words — never translated.
+            label: stage?.name ?? String(id),
+        });
+    }
+
+    for (const id of props.filters.tags) {
+        const tag = props.tags.find((candidate) => candidate.id === id);
+
+        chips.push({
+            id: `tags:${id}`,
+            group: t('Tag'),
+            label: tag?.name ?? String(id),
+        });
+    }
+
+    for (const id of props.filters.assignees) {
+        const member = props.members.find((candidate) => candidate.id === id);
+
+        chips.push({
+            id: `assignees:${id}`,
+            group: t('Who’s on it'),
+            label: member?.name ?? String(id),
+        });
+    }
+
+    if (props.filters.unassigned) {
+        chips.push({
+            id: 'unassigned:1',
+            group: t('Who’s on it'),
+            label: t('Nobody'),
+        });
+    }
+
+    if (props.filters.country !== '') {
+        chips.push({
+            id: 'country:1',
+            group: t('Location'),
+            label: props.filters.country,
+        });
+    }
+
+    return chips;
+});
+
+function removeChip(chip: ActiveFilterChip): void {
+    const [key, raw] = chip.id.split(':');
+    const id = Number(raw);
+
+    switch (key) {
+        case 'grades':
+            apply({
+                grades: props.filters.grades.filter((v) => v !== raw),
+            });
+            break;
+        case 'sources':
+            apply({
+                sources: props.filters.sources.filter((v) => v !== raw),
+            });
+            break;
+        case 'enrichment_statuses':
+            apply({
+                enrichment_statuses: props.filters.enrichment_statuses.filter(
+                    (v) => v !== raw,
+                ),
+            });
+            break;
+        case 'stages':
+            apply({ stages: props.filters.stages.filter((v) => v !== id) });
+            break;
+        case 'tags':
+            apply({ tags: props.filters.tags.filter((v) => v !== id) });
+            break;
+        case 'assignees':
+            apply({
+                assignees: props.filters.assignees.filter((v) => v !== id),
+            });
+            break;
+        case 'unassigned':
+            apply({ unassigned: false });
+            break;
+        case 'country':
+            apply({ country: '' });
+            break;
+    }
+}
 
 // --- Selection (Phase 10b) -----------------------------------------------------------------
 // Selection is **per page**, deliberately: "select all" that silently meant 4 000 leads across 40
@@ -188,23 +369,64 @@ function clear(): void {
     router.get('/leads', {}, { preserveScroll: true, replace: true });
 }
 
+/**
+ * A click on a sortable column header. The same column again flips the direction; a different one
+ * takes that ordering's own natural direction (`LeadSort::defaultDirection()` on the server)
+ * rather than inheriting the last one, which is rarely what was meant.
+ */
+function sortBy(key: string): void {
+    if (props.filters.sort === key) {
+        apply({
+            direction: props.filters.direction === 'asc' ? 'desc' : 'asc',
+        });
+
+        return;
+    }
+
+    apply({ sort: key as LeadSort, direction: undefined });
+}
+
+const summary = computed(() =>
+    isFiltering.value
+        ? t(':count leads match', { count: number(props.leads.meta.total) })
+        : t(':count leads', { count: number(props.leads.meta.total) }),
+);
+
 // Data state reads as neutral information, never as an error: a lead still waiting to be enriched
 // isn't a fault, so only an actual failure gets a warning tint.
+//
+// `enriching` is **not** `info`: `status.info` over its own 12% tint is about 4.4:1, under AA at
+// badge size, and §7g.2 allows info as a non-text icon only until the token is approved (§7.6).
+// An outline badge with a spinner says "in progress" without leaning on the colour at all.
 const enrichmentVariant: Record<
     EnrichmentStatus,
-    'success' | 'info' | 'outline' | 'warning'
+    'success' | 'outline' | 'warning'
 > = {
     enriched: 'success',
-    enriching: 'info',
+    enriching: 'outline',
     pending: 'outline',
     failed: 'warning',
 };
+
+/** The one line a phone gets instead of the six columns it cannot show. */
+function rowSummary(lead: Lead): string {
+    return [lead.stage?.name, lead.locality ?? lead.country]
+        .filter((part): part is string => Boolean(part))
+        .join(' · ');
+}
+
+function updatedAt(lead: Lead): string {
+    if (lead.enriched_at) return date(lead.enriched_at);
+    if (lead.collected_at) return date(lead.collected_at);
+
+    return '—';
+}
 </script>
 
 <template>
     <Head :title="t('Leads')" />
 
-    <div class="flex flex-col gap-8 py-2">
+    <div class="flex flex-col gap-6 py-2">
         <PageHero
             index="06"
             :eyebrow="t('Leads')"
@@ -221,6 +443,8 @@ const enrichmentVariant: Record<
             }"
         >
             <template #actions>
+                <!-- One primary per view (brand-tokens.md §2.3): finding more leads is what this
+                     screen is for. -->
                 <Button variant="lime" as-child>
                     <Link href="/discovery">
                         <Radar class="size-4" />
@@ -241,19 +465,41 @@ const enrichmentVariant: Record<
                         {{ t('Board view') }}
                     </Link>
                 </Button>
-                <Button v-if="can.import" variant="hero" as-child>
-                    <Link href="/leads/import">
-                        <Upload class="size-4" />
-                        {{ t('Import') }}
-                    </Link>
-                </Button>
-                <!-- A plain link, not an Inertia visit: the response is a streamed file download. -->
-                <Button v-if="can.export" variant="hero" as-child>
-                    <a :href="exportUrl" data-test="export-leads">
-                        <Download class="size-4" />
-                        {{ t('Export') }}
-                    </a>
-                </Button>
+
+                <!-- Import and export are occasional and operational. In the row they read as two
+                     more ways to look at leads, which is what the first three are; behind a menu
+                     they read as what they are. -->
+                <DropdownMenu v-if="can.import || can.export">
+                    <DropdownMenuTrigger as-child>
+                        <Button variant="hero" :aria-label="t('More actions')">
+                            <Ellipsis class="size-4" />
+                            {{ t('More') }}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" class="min-w-48">
+                        <DropdownMenuItem v-if="can.import" as-child>
+                            <Link
+                                href="/leads/import"
+                                class="w-full cursor-pointer"
+                            >
+                                <Upload class="size-4" />
+                                {{ t('Import a CSV') }}
+                            </Link>
+                        </DropdownMenuItem>
+                        <!-- A plain link, not an Inertia visit: the response is a streamed
+                             file download. -->
+                        <DropdownMenuItem v-if="can.export" as-child>
+                            <a
+                                :href="exportUrl"
+                                class="w-full cursor-pointer"
+                                data-test="export-leads"
+                            >
+                                <Download class="size-4" />
+                                {{ t('Export what I can see') }}
+                            </a>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </template>
         </PageHero>
 
@@ -292,16 +538,53 @@ const enrichmentVariant: Record<
                 :is-filtering="isFiltering"
             />
 
-            <LeadFilterBar
-                :filters="filters"
-                :options="options"
-                :stages="stages"
-                :tags="tags"
-                :members="members"
-                :total="leads.meta.total"
-                @change="apply"
-                @clear="clear"
-            />
+            <ListToolbar
+                :summary="summary"
+                :chips="activeChips"
+                :busy="busy"
+                @remove-filter="removeChip"
+                @clear-filters="clear"
+            >
+                <template #search>
+                    <ListSearch
+                        id="lead-search"
+                        :value="filters.search"
+                        :label="t('Search')"
+                        :placeholder="t('Company, number, website or contact')"
+                        data-test="lead-search"
+                        @search="apply({ search: $event })"
+                    />
+                </template>
+
+                <template #sort>
+                    <ListSort
+                        id="lead-sort"
+                        :options="options.sorts"
+                        :value="filters.sort"
+                        :direction="filters.direction"
+                        @sort="
+                            apply({
+                                sort: $event as LeadSort,
+                                // A new ordering gets that ordering's natural direction rather
+                                // than inheriting the last one.
+                                direction: undefined,
+                            })
+                        "
+                        @direction="apply({ direction: $event })"
+                    />
+                </template>
+
+                <template #filters>
+                    <LeadFilterBar
+                        :filters="filters"
+                        :options="options"
+                        :stages="stages"
+                        :tags="tags"
+                        :members="members"
+                        @change="apply"
+                    />
+                </template>
+            </ListToolbar>
 
             <!-- Always mounted: a live region inserted with text already in it is usually not
                  announced, so the first selection would have gone by in silence. It also says
@@ -321,7 +604,8 @@ const enrichmentVariant: Record<
                 @applied="onBulkApplied"
             />
 
-            <!-- Filtered down to nothing -->
+            <!-- Filtered down to nothing. The chips above say what did it, so this only has to
+                 offer the way out. -->
             <EmptyState
                 v-if="!leads.data.length"
                 :icon="SearchX"
@@ -331,29 +615,27 @@ const enrichmentVariant: Record<
                 "
                 data-test="no-matches"
             >
-                <Button variant="outline" @click="clear">
+                <Button variant="brand" @click="clear">
                     {{ t('Clear filters') }}
                 </Button>
             </EmptyState>
 
             <template v-else>
-                <div
-                    class="overflow-hidden rounded-2xl border border-border bg-card"
+                <ListTable
+                    :caption="t('Your leads, with their fit grade and source')"
+                    :busy="busy"
                 >
-                    <table class="w-full text-sm">
-                        <caption class="sr-only">
-                            {{
-                                t('Your leads, with their fit grade and source')
-                            }}
-                        </caption>
-                        <thead class="bg-accent/50 text-muted-foreground">
-                            <tr>
-                                <th
-                                    v-if="can.work"
-                                    ref="selectAllBox"
-                                    scope="col"
-                                    class="w-10 px-4 py-3 text-start font-medium"
-                                >
+                    <thead>
+                        <tr>
+                            <ListHead
+                                v-if="can.work"
+                                :label="t('Select')"
+                                class="w-10"
+                            >
+                                <!-- The ref sits on the wrapper rather than the component: a ref
+                                     to a `<script setup>` component is a closed instance proxy
+                                     with no element on it to focus. -->
+                                <span ref="selectAllBox" class="block">
                                     <Checkbox
                                         id="select-all"
                                         :model-value="allSelected"
@@ -365,201 +647,190 @@ const enrichmentVariant: Record<
                                             toggleAll($event === true)
                                         "
                                     />
-                                </th>
-                                <th
-                                    scope="col"
-                                    class="px-4 py-3 text-start font-medium"
-                                >
-                                    {{ t('Company') }}
-                                </th>
-                                <th
-                                    scope="col"
-                                    class="px-4 py-3 text-start font-medium"
-                                >
-                                    {{ t('Fit') }}
-                                </th>
-                                <th
-                                    scope="col"
-                                    class="hidden px-4 py-3 text-start font-medium md:table-cell"
-                                >
-                                    {{ t('Stage') }}
-                                </th>
-                                <th
-                                    scope="col"
-                                    class="hidden px-4 py-3 text-start font-medium md:table-cell"
-                                >
-                                    {{ t('Location') }}
-                                </th>
-                                <th
-                                    scope="col"
-                                    class="hidden px-4 py-3 text-start font-medium lg:table-cell"
-                                >
-                                    {{ t('Contacts') }}
-                                </th>
-                                <th
-                                    scope="col"
-                                    class="hidden px-4 py-3 text-start font-medium lg:table-cell"
-                                >
-                                    {{ t('Who’s on it') }}
-                                </th>
-                                <th
-                                    scope="col"
-                                    class="hidden px-4 py-3 text-start font-medium sm:table-cell"
-                                >
-                                    {{ t('Data') }}
-                                </th>
-                                <th
-                                    scope="col"
-                                    class="hidden px-4 py-3 text-end font-medium lg:table-cell"
-                                >
-                                    {{ t('Updated') }}
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="lead in leads.data"
-                                :key="lead.id"
-                                class="border-t border-border transition-colors hover:bg-accent/30"
-                                :data-test="`lead-${lead.id}`"
-                            >
-                                <td v-if="can.work" class="px-4 py-3">
-                                    <Checkbox
-                                        :id="`select-${lead.id}`"
-                                        :model-value="
-                                            selected.includes(lead.id)
-                                        "
-                                        :aria-label="
-                                            t('Select :company', {
-                                                company: lead.company_name,
-                                            })
-                                        "
-                                        :data-test="`select-${lead.id}`"
-                                        @update:model-value="
-                                            toggleLead(lead.id, $event === true)
-                                        "
-                                    />
-                                </td>
-                                <td class="px-4 py-3">
-                                    <!-- The row's main affordance is this one link, so a screen
-                                         reader reads one name per row. -->
-                                    <Link
-                                        :href="`/leads/${lead.id}`"
-                                        class="rounded-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                                        dir="auto"
-                                    >
-                                        {{ lead.company_name }}
-                                    </Link>
-                                    <span
-                                        v-if="lead.industry"
-                                        class="block text-xs text-muted-foreground"
-                                        dir="auto"
-                                        >{{ lead.industry }}</span
-                                    >
-                                    <ul
-                                        v-if="lead.tags?.length"
-                                        class="mt-1 flex flex-wrap gap-1"
-                                    >
-                                        <li
-                                            v-for="tag in lead.tags"
-                                            :key="tag.id"
-                                        >
-                                            <Badge variant="lilac" dir="auto">{{
-                                                tag.name
-                                            }}</Badge>
-                                        </li>
-                                    </ul>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <GradeBadge
-                                        v-if="lead.score"
-                                        :grade="lead.score.grade"
-                                        :score="lead.score.score"
-                                        :label="t(lead.score.grade_label)"
-                                    />
-                                    <span
-                                        v-else
-                                        class="text-xs text-muted-foreground"
-                                        >{{ t('Not graded') }}</span
-                                    >
-                                </td>
-                                <td
-                                    class="hidden px-4 py-3 text-muted-foreground md:table-cell"
+                                </span>
+                            </ListHead>
+                            <ListHead
+                                :label="t('Company')"
+                                sort="company"
+                                :active="filters.sort"
+                                :direction="filters.direction"
+                                @sort="sortBy"
+                            />
+                            <ListHead
+                                :label="t('Fit')"
+                                sort="fit"
+                                :active="filters.sort"
+                                :direction="filters.direction"
+                                @sort="sortBy"
+                            />
+                            <ListHead :label="t('Stage')" hide="md" />
+                            <ListHead :label="t('Location')" hide="md" />
+                            <ListHead
+                                :label="t('Contacts')"
+                                hide="lg"
+                                align="end"
+                            />
+                            <ListHead :label="t('Who’s on it')" hide="lg" />
+                            <ListHead :label="t('Data')" hide="sm" />
+                            <ListHead
+                                :label="t('Updated')"
+                                sort="freshness"
+                                align="end"
+                                hide="lg"
+                                :active="filters.sort"
+                                :direction="filters.direction"
+                                @sort="sortBy"
+                            />
+                            <!-- The "open" affordance: the arrow pointing at the row's own link.
+                                 Its header is named but not shown, because an unnamed column
+                                 reads as "blank" and a visible one would name a thing the row
+                                 has already named. -->
+                            <ListHead :label="t('Open')" class="w-8">
+                                <span class="sr-only">{{ t('Open') }}</span>
+                            </ListHead>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <ListRow
+                            v-for="lead in leads.data"
+                            :key="lead.id"
+                            :selected="selected.includes(lead.id)"
+                            :data-test="`lead-${lead.id}`"
+                        >
+                            <ListCell v-if="can.work" raised class="w-10">
+                                <Checkbox
+                                    :id="`select-${lead.id}`"
+                                    :model-value="selected.includes(lead.id)"
+                                    :aria-label="
+                                        t('Select :company', {
+                                            company: lead.company_name,
+                                        })
+                                    "
+                                    :data-test="`select-${lead.id}`"
+                                    @update:model-value="
+                                        toggleLead(lead.id, $event === true)
+                                    "
+                                />
+                            </ListCell>
+                            <ListCell>
+                                <!-- The row's main affordance is this one link, stretched over
+                                     the whole row, so a screen reader reads one name per row. -->
+                                <ListRowLink :href="`/leads/${lead.id}`">
+                                    {{ lead.company_name }}
+                                </ListRowLink>
+                                <span
+                                    v-if="lead.industry"
+                                    class="block text-xs text-muted-foreground"
                                     dir="auto"
+                                    >{{ lead.industry }}</span
                                 >
-                                    <!-- No stage means the lead is still in the starting column, so
-                                         the dash reads as "not moved yet" rather than "nowhere". -->
-                                    {{ lead.stage?.name ?? '—' }}
-                                </td>
-                                <td
-                                    class="hidden px-4 py-3 text-muted-foreground md:table-cell"
+                                <!-- On a phone, six of the nine columns are hidden; this is what
+                                     they said, in one line. -->
+                                <span
+                                    v-if="rowSummary(lead)"
+                                    class="mt-0.5 block text-xs text-muted-foreground md:hidden"
                                     dir="auto"
+                                    >{{ rowSummary(lead) }}</span
                                 >
-                                    {{ lead.locality ?? lead.country ?? '—' }}
-                                </td>
-                                <!-- The isolation goes on a <bdi> inside the cell, not on the cell:
-                                     `dir` on the <td> would make `text-align: start` resolve to the
-                                     left and knock the column out of line under RTL. -->
-                                <td
-                                    class="hidden px-4 py-3 font-mono text-xs text-muted-foreground tabular-nums lg:table-cell"
+                                <ul
+                                    v-if="lead.tags?.length"
+                                    class="relative z-10 mt-1 flex flex-wrap gap-1"
                                 >
-                                    <bdi dir="ltr">{{
-                                        number(lead.contacts_count ?? 0)
-                                    }}</bdi>
-                                </td>
-                                <td
-                                    class="hidden px-4 py-3 text-muted-foreground lg:table-cell"
+                                    <li v-for="tag in lead.tags" :key="tag.id">
+                                        <Badge variant="lilac" dir="auto">{{
+                                            tag.name
+                                        }}</Badge>
+                                    </li>
+                                </ul>
+                            </ListCell>
+                            <ListCell>
+                                <GradeBadge
+                                    v-if="lead.score"
+                                    :grade="lead.score.grade"
+                                    :score="lead.score.score"
+                                    :label="t(lead.score.grade_label)"
+                                />
+                                <span
+                                    v-else
+                                    class="text-xs text-muted-foreground"
+                                    >{{ t('Not graded') }}</span
                                 >
-                                    <span
-                                        v-if="lead.assignees?.length"
-                                        class="truncate text-xs"
-                                        dir="auto"
-                                        >{{
-                                            lead.assignees
-                                                .map((p) => p.name)
-                                                .join(', ')
-                                        }}</span
-                                    >
-                                    <span v-else class="text-xs">{{
-                                        t('Nobody')
-                                    }}</span>
-                                    <span
-                                        v-if="lead.open_tasks_count"
-                                        class="block font-mono text-xs"
-                                    >
-                                        {{
-                                            t(':count to do', {
-                                                count: lead.open_tasks_count,
-                                            })
-                                        }}
-                                    </span>
-                                </td>
-                                <td class="hidden px-4 py-3 sm:table-cell">
-                                    <Badge
-                                        :variant="
-                                            enrichmentVariant[
-                                                lead.enrichment_status
-                                            ]
+                            </ListCell>
+                            <!-- No stage means the lead is still in the starting column, so the
+                                 dash reads as "not moved yet" rather than "nowhere". -->
+                            <ListCell hide="md" muted>
+                                <span dir="auto">{{
+                                    lead.stage?.name ?? '—'
+                                }}</span>
+                            </ListCell>
+                            <ListCell hide="md" muted>
+                                <span dir="auto">{{
+                                    lead.locality ?? lead.country ?? '—'
+                                }}</span>
+                            </ListCell>
+                            <!-- The isolation goes on a <bdi> inside the cell, not on the cell:
+                                 `dir` on the `td` would make `text-align: start` resolve to the
+                                 left and knock the column out of line under RTL. -->
+                            <ListCell hide="lg" muted mono align="end">
+                                <bdi dir="ltr">{{
+                                    number(lead.contacts_count ?? 0)
+                                }}</bdi>
+                            </ListCell>
+                            <ListCell hide="lg" muted>
+                                <span
+                                    v-if="lead.assignees?.length"
+                                    class="truncate text-xs"
+                                    dir="auto"
+                                    >{{
+                                        lead.assignees
+                                            .map((p) => p.name)
+                                            .join(', ')
+                                    }}</span
+                                >
+                                <span v-else class="text-xs">{{
+                                    t('Nobody')
+                                }}</span>
+                                <span
+                                    v-if="lead.open_tasks_count"
+                                    class="block font-mono text-xs"
+                                >
+                                    {{
+                                        t(':count to do', {
+                                            count: lead.open_tasks_count,
+                                        })
+                                    }}
+                                </span>
+                            </ListCell>
+                            <ListCell hide="sm">
+                                <Badge
+                                    :variant="
+                                        enrichmentVariant[
+                                            lead.enrichment_status
+                                        ]
+                                    "
+                                >
+                                    <Spinner
+                                        v-if="
+                                            lead.enrichment_status ===
+                                            'enriching'
                                         "
-                                    >
-                                        {{ t(lead.enrichment_status_label) }}
-                                    </Badge>
-                                </td>
-                                <td
-                                    class="hidden px-4 py-3 text-end text-xs text-muted-foreground lg:table-cell"
-                                >
-                                    <bdi>{{
-                                        lead.enriched_at
-                                            ? date(lead.enriched_at)
-                                            : lead.collected_at
-                                              ? date(lead.collected_at)
-                                              : '—'
-                                    }}</bdi>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                                        class="size-3"
+                                    />
+                                    {{ t(lead.enrichment_status_label) }}
+                                </Badge>
+                            </ListCell>
+                            <ListCell hide="lg" muted align="end">
+                                <bdi class="text-xs">{{ updatedAt(lead) }}</bdi>
+                            </ListCell>
+                            <ListCell align="end" class="w-8">
+                                <ChevronRight
+                                    class="size-4 text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-100 rtl:rotate-180"
+                                    aria-hidden="true"
+                                />
+                            </ListCell>
+                        </ListRow>
+                    </tbody>
+                </ListTable>
 
                 <!-- The per-page links live under `meta`; the top-level `links` is only
                      first/last/prev/next. -->

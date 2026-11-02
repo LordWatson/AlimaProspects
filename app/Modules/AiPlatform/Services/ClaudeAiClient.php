@@ -10,6 +10,7 @@ use App\Modules\AiPlatform\Data\AiPromptRequest;
 use App\Modules\AiPlatform\Data\AiTransportResult;
 use App\Modules\AiPlatform\Data\StructuredAiResponse;
 use App\Modules\AiPlatform\Enums\AiRequestStatus;
+use App\Modules\AiPlatform\Exceptions\AiInputTooLargeException;
 use App\Modules\AiPlatform\Exceptions\AiPlatformException;
 use App\Modules\AiPlatform\Exceptions\InvalidAiResponseException;
 use App\Modules\AiPlatform\Models\AiPromptTemplate;
@@ -55,11 +56,21 @@ final class ClaudeAiClient implements AiClient
             return $this->fromCache($template, $model, $cached);
         }
 
+        $system = $this->interpolator->render((string) $template->system, $input);
+        $prompt = $this->interpolator->render($template->body, $input);
+
+        // The hard input bound (Phase 20, ADR 0017). After rendering, because the size that
+        // matters is what would go on the wire — a template is a page and its placeholders are
+        // where the hundred leads arrive. Before the transport, because the point is to spend
+        // nothing: a near-context-limit call is slow, is charged to the team's allowance whatever
+        // comes back, and is the shape a prompt-injection attempt takes.
+        $this->ensureWithinInputLimit($template, $system, $prompt);
+
         $request = new AiPromptRequest(
             provider: $provider,
             model: $model,
-            system: $this->interpolator->render((string) $template->system, $input),
-            prompt: $this->interpolator->render($template->body, $input),
+            system: $system,
+            prompt: $prompt,
             maxTokens: $template->max_tokens ?? (int) config('ai-platform.defaults.max_tokens', 2048),
             temperature: $template->temperature ?? (float) config('ai-platform.defaults.temperature', 0.2),
             jsonSchema: $template->schema,
@@ -67,6 +78,32 @@ final class ClaudeAiClient implements AiClient
         );
 
         return $this->generateWithValidation($template, $request, $input, $cacheKey);
+    }
+
+    /**
+     * Refuse a rendered prompt over `ai-platform.limits.max_prompt_chars`.
+     *
+     * Characters rather than tokens, and the reason is the whole design: a token count is only
+     * knowable by asking the provider, which is the call this is here to avoid making. The system
+     * prompt counts too — it is sent on every request and a template with an oversized
+     * placeholder in it costs just as much there.
+     *
+     * A limit of 0 or less switches the bound off, for an installation that would rather let the
+     * provider be the one to refuse.
+     */
+    private function ensureWithinInputLimit(AiPromptTemplate $template, string $system, string $prompt): void
+    {
+        $limit = (int) config('ai-platform.limits.max_prompt_chars', 60_000);
+
+        if ($limit <= 0) {
+            return;
+        }
+
+        $chars = mb_strlen($system) + mb_strlen($prompt);
+
+        if ($chars > $limit) {
+            throw AiInputTooLargeException::forPrompt($template->key, $chars, $limit);
+        }
     }
 
     /**

@@ -53,13 +53,14 @@ function bootBackgroundCheck(?string $webText = null): array
     return [$team, $fakeAi, $fakeFetcher];
 }
 
-function runJob(Team $team): void
+/**
+ * Run the job through the container, so its `handle()` dependencies are resolved rather than listed
+ * here. Phase 19b added a fourth (the capability gate) and this was seven call sites that each had
+ * to be edited; `app()->call()` is how a job is invoked in production anyway.
+ */
+function runJob(Team $team, ?int $reportId = null): void
 {
-    (new RunBackgroundCheckJob((int) $team->getKey()))->handle(
-        app(AiClient::class),
-        app(WebContentFetcher::class),
-        app(TeamContext::class),
-    );
+    app()->call([new RunBackgroundCheckJob((int) $team->getKey(), $reportId), 'handle']);
 }
 
 function readyFindings(): array
@@ -159,11 +160,7 @@ it('no-ops when its target report is already terminal (idempotent retry)', funct
         'version' => 1,
     ]));
 
-    (new RunBackgroundCheckJob((int) $team->getKey(), (int) $report->getKey()))->handle(
-        app(AiClient::class),
-        app(WebContentFetcher::class),
-        app(TeamContext::class),
-    );
+    runJob($team, (int) $report->getKey());
 
     // No AI call, no new version, status untouched.
     expect($fakeAi->callCount())->toBe(0)

@@ -29,6 +29,7 @@ import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { useI18n } from '@/composables/useI18n';
 import { dashboard } from '@/routes';
 import { edit as editProfile } from '@/routes/profile';
+import type { AppCapability } from '@/types';
 
 /*
  * Alima app sidebar — a deep-teal editorial rail. The active item is an Acid
@@ -52,6 +53,13 @@ type Item = {
     icon: LucideIcon;
     href: string;
     match?: 'exact' | 'startsWith';
+    /**
+     * A plan feature this destination needs (Phase 19b). The item is dropped when the team's plan
+     * does not include it — a link to a screen that will refuse is a promise the product then
+     * breaks. The route middleware and the Action's guard are what *enforce* it; this is only what
+     * stops us advertising it.
+     */
+    capability?: AppCapability;
 };
 
 /**
@@ -61,7 +69,21 @@ type Item = {
  */
 type Chapter = { key: string; label?: string; items: Item[] };
 
-const chapters = computed<Chapter[]>(() => [
+/**
+ * What this team's plan includes, from the shared prop. Missing keys read as **available**, not
+ * excluded: a page that did not send the prop should not silently hide half the nav.
+ */
+const capabilities = computed<Record<string, boolean>>(
+    () => (page.props.capabilities ?? {}) as Record<string, boolean>,
+);
+
+function isAvailable(item: Item): boolean {
+    return item.capability === undefined
+        ? true
+        : capabilities.value[item.capability] !== false;
+}
+
+const allChapters = computed<Chapter[]>(() => [
     {
         key: 'overview',
         items: [
@@ -122,6 +144,7 @@ const chapters = computed<Chapter[]>(() => [
                 n: '07',
                 title: t('Signals'),
                 icon: Satellite,
+                capability: 'signals',
                 // `startsWith` so the watch-settings screen keeps the nav item lit — it is the same
                 // destination as far as a member is concerned.
                 href: '/signals',
@@ -153,6 +176,7 @@ const chapters = computed<Chapter[]>(() => [
                 n: '09',
                 title: t('Insights'),
                 icon: Lightbulb,
+                capability: 'ai_insights',
                 href: '/insights',
                 match: 'startsWith',
             },
@@ -193,6 +217,20 @@ const chapters = computed<Chapter[]>(() => [
         ],
     },
 ]);
+
+/**
+ * The rail as rendered: chapters with their unavailable destinations removed, and any chapter left
+ * empty removed with them — an eyebrow over nothing reads as a broken page rather than as a plan
+ * boundary.
+ */
+const chapters = computed<Chapter[]>(() =>
+    allChapters.value
+        .map((chapter) => ({
+            ...chapter,
+            items: chapter.items.filter(isAvailable),
+        }))
+        .filter((chapter) => chapter.items.length > 0),
+);
 
 const user = computed(() => page.props.auth.user);
 const initials = computed(() =>

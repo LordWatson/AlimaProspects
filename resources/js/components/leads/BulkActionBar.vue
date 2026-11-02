@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import type { BulkLeadAction, PipelineStage, TeamMemberOption } from '@/types';
@@ -137,10 +138,9 @@ function apply(): void {
             <Label for="bulk-action">{{
                 t('What would you like to do?')
             }}</Label>
-            <select
+            <NativeSelect
                 id="bulk-action"
                 v-model="action"
-                class="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                 data-test="bulk-action"
             >
                 <option
@@ -150,7 +150,7 @@ function apply(): void {
                 >
                     {{ t(option.label) }}
                 </option>
-            </select>
+            </NativeSelect>
         </div>
 
         <div v-if="needs === 'tags'" class="grid flex-1 gap-2">
@@ -166,12 +166,7 @@ function apply(): void {
 
         <div v-else-if="needs === 'user_id'" class="grid flex-1 gap-2">
             <Label for="bulk-user">{{ t('Which teammate?') }}</Label>
-            <select
-                id="bulk-user"
-                v-model="userId"
-                class="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                data-test="bulk-user"
-            >
+            <NativeSelect id="bulk-user" v-model="userId" data-test="bulk-user">
                 <option
                     v-for="member in props.members"
                     :key="member.id"
@@ -179,15 +174,14 @@ function apply(): void {
                 >
                     {{ member.name }}
                 </option>
-            </select>
+            </NativeSelect>
         </div>
 
         <div v-else class="grid flex-1 gap-2">
             <Label for="bulk-stage">{{ t('Which stage?') }}</Label>
-            <select
+            <NativeSelect
                 id="bulk-stage"
                 v-model="stageId"
-                class="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                 data-test="bulk-stage"
             >
                 <option
@@ -197,7 +191,7 @@ function apply(): void {
                 >
                     {{ stage.name }}
                 </option>
-            </select>
+            </NativeSelect>
         </div>
 
         <div class="flex items-center gap-2">

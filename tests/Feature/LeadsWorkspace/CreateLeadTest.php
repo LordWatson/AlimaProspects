@@ -340,7 +340,7 @@ it('refuses another team’s column on the API too', function (): void {
     $this->actingAs($user)
         ->postJson('/api/v1/leads', manualLead(['pipeline_stage_id' => $foreignStage->getKey()]))
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('pipeline_stage_id');
+        ->assertApiValidationErrors('pipeline_stage_id');
 
     expect(Lead::query()->withoutGlobalScopes()->count())->toBe(0);
 });
@@ -549,5 +549,5 @@ it('validates the API create the same way as the form', function (): void {
     $this->actingAs($user)
         ->postJson('/api/v1/leads', ['company_name' => ''])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('company_name');
+        ->assertApiValidationErrors('company_name');
 });

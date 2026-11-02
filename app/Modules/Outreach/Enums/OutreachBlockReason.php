@@ -38,6 +38,14 @@ enum OutreachBlockReason: string
     /** Sending is switched off for this deployment (no mail provider configured). */
     case SendingDisabled = 'sending_disabled';
 
+    /**
+     * An operator has suspended the team (Phase 19a). Configuration rather than compliance:
+     * nothing about this prospect has changed, and the team keeps reading and drafting. It is
+     * also the one refusal the team cannot fix themselves, which is why the guidance says to
+     * talk to us rather than suggesting a setting.
+     */
+    case TeamSuspended = 'team_suspended';
+
     public function label(): string
     {
         return match ($this) {
@@ -46,6 +54,7 @@ enum OutreachBlockReason: string
             self::NoContactPoint => 'No contact details',
             self::NoSenderIdentity => 'No verified sender',
             self::SendingDisabled => 'Sending is switched off',
+            self::TeamSuspended => 'This account is suspended',
         };
     }
 
@@ -57,6 +66,7 @@ enum OutreachBlockReason: string
             self::NoContactPoint => 'Enrich the lead or add a contact, then try again.',
             self::NoSenderIdentity => 'Add a verified sender address in your team settings.',
             self::SendingDisabled => 'Copy the message and send it from your own mailbox instead.',
+            self::TeamSuspended => 'Get in touch with us and we will put this right.',
         };
     }
 
@@ -68,7 +78,7 @@ enum OutreachBlockReason: string
     {
         return match ($this) {
             self::Restricted, self::Suppressed => true,
-            self::NoContactPoint, self::NoSenderIdentity, self::SendingDisabled => false,
+            self::NoContactPoint, self::NoSenderIdentity, self::SendingDisabled, self::TeamSuspended => false,
         };
     }
 

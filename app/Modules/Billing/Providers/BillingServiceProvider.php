@@ -10,19 +10,26 @@ use App\Modules\Auth\Contracts\SeatLimitSource;
 use App\Modules\Billing\Console\ReportOverageCommand;
 use App\Modules\Billing\Console\SyncUsageCommand;
 use App\Modules\Billing\Contracts\BillingGateway;
+use App\Modules\Billing\Contracts\StripeSwitch;
+use App\Modules\Billing\Http\Middleware\RefuseStripeWhenDisabled;
 use App\Modules\Billing\Listeners\SyncSubscriptionFromStripe;
+use App\Modules\Billing\Services\ConfiguredStripeSwitch;
+use App\Modules\Billing\Services\DisabledBillingGateway;
+use App\Modules\Billing\Services\PlanCapabilityGate;
 use App\Modules\Billing\Services\PlanCreditSource;
 use App\Modules\Billing\Services\PlanLeadQuotaSource;
 use App\Modules\Billing\Services\PlanRegistry;
 use App\Modules\Billing\Services\PlanResolver;
 use App\Modules\Billing\Services\PlanSeatLimit;
 use App\Modules\Billing\Services\StripeBillingGateway;
+use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\ModuleServiceProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Cashier\Cashier;
@@ -60,7 +67,32 @@ final class BillingServiceProvider extends ModuleServiceProvider
         // memo for the life of a `queue:work` process — see the class docblock.
         $this->app->scoped(PlanResolver::class);
 
-        $this->app->bind(BillingGateway::class, StripeBillingGateway::class);
+        // Billing's own answer to “is Stripe on”: when it is configured. Admin binds a
+        // settings-backed switch over it, so an operator can turn it off from a browser (Phase 19b).
+        $this->app->bind(StripeSwitch::class, ConfiguredStripeSwitch::class);
+
+        // **Resolved per call, not once.** A closure rather than a class name, so flipping the
+        // switch takes effect on the next resolution instead of on the next deploy — and so a
+        // deployment with no Stripe keys gets a gateway that refuses by name rather than one that
+        // times out inside a checkout.
+        $this->app->bind(
+            BillingGateway::class,
+            fn (): BillingGateway => $this->app->make(StripeSwitch::class)->isEnabled()
+                ? $this->app->make(StripeBillingGateway::class)
+                : $this->app->make(DisabledBillingGateway::class),
+        );
+
+        // The middle capability gate: what this team's **plan** includes (ADR 0015). Decorates
+        // Core's permissive default, and is itself decorated by Admin's operator levers — the same
+        // seam shape as the three sources below, and the reason nothing has to import this module
+        // to ask what a plan contains.
+        $this->app->extend(
+            CapabilityGate::class,
+            fn (CapabilityGate $inner): CapabilityGate => new PlanCapabilityGate(
+                $inner,
+                $this->app->make(PlanResolver::class),
+            ),
+        );
 
         // --- The three seams ---
         $this->app->bind(CreditSource::class, PlanCreditSource::class);
@@ -73,6 +105,11 @@ final class BillingServiceProvider extends ModuleServiceProvider
         parent::boot(); // routes + policies
 
         Event::listen(WebhookHandled::class, SyncSubscriptionFromStripe::class);
+
+        // Cashier's routes carry no middleware of their own and are not ours to annotate, so the
+        // webhook refusal goes on the global stack. See the middleware's own note.
+        $this->app->make(Kernel::class)
+            ->pushMiddleware(RefuseStripeWhenDisabled::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([ReportOverageCommand::class, SyncUsageCommand::class]);

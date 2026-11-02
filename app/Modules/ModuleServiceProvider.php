@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules;
 
+use App\Modules\Core\Http\Middleware\ApiVersion;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -41,7 +42,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $api = $this->modulePath().'/routes/api.php';
 
         if (is_file($api)) {
-            Route::middleware(['api', 'throttle:api'])
+            Route::middleware(['api', 'throttle:api', ApiVersion::class])
                 ->prefix('api/v1')
                 ->name('api.v1.')
                 ->group($api);

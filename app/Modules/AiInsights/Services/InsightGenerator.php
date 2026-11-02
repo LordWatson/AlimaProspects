@@ -17,6 +17,8 @@ use App\Modules\AiInsights\Models\InsightRun;
 use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\AiPlatform\Exceptions\AiPlatformException;
 use App\Modules\AiPlatform\Support\UntrustedContent;
+use App\Modules\Core\Contracts\CapabilityGate;
+use App\Modules\Core\Enums\Capability;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Notifications\Enums\NotificationType;
@@ -72,6 +74,7 @@ final readonly class InsightGenerator
         private AiClient $ai,
         private NotificationDispatcher $notifications,
         private TeamContext $teamContext,
+        private CapabilityGate $capabilities,
     ) {}
 
     /**
@@ -83,6 +86,18 @@ final readonly class InsightGenerator
      */
     public function forTeam(Team $team, ?DateTimeInterface $now = null, bool $force = false): array
     {
+        // **The capability check, in the Action rather than in middleware** (Phase 19b, ADR 0015).
+        // This path is reachable from a queued job and from the scheduler, so there is no request
+        // to hang middleware on — ADR 0012's argument, unchanged. The route middleware beside it is
+        // the courtesy that gives a member a sentence; this is what makes the refusal true.
+        //
+        // Returns an empty list rather than throwing: this is reached from an hourly command that
+        // walks every team, and a plan that does not include insights is a normal state for most of
+        // them — not an exception worth failing a scheduled run over.
+        if (! $this->capabilities->allows($team, Capability::AiInsights)) {
+            return [];
+        }
+
         $asOf = CarbonImmutable::parse($now ?? CarbonImmutable::now())->utc();
         // The **team's** local date, not the server's: "one of these per day" is measured in the
         // team's own calendar, and in Dubai the day turns four hours before it does in UTC. A date

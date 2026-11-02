@@ -21,36 +21,12 @@ use Tests\Support\BillingFixtures as Billing;
 
 uses(RefreshDatabase::class);
 
-/**
- * Bind the fake transport and return [client, fake], with a team made active so usage logs and the
- * credit guard behave as they would in a real (team-scoped) call.
- *
- * @return array{AiClient, FakeAiTransport, Team}
+/*
+ * `bootAi()` and `summaryTemplate()` live in `tests/Pest.php`: three files in this suite now
+ * need them, and a helper defined inside one test file only exists when that file happens to
+ * have been loaded — so running any of the other two on its own failed with
+ * "undefined function".
  */
-function bootAi(): array
-{
-    $team = Team::factory()->create();
-    app(TeamContext::class)->set($team);
-
-    $fake = new FakeAiTransport;
-    app()->instance(AiTransport::class, $fake);
-    app()->forgetInstance(AiClient::class);
-
-    return [app(AiClient::class), $fake, $team];
-}
-
-function summaryTemplate(): AiPromptTemplate
-{
-    return AiPromptTemplate::factory()->key('test.summary')->create([
-        'tier' => AiTier::Reasoning,
-        'body' => 'Summarise: {{subject}}',
-        'schema' => [
-            'type' => 'object',
-            'properties' => ['summary' => ['type' => 'string']],
-            'required' => ['summary'],
-        ],
-    ]);
-}
 
 it('returns schema-valid structured output and logs usage + cost for the team', function (): void {
     summaryTemplate();

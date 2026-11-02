@@ -6,16 +6,15 @@ namespace App\Modules\Auth\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Modules\Auth\Actions\IssueApiTokenAction;
+use App\Modules\Auth\Actions\ExchangeCredentialsForTokenAction;
 use App\Modules\Auth\Actions\RevokeApiTokenAction;
 use App\Modules\Auth\Http\Requests\IssueApiTokenRequest;
 use App\Modules\Auth\Http\Resources\ApiTokenResource;
 use App\Modules\Auth\Http\Resources\UserResource;
+use App\Modules\Auth\Services\TwoFactorChallenge;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -25,32 +24,23 @@ use Symfony\Component\HttpFoundation\Response;
 final class ApiTokenController extends Controller
 {
     /**
-     * Exchange email + password for a personal access token (guest, throttled).
+     * Exchange email + password — and a second factor, where the account has one — for a personal
+     * access token (guest, throttled).
+     *
+     * Two-factor accounts are answered in one request rather than Fortify's session-backed dance
+     * (Phase 18): a client posts the credentials, gets a `423 auth.two_factor_required` naming
+     * what it may send, and posts the lot again with `code` or `recovery_code`. See
+     * {@see TwoFactorChallenge} for why that is the safe shape for a caller with no session, and
+     * {@see ExchangeCredentialsForTokenAction} for why the challenge and the mint share one
+     * transaction.
      */
-    public function issue(IssueApiTokenRequest $request, IssueApiTokenAction $issue): JsonResponse
+    public function issue(IssueApiTokenRequest $request, ExchangeCredentialsForTokenAction $exchange): JsonResponse
     {
-        $user = User::query()->where('email', $request->validated('email'))->first();
-
-        if ($user === null || ! Hash::check((string) $request->validated('password'), $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => [__('auth.failed')],
-            ]);
-        }
-
-        // Full mobile two-factor token exchange lands in the Mobile phase (18); until then a 2FA
-        // account must mint tokens from the web settings screen.
-        if ($user->two_factor_confirmed_at !== null) {
-            abort(Response::HTTP_LOCKED, 'Two-factor is enabled on this account. Create a token from the web app.');
-        }
-
-        /** @var list<string> $abilities */
-        $abilities = $request->validated('abilities', ['*']);
-
-        $plainText = $issue->handle($user, (string) $request->validated('device_name'), $abilities);
+        $issued = $exchange->handle($request->exchange());
 
         return new JsonResponse([
-            'token' => $plainText,
-            'user' => UserResource::make($user)->resolve($request),
+            'token' => $issued->plainTextToken,
+            'user' => UserResource::make($issued->user)->resolve($request),
         ], Response::HTTP_CREATED);
     }
 

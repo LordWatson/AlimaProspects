@@ -50,7 +50,7 @@ it('lists a team’s signals, paginated', function (): void {
     $team = $user->currentTeam()->firstOrFail();
     apiSignal($team);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.signals.index'))
         ->assertOk()
@@ -71,7 +71,7 @@ it('filters the API list the same way the feed does', function (): void {
     apiSignal($team, ['relevance' => 90]);
     apiSignal($team, ['relevance' => 10]);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.signals.index', ['min_relevance' => 50]))
         ->assertOk()
@@ -84,7 +84,7 @@ it('shows one signal with its watch and lead', function (): void {
     $team = $user->currentTeam()->firstOrFail();
     $signal = apiSignal($team);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.signals.show', ['signal' => $signal->getKey()]))
         ->assertOk()
@@ -98,7 +98,7 @@ it('converts a signal and answers with the lead it made', function (): void {
     $team = $user->currentTeam()->firstOrFail();
     $signal = apiSignal($team);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signals.convert', ['signal' => $signal->getKey()]), [
         'company_name' => 'Acme DMCC',
@@ -119,11 +119,11 @@ it('validates a conversion', function (): void {
     $team = $user->currentTeam()->firstOrFail();
     $signal = apiSignal($team);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signals.convert', ['signal' => $signal->getKey()]), ['company_name' => ''])
         ->assertStatus(422)
-        ->assertJsonValidationErrors('company_name');
+        ->assertApiValidationErrors('company_name');
 });
 
 it('dismisses and restores through the API', function (): void {
@@ -131,7 +131,7 @@ it('dismisses and restores through the API', function (): void {
     $team = $user->currentTeam()->firstOrFail();
     $signal = apiSignal($team);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signals.dismiss', ['signal' => $signal->getKey()]), ['reason' => 'not_relevant'])
         ->assertOk()
@@ -149,7 +149,7 @@ it('answers a domain error with the JSON envelope and its status', function (): 
     $team = $user->currentTeam()->firstOrFail();
     $signal = apiSignal($team, ['status' => SignalStatus::Converted]);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     // Where the web gets a redirect and a toast, the API gets the envelope — 409 for a signal
     // that has already become a lead.
@@ -172,7 +172,7 @@ it('stops a read-only token acting on a signal', function (): void {
     app(TeamMembership::class)->add($readOnly, $team, TeamRole::ReadOnly);
     $readOnly->switchTeam($team);
 
-    Sanctum::actingAs($readOnly);
+    Sanctum::actingAs($readOnly, ['*']);
 
     $this->getJson(route('api.v1.signals.index'))->assertOk();
     $this->postJson(route('api.v1.signals.dismiss', ['signal' => $signal->getKey()]))->assertForbidden();
@@ -186,7 +186,7 @@ it('404s on another team’s signal', function (): void {
     $signal = apiSignal($other->currentTeam()->firstOrFail());
 
     $user = createUserWithTeam();
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.signals.show', ['signal' => $signal->getKey()]))->assertNotFound();
     $this->postJson(route('api.v1.signals.dismiss', ['signal' => $signal->getKey()]))->assertNotFound();
@@ -198,7 +198,7 @@ it('lists, shows, creates, updates and deletes watches', function (): void {
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     // Create — 201 with the new watch.
     $created = $this->postJson(route('api.v1.signal-watches.store'), [
@@ -244,13 +244,13 @@ it('lists, shows, creates, updates and deletes watches', function (): void {
 
 it('validates a watch', function (): void {
     $user = createUserWithTeam();
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signal-watches.store'), [
         'name' => '', 'location' => '', 'event_types' => [], 'cadence' => 'hourly',
     ])
         ->assertStatus(422)
-        ->assertJsonValidationErrors(['name', 'location', 'event_types', 'cadence']);
+        ->assertApiValidationErrors(['name', 'location', 'event_types', 'cadence']);
 });
 
 it('accepts a run and answers 202 without waiting for it', function (): void {
@@ -262,7 +262,7 @@ it('accepts a run and answers 202 without waiting for it', function (): void {
     ]));
 
     RateLimiter::clear('signals:run-now:'.$watch->getKey());
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     // The work is a Serper search plus an AI pass, so the call returns and the results arrive over
     // Reverb or on the next GET.
@@ -284,7 +284,7 @@ it('answers 429 when a watch was run too recently', function (): void {
     ]));
 
     RateLimiter::clear('signals:run-now:'.$watch->getKey());
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signal-watches.run', ['watch' => $watch->getKey()]))->assertStatus(202);
 
@@ -311,7 +311,7 @@ it('reports a watch’s recent runs', function (): void {
         return $watch;
     });
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.signal-watches.show', ['watch' => $watch->getKey()]))
         ->assertOk()
@@ -333,7 +333,7 @@ it('stops a read-only token managing watches', function (): void {
     $readOnly->switchTeam($team);
 
     RateLimiter::clear('signals:run-now:'.$watch->getKey());
-    Sanctum::actingAs($readOnly);
+    Sanctum::actingAs($readOnly, ['*']);
 
     $this->getJson(route('api.v1.signal-watches.index'))->assertOk();
     $this->postJson(route('api.v1.signal-watches.store'), [
@@ -354,7 +354,7 @@ it('404s on another team’s watch', function (): void {
 
     $user = createUserWithTeam();
     RateLimiter::clear('signals:run-now:'.$watch->getKey());
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson(route('api.v1.signal-watches.show', ['watch' => $watch->getKey()]))->assertNotFound();
     $this->deleteJson(route('api.v1.signal-watches.destroy', ['watch' => $watch->getKey()]))->assertNotFound();

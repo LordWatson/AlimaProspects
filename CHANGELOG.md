@@ -5,6 +5,1042 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-11-01 — Phase 20, the review round
+
+`security-review`, `laravel-module-reviewer` and `brand-reviewer` on the finished phase. Three real
+holes, all of them in this phase's own new code, plus the corrections. ADR 0017 has the full list;
+these are the three worth reading.
+
+**Sentry was scrubbing the request bag by key only**, and `url`, `query_string`, `cookies` and
+`data` are four fields whose _keys_ do not look sensitive while three of the values are. So a 500 on
+a signed invitation link would have shipped `GET /invitations/<secret-token>?expires=…&signature=…`
+— a replayable credential — to a third-party error tracker readable by more people than the admin
+panel is, and a failed save would have shipped the prospect record that was being saved, because
+`name`, `company_name` and `notes` are not credential-shaped words and were never going to be on a
+deny-list. Those four are now handled **by name** in `SentryOptions::scrubRequest()`.
+
+The premise behind the omission was also simply wrong, and it was written into three comments and
+the ADR: `send_default_pii => false` gates the cookies, the request headers and the IP address, and
+**not** the URL, the query string, or the body. The body is governed by `max_request_body_size`,
+whose SDK default is `medium` — ten kilobytes attached to every error event. It is now `none`, with
+its own `security:posture` row, and the claim in the docs now matches what the code does. The
+general lesson is kept in the ADR: a deny-list works where the key names the value's sensitivity and
+fails where it does not. `password` says what it holds; `data` does not.
+
+**`/horizon` had the gate but not the door.** `config/horizon.php` was `['web']` alone, which was
+safe only because the published `viewHorizon` gate read `in_array($user->email, [])` and therefore
+denied everybody — and this phase made that gate _pass_. For that window, `/horizon` and every
+`/horizon/api/*` route (each tenant's serialised job payloads, plus retrying and deleting queued
+work) was reachable with **a password alone**, from any network, by an operator who had not finished
+two-factor enrolment — while `/admin` and `/pulse` refused the same session. It now carries the same
+three admin middlewares as Pulse, asserted over Horizon's **whole route table**. That last detail is
+its own small lesson: Horizon attaches its stack as a middleware _group_, so a test reading the
+route's unexpanded middleware list would have passed before the fix and after it.
+
+**And the corrections.** The CSP's `connect-src` derived the realtime origin from
+`broadcasting.connections.reverb` — where _Laravel publishes to_ — rather than the `VITE_REVERB_*`
+values the browser connects to; identical on one host, different behind a proxy, and wrong in the
+direction that silently blocks the socket. The CSP exemption hard-coded `pulse` while `PULSE_PATH`
+is configurable. `ignore_transactions` mixed path-shaped and method-prefixed patterns, so `/up`
+would not have matched `GET /up` and the health check would have been traced every ten seconds for
+ever. The `request_id` tag was gated behind "not console", which is false for a queue worker _and_
+for the test asserting it. `security:posture` never reset its results between runs in one process.
+An oversize-prompt refusal was being reported as a fault. The five Pulse entry types were string
+literals in two files, which is a contract where a rename does not error — the column comes back
+null and a dashboard figure quietly becomes zero — and are now an enum. The AI usage card's
+aggregation moved into `AiUsageSummary`, because all three of its sums go wrong quietly and each
+wanted a test. `Observability/` and `Support/` are now in ADR 0002's directory list, with why a
+Pulse recorder is not a `Listeners/` listener. And the card's failure count was `text-red-500`,
+about 3.8:1 on Pulse's white card and below WCAG AA.
+
+**One limitation is now written down rather than fixed.** An exception that escapes a **queue job**
+carries no `team_id`: every job activates its tenant with `TeamContext::run()`, which restores the
+previous value in a `finally`, so the context has unwound by the time the worker reports. That fails
+in the safe direction — a missing tag, never a false one, which is exactly why `run()` is right —
+and a test pins the direction so nobody "fixes" it into a stale tag. Giving the queue layer a
+durable notion of which tenant a job belongs to is the real answer and is not Phase 20's.
+
+The missing tests the reviewers asked for are in too: the Pulse recorder round-tripped through real
+storage, the latency mean (two calls at 300ms and 500ms plus three cache hits must read 400, not
+160), the divide-by-zero guard, the card through Livewire with lazy loading off, truncation
+exercised through `ClaudeAiClient` rather than only the interpolator, `DB::afterCommit` proven by
+rolling the ledger write back, and a "never throws while annotating" test that now actually forces
+a failure instead of passing whether or not the guard is there.
+
+### Added — 2026-11-01 — Phase 20: observability and security hardening (ADR 0017)
+
+Nineteen phases produced eighteen modules, a queue, five providers, an operator panel, a mobile app
+and an `/api/v1` surface — and almost none of it was watched. `sentry/sentry-laravel` and
+`laravel/pulse` had been in `composer.json` since Phase 0 and neither was wired: Sentry had a
+published config file and no `Integration::handles()`, so an unhandled exception went to a log file
+on one box; Pulse had a published config and a gate reading `in_array(optional($user)->email, [])`.
+
+**Error reporting that sends an id, a tenant and a stack trace, and nothing about a person.** Three
+Sentry projects — backend, browser, mobile — because a 500 in a worker, a `TypeError` in a browser
+and a crash on a handset are triaged by different people with different questions. `send_default_pii`
+is off, and `Core\Observability\SentryOptions` (the callables `config/sentry.php` points
+`before_send`, `before_send_transaction` and `traces_sampler` at — static methods, because a closure
+in config breaks `config:cache` and the first symptom is a deploy that will not boot) redacts every
+sensitive key **at any depth** across request data, extra context, contexts, tags, breadcrumb
+metadata and the user bag, and nulls the user's name, email and IP whatever set them. That second
+layer matters more than the first: the realistic way a prospect's email address reaches an error
+tracker is not the SDK, it is a `Log::error` payload three modules away becoming a breadcrumb.
+**The scrubber is aimed at our own code.** It also tags `team_id`, `request_id` and `impersonated`
+from `TeamContext` and `AuditContext`, which both hold the answer in a **queue job** as well as in a
+request — and queue jobs are where the interesting failures are. Expected refusals (a wrong
+password, a stale CSRF token, a 404, a throttle, a plan refusal, an exhausted AI allowance) are
+filtered declaratively by `ignore_exceptions`, because an error tracker full of the application
+working is one an ops team learns to ignore — which is the failure mode that makes every other alert
+useless. Session replay is off and stays off: it records the screen of somebody working a list of
+named prospects, and a debugging convenience is not a lawful basis.
+
+**The browser DSN is served, not built in.** `HandleInertiaRequests` shares it as a prop, so one
+`.env` value configures staging and production with no rebuild — and the CSP derives the Sentry
+ingest origin from the same value, so the policy cannot allow a host the SDK does not post to. The
+browser SDK is **dynamically imported**: no DSN, no 90 kB. Its `BrowserSession` and `Console`
+integrations are removed, because a session envelope is the one thing the browser SDK sends with an
+inferred IP address (and `before_send` never sees it) and a console breadcrumb is free text no
+key-based scrubber can inspect.
+
+**A nonce-based Content-Security-Policy, and the rest of the headers, on every response.**
+`Core\Http\Middleware\SecurityHeaders` is **global** middleware rather than on the web or API
+group: the headers belong to the HTTP response, so `/up`, a CSV download, a 500 page, the Pulse
+dashboard and an `/api/v1` error envelope all carry `nosniff`, `X-Frame-Options: DENY`, a referrer
+policy, a feature-denying `Permissions-Policy` and the two cross-origin policies. Registering it on
+the groups is how the one route nobody thought about becomes the one route without a header. On HTML
+it adds a CSP with `script-src 'self'` plus a per-request nonce and **no `unsafe-inline`** — which is
+only affordable because this app has no third-party script: exactly two inline tags in
+`app.blade.php`, both ours, both now nonce'd. `connect-src` is **derived** from the Reverb and
+Sentry configuration rather than listed again, because a second copy of a hostname is a second place
+to forget. Two skips, both deliberate and both written down: under the Vite dev server (Vue injects
+component styles from JavaScript with no nonce, so a policy that held locally would hold _by
+breaking the page_, which teaches a developer to switch it off) and on `pulse`/`horizon`, whose
+inline Livewire bootstrapping we cannot nonce. HSTS follows the **connection**, not the environment —
+sent from a `.test` domain it would pin a developer's browser to HTTPS for a year.
+
+**Pulse and Horizon went behind the admin panel's own door.** `/pulse` shows every tenant's slow
+queries, every tenant's exceptions and the shape of every tenant's queue; that is not a lesser
+surface than `/admin`. `config/pulse.php` now runs `EnsurePlatformAdmin` (**404**, not 403),
+`EnsureAdminTwoFactor` and `AdminIpAllowlist` ahead of Pulse's own `Authorize`, and
+`ObservabilityServiceProvider` defines `viewPulse` **and** `viewHorizon` as platform admin plus
+`AdminAbility::ManageOperations` — the 2am incident ability, not the Stripe switch.
+`HorizonServiceProvider::gate()` is emptied so there is one definition rather than two. The
+dashboard leads with the three cards Phase 20 asked for: queues, slow queries and an **AI usage**
+card of ours, fed by a new `AiRequestRecorded` event so the billing ledger's write path never learns
+that Pulse exists. It is keyed by **prompt key, not team**, and says on its face that it is not the
+billing figure — it samples and trims after seven days, and the `ai_requests` ledger is
+authoritative. Pulse is a clock, the panel is a tenant.
+
+**The AI surface is bounded on input.** Phase 8 capped the _fetcher_; nothing capped the _assembled
+prompt_, which is built from several fetched inputs plus free text a member typed. Now an oversized
+untrusted block is **truncated** (`mb_substr`, because this text is Arabic as often as English, with
+the notice _inside_ the data block after the content, where anything that tried to end with its own
+instructions no longer is — and the nonce scrub still runs first, so the injection defence and the
+truncation compose), and a whole prompt over the limit is **refused** with a 413
+`AiInputTooLargeException` before the transport, so nothing is sent and nothing is charged. In
+characters rather than tokens, because a token count is only knowable by making the call the bound
+exists to avoid.
+
+**A posture check, and a scheduled security workflow.** `php artisan security:posture [--strict]`
+asserts what has to be true of a production _machine_ rather than of the repository: debug off, an
+HTTPS `APP_URL`, a secure session cookie, CSP and HSTS on, admin 2FA required, a DSN present,
+`send_default_pii` off. Every one of those is correct in `.env.example` and silently wrong on a box
+somebody configured in a hurry, and several are switched off for an afternoon and left off. Warnings
+(a report-only policy, an empty IP allowlist) do not fail a deploy, because a check that cries wolf
+gets a `|| true` appended to it. `.github/workflows/security.yml` runs `composer audit`, `npm audit`
+for both JavaScript projects and gitleaks over the **full history** — on pull requests and **every
+Monday**, because a dependency that was clean when a pull request merged is not clean for ever.
+Gitleaks runs as the release binary verified against the release's own checksums file rather than
+through its action, whose v2 asks organisations for a licence key: a dependency on a vendor's
+billing state inside the job that tells us about leaked keys. Dependabot now covers Composer and
+both npm projects, not just Actions.
+
+**And the token-abilities audit.** `RouteContractTest` already asserted that every `/api/v1` route
+has a scope; `TokenAbilityAuditTest` asks whether it is the right _kind_. `EnsureTokenAbility` passes
+a token carrying **any one** of the listed abilities, so `ability:leads:read,leads:write` on a `POST`
+is a read-only token that can write — and it passes every Phase 17 assertion. No violations were
+found; the test is there so the next one fails a build.
+
+One real vulnerability was fixed in passing: a **critical** advisory in Vitest's worker pool, closed
+by upgrading the mobile app's test runner to Vitest 5.
+
+### Changed — 2026-11-01 — Lists and create/edit forms: one shared shell (UI pass, not an mvp phase)
+
+The screens a team actually lives in — every list, and the forms behind them — were rebuilt onto two
+shared component sets instead of being hand-rolled per screen. Seven list screens meant seven
+answers to "is the header sticky", "can I order by this column", "what happens while the server is
+thinking" and "how do I see what is being filtered out", and the answers were mostly _no_, _no_,
+_nothing_ and _you don't_. The new pieces are catalogued on `/design` and the brand decisions behind
+them are recorded in `docs/brand/brand-tokens.md` §7h.
+
+- **`components/list/`** — `ListToolbar` (search, ordering, folded-away filters, the record count,
+  and the summary of what is in force via `ActiveFilters`), `ListTable`/`ListHead`/`ListRow`/
+  `ListCell`/`ListRowLink`, plus `ListSearch`, `ListSort`, `FilterGroup`, `FilterToggle` and
+  `DensityToggle`. Ordering, filtering and paging all stay **server-side**: the URL remains the
+  truth about what is on screen, so a list can be shared, bookmarked and walked back through with
+  the browser's own buttons. Nothing in the set holds list state.
+- **The filters fold away, and what they are doing is said in words.** The leads list used to open
+  with every filter it has permanently expanded — six chip groups, about 300 pixels, above the first
+  row — so a laptop showed four leads, and a member who scrolled past the panel had no way of
+  telling whether eleven rows was the answer or the leftovers of a filter set last Tuesday. The
+  panel is behind a disclosure that counts what is on, and the filters in force are removable chips
+  that name their group. The same chips went onto the **signals** feed, where a shared link could
+  show four signals out of two hundred with nothing on screen to say why.
+- **Columns order from the column.** Company, Fit and Updated carry `aria-sort` and an arrow and
+  re-request the list; the ordering select stays, because "newest first" has no column to live on.
+  The header stays put as the rows scroll, a row is clickable across its whole width while still
+  holding exactly one link, and row density is the member's own setting, remembered across every
+  list.
+- **A list says when it is thinking.** New `useNavigating()` — true while a GET to the same screen
+  is in flight — dims the rows and announces the new count when it lands, instead of leaving stale
+  rows looking like an answer.
+- **`components/forms/`** — `FormSection`, `FormField`, `FormErrorSummary`, `FormActions` and
+  `UnsavedChangesDialog`, plus `useUnsavedGuard()`. These are five fixes the long forms all shared:
+  **not one of the forty-odd hand-wired fields in the product set `aria-invalid`**, so a field the
+  server had rejected looked wrong and read fine; a rejected form showed a red line in the third
+  section with nothing at the top of the page to say so and nothing moving focus; the save button
+  sat below the fold; and nothing at all stopped a mis-clicked breadcrumb throwing away a
+  half-filled lead. `FormField` owns the `for`/`id`/`aria-describedby`/`aria-invalid` wiring by
+  construction; `FormErrorSummary` announces itself and links each failure into its field;
+  `FormActions` is sticky and says whether anything is unsaved; the guard holds back a `get` to
+  another path and asks in a real `Dialog` — never `window.confirm`, which cannot be translated and
+  says "Leave site?" about a navigation that never leaves the site.
+- **Leads list.** The hero carried five buttons of equal weight against the brand's one-CTA rule;
+  discovery is now the primary, the two ways into the list are outlines, and import/export moved
+  into a `More` menu. Each row carries a one-line summary of the six columns a phone cannot show.
+  The **location filter** finally has a control: it was in `LeadFilterState`, the export honoured it
+  and a saved view could carry it, but no element on the screen could set it.
+- **Ideal customers.** The cards listed a profile's signals as equal-looking chips with a number on
+  the end, which is backwards for a screen whose whole subject is the weighting — each signal now
+  has a bar, heaviest first, and the **active** profile is hoisted to the front at full width
+  because it is the one deciding how every lead in the account is graded. The editor says what a
+  weight _means_ ("Important · 50", on `lib/importance`'s three bands, shared with the list so the
+  two cannot drift) and carries a live summary of what the profile will do — this is the one form in
+  the product whose output is a behaviour rather than a record.
+- **Score screen.** The score is a dial (`ScoreDial`, coloured by grade from the same status tokens
+  `GradeBadge` uses, D neutral rather than `error`). The breakdown finally shows `contribution` —
+  the points each criterion was actually worth, which the server has sent since Phase 9 and this
+  screen silently dropped, printing a bare "Weight 70" instead — ordered heaviest first, with
+  `MeterBar` for the weight. **Bug:** the "Graded" timestamp was
+  `new Date(...).toLocaleString()`, which formats in the browser's zone and locale, so the same
+  score read differently depending on the laptop and in English inside an Arabic page; it goes
+  through `useFormat().dateTime()` (team timezone) like everything else.
+- **Do not contact.** Lifting an entry now asks first. Everywhere else in the product a single click
+  undoes something a member can see; here it re-opens a person to contact, and "Lift" sat one
+  mis-click from the row above it.
+- **Outreach briefs.** Deleting a brief asks (it had no confirmation and no undo, next to "Edit"),
+  pressing "Edit" on the sixth card now takes focus and the viewport to the form instead of opening
+  it silently off-screen, and a long brief folds rather than making its card four screens tall.
+- **Notifications.** Days are grouped as "Today"/"Yesterday"/date in the **team's** timezone, times
+  are relative with the exact instant on hover, and a notification with somewhere to go is clickable
+  across its whole width. New `useFormat().relative()` and `dayKey()`.
+- **Discovery.** The runs list said what had run and how many it found and **nothing about when**, so
+  three runs of one source were three identical rows; each row now carries its own time, how many
+  leads were new, and — while it is still going — the live step and percentage that were already
+  arriving over Reverb and only being used to flip a badge. A discovered company's name is now a
+  link to the lead; it was plain text, which left the one thing a reader wants to open as the one
+  thing they could not click.
+- **The lead record page.** It opened by answering none of the five questions somebody opens it
+  with: the grade was in a card down the right-hand column, the stage and the owner were inside the
+  work panel below that, and how stale the data was lived at the very bottom of the page — so a
+  member deciding whether to pick up the phone had to scroll to assemble it. There is now a header
+  card with the name and a rail of five figures: fit, stage, who's on it, contacts, and the state of
+  the data. The two full-width warning cards became one list that also carries **the notice that was
+  missing — enrichment having failed**: a lead with three empty facts and no explanation reads as a
+  bug in Alima, when it is usually a company with no website. The fit score is the `ScoreDial`
+  instead of a number in a grey square. A contact's email or phone can be **copied** (new
+  `CopyButton`), which previously meant selecting text inside a table cell — close to impossible on
+  a phone — and role-based addresses now sort to the top, because the compliance note tells members
+  to prefer them and the table was listing them in arbitrary order. The side column is placed by
+  grid rather than DOM order, so on a phone the things a member _does_ to a lead are not below five
+  sections of reading matter. In the work panel, the assignees were shown **twice** — as removable
+  chips and again as the whole team in pressed toggles, two ways to take the same person off — and
+  are now one row of toggles; its `<select>` was the last one flagged in `signals.md`.
+- **Reviewed again** for the record page. Two more AA failures came out of it, and both were fixed
+  **product-wide**, because both were rules this product had written down and then not followed:
+  body copy on a status tint was `text-muted-foreground` (about **4.4:1** on a 12% warning or info
+  tint, under AA) where §7f.3 says the words on a tint take the foreground colour — fixed here and
+  in the add-a-lead form's compliance note; and `enriching` was an `info` **badge** in both the
+  leads list and the lead's rail, which §7g.2 forbids until `status.info` is approved, so it is an
+  outline badge with a spinner instead. Also fixed: the grade chip in the rail took its accessible
+  name from an `aria-label` that replaced the badge's own, so a screen reader was told "see the full
+  breakdown" and never the score; the restriction notice wore a `ShieldCheck`, which reads as "you
+  are fine to go", and now wears scales; the website URL forced `dir="ltr"` on a full-width
+  paragraph, which left-aligns a URL under a right-aligned Arabic company name; the contacts figure
+  in the rail became an anchor into the contacts section rather than a count repeating it; and the
+  copy button's 24px glyph got a 40px hit area.
+- **A compliance record can be opened, edited and saved — including the market you are not based
+  in.** The compliance centre lists one assessment card per market, and **none of them opened
+  anything**: the single button above them carries no market, so it always opened the team's own
+  record, and a UK team looking at the UAE card read "lead discovery is closed for this market"
+  with nothing to click. The editor's own dropdown could reach it, but only once you were already
+  inside the editor. Each card is now its own record — openable across the whole card, with the act
+  it leads to named on it ("Write it" / "Open and edit it" / "Read it", by state and by what the
+  reader may do) — and the button above names the team's market explicitly. Nothing changed on the
+  server: `LiaController` already read `?market=`, `ResolvesCompliance` already authorised a
+  transient per-market record, and drafts were already savable. **Three tests now cover the path
+  the UI had been hiding**: opening another market's record, saving it as an independent second
+  record without touching the team's own or moving its gate, and a plain member being refused the
+  write on _that_ market rather than only on the one the policy was first exercised against.
+- **The assessment editor got the form treatment the other two long forms got**, and it needed it
+  most: this is the one screen in the product that is a legal document, and twenty minutes of
+  careful wording could be lost to a mis-clicked breadcrumb. It now has a sticky save bar that says
+  whether anything is unsaved, an announced summary of what the server rejected, `aria-describedby`
+  and `aria-invalid` on every question (written out rather than taken from `FormField`, because
+  here the prompt _is_ the regulator's question and `FormField`'s hint would shrink it to small
+  print), and a guard on leaving. **The market picker is guarded separately**: switching market
+  loads a different record from the same URL, and a same-path visit is exactly what
+  `useUnsavedGuard` lets through by design — so the draft is defended there by hand, and backing
+  out of the prompt puts the picker back to the market you are actually looking at.
+- **A member who may not edit the assessment now gets it to read.** Any member may _view_ this
+  record by design (`LiaRecordPolicy`: "a member working a list is the one who will be asked"), and
+  they were being shown five **disabled textareas and no buttons, with nothing saying why** — which
+  is also the worst way to read a document, since a disabled field is greyed, often clipped, and in
+  some browsers cannot be scrolled. They get the record as prose and a line naming who can change
+  it.
+- **Everything else:** `useListDensity()`, `MeterBar`, `ActiveFilterChip` in `types/ui.ts`, and
+  71 new EN/AR strings at parity (1 724 keys each). The remaining hand-rolled `<select>` call sites
+  recorded in `signals.md` are gone from the leads filter bar, the bulk-action bar, the ICP editor,
+  the discovery form and the do-not-contact form.
+
+**Reviewed** by the `brand-reviewer` agent. No brand violation: Signal Orange is on no state, there
+is no raw hex in the new components, and the 12px type floor holds. Nine findings were actioned:
+
+- **A real bug** — a `raised` cell (the checkbox column, a row's tag list) and the sticky header
+  were both `z-10`, and body cells come later in the DOM, so the checkbox column showed _through_
+  the header band as the rows scrolled under it. Header to `z-20`, veil to `z-30`.
+- **Four contrast failures**, all under AA at 12px and all now fixed: column headers were
+  `text-muted-foreground` on the newly opaque header band (**4.47:1** — the band had to become
+  opaque for the header to be sticky, so the text moved to `text-foreground/80`); the active-filter
+  chip set its group name in `text-brand/70` (**3.4:1**) and its value in `text-brand` on a 10%
+  tint of itself (**4.3:1** on the dark card, where `--brand` is still PENDING) — the brand now
+  carries the tint and the words are `text-foreground`, which is §7f.3's own rule; the form
+  section's step square had the same pair and became solid Teal with cream type; and `MeterBar`'s
+  neutral fill was Ink 60 on the border token (**2.3:1** dark, under the 3:1 non-text minimum) —
+  §7.7's Ink 60 figures are measured against the _card_, which is not where a bar sits.
+- **The `/` shortcut was withdrawn.** A single-character shortcut bound to the document fails
+  **WCAG 2.1.4 (Level A)** unless it can be turned off, remapped, or is active only on focus, and
+  guarding it against fields and dialogs is none of the three. Recorded in brand-tokens.md §7h
+  with how it comes back: as a preference, like GitHub's.
+- **Two toggles contradicted their own state.** The density button and the filters disclosure
+  flipped their labels while also setting `aria-pressed`/`aria-expanded`, so one read as
+  "Comfortable rows, pressed" while the rows were compact. The name is now the thing being
+  toggled; the sentence about the next click is the tooltip.
+- **The error summary would not re-announce a repeat rejection.** It watched the _number_ of
+  failures, so a second submit rejected for the same two reasons moved no focus and said nothing.
+  It now takes an `attempt` counter and fires immediately on arrival as well.
+- **Sortable columns were invisible on touch** (the handle was `opacity-0` until hover). Shown at
+  rest at 60%.
+- **Smaller ones:** `MeterBar` gained a `live` form (`role="progressbar"`) for the discovery run's
+  climbing percentage, which a one-off `sr-only` phrase never announced; the notification rows'
+  twenty identical "Mark read" buttons now name their notification; the timestamp is raised clear
+  of the row's stretched link so its exact-time tooltip still works; Escape on an empty search box
+  no longer fires a request that changes nothing; and `ScoreDial`'s figure gained `rtl:font-bold`
+  (Tajawal has no 600).
+
+Four findings were left as judgements and are flagged for the brand owner in **§7h.1**: the busy
+veil lets the rows it covers fall below AA while it is up; the full-row click target costs text
+selection in non-raised cells; the Orange full stop after a company name on the score screen
+stretches §3's statement rule (pre-existing, and consistent with its sibling screens); and grade B
+still depends on the PENDING `--info`.
+
+### Added — 2026-11-01 — Admin panel: platform reporting & operations (Phase 19c)
+
+- **The business's own numbers, on their own builders.** Thirteen platform reports, each also a CSV
+  download: growth, the onboarding funnel, revenue by plan, MRR movement, retention by signup
+  cohort, allowance consumption, provider health and spend, AI spend, cost per prospect, outreach
+  deliverability, and **gross margin per tenant, per plan and per signup cohort**. Reporting's own
+  Actions are deliberately **not** reused: they are scoped by design and each figure's cohort rule
+  is written for one team's window, so running them unscoped would not produce a cross-tenant
+  version of the same report — it would silently answer a different question, with no customer to
+  notice. What is shared is the discipline and the plumbing: `DateRange` and its UTC rule,
+  `Ratio::of()`'s refusal to divide by nothing, the `ReportColumn`/`ReportRow`/`Kpi`/`FunnelStep`/
+  `BreakdownSlice` shapes, the validated chart set, and `ReportCsvExporter` — which grew `rowsFor()`
+  and `filenameFor()` for this rather than being copied, because the thing that would have drifted
+  between two writers is the formula hardening. `ReportKey` is **not** shared: a cross-tenant figure
+  must not be reachable through a tenant's enum, where it would have leaked into the dashboard's
+  tabs and `/api/v1/reports`' validation.
+- **Gross margin per team — the number the business lives on.** Both halves have been recorded since
+  Phase 5 (`ai_requests.cost_micros`, `discovery_runs.cost_micros`, and the plan's price) and
+  nothing had put them next to each other: **a tenant can be on Scale and still be unprofitable.**
+  Three rules keep it honest. Revenue is **prorated from the daily snapshots**, not taken as MRR, so
+  a window of any length and a plan change mid-window are both accounted for day by day. Cost that
+  cannot be converted — a provider currency with no configured rate — is **reported** rather than
+  absorbed, which makes every margin on the page a stated _ceiling_ rather than a quiet lie. And
+  spend with no tenant behind it is its own `unattributed` row, never divided across customers,
+  because that would flatter every margin equally and be impossible to notice. A margin _ratio_ is
+  null, not zero, where there is no revenue: a free-plan tenant costs us money and earns none, and
+  "0%" reads as break-even.
+- **`platform_daily_metrics`: a record over the ledgers, not a counter.** One table,
+  `(date, metric, dimension) → value`, written nightly by `platform:roll-up` from the ledgers and
+  recomputable with `--days`. It exists because **a cross-tenant aggregate over `ai_requests` is the
+  one query in this product with no `team_id` to narrow it** — every tenant-facing index is scoped
+  by the leading column of its own index, and the platform's figures are scoped by nothing. Nothing
+  in the application increments it, so a crashed worker leaves the numbers unwritten rather than
+  wrong (ADR 0012's rule for `usage_meters`, applied again). Three properties are enforced by test:
+  running it twice changes nothing, a day's metric is replaced atomically so a dimension that went
+  quiet is overwritten with a zero rather than left behind at yesterday's figure, and a **snapshot
+  is never summed** — thirty days of MRR summed is thirty months of revenue, so the store reads a
+  snapshot from the window's last known day and the decision lives there where no builder can get
+  it wrong.
+- **The rollup is scheduled at 02:40, and the time is load-bearing.** Compliance's retention sweep
+  (03:40), the Signals prune (03:20) and the insights prune (03:50) all delete the rows these
+  figures are computed from, and a period that has been swept cannot be recomputed — the same
+  constraint `billing:sync-usage` runs hourly for. A test asserts the ordering against the **real**
+  schedule, so a later phase moving a sweep earlier fails there instead of silently losing the
+  business's numbers.
+- **Two shapes of date, because the funnel is a cohort.** Most figures are event-shaped: yesterday's
+  signups are yesterday's signups for ever. The onboarding funnel's rows are dated by the day a
+  cohort _signed up_, and a team that signed up a fortnight ago and runs its first discovery tonight
+  changes a row dated a fortnight ago — so those six metrics are **recomputed** over a trailing
+  thirty days every night. Treated as event-shaped, every step after the first would have
+  permanently under-reported. A third group — dunning, seats, allowance consumption, reported
+  overage — is **point-in-time**: nothing historises it, so a backfill neither writes nor deletes
+  those days and the command says so rather than leaving an operator to wonder.
+- **Failed jobs, with the thing Horizon cannot tell you: whose job it was.** Every queued job in
+  this product belongs to a tenant and the answer is in the serialised payload, so the panel digs it
+  out — **by pattern-matching the string, never by unserialising it.** `unserialize()` on a payload
+  instantiates whatever classes it names, which is a remote-code-execution primitive pointed at a
+  table that exists precisely because something went wrong; a regex cannot hurt anybody, and a
+  missed id renders as an em dash rather than a guess. Retry goes through `queue:retry` (the driver
+  decides how a payload returns, and a batched job must be re-registered), with no transaction
+  around it because wrapping an external push in one is what CLAUDE.md §2 forbids outright. A
+  **delete** is the other way round: its audit entry is written _before_ the row goes, in the same
+  transaction, because the payload is the only copy of that work.
+- **Queue depth that admits what it cannot see**, and **schedule health Laravel does not store.**
+  Depth is only readable on the database driver; on Redis the page names the driver and says so,
+  because a queue depth of zero is the most reassuring number on an operations screen and must never
+  be a default. The scheduler records nothing about past runs — there is no table, and
+  `schedule:list` prints the next due time — so `RecordScheduledTaskRun` writes each one to the
+  cache and the column is honestly headed _last seen_, not _last run_. A **skipped** run is recorded
+  separately, because `withoutOverlapping()` quietly skipping a stuck overnight job every night
+  afterwards looks exactly like a healthy schedule.
+- **Provider health that refuses to draw a light it did not wire up.** The circuit breaker's state is
+  live; the error and latency rates are the last seven complete days from the rollup, and the screen
+  says which is which — a provider that started failing an hour ago shows a healthy rate next to an
+  open circuit, which is the useful pairing rather than a contradiction. Three providers (the AI
+  transport, the mail transport, Stripe) have **no breaker at all** and report "not instrumented",
+  never "closed". The breaker is cache-backed and advisory by its own design, so every row carries
+  that caveat. `Core\Support\CircuitBreaker` gained `isOpen()`, `failures()` and `reset()` — and the
+  reset action calls `reset()` rather than `recordSuccess()`, which does the same thing, because an
+  operator overriding the protection is not recording a success and the only place that knows how a
+  provider is doing should not be written a small lie.
+- **A cross-tenant audit viewer whose categories are the point.** `audit_logs` holds every tenant's
+  ordinary activity, and the entries that matter when reviewing _operator_ behaviour are four rows
+  in ten thousand — so impersonation sessions and operator reads are first-class filters rather than
+  action strings you can only find if you already know them. The enum's case order is load-bearing:
+  `admin.impersonation.started` and `admin.resource.viewed` both begin `admin.`, so the specific
+  categories are declared before the general one and win. Read-only **structurally** — one `GET`, no
+  Action, no route to change it, asserted over the whole route table. Reading the trail is the one
+  cross-tenant read the panel deliberately does not audit: the same rule applied here would write a
+  row to the trail on every look and bury what somebody came to find.
+- **The three operator views earlier phases deferred to Phase 19, and in each case the missing write
+  route is the decision.** `signal_runs` across tenants with cost, failures and durations (no
+  re-run: a run spends the tenant's own Serper and AI allowance, which their own screen throttles).
+  Compliance activity — sweeps, exports, erasures, opt-outs, assessments and retention policies —
+  read from the **audit trail** rather than a table of its own, because those entries already carry
+  counts and ids and deliberately no copy of what was erased, and a second activity table would
+  either duplicate them or tempt somebody into recording the contents. Subscriptions, MRR and failed
+  payments, which are now figures on the reporting screen. All three are read-only and
+  `PlatformOversightTest` asserts the absence of a write route rather than trusting a comment.
+- **Outreach oversight, because a shared sending domain means one tenant's behaviour is every
+  tenant's deliverability.** Platform send volume and bounce/opt-out rates by channel, and the
+  **global do-not-contact list** — which stays in `outreach_suppressions` with a null `team_id`
+  rather than a second table (CLAUDE.md §3). That is not tidiness: `OutreachGuard` is still the only
+  thing that answers whether a prospect may be approached, `SuppressionList` already consults the
+  global scope in every tenant's send-time check, and a platform list kept anywhere else would be a
+  list the guard does not read — so the enforcement was built in Phase 11 and needed nothing new.
+  Adding goes through Outreach's own service so the value is normalised, hashed and masked exactly
+  like every other entry; only a preview is ever shown, because only a hash is stored. **There is no
+  lift route**, here or anywhere, and `removable` is rendered on every row — always false — so the
+  absence reads as a rule rather than an oversight. Three of the five reasons are offered: a bounce
+  is one tenant's technical fact and an erasure belongs to the tenant that received the request.
+- **Two new abilities rather than stretching an existing one.** `reports.read` — the figures are
+  aggregates and name no _person_, so reading them is not the privacy event `tenant.read` audits;
+  and they are not only money, so hiding them behind the Finance ability would have hidden the
+  onboarding funnel, the one report that says whether the product works, from everybody except
+  Finance. (They are not anonymous either, and the config says so: the margin reports name
+  **companies**, with what each pays and costs.) `operations.manage` — retry a job, reset a breaker,
+  suppress an address platform-wide: **incident** actions for whoever is on support at 2am, who does
+  not need the Stripe switch. Read-only deliberately holds the first and not the second.
+
+### Fixed — 2026-11-01 — Phase 19c review: five figures that were wrong, and nobody would have noticed
+
+The `laravel-module-reviewer` and `brand-reviewer` agents (CLAUDE.md §5a) found twelve and nine
+items between them. These are the ones that were defects rather than polish, and all five of the
+first group were numbers a dashboard would have reported confidently and incorrectly.
+
+- **A snapshot that emptied froze instead of falling to zero.** Snapshot metrics only write rows for
+  non-zero dimensions, and the reader took the window's last _populated_ day — so the night the
+  platform's last paying tenant cancelled, MRR wrote nothing, the reader fell back to the last day
+  that had revenue, and the dashboard reported the old figure for as long as the window contained
+  it. A frozen number is worse than a zero. Two bookkeeping markers (`rollup_day`,
+  `rollup_state_day`) make "the last day we know about" a fact about the **rollup** rather than
+  about one metric; two rather than one, because a backfill reconstructs MRR for an old day but
+  cannot invent that day's Stripe statuses, and reading a point-in-time snapshot against the wrong
+  marker would report "no dunning" for every reconstructed day.
+- **A night the scheduler missed booked the entire platform's revenue as movement.** Movement
+  compared against "yesterday", and with no row there every paying tenant had a baseline of zero —
+  so the next successful run reported them all as **new** on a first run and, worse, as
+  **reactivated** on any later one, because `everPositiveBefore` was true. The baseline is now the
+  last day actually recorded, so a gap produces the correct movement _across_ it; with no baseline
+  at all, movement is left unwritten rather than invented.
+- **The comparison window overlapped the current one.** A rolling preset's bounds are mid-day
+  instants, so `DateRange::previous()` reduced to whole days both shared the boundary date with the
+  current window and spanned one date more — biasing every "vs the window before" delta by about a
+  thirtieth and counting a day's signups twice. `Admin\Support\PlatformWindow` does the arithmetic in
+  date space: the same number of dates, ending the day before the current window opens.
+- **Every churned customer read as never having paid us.** `subscriptions.stripe_status` is not
+  historised, so a subscription the customer has since cancelled reads `canceled` today — and
+  treating that as dead meant a backfill showed zero MRR for their entire paying history, with no
+  churn in the series to explain where they went. Only `incomplete`, `incomplete_expired` and a
+  `canceled` row with **no** end date are dead now; past due is money owed, not money that never
+  existed.
+- **`OverageRevenue` was registered as a flow.** `usage_meters.reported` is a running total for the
+  open billing period, so each night re-recorded the whole month and any window summed about thirty
+  copies of the same money. Latent — nothing displayed it yet — and now a snapshot.
+- **The delete audit copied the exception's first line.** Failed-job detail sits behind
+  `operations.manage` precisely because an exception message carries bound values — a provider error
+  quoting an address, a database message quoting a parameter — and the audit viewer sits behind
+  `audit.read`, which Finance and Read-only also hold. The entry therefore widened the audience for
+  the very thing the narrower ability exists to contain. It records the class, queue, uuid and
+  tenant; the logs keep the rest.
+- **The per-plan margin could not show a loss on the Free plan.** A revenue-less tenant has no
+  `TeamMrr` row, so keying the report on the plan from that row dropped it — and its cost with it.
+  Free and trial tenants now land in an explicit "No revenue in this window" bucket. The same report
+  also converted cost per tenant and _then_ summed, flooring each row: a thousand tenants at a
+  fraction of a penny each reported no cost at all, overstating margin — the one direction this
+  figure must not err in. It sums micro-units and converts once per group.
+- **Three new cross-tenant reads were not audited**, unlike every other one in the panel. Signal runs
+  show a tenant's watch names and a provider's error text, compliance activity names tenants and
+  their assessments, and the failed-job list carries payload-derived tenant ids. All three record
+  `admin.resource.viewed` with their filters and a count. The general audit viewer stays unaudited,
+  deliberately.
+- **Smaller, and still real:** the Actions paged the newest thousand failed jobs and searched them in
+  PHP, quietly losing the job class and tenant id for anything older — on the screen whose reason to
+  exist is a backlog; the suppression and its audit row were two separate writes and are now one
+  transaction; the bulk insert would have exceeded MySQL's 65,535-placeholder limit at about 10,900
+  tenants; and `dimension` at 64 characters would have let one long model name reject a whole day's
+  figures under strict mode.
+- **Retention asked the wrong question.** "Has this customer ever paid us" was computed from MRR, and
+  a plan priced on application or granted manually contributes **zero** — so a cohort of Enterprise
+  and invoiced customers read as having never paid a penny. A `team_paying` metric answers it
+  without going through a price.
+- **Brand.** `Providers.vue` printed `0 / 0` where a figure was null, breaking the em-dash rule the
+  same file's comment cited; six scrollable table regions had no keyboard access and no focus ring
+  (WCAG 2.1.1, 2.4.7); in-table links fell back to the browser's default outline instead of the
+  panel's; the two-step confirmations were silent to assistive technology and could not be
+  cancelled (both now `role="status"`, both cancelled by Escape); the **irreversible** global
+  suppression was a single click while a retryable job drop was not, and its required note was not
+  tied to the input; three freshness lines printed a raw timestamp on a page claiming UTC (there is
+  a `utcDate()` now); `ReportTableView` formatted date cells in whichever team the operator last
+  looked at, which a `utc` flag closes; and two status tints used `/8` and `/40` against §7f.2's
+  documented `/12` and `/30`.
+
+### Added — 2026-10-31 — Admin panel: platform controls, Stripe switches, plan features & provisioning (Phase 19b)
+
+- **One question, four possible answers, and the order is the feature** — **ADR 0015**.
+  `Core\Contracts\CapabilityGate` has a single method and is the only way anything in the product
+  asks whether a team may use a feature. Three bindings decorate it in provider order: Core's
+  permissive `AllCapabilitiesEnabled`, Billing's `PlanCapabilityGate` (the plan's own
+  `capabilities` list) and Admin's `GovernedCapabilityGate` (suspension, the global kill switch,
+  per-team overrides). Resolution is **suspension → kill switch → override → plan → permissive
+  default**, asserted layer by layer and in collision. Two of those would be wrong reversed: the
+  kill switch beats a per-team override because an operator reaching for it is dealing with
+  something broken and hunting down every exception first is how an incident becomes an outage; and
+  an override beats the plan **in both directions**, because "give this pilot a feature their plan
+  excludes" and "switch this off for a customer whose own compliance team asked" are both real
+  requests. A plan declaring **no** capability list falls through to permissive — a missing
+  configuration is not a product decision, and the alternative would have switched six features off
+  for everybody the day this shipped.
+- **Not Pennant**, although it has been installed and unused since Phase 0 and this was the phase to
+  decide rather than defer again. Pennant's model is a value that should stay _stable_ per scope once
+  resolved; ours changes the moment a webhook, a grant window, an override expiry or a suspension
+  changes, so using it would have meant inventing a cache-invalidation problem. It also has no
+  ordering story, and an override's reason and expiry are first-class here where a flag value of
+  `true` carries neither. **A paid entitlement is a term of a contract, not a feature flag.** Pennant
+  remains the right tool for a rollout percentage or an experiment.
+- **Six capabilities, not the thirteen the plan listed.** `signals`, `ai_insights`,
+  `business_intelligence`, `enrichment`, `csv_export`, `api_access` — and only `ai_insights`
+  (Starter+) and `signals` (Team+) are actually restricted, matching what the price list already
+  promises. Gating outreach channels, multiple ICPs or saved views means deciding they cost money,
+  which is a commercial decision and not a build task; the rest are declared, enforced and on for
+  everybody, so making one paid is a line in `config/billing.php`. Every case must name its
+  enforcement point, and `CapabilityEnforcementTest` **walks the enum and proves each one refuses** —
+  the previous test only checked the string was non-empty, which is no test at all.
+- **Enforcement in the guards, not middleware** — ADR 0012's argument unchanged, because a queued
+  discovery job and a scheduled watch spend a team's allowance with no request behind them.
+  `capability:` middleware is the courtesy half so a member who clicks a link their plan excludes
+  gets a sentence (402) rather than a half-rendered page, and a shared `capabilities` prop keeps the
+  nav from advertising what the plan does not include. `CapabilityExplainer` reports **which layer
+  decided**, which is the condition ADR 0015 accepts four layers on: a product where somebody has to
+  guess why a feature is off is a product nobody can support.
+- **A plan grant outranks a live Stripe subscription**, which is what makes "turn Stripe off" and
+  "take somebody's plan away" two different acts. `team_plan_grants` carries its own
+  seats/leads/credits, so Enterprise finally gets the numbers a signed contract says rather than the
+  price list's "unlimited"; `null` on a grant means "use the plan's number". Granted teams get
+  `SubscriptionState::Granted`, because the billing screen has no card to change, no invoices and
+  nothing to cancel. Precedence: **grant (inside its window) → live subscription → trial → default
+  plan**.
+- **`teams.billing_mode`** (`stripe` / `manual` / `disabled`) is a separate axis and **grants
+  nothing**. It stops checkout and usage metering — reporting overage against a subscription Stripe
+  is not billing is how a command logs an error every morning — and leaves entitlement alone. Which
+  means a team moved off Stripe without a grant is on the **default** plan, and if it was trialling
+  it drops there quietly when the trial lapses. The migration's first draft claimed the opposite;
+  the dry run and the mode-change toast now say what actually happens.
+- **"Stripe is off" is a product state, not an outage.** The container binds
+  `DisabledBillingGateway` over the real gateway so a checkout attempt is a `BillingException` with
+  a sentence, the billing screen does not render a button that would throw, and
+  `SyncSubscriptionFromStripe` **ignores a webhook that arrives anyway** — the middleware that 404s
+  the route is defence in depth, but a misconfigured proxy or a route cached before the switch
+  flipped must not change a team's entitlements while an operator believes Stripe is not being
+  listened to. It returns rather than throws, because Cashier has already answered 200. The rule the
+  tests exist to pin is that **turning Stripe off does not turn entitlement off**: a team on Scale
+  stays on Scale with its allowances intact and its usage sync running.
+- **Platform settings are a schema, not a key-value bin.** Every key `platform_settings` may hold is
+  declared in `config/admin.php` with a type, rules, a default and help text, and **both `get()` and
+  `set()` throw on an undeclared key** — every key is a literal in our own code, so an undeclared one
+  is always a typo, and a typo that returned null was the worst available failure:
+  `bool('billing.stripe_enable')` reads as false, which switches Stripe off and looks exactly like a
+  working screen. Writing the declared default deletes the row, so the table stays a record of
+  deviations. A declaration can carry an `allowed` list, which is what stops `signal` being saved as
+  a kill switch that kills nothing — discovered during the incident you reached for it in. The screen
+  is generated from the declarations, lists the pending changes in words, takes a second press before
+  switching anything off platform-wide, and saves the page in **one** transaction.
+- **Provisioning a business end to end**, calling Auth's own `CreateTeamAction` rather than
+  reimplementing it, so a tenant onboarded by sales is indistinguishable from one that signed up —
+  same Owner membership, same `team.created` audit entry, same trial-starting model event. A **dry
+  run** first, because the first real use of this screen is somebody typing a customer's name wrong
+  and the second is discovering the owner's address already belongs to an account, which an operator
+  must be told _before_ a stranger is emailed into somebody else's business. **An operator never
+  chooses a password:** a new owner gets a reset link after commit, through 19a's own
+  `SendUserPasswordResetAction`, so a provisioned account's first credential leaves the same audit
+  trail as an operator pressing "send reset link" on day ninety.
+- **Platform announcements**, scheduled, targetable by plan and market, dismissible **per person**
+  rather than per team, EN/AR because tenants read them, with a kill switch for the banner that turns
+  out to be wrong. The notification fan-out is **aggregated** — one per team through
+  `NotificationDispatcher::toTeam()`, never a loop over every member of every tenant — and it took
+  three guards, not the two planned: `ShouldBeUnique` stops a double-saved form, `notified_at` stops
+  a retry of a job that _finished_, and `announcement_notifications` (a per-tenant claim with a
+  unique index, taken **before** the send) covers the case this job actually hits, because it walks
+  every tenant and a crash at team 3,000 of 4,000 re-notified the first 2,999.
+- **The two notifications both module docs had parked:** `payment_failed`, raised by
+  `SyncSubscriptionFromStripe` on `invoice.payment_failed` and sent `toAdmins` because it is money a
+  Member can neither act on nor be expected to care about; and `assessment_review_due`, raised by a
+  new `compliance:notify-reviews` command. The second closes a gap that was indefensible rather than
+  merely missing: the compliance screen said a lawful-basis review was due and the gate closed when
+  it lapsed, but nothing ever _told_ anybody, so a team found out when their next discovery run was
+  refused. Two notices per cycle, and `lia_records.review_notified_at` is what lets the window be
+  wide enough to survive a missed scheduler morning without becoming a daily reminder for a
+  fortnight.
+
+### Fixed — 2026-10-31 — Phase 19b review (Phase 19b)
+
+Both review agents (CLAUDE.md §5a) found real defects, and the backend ones were not style.
+
+- **Privilege escalation through provisioning.** The screen is behind `teams.manage`, which `support`
+  holds, and it calls `GrantPlanAction` and `SetCapabilityOverrideAction`, whose own routes need
+  `billing.manage` and `settings.manage` — so a support operator could POST `grant_plan=enterprise`
+  with `capabilities_on[]=signals` and hand a tenant an unlimited plan and feature overrides through
+  a route that never mentions billing. `ProvisionTeamRequest` refuses those fields without the
+  matching ability, rather than stripping them: a team provisioned without the plan the form showed
+  is worse than an error naming the ability needed.
+- **Two capabilities declared an enforcement point that did not exist.** Nothing under `/api/v1`
+  consulted the gate at all, so the platform kill switch could not stop API traffic and a token
+  outlived the plan that justified it; and the insights API had no capability check although the web
+  screen did. `capability:api_access` now guards the whole api group, `capability:ai_insights` the
+  insights API routes, and `IssueApiTokenAction` checks before issuing — the mobile two-factor
+  exchange has no session for route middleware to hang on. This is exactly the "declared but not
+  enforced" case the enum's own docblock calls worse than no capability at all.
+- **Every validation rule on the settings form was a no-op.** A setting name _contains dots_, so a
+  rule keyed `settings.billing.stripe_enabled` is read by Laravel as three levels of nesting the
+  payload does not have — `data_get()` returns null and `sometimes` therefore skips the rule.
+  `UpdateSettingsRequest` validates each setting under a dot-free alias and maps the errors back to
+  the dotted name the screen indexes by.
+- **A settings save was one transaction per key**, so a failure part-way through left whichever half
+  came first in the config file applied — in a file full of kill switches.
+  `UpdatePlatformSettingsAction` wraps the page, keeping one audit entry per key.
+- **`CapabilityGate` was `bind`, not `scoped`**, so `extend` rebuilt the whole decorator chain on
+  every resolution: the per-team memo the docblocks described was per-resolution, and `forget()`
+  cleared a throwaway instance.
+- **`RevokePlanGrantAction` restamped `revoked_at`** on an already-revoked grant, moving the date a
+  tenant's entitlement actually ended — the one thing the kept row exists to answer — and writing a
+  second audit entry for a decision made once. `PublishAnnouncementAction::retire` had the same
+  shape. **`GrantPlanAction` revoked only grants _in force_**, so a future-dated grant stacked
+  behind a new one and which won next month became a tiebreak rather than a decision; it now revokes
+  every un-revoked grant under a row lock.
+- **`Announcement::dismissedBy()` used `withTimestamps('created_at', null)`**, which does not mean
+  "no `updated_at`" — Laravel reads the null as unspecified and falls back to the parent model's
+  column, so every dismissal 500'd on a column that does not exist.
+  **`PublishAnnouncementRequest::attributes()`** collided with `FormRequest`'s own hook, which the
+  validator calls while building messages and therefore _before_ `validated()` is available: every
+  failed validation died with "Call to a member function validated() on null" instead of rendering
+  the error bag, so the screen looked broken precisely when an operator had made a typo.
+- Also: `SettingDefinition::fromConfig` read a mistyped `type` as `Bool`; the assessment-review
+  command had an N+1 and no `onOneServer()`; `ends_at => after:starts_at` errored when `starts_at`
+  was blank; and `AnnouncementBoard` reached for the raw table builder where the relation already
+  described the pivot.
+- **Brand.** The announcement banner told `warning` from `critical` **by colour alone** (WCAG 1.4.1)
+  — each level now has its own icon and a visually hidden level word — and rendered operator-authored
+  per-locale copy with no `lang` or `dir`, so an Arabic reader handed the English fallback got
+  right-aligned English with its punctuation in the wrong place; `AnnouncementBoard` now returns the
+  locale each line _actually_ resolved to. Status-coloured 14px titles sat on a 12% tint of the same
+  status at roughly 4.1:1, under AA — the status token is now the icon, border and tint, and the
+  words are `text-foreground`. Four destructive actions (retire an announcement, revoke a grant,
+  clear an override, switch something off platform-wide) were single unconfirmed clicks. Admin
+  timestamps were formatted in the **viewer's team** timezone with no label, which for an operator is
+  either nothing or a borrowed one from an impersonated account, so a contractual grant date read
+  differently depending on whose account they last opened; admin screens use `utcDateTime()` and the
+  `datetime-local` inputs say UTC, which is what the server reads them as. Several banner and row
+  actions shared a generic accessible name, and the "Overridden" badge spent `status.warning` on a
+  non-problem. Recorded in `docs/brand/brand-tokens.md` §7f, including the items still **PENDING**
+  brand-owner approval: `status.info`, the dark-mode status values, the three-level notice scheme and
+  the 12% tint.
+
+### Added — 2026-10-31 — Admin panel: foundation, identity & cross-tenant CRUD (Phase 19a)
+
+- **Built ourselves, not with Filament** — **ADR 0014 supersedes ADR 0009**, which had planned
+  Filament v5 with an Inertia fallback and left the decision to be confirmed at this phase. Four
+  reasons, the first decisive: Filament's generated screens **write straight to models**, which is
+  precisely the second, unvalidated write path the Action/transaction/audit rules in CLAUDE.md §2
+  exist to prevent — and it would be the _default_, needing discipline on every resource to avoid
+  rather than discipline once to allow. Several of this product's invariants live only in those
+  Actions (the last-Owner refusals, the suppression entry that makes an erasure stick, the Stripe
+  round-trip on a plan change). The rest: a second Livewire/Blade stack to keep brand-compliant, a
+  second place tenancy can quietly fail, and the fact that the hard requirements — plan-driven
+  feature flags, manual billing, provisioning, margin reporting — are bespoke under any framework.
+  The CRUD was the cheap part.
+- **The platform identity is one column, not a second guard.** `users.admin_role` →
+  `Admin\Enums\AdminRole` (`super_admin`, `support`, `finance`, `read_only`), with ten abilities in
+  `AdminAbility` and the role-to-ability mapping in `config/admin.php` — a reviewed diff rather
+  than a `match` buried in a middleware. ADR 0009's "admin guard separate from tenant UI" was
+  reversed: a second guard over a second table forks 2FA, passkeys, password resets and the audit
+  trail, and what you want is one person with one credential and one trail. Four roles rather than
+  a boolean because reading a tenant's prospect list, impersonating a customer, suspending a team
+  and turning Stripe off are different powers. **Two-factor is required** —
+  `ADMIN_REQUIRE_TWO_FACTOR`, default on; one super-admin credential reads every tenant's data, and
+  a password alone is the wrong lock. **404 for a non-operator, 403 for an operator without the
+  ability**: a 403 on the door confirms there is something behind it.
+- **Crossing the tenancy boundary deliberately, and the test that makes it stick.**
+  `BelongsToTeam`'s global scope is a **no-op when no team is active**, so the panel's cross-tenant
+  reads work by _removing_ a constraint — which is exactly what an admin index needs and exactly
+  what must never happen anywhere else. `PlatformContext` clears `TeamContext` and refuses to run
+  on a route not named `admin.*`; `AdminRouteContractTest` asserts from the other side that **no
+  route outside `admin.*` carries it**, that every route inside carries the whole five-part stack,
+  and that each declares exactly one ability the enum defines. Phase 17's precedent, for the same
+  reason: a per-route test only covers the routes somebody remembered to write one for, and here
+  one forgotten middleware on one route is not a missing permission check — it is every tenant's
+  data served to whoever asked. Reading **one** tenant goes through `TeamContext::run()`, so there
+  is one implementation of tenancy rather than two that can disagree.
+- **Cross-tenant reads are audited as privacy events.** An operator opening a tenant's prospect
+  list leaves an `admin.resource.viewed` entry with the resource, the filters and a count — ids and
+  counts only, never a row, a name or an address, because a log of who looked at personal data must
+  not itself be a copy of it. An update records the _names_ of the fields that changed, not the
+  values. **The subtle bug this phase had to get right first:** `AuditLogger` stamps `team_id` from
+  `TeamContext`, which the panel has deliberately cleared, so every admin entry would have landed
+  with `team_id = null` — the row exists, nothing errors, and the per-tenant audit view a
+  customer's support ticket is answered from shows nothing at all. `AdminAudit` passes the target
+  team explicitly and writes inside `TeamContext::run()`.
+- **CRUD over all forty resources, from forty descriptors and three pages.** A declarative
+  `Admin\Resources\<Name>Resource` per model — columns (reusing Reporting's `ColumnFormat`),
+  detail-only columns, editable fields with their rules, searchable columns, filters, sorts, eager
+  loads — listed in `config/admin.php`, which is a single readable answer to "what can an operator
+  see and change?". Three rules hold it in shape, each enforced by a test: descriptors return
+  **data** (anything that needs to decide something gets a bespoke screen, which is what the team
+  and user operations controllers are); where a module owns the operation the panel **calls that
+  module's Action**; and `allowsCreate`/`allowsUpdate`/`allowsDelete` all default to **false**.
+  Create is permitted on two resources and only where every column the table requires is a declared
+  field — `lead-tags` fails that, because `slug` is derived and deriving a column is logic. Delete
+  is permitted on three, and the contract test pins the list, so changing it is a failing test and
+  a conversation rather than a quiet diff. The cross-tenant index over `leads` is the **only query
+  in the product with no `team_id` in its `where` clause**, so sorts and filters are whitelisted
+  against the descriptor, searches bind rather than build SQL, pagination has no "all" escape
+  hatch, and a dotted column without its eager load fails the contract test.
+- **Team suspension, enforced in three guards rather than in middleware.** `teams.suspended_at`
+  plus a **required** reason — a suspension nobody explained is one the next operator cannot safely
+  lift, so the customer stays switched off over a missing sentence. What stops is **sourcing,
+  sending and spending**; what does not stop is signing in and reading, deliberately: locking
+  people out of data they own punishes the colleague who did nothing, and a tenant who cannot reach
+  their own data cannot exercise their rights over it either. ADR 0012's argument decides _where_:
+  a queued discovery job and a scheduled signal watch spend a team's allowance with no request
+  behind them. Admin registers **last** and **decorates** (`extend`, never `bind`) Billing's
+  `CreditSource` and `LeadQuotaSource` and Outreach's new `TeamSendingGate` — a bind would have
+  replaced Billing's plan-backed source with one that had to know what a plan is. Lifting a
+  suspension **keeps** the reason, because a lifted suspension is still a thing that happened.
+- **Outreach gains a third seam rather than a shortcut.** `Contracts\TeamSendingGate` with
+  `AlwaysAllowTeamSending` as the permissive default (Auth's `UnlimitedSeatLimit` reasoning: a
+  default that refused would block sends for a suspension nobody applied), consulted by
+  `OutreachGuard` beside the deployment-wide switch, refusing with the new
+  `OutreachBlockReason::TeamSuspended`. **Binding over `LeadRestrictionResolver` would have been
+  one line**, and it would have had the guard tell a member that _this prospect_ may not be
+  approached — a false statement about somebody else's legal position, written into the team's
+  compliance history as though it were true.
+- **Impersonation, defined by what it cannot do.** Start is behind `admin.can:impersonate`
+  (`super_admin` and `support` only — never `finance`, never `read_only`); **stop is deliberately
+  not an `admin.*` route**, because by then `Auth::user()` is the customer and an admin-gated stop
+  would 404 the only way back. One list in `config/admin.php` of route-name patterns blocks
+  outreach sending, every billing write, erasure and export, CSV exports, passwords, email, 2FA,
+  passkeys, API tokens, and the team and account themselves — one file rather than a middleware
+  sprinkled across eight modules' route files, because that would be eight places to forget. An
+  operator cannot impersonate another operator, the session expires after 60 minutes, and the
+  banner lives in the **app shell** so it is on every tenant screen rather than the screens
+  somebody remembered. And `impersonated_by` rides in Core's new ambient `AuditContext`, so **every
+  write the session makes — through whichever module's Action, none of which know impersonation
+  exists — records the operator behind the customer**. That ambient bag is the one Core change the
+  phase needed: there is no layer between an Action and the logger to annotate from.
+- **Admin chrome, inside the brand.** Its own `AdminLayout` and server-driven sidebar, visually
+  distinct so an operator never mistakes it for a tenant screen — a Deep Ink shell, DM Mono labels,
+  a cream content surface (§2a), never a colour nobody chose and never Signal Orange, which is
+  decorative only. Timestamps are **UTC everywhere**, which falls out of an operator belonging to
+  no team and is correct rather than incidental. **English only, by decision**: an internal tool
+  carries no EN/AR or RTL obligation, and the panel is **web only** — there is no `/api/v1/admin`,
+  because a token that can read every tenant is a liability no ops task in the MVP needs.
+- **`SuperAdminSeeder`** — `super@admin.com` / `password`, super admin, verified, and **in no team
+  with no `current_team_id`**, which is the point of seeding one rather than promoting a demo user:
+  an operator belongs to no tenant, so the panel is exercised the way it is actually held. It
+  **refuses to run in production** unless both `ADMIN_SEED_ALLOW_PRODUCTION=true` and `--force` — a
+  seeder that plants a known password on a public host is not a convenience, it is the breach — and
+  it refreshes the role on a re-seed while **never resetting a password somebody has changed**. The
+  account has no second factor, so its first `/admin` visit is the enrolment screen: the correct
+  local experience, written into the runbook rather than excepted in the middleware.
+- **Tests: 66 new** (1520 → 1586), of which the ten in `AdminRouteContractTest` are the ones the
+  panel's isolation rests on. The rest: every admin route answering 404 to a signed-in customer
+  (swept over the whole route table, not a list of paths), each lower role refused its forbidden
+  actions, a cross-tenant index returning more than one team's rows **and** a drill-down returning
+  exactly one's, reads and writes audited with the target team, a posted field the descriptor never
+  declared being ignored, delete refused where the descriptor forbids it, impersonation's whole
+  forbidden list, suspension blocking sourcing/sending/spending **from a queue with no request
+  behind it** while sign-in and reading still work, and the seeder's idempotence and its production
+  refusal. Phase 16's `PlanEnforcementTest` was updated rather than worked around: it now asserts
+  the decorator is bound **and** that the limit it reports is still the plan's, which is the
+  property that matters — a decorator answering on its own would silently drop every plan allowance
+  in the product, and the class name alone would not show it.
+- **Then reviewed, and eight real defects fixed.** The `laravel-module-reviewer` and `brand-reviewer` agents (CLAUDE.md §5a) both found things, and the backend ones were not style: (1) the registry's **write** routes never consulted the descriptor's own ability, so `support` — which holds `tenant.write` — could rewrite the platform-wide **AI prompt registry** and change every tenant's next AI call; a new `platform.write` ability and a gate on store/update/destroy close it. (2) Account operations refused nothing when the target was another **operator**, so `support` could clear a super admin's second factor and leave `EnsureAdminTwoFactor` politely sending them to re-enrol — a lower role taking the second lock off a higher one; now super-admin only, via `ProtectsOperators`. (3) `Auth::logout()` during impersonation cycles the **authenticated** user's remember token, and that user is the customer: an expiring session signed a real customer out of every device they had ticked “remember me” on. Expiry now hands the operator back to themselves instead, and `logout` joined the blocked list. (4) The audit entry for an index stored the **raw search term**, and operators search by email address — so the log of who read personal data was itself accumulating it, in an append-only table outside Compliance's retention sweep; it records `searched: true` now. (5) `DatabaseSeeder` called `SuperAdminSeeder` unconditionally, so a `db:seed --force` in production aborted the whole run at the refusal and skipped everything after it. (6) The seeder would **promote** a pre-existing `super@admin.com`, which on any non-production host with open registration is a privilege escalation waiting for somebody to register the address; it now refuses an account that belongs to a team, which is what registration always creates. (7) `AuditContext` was a singleton that nothing reset, so `impersonated_by` could stamp a later request's entries in the same process — a _false attribution_ in an audit trail, not a missing field; it is `scoped`. (8) The blocked-route list had real gaps — un-suppressing a do-not-contact entry, editing the lawful-basis declaration, switching teams, accepting an invitation, spending the customer's allowance — and its `teams.store` pattern did not match `api.v1.teams.store`, because `Str::is()` is anchored. Also fixed: the panel's logo rendered Teal on Ink (a “Never” in the book, and 2.1:1) below its 120px minimum width; the impersonation banner printed the customer's local time labelled UTC, and was an English sentence with no `dir` on screens that may be Arabic; member removal was a one-click ghost button; eyebrow labels sat at 10.4px under a 12px floor; and `aria-sort` and per-row link names were missing. Three §2 layering violations went with them: five account operations became Actions with their writes and audit entries in **one** transaction, and the dashboard's and team page's queries moved into `PlatformOverview` and `TeamOverview`.
+- **Fixed: `migrate --seed` was broken, and the suite could not see it.** `DemoSeeder` mass-assigned `business_profiles.version` and `completed_at` — real columns deliberately kept off `$fillable`, because they are ours to set rather than the onboarding form's — which throws under `Model::shouldBeStrict()`, i.e. everywhere but production. So nobody could seed the demo tenancy at all. It survived because **`$this->seed()` returns a `PendingCommand` that only executes when it is destructed**, and an exception thrown there never reaches the assertion count: twenty tests called it and none of them noticed. The seeder now mirrors `CompleteOnboardingAction` and `forceFill`s those two columns, and `tests/Feature/Core/DatabaseSeederTest` invokes the seeders **directly** — which is the real lesson, since `$this->seed()` is fine for a test that then asserts on what a seeder produced and useless for asserting that it ran. Pre-existing, and unrelated to the admin panel beyond having been found while building it.
+- **Deferred, and said out loud:** no platform-user deletion. Deleting a user who is a team's last
+  Owner needs a product decision (delete the team, transfer it, or refuse?), and the panel can
+  already remove a member, suspend a tenant and erase a _data subject_ through Compliance. **Phase
+  19b** owns the settings store, the Stripe switches, plan grants, plan-driven capabilities over
+  Pennant and provisioning; **Phase 19c** owns platform reporting and the operator views Signals,
+  Compliance and Billing each deferred here.
+
+### Added — 2026-10-31 — Mobile app (Phase 18)
+
+- **The app.** `/mobile` — Capacitor + Ionic Vue + TypeScript, its own npm project, consuming
+  `/api/v1` with a scoped Sanctum token. Sign-in (with the two-factor challenge), a dashboard, the
+  leads list and one lead, stage moves, notes and tasks, an AI draft you can edit and send, logged
+  approaches, the bell, and settings for language, theme, push and signing out. Four tabs, and
+  deliberately not a second web app: discovery, ICPs, scoring, the board, templates, the
+  do-not-contact list, notification preferences, team, tokens, billing and compliance all stay on
+  the web. A settings screen duplicated across two surfaces is a decision that can be made
+  differently in two places.
+- **Shared, not copied.** Two Vite aliases reach up into the Laravel app: `@shared` →
+  `resources/js/shared/` (the typed API client, the error envelope, every payload type, the brand
+  tokens) and `@lang` → `lang/` (the product's own translation bundles). The master logo path
+  **moved** to `shared/brand/artwork.ts`, so the launcher icon, the launch screen, the notification
+  icon and both apps' screens all draw the same mark — a logo that exists twice is a logo that
+  drifts. `en.json` is not imported at all: it is an identity map, so `t()` falls through to the key
+  and 120 KB stays out of the bundle; Arabic loads on demand.
+- **Two-factor over the API, in one request.** `POST /auth/token` used to refuse a 2FA account
+  outright with "create a token from the web app" — which left anyone with 2FA switched on unable to
+  use the app at all. Fortify's own challenge is a two-request dance over the session, and a phone
+  has neither the session nor the redirect, so the exchange now settles the password **and** the
+  second factor together: a first post answers `423 auth.two_factor_required` with
+  `details.methods`, and the client re-posts the same credentials plus `code` or `recovery_code`.
+  The password is checked **before** anything reveals that the account has a second factor, so the
+  423 is never a way to probe which accounts have it on; nothing is parked server-side between the
+  two requests, so a half-finished challenge is not itself a credential; and a recovery code is
+  spent and replaced exactly as the web challenge spends it. What counts as a valid code is still
+  Fortify's — same provider, same encrypter, same codes.
+- **Push, wired end to end.** The server half shipped in Phase 12; this is the handshake. Permission
+  is asked for on a deliberate tap in Settings and never at launch, because asking before the member
+  has seen anything worth being told about is how an app collects a permanent "no" on its first
+  screen. The registration token is posted from the OS's own asynchronous `registration` listener
+  rather than from the button, so a token the OS rotates unprompted is sent up too. Sign-out
+  deregisters first and is best-effort: a handset with no signal must still be able to sign out of
+  itself.
+- **EN/AR with real RTL.** `dir` goes on the root element, which is what flips Ionic's chrome — the
+  back chevron, the list arrows, the slide transitions and every logical margin — and not merely the
+  text. Arabic is Tajawal, ~10% larger, never letter-spaced; the logo is forced LTR because it is
+  never mirrored in any language; and identifiers (a score, a company number, a scope string) stay
+  LTR inside the Arabic layout.
+- **Native projects, with the brand generated from the vector.** Android's adaptive launcher icon,
+  launch screen and notification icon are vector drawables written from the master logo path by
+  `npm run artwork`, with the palette in `colors.xml` and a `values-night` variant. The
+  `POST_NOTIFICATIONS` permission is declared, and cleartext HTTP is permitted by a **debug-only**
+  manifest — so a release build cannot send a bearer token over plain HTTP however `VITE_API_URL` is
+  set. On iOS, `AppDelegate.swift` carries the two APNs callbacks Capacitor cannot add for you (the
+  omission that looks like a working app right up until a notification is due), `Info.plist`
+  declares `en` and `ar`, and the launch screen is a brand colour asset with a dark variant.
+
+### Fixed — 2026-10-31
+
+- **Cross-origin callers could not read two headers they are told to branch on.** The framework's
+  CORS defaults leave `exposed_headers` empty, and a browser hides every response header a
+  cross-origin response did not explicitly expose. So `X-Api-Version` and a `429`'s `Retry-After`
+  came back **empty rather than wrong** — the version pin unverifiable, and a throttle with nothing
+  to wait on, in the one client that reads both. `config/cors.php` is now published and names them,
+  with credentials deliberately off (the token authorises the call, so allowing cookies
+  cross-origin would open a CSRF surface for a caller with no use for it). Latent until Phase 18,
+  because the web app is same-origin and nothing else had ever called the API from a browser.
+
+### Fixed — 2026-10-31 — the Phase 18 review round
+
+Found by `laravel-module-reviewer` and `brand-reviewer`; the full list with reasoning is in
+`docs/modules/mobile-app.md` under "Review".
+
+- **The second factor had no per-account cap.** The token endpoint's limiter is keyed on email
+  **and IP**, which is the right shape for guessing a password and the wrong one for a six-digit
+  code: an attacker who already holds the password buys five more guesses with every rotated
+  address. Failures are now counted against the **user**, where rotating buys nothing. The
+  challenge itself is not counted — nothing was guessed.
+- **A recovery code could be spent twice under concurrency, or spent for nothing.** The match and
+  the replace were a read-modify-write on an in-memory model; the spend now happens under a row
+  lock, and the challenge and the token mint share one transaction, so a failure while minting no
+  longer burns a one-time credential.
+- **An unknown email answered measurably faster** than a real one with a wrong password, which is
+  an enumeration oracle. Pre-existing; closed by verifying against a throwaway hash.
+- **Six choice pickers were unreachable without a mouse or a finger.** The stage, tone, language,
+  variant, channel and outcome controls were chips with click handlers — no role, no tab stop, no
+  pressed state, selection carried by fill colour alone. They are real buttons now, in labelled
+  groups, with `aria-pressed` and 44px targets. This was WCAG 2.1.1 and 4.1.2 failing on the app's
+  main write interaction.
+- **The logo appeared in three colourways the brand forbids** — Teal on Ink on the dark sign-in
+  screen, and a Teal _tint_ in the Settings footer and on the Android night splash, the last
+  because its drawable referenced a colour the night theme redefines.
+- **The native dropdowns were under 16px**, which makes iOS zoom the whole page whenever one takes
+  focus, and under the 44px touch minimum.
+- **The Arabic size bump did not reach Ionic's own text.** Scaling the root scales what is sized in
+  `rem`; Ionic sizes its components in `px` inside shadow DOM, so the toolbar, tabs, buttons and
+  segments — the chrome a member touches most — stayed at Latin size.
+- **The unread badge was the error colour**, the eyebrow 11px against the book's 12, the focus ring
+  2px against the token's 3, and buttons 8px-radius under a comment that said pill.
+- **The KPI delta assumed a rise is good.** The server sends no polarity, and `ai_spend` is a tile
+  where a rise is bad — nothing was wrong on screen because that tile has no delta, but it would
+  have been the day it got one.
+
+### Changed — 2026-10-31
+
+- `resources/js/components/brand/artwork.ts` moved to `resources/js/shared/brand/artwork.ts`. The
+  three web call sites import from the new path; nothing else changed.
+- The root project's lint and format passes now skip `mobile/`, which has its own oxlint and oxfmt
+  configuration set to the same rules and the same style. Not to lint it less, but because the root
+  pass also reached its committed native projects — Gradle files, Xcode asset catalogues and a
+  `project.pbxproj`, none of which are ours to format.
+
+### Added — 2026-10-31 — API v1 hardening (Phase 17)
+
+- **One error shape, for everything.** `{error: {code, message, details?}}` was already the contract
+  for domain exceptions, and only for those: a failed validation came back as Laravel's
+  `{message, errors}`, and a 401, 404, 405 or 429 as a bare `{message}`. Three shapes, and which one
+  you got depended on which layer refused — the thing a client can least afford to guess at, since
+  it only finds out on the error path. `Core\Http\Responses\ApiError` is now the single definition
+  and both callers go through it: `DomainException::render()` and the new `ApiExceptionRenderer`,
+  registered centrally for everything the framework raises. Scoped to `api/*` **by path, not by
+  `expectsJson()`** — Inertia requests also expect JSON and every form in the app reads its error
+  bag from the native 422, so widening it would have broken all of them silently.
+- **Token scopes that actually bite.** Sanctum has stored abilities on every token since Phase 1 and
+  nothing ever checked one, so every token was effectively `*` and "scope this integration to
+  read-only" was a promise the API could not keep. `Auth\Enums\TokenAbility` defines the scopes —
+  one read/write pair per resource group, coarse on purpose so a person can reason about them and so
+  a new endpoint isn't a breaking change for existing tokens — and `EnsureTokenAbility` enforces
+  them per route. A refusal is a **403** naming what was missing, never a 401: re-authenticating
+  cannot widen a scope, and sending a client round the sign-in loop for it is a loop it never
+  leaves. A first-party session caller presents no bearer credential and is let through, because the
+  web app it stands in for has no scopes at all — refusing it would make the same member less
+  trusted through the API than through a page.
+- **A scope picker, because enforcement without one means nothing.** Settings → API tokens now
+  offers the catalogue (built from the enum, so a new ability appears in the UI by existing), shows
+  each token's scope, and both token requests validate against it: an ability nothing enforces is a
+  scope that reads as a restriction and isn't one. Leaving the limit off still issues `*` — the
+  permissive default on purpose, since a token that silently came out able to do nothing would fail
+  on first use with no clue why.
+- **A version policy, written down and enforced.** `X-Api-Version` on every response, errors
+  included. The version changes only for a change that would break a client already in the field;
+  everything additive ships inside it, which holds only if clients tolerate fields they do not
+  recognise — the one thing asked of them in return. A client may pin itself by sending the header,
+  and a mismatch is a `400` rather than a best-effort answer from the wrong contract.
+- **The dashboard reached the API.** `GET /api/v1/reports/dashboard` — Reporting had no API at all,
+  which would have stopped the mobile home screen dead. Same FormRequest, same Service, same figures
+  as the web screen, and the whole report rather than a lighter mobile subset: one window, one set of
+  numbers, and no second place for the cohort rules to drift.
+- **Pagination means one thing.** `per_page` is defined once with one ceiling
+  (`PaginatedIndexRequest`, 100). The two genuinely unbounded lists are now paged — discovery runs,
+  and the do-not-contact list, which only ever grows because every opt-out stays for as long as the
+  promise it records has to hold. The notification list stopped ignoring `per_page`. The handful of
+  lists bounded by a business rule still answer with `data` alone, and which are which is written
+  down rather than left to be discovered.
+- **The contract is generated, not described.** `docs/api/openapi.json`, built from the routes,
+  FormRequests and Resources themselves by `composer api:docs` (dedoc/scramble as a dev dependency —
+  the document is a build artefact, so production has neither the generator nor the `/docs/api`
+  route). `docs/api/README.md` is the prose beside it. A transformer writes in the two things the
+  generator cannot see: the error envelope, which lives in middleware rather than in any return
+  type, and a relative server URL, so the committed file doesn't carry whichever machine generated
+  it.
+- **Shared TypeScript the mobile app can import.** The API payload types moved from
+  `resources/js/types/` to `resources/js/shared/types/` — moved rather than duplicated by a
+  generator, because the hand-written set carries what a specification cannot express (which `label`
+  fields are translation keys, which unions are discriminated), and two sets would drift. `@/types`
+  re-exports them, so nothing in the web app changed. Beside them, `resources/js/shared/api/` adds
+  the envelope and pagination shapes and a small `fetch` client that sends the token, pins the
+  version, reads the envelope instead of guessing, and surfaces a 429 as something a caller can wait
+  on.
+- **The audit is a test, not a document.** `RouteContractTest` asserts over the whole route table
+  that every endpoint is versioned, named, behind Sanctum, throttled, version-stamped, scoped with an
+  ability the enum defines, handled by a controller rather than a closure, and present in the
+  committed specification. A per-endpoint test only covers the endpoints somebody remembered to write
+  one for; this is what catches the next route that forgets.
+
+### Fixed — 2026-10-31 — Phase 17 review round
+
+From `laravel-module-reviewer` and `brand-reviewer` at the end of the phase. The full list, with
+what was accepted as-is and why, is `docs/api/README.md` §9.
+
+- **An exception carrying its own response became a 500.** `HttpResponseException` is not an
+  `HttpExceptionInterface`, so the new renderer took it as unhandled and threw away a deliberate
+  answer — an `abort($response)`, a FormRequest overriding `failedValidation`, a vendor package.
+  Latent, since nothing in `app/` throws one today; covered by a test now.
+- **An unmapped status answered `server_error`.** A 415 or a 419 told the client the fault was ours
+  and the request was worth retrying, which is the one conclusion it must not draw.
+- **A 5xx message reached the client verbatim**, debug or not. `abort(503, 'redis pool exhausted')`
+  is for the logs, not for a prospect's phone.
+- **The scope check read the bearer header** and treated its absence as first-party. No live bypass,
+  but the fail-open case sat on the common path, and every scope exercised through
+  `Sanctum::actingAs()` — which sets a token and sends no header — passed without being checked. It
+  now asks the credential, which answers correctly for all three things Sanctum hands over.
+- **Listing and revoking the account's other tokens was unscoped**, grouped in with identity. A token
+  issued to read leads could enumerate every integration on the account and switch them all off; it
+  needs `tokens:manage` now, while identity and a token retiring _itself_ stay unscopable.
+- **The scope picker could issue the opposite of what it was asked for.** With the limit on and
+  nothing ticked the form posted no `abilities[]`, which the server reads as "no scope asked for" —
+  a full-access token. Closed on both sides: the button is disabled in that state, and an explicitly
+  empty `abilities` array is a `422`.
+- **The per-token rate limit was one anybody could multiply** by minting another token; a per-user
+  ceiling sits over it now.
+- **The picker's layout and tab order.** `Label` is a flex row, so every scope string sat beside its
+  label instead of under it, and the Create button came before the fieldset, so a keyboard user met
+  it before seeing the choice. Plus `aria-describedby` on the hint, the app's own `tracking-eyebrow`
+  idiom on the group headings, and `dir="ltr"` on every mono scope string — `leads:read` is an
+  identifier and must not reorder under Arabic.
+
+### Removed — 2026-10-31
+
+- **`GET /api/user`**, the starter kit's leftover closure. Unversioned, outside the error envelope,
+  outside the scopes, and it returned the raw `User` model — the one thing the API rules forbid.
+  `GET /api/v1/user` already did the job properly. `routes/api.php` is now deliberately empty: every
+  route belongs to the module that owns the domain.
+
+### Fixed — 2026-10-31
+
+- **Error responses carried no `X-Api-Version`.** The middleware sets the header on the way back out
+  and an exception never comes back out through it, so the one kind of response a client most needs
+  the header on was the one without it. Stamped in `ApiError`, the builder they all share.
+- **The `/api/v1` rate limiter keyed on the user, not the token**, despite the comment saying
+  otherwise. A member's phone and a long-running integration are different callers; a script's retry
+  loop could exhaust the allowance the phone in their pocket was using.
+- A stray indentation in `docs/brand/brand-tokens.md` that had `npm run check` failing before this
+  phase started.
+
 ### Changed — 2026-10-30 — App navigation & the auth screen
 
 - **The sidebar reads as chapters.** `AppSidebar.vue` was two flat groups ("Workspace" 01–10 and

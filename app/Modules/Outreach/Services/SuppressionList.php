@@ -11,6 +11,8 @@ use App\Modules\Outreach\Enums\SuppressionReason;
 use App\Modules\Outreach\Enums\SuppressionScope;
 use App\Modules\Outreach\Enums\SuppressionType;
 use App\Modules\Outreach\Models\OutreachSuppression;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -185,14 +187,34 @@ final class SuppressionList
      */
     public function forTeam(Team $team): Collection
     {
+        return $this->listQuery($team)->get();
+    }
+
+    /**
+     * The same list, one page at a time — what `/api/v1` serves (Phase 17). The table only ever
+     * grows: every opt-out, every erasure and every global entry stays on it for as long as the
+     * promise it records has to hold, so a phone asking for "the do-not-contact list" cannot be
+     * handed all of it.
+     *
+     * @return LengthAwarePaginator<int, OutreachSuppression>
+     */
+    public function paginateForTeam(Team $team, int $perPage = 25): LengthAwarePaginator
+    {
+        return $this->listQuery($team)->with('team')->paginate($perPage);
+    }
+
+    /**
+     * @return Builder<OutreachSuppression>
+     */
+    private function listQuery(Team $team): Builder
+    {
         return OutreachSuppression::query()
-            ->where(function ($query) use ($team): void {
+            ->where(function (Builder $query) use ($team): void {
                 $query->where('scope_key', SuppressionScope::Team->keyFor((int) $team->getKey()))
                     ->orWhere('scope_key', SuppressionScope::Global->keyFor(null));
             })
             ->orderByDesc('suppressed_at')
-            ->orderByDesc('id')
-            ->get();
+            ->orderByDesc('id');
     }
 
     /**

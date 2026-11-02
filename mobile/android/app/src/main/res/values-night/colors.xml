@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Dark mode, for the native chrome only. PENDING BRAND-OWNER APPROVAL
+    (brand-tokens.md §7.1) — the same caveat the web app and src/theme/brand.css
+    carry. The launcher icon is deliberately absent: an icon does not follow the
+    system theme, and its one colourway is the teal tile either way.
+-->
+<resources>
+    <color name="alima_window_background">@color/alima_ink</color>
+    <color name="alima_splash_mark">@color/alima_cream</color>
+    <color name="colorPrimary">@color/alima_teal_60</color>
+    <color name="colorAccent">@color/alima_teal_60</color>
+</resources>

@@ -1,8 +1,21 @@
 <?php
 
 use App\Models\User;
+use App\Modules\AiPlatform\Contracts\AiClient;
+use App\Modules\AiPlatform\Contracts\AiTransport;
+use App\Modules\AiPlatform\Enums\AiTier;
+use App\Modules\AiPlatform\Models\AiPromptTemplate;
+use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Auth\Actions\CreatePersonalTeamAction;
+use App\Modules\Core\Models\Team;
+use App\Modules\Core\Support\TeamContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Route as RoutingRoute;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
+use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
+use Tests\Support\ApiAssertions;
 use Tests\TestCase;
 
 /*
@@ -35,6 +48,10 @@ expect()->extend('toBeOne', function () {
     return $this->toBe(1);
 });
 
+// `/api/v1` contract assertions as TestResponse macros - assertApiError(),
+// assertApiValidationErrors(), assertApiVersion(). See Tests\Support\ApiAssertions.
+ApiAssertions::register();
+
 /*
 |--------------------------------------------------------------------------
 | Functions
@@ -52,13 +69,121 @@ function something()
 }
 
 /**
+ * Every `/api/v1` route, HEAD duplicates dropped.
+ *
+ * Here rather than in a test file because two files read the same route table — Phase 17's
+ * `RouteContractTest` (does every endpoint have a scope?) and Phase 20's `TokenAbilityAuditTest`
+ * (is it the right *kind* of scope?) — and a helper defined inside one of them only exists when
+ * that file happens to have been loaded.
+ *
+ * @return Collection<int, RoutingRoute>
+ */
+function apiRoutes(): Collection
+{
+    return collect(Route::getRoutes()->getRoutes())
+        ->filter(fn (RoutingRoute $route): bool => Str::startsWith($route->uri(), 'api/'))
+        ->filter(fn (RoutingRoute $route): bool => $route->methods() !== ['HEAD'])
+        ->values();
+}
+
+/**
+ * A route as it should read in a failure message: `POST|PUT api/v1/leads/{lead}`.
+ */
+function routeLabel(RoutingRoute $route): string
+{
+    return implode('|', $route->methods()).' '.$route->uri();
+}
+
+/**
+ * Swap Fortify's TOTP provider for one that accepts exactly `$code`.
+ *
+ * The real provider derives the code from the clock and the stored secret, so a test cannot know
+ * what it would accept without reimplementing it — and a test that reimplemented it would pass
+ * whether or not the app consulted the provider at all. Faking the seam instead keeps the
+ * assertion on *our* flow: that the code reached the provider and that its verdict decided.
+ */
+function fakeTwoFactorCode(string $code): void
+{
+    app()->instance(TwoFactorAuthenticationProvider::class, new class($code) implements TwoFactorAuthenticationProvider
+    {
+        public function __construct(private readonly string $expected) {}
+
+        public function generateSecretKey(): string
+        {
+            return 'secret';
+        }
+
+        public function qrCodeUrl($companyName, $companyEmail, $secret): string
+        {
+            return 'otpauth://totp/fake';
+        }
+
+        public function verify($secret, $code): bool
+        {
+            return $code === $this->expected;
+        }
+    });
+}
+
+/**
  * Create a verified user with their personal team (Owner), as registration would.
+ *
+ * **Including the free trial**, which is the part that has to be explicit rather than incidental.
+ * Billing starts a new team's trial from a `Team::created` model event (see
+ * `BillingServiceProvider::startTrialOnNewTeams` for why it is an event and not a line in
+ * `CreateTeamAction`) — and a test that calls `Event::fake()` in its `beforeEach`, which several do,
+ * suppresses it. Those teams were therefore silently resolving to the **Free** plan rather than the
+ * trial one.
+ *
+ * That cost nothing until Phase 19b made plans grant capabilities, at which point thirty-odd tests
+ * across Signals started being refused a feature their team should have had. Setting the column
+ * here makes the helper match its own description: a team that has just registered is on trial, and
+ * a test should not have to know that the trial arrives by event.
  */
 function createUserWithTeam(array $attributes = []): User
 {
     $user = User::factory()->create($attributes);
 
-    app(CreatePersonalTeamAction::class)->handle($user);
+    $team = app(CreatePersonalTeamAction::class)->handle($user);
+
+    if ($team->trial_ends_at === null) {
+        $days = max(0, (int) config('billing.trial.days', 14));
+
+        if ($days > 0) {
+            $team->forceFill(['trial_ends_at' => now()->addDays($days)])->save();
+        }
+    }
 
     return $user->refresh();
+}
+
+/**
+ * Bind the fake transport and return [client, fake], with a team made active so usage logs and the
+ * credit guard behave as they would in a real (team-scoped) call.
+ *
+ * @return array{AiClient, FakeAiTransport, Team}
+ */
+function bootAi(): array
+{
+    $team = Team::factory()->create();
+    app(TeamContext::class)->set($team);
+
+    $fake = new FakeAiTransport;
+    app()->instance(AiTransport::class, $fake);
+    app()->forgetInstance(AiClient::class);
+
+    return [app(AiClient::class), $fake, $team];
+}
+
+function summaryTemplate(): AiPromptTemplate
+{
+    return AiPromptTemplate::factory()->key('test.summary')->create([
+        'tier' => AiTier::Reasoning,
+        'body' => 'Summarise: {{subject}}',
+        'schema' => [
+            'type' => 'object',
+            'properties' => ['summary' => ['type' => 'string']],
+            'required' => ['summary'],
+        ],
+    ]);
 }

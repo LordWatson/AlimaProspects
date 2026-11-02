@@ -34,12 +34,47 @@ final class CircuitBreaker
     }
 
     /**
+     * Whether the circuit is currently open — the inverse of {@see self::allows()}, named for the
+     * reader rather than the caller. The admin panel's provider-health screen (Phase 19c) asks this
+     * question; a guard asks the other one.
+     */
+    public function isOpen(string $key): bool
+    {
+        return ! $this->allows($key);
+    }
+
+    /**
+     * Consecutive failures recorded for this key, as far as the cache still remembers them.
+     *
+     * Read-only, for the provider-health screen. It is **advisory**, like everything else here:
+     * the counter has the cooldown's own TTL, so a quiet provider reports zero rather than its
+     * history, and a cleared cache reports zero rather than refusing to answer.
+     */
+    public function failures(string $key): int
+    {
+        return (int) $this->cache->get($this->failuresKey($key), 0);
+    }
+
+    /**
+     * Clear the failure count and close the circuit.
+     *
+     * The operator-facing name, and the one {@see self::recordSuccess()} is implemented in terms
+     * of. An operator resetting a breaker after a provider recovers is not recording a success —
+     * nothing succeeded — and a panel calling `recordSuccess()` would be writing a small lie into
+     * the only place that knows how the provider is doing.
+     */
+    public function reset(string $key): void
+    {
+        $this->cache->forget($this->failuresKey($key));
+        $this->cache->forget($this->openKey($key));
+    }
+
+    /**
      * Record a success: clear the failure count and close the circuit.
      */
     public function recordSuccess(string $key): void
     {
-        $this->cache->forget($this->failuresKey($key));
-        $this->cache->forget($this->openKey($key));
+        $this->reset($key);
     }
 
     /**

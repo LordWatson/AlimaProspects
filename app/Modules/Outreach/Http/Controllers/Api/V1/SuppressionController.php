@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Outreach\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Core\Http\Requests\PaginatedIndexRequest;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Outreach\Actions\SuppressIdentityAction;
 use App\Modules\Outreach\Enums\SuppressionScope;
@@ -31,7 +32,7 @@ final class SuppressionController extends Controller
 
     public function __construct(private readonly TeamContext $teamContext) {}
 
-    public function index(Request $request, SuppressionList $list): AnonymousResourceCollection
+    public function index(PaginatedIndexRequest $request, SuppressionList $list): AnonymousResourceCollection
     {
         $team = $this->team($request);
 
@@ -41,7 +42,9 @@ final class SuppressionController extends Controller
             ['scope' => SuppressionScope::Team->value],
         ));
 
-        return OutreachSuppressionResource::collection($list->forTeam($team)->load('team'));
+        // Paged, not whole: the list only ever grows (every opt-out, every erasure, every global
+        // entry stays for as long as the promise it records has to hold).
+        return OutreachSuppressionResource::collection($list->paginateForTeam($team, $request->perPage()));
     }
 
     public function store(SuppressIdentityRequest $request, SuppressIdentityAction $suppress): JsonResponse

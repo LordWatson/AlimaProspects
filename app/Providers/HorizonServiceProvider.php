@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\Facades\Gate;
 use Laravel\Horizon\Horizon;
 use Laravel\Horizon\HorizonApplicationServiceProvider;
 
@@ -23,14 +22,14 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     /**
      * Register the Horizon gate.
      *
-     * This gate determines who can access Horizon in non-local environments.
+     * Deliberately empty: `viewHorizon` is defined in {@see ObservabilityServiceProvider}, beside
+     * `viewPulse`, because the two gates answer the same question and both shipped with the same
+     * hard-coded-email-list default (Phase 20, ADR 0017). Overriding it here to nothing — rather
+     * than deleting the method, which the parent calls — keeps one definition of who may read
+     * every tenant's queue.
      */
     protected function gate(): void
     {
-        Gate::define('viewHorizon', function ($user = null) {
-            return in_array(optional($user)->email, [
-                //
-            ]);
-        });
+        //
     }
 }

@@ -45,6 +45,26 @@ final class BillingException extends DomainException
     /**
      * A portal, swap or cancel was asked for on a team that has never subscribed.
      */
+    /**
+     * Stripe is switched off for this deployment (Phase 19b).
+     *
+     * **It is not a statement about the team's plan.** A team on Scale whose operator has turned
+     * Stripe off is still on Scale, with its allowances intact — what is unavailable is checkout,
+     * the portal, a plan swap, a cancellation and metered reporting. The message says so, because
+     * the first thing a member will assume is that their account has been downgraded.
+     */
+    public static function stripeDisabled(): self
+    {
+        $e = new self(
+            'Payments are temporarily unavailable. Your plan and everything on it are unaffected — '
+            .'get in touch and we will sort it out.'
+        );
+        $e->errorCode = 'billing.disabled';
+        $e->status = 503;
+
+        return $e;
+    }
+
     public static function noSubscription(): self
     {
         $e = new self('This team doesn’t have a subscription yet.');

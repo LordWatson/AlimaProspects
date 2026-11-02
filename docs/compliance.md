@@ -54,6 +54,18 @@
 - Standard privacy-notice wording and the controller/processor split between AlimaProspects and tenant businesses (likely tenant = controller, we = processor; confirm and reflect in the DPA).
 - Free-zone (DIFC/ADGM) overlay for UAE tenants.
 - Retention defaults that satisfy both "storage limitation" and tenants' commercial needs.
+- **Sentry as a sub-processor** (added Phase 20, ADR 0017). Error reporting is a processing activity
+  and Sentry is a sub-processor, so it needs listing in the processing record and in the DPA's
+  sub-processor schedule, with its data region chosen deliberately. What it holds is bounded by
+  design and that bound is worth stating in the DPA rather than assuming: `send_default_pii` is off,
+  and `Core\Observability\SentryOptions` plus the shared browser scrubber redact the value of every
+  key that looks like a credential or personal data **at any depth** — request data, extra context,
+  breadcrumb metadata and the user bag — leaving a user **id**, a `team_id`, a `request_id` and a
+  stack trace. Session replay, which would record the screen of somebody working a list of named
+  prospects, is off; turning it on is a decision for this section, not a configuration change.
+  Residual risk, honestly: a breadcrumb or exception **message** is free text and no key-based
+  scrubber can inspect a sentence, which is why the logging rule (IDs, never prose or payloads —
+  CLAUDE.md §2) is a compliance control and not a style preference.
 
 ## 5a. Signals module — personal data from published news (⚖️)
 

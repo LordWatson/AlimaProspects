@@ -6,6 +6,7 @@ namespace App\Modules\LeadSourcing\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Modules\Core\Http\Requests\PaginatedIndexRequest;
 use App\Modules\Core\Models\Team;
 use App\Modules\LeadSourcing\Actions\FindDiscoveryRunAction;
 use App\Modules\LeadSourcing\Actions\GetDiscoveryRunsAction;
@@ -24,13 +25,16 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  */
 final class DiscoveryController extends Controller
 {
-    public function index(Request $request, GetDiscoveryRunsAction $getRuns): AnonymousResourceCollection
+    public function index(PaginatedIndexRequest $request, GetDiscoveryRunsAction $getRuns): AnonymousResourceCollection
     {
         $team = $this->team($request);
 
         $this->authorize('view', $this->transientRun($team));
 
-        return DiscoveryRunResource::collection($getRuns->handle($team));
+        // Runs accumulate for as long as a team keeps sourcing, so this is paged like the leads
+        // list rather than returned whole, and `per_page` is read from the shared request so the
+        // ceiling is the same one every other index endpoint enforces.
+        return DiscoveryRunResource::collection($getRuns->handle($team, $request->perPage(15)));
     }
 
     public function store(StartDiscoveryRequest $request, StartDiscoveryRunAction $action): JsonResponse

@@ -1,23 +1,49 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Ban, Loader2, Plus, Sparkles, X } from '@lucide/vue';
-import { computed } from 'vue';
-import InputError from '@/components/InputError.vue';
+import { computed, ref } from 'vue';
+import {
+    FormActions,
+    FormErrorSummary,
+    FormField,
+    FormSection,
+    UnsavedChangesDialog,
+} from '@/components/forms';
+import MeterBar from '@/components/MeterBar.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
+import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
+import { useUnsavedGuard } from '@/composables/useUnsavedGuard';
+import { importanceKey } from '@/lib/importance';
 import type { CriterionFormRow, CriterionTypeMeta, Icp } from '@/types';
 
+/*
+ * The ideal-customer editor — the screen that decides how every lead in the account is graded.
+ *
+ * What the rebuild changed:
+ *
+ *  - **A weight says what it means.** The slider ran 1–100 with the number beside it and nothing
+ *    to say whether 50 was a lot. Each row now reads "Important · 50", on the same three-band
+ *    scale the profile list shows (`lib/importance`), so the two screens cannot drift.
+ *  - **The profile tells you what it will do**, in a summary beside the sections: how many signals
+ *    it carries, what it leads on, and how many businesses it rules out. This is the one form in
+ *    the product whose output is a *behaviour* rather than a record, and it was asking members to
+ *    hold that in their heads.
+ *  - **Failures are summarised and reachable.** A server error on the fourth criterion used to be
+ *    a red line somewhere down the page; each one is now a link into its own field, and the
+ *    criterion rows carry real ids for it to land on.
+ *  - **The save bar stays within reach** and says whether anything is unsaved, and leaving with
+ *    unsaved work asks first.
+ *  - The hand-rolled `fieldClass` copy of the input styles is gone; the description is a
+ *    `Textarea` and the type picker a `NativeSelect`, which is the one that keeps the native
+ *    picker on a phone.
+ */
 defineOptions({
     layout: {
         breadcrumbs: [
@@ -33,14 +59,12 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const { number } = useFormat();
 
 const isEditing = computed(() => props.icp !== null);
 const signalTypes = computed(() =>
     props.criterionTypes.filter((c) => !c.isExclusion),
 );
-
-const fieldClass =
-    'border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50';
 
 // Build the initial criteria: an existing ICP's rows, or a short scaffold that guides a new one.
 function initialCriteria(): CriterionFormRow[] {
@@ -71,6 +95,8 @@ const form = useForm<{
     criteria: initialCriteria(),
 });
 
+const guard = useUnsavedGuard(() => form.isDirty);
+
 // Index-preserving views of the two groups, so error keys (criteria.N.value) still line up.
 const signalRows = computed(() =>
     form.criteria
@@ -83,10 +109,67 @@ const exclusionRows = computed(() =>
         .filter((r) => r.row.type === 'exclusion'),
 );
 
+/**
+ * The summary's names for the server's error keys, and the ids they point at.
+ *
+ * `criteria.4.value` means nothing to a member, so each one is named by the row it belongs to —
+ * by its value if it has one, and by its position if it is still blank.
+ */
+const errorLabels = computed<Record<string, string>>(() => {
+    const labels: Record<string, string> = {
+        name: t('Profile name'),
+        description: t('Description'),
+        criteria: t('Signals'),
+    };
+
+    form.criteria.forEach((row, index) => {
+        const isExclusion = row.type === 'exclusion';
+        const position =
+            (isExclusion ? exclusionRows.value : signalRows.value).findIndex(
+                (candidate) => candidate.index === index,
+            ) + 1;
+
+        const name =
+            row.value.trim() !== ''
+                ? row.value
+                : isExclusion
+                  ? t('Exclusion :number', { number: position })
+                  : t('Signal :number', { number: position });
+
+        labels[`criteria.${index}.value`] = name;
+        labels[`criteria.${index}.weight`] = name;
+    });
+
+    return labels;
+});
+
+const errorAnchors = computed<Record<string, string>>(() => {
+    const anchors: Record<string, string> = {};
+
+    form.criteria.forEach((row, index) => {
+        const id =
+            row.type === 'exclusion'
+                ? `exclusion-value-${index}`
+                : `signal-value-${index}`;
+
+        anchors[`criteria.${index}.value`] = id;
+        anchors[`criteria.${index}.weight`] = id;
+    });
+
+    return anchors;
+});
+
 function placeholderFor(type: string): string {
     return (
         props.criterionTypes.find((c) => c.value === type)?.placeholder ?? ''
     );
+}
+
+/** What a weight means, in words — the same scale the profile list shows. */
+function importance(weight: number | null): string {
+    const key = importanceKey(weight);
+
+    return key === null ? '' : t(key);
 }
 
 function addSignal(): void {
@@ -105,15 +188,44 @@ function removeAt(index: number): void {
     form.criteria.splice(index, 1);
 }
 
+// --- What this profile will do -------------------------------------------------------------
+// The form's output is a behaviour, not a record, so the screen says what the behaviour is as it
+// is being built. Blank scaffold rows are left out: they are not signals yet.
+const filledSignals = computed(() =>
+    signalRows.value.filter((r) => r.row.value.trim() !== ''),
+);
+
+const filledExclusions = computed(() =>
+    exclusionRows.value.filter((r) => r.row.value.trim() !== ''),
+);
+
+const leadingSignals = computed(() =>
+    [...filledSignals.value]
+        .sort((a, b) => (b.row.weight ?? 0) - (a.row.weight ?? 0))
+        .slice(0, 3),
+);
+
+const topWeight = computed(() =>
+    Math.max(1, ...filledSignals.value.map((r) => r.row.weight ?? 0)),
+);
+
+// Bumped on every submit so the error summary announces a repeat rejection rather than
+// sitting still because the number of failures happens to be the same.
+const attempt = ref(0);
+
 function submit(): void {
+    attempt.value += 1;
+
     // Drop blank rows so leftover scaffold rows never block a save; this keeps the
     // submitted set identical to what's shown, so server error indices still match.
     form.criteria = form.criteria.filter((r) => r.value.trim() !== '');
 
+    const options = { onSuccess: () => guard.allowOnce() };
+
     if (isEditing.value && props.icp) {
-        form.put(`/icp/${props.icp.id}`);
+        form.put(`/icp/${props.icp.id}`, options);
     } else {
-        form.post('/icp');
+        form.post('/icp', options);
     }
 }
 </script>
@@ -122,7 +234,7 @@ function submit(): void {
     <Head :title="isEditing ? t('Edit profile') : t('New profile')" />
 
     <form
-        class="mx-auto flex max-w-3xl flex-col gap-8 py-2"
+        class="mx-auto flex w-full max-w-3xl flex-col gap-6 py-2"
         @submit.prevent="submit"
     >
         <header class="space-y-2">
@@ -149,139 +261,183 @@ function submit(): void {
             </p>
         </header>
 
+        <FormErrorSummary
+            :errors="form.errors"
+            :labels="errorLabels"
+            :anchors="errorAnchors"
+            :attempt="attempt"
+        />
+
         <!-- Profile basics -->
-        <Card>
-            <CardContent class="space-y-5">
-                <div class="grid gap-2">
-                    <Label for="name">{{ t('Profile name') }}</Label>
+        <FormSection step="01" :title="t('The profile')">
+            <FormField
+                id="name"
+                :label="t('Profile name')"
+                required
+                :error="form.errors.name"
+            >
+                <template #default="{ id, describedBy, invalid }">
                     <Input
-                        id="name"
+                        :id="id"
                         v-model="form.name"
+                        :aria-describedby="describedBy"
+                        :aria-invalid="invalid"
                         :placeholder="t('e.g. UK growth agencies')"
                         autocomplete="off"
+                        dir="auto"
+                        data-test="icp-name"
                     />
-                    <InputError :message="form.errors.name" />
-                </div>
-                <div class="grid gap-2">
-                    <Label for="description">{{
-                        t('Description (optional)')
-                    }}</Label>
-                    <textarea
-                        id="description"
+                </template>
+            </FormField>
+
+            <FormField
+                id="description"
+                :label="t('Description')"
+                optional
+                :error="form.errors.description"
+            >
+                <template #default="{ id, describedBy, invalid }">
+                    <Textarea
+                        :id="id"
                         v-model="form.description"
                         rows="2"
-                        :class="fieldClass"
+                        :aria-describedby="describedBy"
+                        :aria-invalid="invalid"
                         :placeholder="
                             t(
                                 'A one-line reminder of who this profile targets.',
                             )
                         "
+                        dir="auto"
                     />
-                    <InputError :message="form.errors.description" />
-                </div>
-                <label
-                    class="flex items-center gap-3 rounded-md border border-input px-3 py-2.5 text-sm"
-                >
-                    <Checkbox v-model="form.is_active" />
-                    <span class="flex items-center gap-1.5">
+                </template>
+            </FormField>
+
+            <label
+                class="flex items-start gap-3 rounded-md border border-input px-3 py-2.5 text-sm"
+            >
+                <Checkbox v-model="form.is_active" class="mt-0.5" />
+                <span class="space-y-0.5">
+                    <span
+                        class="flex items-center gap-1.5 font-medium text-foreground"
+                    >
                         <Sparkles class="size-4 text-brand" />
                         {{ t('Use this as my active profile') }}
                     </span>
-                </label>
-            </CardContent>
-        </Card>
+                    <!-- Switching the active profile re-grades the account's leads, which is not
+                         obvious from a tick box labelled "active". -->
+                    <span class="block text-xs text-muted-foreground">
+                        {{
+                            t(
+                                'Only one profile is active at a time. New leads are graded against it.',
+                            )
+                        }}
+                    </span>
+                </span>
+            </label>
+        </FormSection>
 
         <!-- Signals -->
-        <section class="space-y-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2
-                        class="text-lg font-semibold text-foreground rtl:font-bold"
-                    >
-                        {{ t('Signals') }}
-                    </h2>
-                    <p class="text-sm text-muted-foreground">
-                        {{ t('What a great-fit business looks like.') }}
-                    </p>
-                </div>
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    @click="addSignal"
-                >
-                    <Plus class="size-4" />
-                    {{ t('Add signal') }}
-                </Button>
-            </div>
-
+        <FormSection
+            step="02"
+            :title="t('Signals')"
+            :description="t('What a great-fit business looks like.')"
+        >
             <ul v-if="signalRows.length" class="space-y-3">
                 <li
                     v-for="{ row, index } in signalRows"
                     :key="index"
-                    class="rounded-xl border border-border bg-card p-4"
+                    class="rounded-xl border border-border bg-background/40 p-4"
                 >
-                    <div class="flex items-center gap-3">
-                        <Select v-model="row.type">
-                            <SelectTrigger class="w-40 shrink-0">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem
-                                    v-for="o in signalTypes"
-                                    :key="o.value"
-                                    :value="o.value"
-                                >
-                                    {{ t(o.label) }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <Label :for="`signal-type-${index}`" class="sr-only">{{
+                            t('Signal type')
+                        }}</Label>
+                        <NativeSelect
+                            :id="`signal-type-${index}`"
+                            v-model="row.type"
+                            class="w-40 shrink-0"
+                        >
+                            <option
+                                v-for="o in signalTypes"
+                                :key="o.value"
+                                :value="o.value"
+                            >
+                                {{ t(o.label) }}
+                            </option>
+                        </NativeSelect>
+                        <Label :for="`signal-value-${index}`" class="sr-only">{{
+                            t('Signal value')
+                        }}</Label>
                         <Input
+                            :id="`signal-value-${index}`"
                             v-model="row.value"
-                            class="flex-1"
+                            class="min-w-48 flex-1"
                             dir="auto"
+                            :aria-invalid="
+                                form.errors[`criteria.${index}.value`]
+                                    ? true
+                                    : undefined
+                            "
                             :placeholder="t(placeholderFor(row.type))"
-                            :aria-label="t('Signal value')"
                         />
                         <Button
                             type="button"
                             variant="ghost"
                             size="icon-sm"
                             class="text-muted-foreground hover:text-destructive"
-                            :aria-label="t('Remove signal')"
+                            :aria-label="
+                                t('Remove the signal “:name”', {
+                                    name: row.value || t('this signal'),
+                                })
+                            "
                             @click="removeAt(index)"
                         >
                             <X class="size-4" />
                         </Button>
                     </div>
-                    <div class="mt-3 flex items-center gap-3 ps-0.5">
-                        <span
-                            class="w-20 shrink-0 font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    <div class="mt-3 flex items-center gap-3">
+                        <Label
+                            :for="`signal-weight-${index}`"
+                            class="w-24 shrink-0 font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                         >
                             {{ t('Importance') }}
-                        </span>
+                        </Label>
                         <input
+                            :id="`signal-weight-${index}`"
                             v-model.number="row.weight"
                             type="range"
                             min="1"
                             max="100"
                             class="h-1.5 flex-1 cursor-pointer rounded-full accent-brand outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                            :aria-label="
-                                t('Importance for :name', {
-                                    name: row.value || t('this signal'),
+                            :aria-valuetext="
+                                t(':importance — :weight out of 100', {
+                                    importance: importance(row.weight),
+                                    weight: row.weight ?? 0,
                                 })
                             "
-                            :aria-valuetext="`${row.weight} / 100`"
                         />
+                        <!-- The band and the figure together: the word says what it means, the
+                             number says exactly what was set. -->
                         <span
-                            class="w-10 shrink-0 text-end font-mono text-sm font-semibold text-brand"
+                            class="w-28 shrink-0 text-end text-xs text-muted-foreground"
+                            aria-hidden="true"
                         >
-                            {{ row.weight }}
+                            {{ importance(row.weight) }}
+                            <span
+                                class="font-mono font-semibold text-brand tabular-nums"
+                                dir="ltr"
+                                >{{ row.weight }}</span
+                            >
                         </span>
                     </div>
-                    <InputError
-                        :message="form.errors[`criteria.${index}.value`]"
-                    />
+                    <p
+                        v-if="form.errors[`criteria.${index}.value`]"
+                        class="mt-2 text-sm text-destructive"
+                        dir="auto"
+                    >
+                        {{ form.errors[`criteria.${index}.value`] }}
+                    </p>
                 </li>
             </ul>
             <p
@@ -294,69 +450,192 @@ function submit(): void {
                     )
                 }}
             </p>
-        </section>
 
-        <!-- Exclusions -->
-        <section class="space-y-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2
-                        class="flex items-center gap-2 text-lg font-semibold text-foreground rtl:font-bold"
-                    >
-                        <Ban class="size-4 text-muted-foreground" />
-                        {{ t('Exclusions') }}
-                    </h2>
-                    <p class="text-sm text-muted-foreground">
-                        {{
-                            t(
-                                'Businesses to always skip — competitors, existing customers or specific domains.',
-                            )
-                        }}
-                    </p>
-                </div>
+            <template #aside>
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
+                    data-test="add-signal"
+                    @click="addSignal"
+                >
+                    <Plus class="size-4" />
+                    {{ t('Add signal') }}
+                </Button>
+            </template>
+        </FormSection>
+
+        <!-- Exclusions -->
+        <FormSection
+            step="03"
+            :title="t('Exclusions')"
+            :description="
+                t(
+                    'Businesses to always skip — competitors, existing customers or specific domains.',
+                )
+            "
+        >
+            <ul v-if="exclusionRows.length" class="space-y-2">
+                <li
+                    v-for="{ row, index } in exclusionRows"
+                    :key="index"
+                    class="space-y-1"
+                >
+                    <div class="flex items-center gap-3">
+                        <Ban
+                            class="size-4 shrink-0 text-muted-foreground"
+                            aria-hidden="true"
+                        />
+                        <Label
+                            :for="`exclusion-value-${index}`"
+                            class="sr-only"
+                            >{{ t('Exclusion value') }}</Label
+                        >
+                        <Input
+                            :id="`exclusion-value-${index}`"
+                            v-model="row.value"
+                            class="flex-1"
+                            dir="auto"
+                            :aria-invalid="
+                                form.errors[`criteria.${index}.value`]
+                                    ? true
+                                    : undefined
+                            "
+                            :placeholder="t(placeholderFor('exclusion'))"
+                        />
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            class="text-muted-foreground hover:text-destructive"
+                            :aria-label="
+                                t('Remove the exclusion “:name”', {
+                                    name: row.value || t('this exclusion'),
+                                })
+                            "
+                            @click="removeAt(index)"
+                        >
+                            <X class="size-4" />
+                        </Button>
+                    </div>
+                    <p
+                        v-if="form.errors[`criteria.${index}.value`]"
+                        class="ps-7 text-sm text-destructive"
+                        dir="auto"
+                    >
+                        {{ form.errors[`criteria.${index}.value`] }}
+                    </p>
+                </li>
+            </ul>
+            <p v-else class="text-sm text-muted-foreground">
+                {{ t('Nothing is excluded. Most profiles don’t need any.') }}
+            </p>
+
+            <template #aside>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-test="add-exclusion"
                     @click="addExclusion"
                 >
                     <Plus class="size-4" />
                     {{ t('Add exclusion') }}
                 </Button>
-            </div>
+            </template>
+        </FormSection>
 
-            <ul v-if="exclusionRows.length" class="space-y-2">
-                <li
-                    v-for="{ row, index } in exclusionRows"
-                    :key="index"
-                    class="flex items-center gap-3"
-                >
-                    <Input
-                        v-model="row.value"
-                        class="flex-1"
-                        dir="auto"
-                        :placeholder="t(placeholderFor('exclusion'))"
-                        :aria-label="t('Exclusion value')"
-                    />
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        class="text-muted-foreground hover:text-destructive"
-                        :aria-label="t('Remove exclusion')"
-                        @click="removeAt(index)"
+        <!-- What this profile will do, as it is being built -->
+        <section
+            class="space-y-4 rounded-2xl border border-brand/30 bg-brand/5 p-6"
+            :aria-label="t('What this profile will do')"
+            data-test="icp-preview"
+        >
+            <h2
+                class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
+            >
+                {{ t('What this profile will do') }}
+            </h2>
+
+            <p
+                v-if="!filledSignals.length"
+                class="text-sm text-muted-foreground"
+            >
+                {{
+                    t(
+                        'Add a signal and Alima will tell you what it is going to look for.',
+                    )
+                }}
+            </p>
+
+            <template v-else>
+                <p class="text-sm text-foreground">
+                    {{
+                        t(
+                            'Alima will look for :signals signals and rule out :exclusions kinds of business.',
+                            {
+                                signals: number(filledSignals.length),
+                                exclusions: number(filledExclusions.length),
+                            },
+                        )
+                    }}
+                </p>
+
+                <ul class="space-y-2">
+                    <li
+                        v-for="{ row, index } in leadingSignals"
+                        :key="index"
+                        class="flex items-center gap-3 text-sm"
                     >
-                        <X class="size-4" />
-                    </Button>
-                </li>
-            </ul>
+                        <span class="min-w-0 flex-1 truncate" dir="auto">
+                            <span class="text-foreground">{{ row.value }}</span>
+                        </span>
+                        <MeterBar
+                            :value="row.weight ?? 0"
+                            :max="topWeight"
+                            width="sm"
+                            :label="
+                                t(':importance — :weight out of 100', {
+                                    importance: importance(row.weight),
+                                    weight: row.weight ?? 0,
+                                })
+                            "
+                        />
+                        <span
+                            class="w-20 shrink-0 text-end text-xs text-muted-foreground"
+                            aria-hidden="true"
+                            >{{ importance(row.weight) }}</span
+                        >
+                    </li>
+                </ul>
+
+                <div
+                    v-if="filledExclusions.length"
+                    class="flex flex-wrap items-center gap-1.5"
+                >
+                    <span class="text-xs text-muted-foreground">{{
+                        t('Always skip:')
+                    }}</span>
+                    <Badge
+                        v-for="{ row, index } in filledExclusions.slice(0, 6)"
+                        :key="index"
+                        variant="outline"
+                        class="border-input"
+                        dir="auto"
+                        >{{ row.value }}</Badge
+                    >
+                </div>
+            </template>
         </section>
 
-        <!-- Footer -->
-        <div
-            class="flex items-center justify-between gap-3 border-t border-border pt-5"
+        <!-- No bleed: this form is centred at `max-w-3xl`, so the bar lines up with the cards
+             above it rather than reaching past them. -->
+        <FormActions
+            :dirty="form.isDirty"
+            :processing="form.processing"
+            :bleed="false"
         >
-            <Button variant="ghost" type="button" as-child>
+            <Button variant="outline" type="button" as-child>
                 <Link href="/icp">
                     <ArrowLeft class="size-4 rtl:rotate-180" />
                     {{ t('Cancel') }}
@@ -371,6 +650,12 @@ function submit(): void {
                 <Loader2 v-if="form.processing" class="size-4 animate-spin" />
                 {{ isEditing ? t('Save changes') : t('Save profile') }}
             </Button>
-        </div>
+        </FormActions>
+
+        <UnsavedChangesDialog
+            :open="guard.isPrompting.value"
+            @stay="guard.stay"
+            @discard="guard.discard"
+        />
     </form>
 </template>
