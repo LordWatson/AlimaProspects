@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { PanelLeft } from '@lucide/vue';
-import { computed } from 'vue';
+import { PanelLeft, Search } from '@lucide/vue';
+import { logout } from '@/routes';
+import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
     Sheet,
@@ -10,8 +11,8 @@ import {
     SheetTrigger,
 } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
+import AdminCommandPalette from '@/components/admin/AdminCommandPalette.vue';
 import AdminSidebar from '@/layouts/admin/AdminSidebar.vue';
-import type { AdminNavSection } from '@/types';
 
 /*
  * The internal panel's chrome (Phase 19a, ADR 0014).
@@ -33,11 +34,28 @@ import type { AdminNavSection } from '@/types';
  */
 const page = usePage();
 
-const navigation = computed(
-    () => (page.props.navigation ?? []) as AdminNavSection[],
+const operator = computed(() => page.props.auth.user);
+
+/**
+ * The ⌘K palette, mounted once here rather than per page.
+ *
+ * The topbar's button is the discoverable half: a keyboard shortcut nobody is told about is a
+ * feature for whoever wrote it. The palette itself owns the shortcut.
+ */
+const palette = ref<InstanceType<typeof AdminCommandPalette> | null>(null);
+
+/** macOS says ⌘K and everybody else says Ctrl K, and the hint should say the right one. */
+const isMac = computed(
+    () =>
+        typeof navigator !== 'undefined' &&
+        /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent),
 );
 
-const operator = computed(() => page.props.auth.user);
+/**
+ * Whether this operator also belongs to a team — in other words, whether the product has anything
+ * to show them. The seeded operator does not; a real one, promoted after registering, does.
+ */
+const hasTeam = computed(() => page.props.auth.currentTeam !== null);
 </script>
 
 <template>
@@ -45,7 +63,7 @@ const operator = computed(() => page.props.auth.user);
         <aside
             class="hidden w-[17rem] shrink-0 overflow-hidden rounded-3xl lg:block"
         >
-            <AdminSidebar :navigation="navigation" />
+            <AdminSidebar />
         </aside>
 
         <div
@@ -70,7 +88,7 @@ const operator = computed(() => page.props.auth.user);
                         class="w-[17rem] border-0 bg-ink p-0 text-cream"
                     >
                         <SheetTitle class="sr-only">Admin menu</SheetTitle>
-                        <AdminSidebar :navigation="navigation" />
+                        <AdminSidebar />
                     </SheetContent>
                 </Sheet>
 
@@ -79,6 +97,23 @@ const operator = computed(() => page.props.auth.user);
                 >
                     Alima operations
                 </p>
+
+                <!-- The discoverable half of ⌘K. Fifty-five destinations is a search problem, and
+                     a search nobody can find is a rail with extra steps. -->
+                <Button
+                    variant="outline"
+                    size="sm"
+                    class="ms-4 hidden items-center gap-2 text-muted-foreground sm:flex"
+                    data-test="open-palette"
+                    @click="palette?.show()"
+                >
+                    <Search class="size-4" aria-hidden="true" />
+                    <span>Go to…</span>
+                    <kbd
+                        class="rounded border border-border px-1.5 py-0.5 font-mono text-xs"
+                        >{{ isMac ? '⌘' : 'Ctrl' }} K</kbd
+                    >
+                </Button>
 
                 <div class="ms-auto flex items-center gap-3">
                     <span
@@ -93,8 +128,28 @@ const operator = computed(() => page.props.auth.user);
                     >
                         {{ operator.name }}
                     </span>
-                    <Button variant="outline" size="sm" as-child>
+                    <!-- **"Leave the panel" only leads somewhere when there is somewhere to
+                         go.** An operator belongs to no team by design, and the product's dashboard
+                         resolves one — so for the seeded operator this button was a link to a 404.
+                         Signing out is the honest alternative, and it is what that account wants
+                         next anyway. -->
+                    <Button
+                        v-if="hasTeam"
+                        variant="outline"
+                        size="sm"
+                        as-child
+                        data-test="leave-the-panel"
+                    >
                         <Link href="/dashboard">Leave the panel</Link>
+                    </Button>
+                    <Button
+                        v-else
+                        variant="outline"
+                        size="sm"
+                        as-child
+                        data-test="operator-logout"
+                    >
+                        <Link :href="logout()" as="button">Sign out</Link>
                     </Button>
                 </div>
             </header>
@@ -103,6 +158,8 @@ const operator = computed(() => page.props.auth.user);
                 <slot />
             </main>
         </div>
+
+        <AdminCommandPalette ref="palette" />
 
         <Toaster />
     </div>

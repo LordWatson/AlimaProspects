@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Radar } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminPager from '@/components/admin/AdminPager.vue';
 import AdminWindowFilter from '@/components/admin/AdminWindowFilter.vue';
 import { Badge } from '@/components/ui/badge';
@@ -108,21 +109,11 @@ function duration(ms: number | null): string {
     <Head title="Signal runs" />
 
     <div class="flex flex-col gap-8">
-        <header class="max-w-2xl">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Platform
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                Signal runs
-            </h1>
-            <p class="mt-2 text-sm text-muted-foreground">
-                Cost, failures and durations per run across every tenant.
-                <strong>Read-only</strong> — a run spends a tenant's allowance,
-                so there is no route here to start one.
-            </p>
-        </header>
+        <AdminPageHeader
+            eyebrow="Platform · signals"
+            title="What the watches cost,|and what they found."
+            lede="Cost, failures and durations per run across every tenant. No re-run button: a run spends the tenant's own allowance."
+        />
 
         <AdminWindowFilter
             :filters="filters"

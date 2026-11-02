@@ -5,6 +5,63 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — 2026-11-02 — the operations panel got a front page, a way to navigate it, and the brand
+
+The verdict was "every page is boring, navigation is terrible, there are no graphs, there's no
+branding", and it was fair on all four counts.
+
+**Navigation.** The rail was fifty-five links in one flat column, so finding a screen was a scan
+rather than a search. It now opens with a filter box, puts the eight screens an operator actually
+uses daily at the top in two short groups, and files the forty-four record browsers in collapsible
+groups that remember what you left open. **⌘K** searches every destination by name, by group and by
+the words of the problem — "dsar" finds Compliance, "kill switch" finds Platform settings, "tenant"
+finds Teams.
+
+**A front page worth opening.** It was eight live counts, which tell you the size of a thing and
+nothing about its direction. It now says first whether anything is on fire — failed jobs, providers
+we have stopped calling, and whether last night's figures were actually computed — then shows five
+headline numbers _with their trend_, and a chart of the last thirty days you can flick between
+series on without the page reloading. The live counts are still there, demoted to a strip where
+facts without a direction belong.
+
+**The same page, eighteen times.** Every screen had grown its own header, and they had drifted into
+eighteen type scales and spacings. They share one now, with the product's own editorial device: a
+mono eyebrow, a statement whose last phrase takes the accent, and one "all times UTC" line per page
+instead of a label on every cell.
+
+**It looks like Alima.** Deep Teal is the panel's single accent throughout — never the app's lime,
+because an operator must never mistake the panel for a customer's screen. Two stronger brand moves,
+a panda peek on the header and the spectrum gradient as a chrome band, are written up for the brand
+owner to approve rather than taken quietly.
+
+### Fixed — 2026-11-02 — the admin panel was unusable on a fresh operator account
+
+Reported as "nothing works, every link in the sidebar 404s, and it sends me to a password screen".
+None of it was the panel: with a second factor set up, every screen in it — including all 44 record
+browsers — already answered correctly. The way **in** was broken, in three compounding ways.
+
+Signing in went to the product's dashboard, which an account with no team cannot render. The panel's
+two-factor requirement then sent the operator to the _product's_ security settings — so they were
+standing in the customer shell, whose navigation is entirely team-scoped: every link 404ed, and the
+password confirmation Laravel asks for before arming a second factor read as a password reset.
+
+The panel owns enrolment now, on its own screen, in its own shell, where every link works: scan,
+confirm, and the panel opens. The product's navigation offers an account with no team only the
+things that exist for it. And the panel's own links are built from the path it is actually served
+on, so moving it with `ADMIN_PATH` no longer breaks every link inside it.
+
+### Fixed — 2026-11-02 — signing in as the platform operator landed on a 404
+
+The operator account belongs to no team, on purpose — that is what makes it an operator rather than
+a customer. But a login goes to one configured page for everybody, and that page is the product's
+dashboard, which needs a team. So signing in as `super@admin.com` showed a 404, as did opening the
+sign-in page again afterwards, as did the panel's own **Leave the panel** button.
+
+All three now ask the same narrow question — no team, but a platform role — and open the panel
+instead; the panel's header offers **Sign out**, because for an account with no team there is
+nowhere to leave to. Everybody who has a team is unaffected, including an operator who also belongs
+to one.
+
 ### Added — 2026-11-02 — Signals S10: account monitoring
 
 **Signals can now watch the accounts you already have, not only the strangers who just came into

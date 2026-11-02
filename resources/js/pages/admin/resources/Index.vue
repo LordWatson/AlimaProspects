@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Plus, Search } from '@lucide/vue';
 import { reactive, watch } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import ResourceCell from '@/components/admin/ResourceCell.vue';
 import Pagination from '@/components/Pagination.vue';
 import { Button } from '@/components/ui/button';
@@ -122,32 +123,24 @@ function sortBy(column: string): void {
     <Head :title="resource.label" />
 
     <div class="flex flex-col gap-6">
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div class="max-w-2xl">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-                >
-                    {{ resource.group_label }}
-                </p>
-                <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                    {{ resource.label }}
-                </h1>
-                <p
-                    v-if="!resource.can_update && !resource.can_delete"
-                    class="mt-2 text-sm text-muted-foreground"
-                >
-                    Read-only. Changes to these records go through the module
-                    that owns them.
-                </p>
-            </div>
-
-            <Button v-if="resource.can_create" as-child>
-                <Link :href="`/admin/resources/${resource.key}/create`">
-                    <Plus class="size-4" />
-                    New {{ resource.singular.toLowerCase() }}
-                </Link>
-            </Button>
-        </header>
+        <AdminPageHeader
+            :eyebrow="`${resource.group_label} · records`"
+            :title="resource.label"
+            :lede="
+                !resource.can_update && !resource.can_delete
+                    ? 'Read-only. Changes to these records go through the module that owns them.'
+                    : null
+            "
+        >
+            <template v-if="resource.can_create" #actions>
+                <Button as-child>
+                    <Link :href="`/admin/resources/${resource.key}/create`">
+                        <Plus class="size-4" />
+                        New {{ resource.singular.toLowerCase() }}
+                    </Link>
+                </Button>
+            </template>
+        </AdminPageHeader>
 
         <section
             class="flex flex-wrap items-end gap-3"

@@ -81,7 +81,9 @@ it('sends an operator without two-factor to set it up', function (): void {
     $operator = Fixtures::operatorWithoutTwoFactor();
 
     // A redirect, not a refusal: they have nothing to ask anybody for, they have something to do.
-    $this->actingAs($operator)->get('/admin')->assertRedirect(route('security.edit'));
+    // The panel's **own** enrolment screen, not the product's settings: an operator belongs to no
+    // team, so the customer shell's rail answers 404 all the way down.
+    $this->actingAs($operator)->get('/admin')->assertRedirect(route('admin.security.edit'));
 });
 
 it('lets a super admin in', function (): void {

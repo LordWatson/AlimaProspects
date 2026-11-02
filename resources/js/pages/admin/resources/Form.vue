@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeft } from '@lucide/vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -89,17 +90,11 @@ function submit(): void {
             </Button>
         </div>
 
-        <header>
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                {{ resource.group_label }}
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                {{ isEdit ? 'Edit' : 'New' }}
-                {{ resource.singular.toLowerCase() }}
-            </h1>
-        </header>
+        <AdminPageHeader
+            :eyebrow="`${resource.group_label} · ${resource.label.toLowerCase()}`"
+            :title="`${isEdit ? 'Edit' : 'New'} ${resource.singular.toLowerCase()}`"
+            :meta="null"
+        />
 
         <form class="flex flex-col gap-5" @submit.prevent="submit">
             <div

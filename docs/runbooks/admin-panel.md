@@ -20,9 +20,25 @@ C:/Users/alexa/.config/herd/bin/php.bat artisan db:seed --class=SuperAdminSeeder
 
 That gives you **`super@admin.com` / `password`** — a super admin who belongs to no team.
 
-**Your first visit will not show you the panel.** It will send you to the security page to set up two-factor authentication, because a platform operator must have it: one super-admin credential reads every tenant's data in the product, and a password alone is not the right lock on that. Set up your authenticator, then go back to `/admin`.
+**Signing in takes you straight to the panel.** An operator belongs to no team, and the product's
+dashboard needs one — so the sign-in, the "you are already signed in" redirect and the panel's own
+header all send an account with a platform role and no team to `/admin`. (Before that was wired,
+signing in as the operator landed on a **404** from the dashboard. If you are on an older checkout
+and see that, this is what it was.)
+
+**Your first visit will not show you the panel.** It will send you to **`/admin/security`** — the panel's own enrolment screen — because a platform operator must have two-factor authentication: one super-admin credential reads every tenant's data in the product, and a password alone is not the right lock on that. Scan the code, enter the six digits, and the panel opens. (Fortify asks you to confirm your password on the way, which is Laravel's own protection on arming a second factor, not a password reset.)
+
+That screen used to be the **product's** `settings/security`, and that was a bug worth remembering: an operator belongs to no team, so the customer shell it sits in had a rail of team-scoped links that every answered 404. The panel asked for one thing and handed you a room where nothing worked.
 
 If you are developing and the TOTP dance is in your way, `ADMIN_REQUIRE_TWO_FACTOR=false` in `.env`. That is a local convenience and **not** a deployment option — production keeps it on.
+
+### If `/dashboard` gives you a 404
+
+That is the product telling you that you are not a tenant, which for the seeded operator is
+correct: it has no team, so there is no pipeline, no leads and no dashboard to render. Nothing in
+the panel links there any more — the header offers **Sign out** rather than "Leave the panel" for an
+account with no team. An operator who _does_ belong to a team (register normally, then be promoted,
+which is the production advice) keeps both.
 
 ### If `/admin` gives you a 404
 

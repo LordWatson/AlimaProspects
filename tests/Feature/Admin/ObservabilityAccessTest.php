@@ -58,7 +58,7 @@ it('lets an operator with the operations ability through', function (): void {
 it('sends an operator without two-factor to enrolment first', function (): void {
     $this->actingAs(Fixtures::operatorWithoutTwoFactor())
         ->get('/pulse')
-        ->assertRedirect(route('security.edit'));
+        ->assertRedirect(route('admin.security.edit'));
 });
 
 it('answers 404 from outside the ip allowlist', function (): void {
@@ -147,7 +147,7 @@ it('sends an un-enrolled operator to two-factor enrolment before horizon', funct
     // refuses, so a freshly created operator is in exactly this state.
     $this->actingAs(Fixtures::operatorWithoutTwoFactor())
         ->get('/horizon/api/jobs/failed')
-        ->assertRedirect(route('security.edit'));
+        ->assertRedirect(route('admin.security.edit'));
 });
 
 it('refuses horizon from outside the ip allowlist', function (): void {

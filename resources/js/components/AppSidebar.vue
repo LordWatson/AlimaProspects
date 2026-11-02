@@ -219,17 +219,62 @@ const allChapters = computed<Chapter[]>(() => [
 ]);
 
 /**
+ * Whether this account is a tenant at all.
+ *
+ * **Every destination in the rail below is team-scoped**, and resolves `currentTeam()` on the
+ * server. A platform operator belongs to no team on purpose, so for that account the whole rail was
+ * a column of links that answered **404** — which is how a working panel came to read as a broken
+ * product. One missing team is not a plan boundary to filter per item; it means none of this exists
+ * yet, so the rail says something else entirely.
+ */
+const hasTeam = computed(() => page.props.auth.currentTeam !== null);
+
+/** An operator, who has a panel to be in rather than a pipeline. */
+const isOperator = computed(() => page.props.auth.isOperator === true);
+
+/**
+ * The rail an account with no team gets: the things that actually work for it.
+ *
+ * The panel first where there is one, because that is where an operator is going. No numbering —
+ * the editorial run 01–09 describes the product's pipeline, and this is not a shorter pipeline, it
+ * is a different kind of account.
+ */
+const operatorChapters = computed<Chapter[]>(() => {
+    const items: Item[] = [];
+
+    if (isOperator.value) {
+        items.push({
+            title: t('Operations panel'),
+            icon: ShieldCheck,
+            href: '/admin',
+            match: 'startsWith',
+        });
+    }
+
+    items.push({
+        title: t('Your account'),
+        icon: UserCog,
+        href: editProfile().url,
+        match: 'startsWith',
+    });
+
+    return [{ key: 'operator', items }];
+});
+
+/**
  * The rail as rendered: chapters with their unavailable destinations removed, and any chapter left
  * empty removed with them — an eyebrow over nothing reads as a broken page rather than as a plan
  * boundary.
  */
 const chapters = computed<Chapter[]>(() =>
-    allChapters.value
-        .map((chapter) => ({
-            ...chapter,
-            items: chapter.items.filter(isAvailable),
-        }))
-        .filter((chapter) => chapter.items.length > 0),
+    hasTeam.value
+        ? allChapters.value
+              .map((chapter) => ({
+                  ...chapter,
+                  items: chapter.items.filter(isAvailable),
+              }))
+              .filter((chapter) => chapter.items.length > 0)
+        : operatorChapters.value,
 );
 
 const user = computed(() => page.props.auth.user);

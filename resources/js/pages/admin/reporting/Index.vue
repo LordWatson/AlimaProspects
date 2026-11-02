@@ -2,6 +2,7 @@
 import { Head } from '@inertiajs/vue3';
 import { Download, Info, TriangleAlert } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminWindowFilter from '@/components/admin/AdminWindowFilter.vue';
 import {
     BarListChart,
@@ -87,44 +88,20 @@ const cohortCount = computed(() => props.report.funnel[0]?.value ?? 0);
     <Head title="Platform reporting" />
 
     <div class="flex flex-col gap-8">
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div class="max-w-2xl">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-                >
-                    Platform
-                </p>
-                <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                    Reporting
-                </h1>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    The business's own numbers. Every figure is an aggregate and
-                    names nobody, so this screen is not audited as a privacy
-                    event — the exports are.
-                </p>
-            </div>
-
-            <!--
-              Freshness, in the header. Not decoration: the figures are only as current as the
-              rollup, and a nightly command that failed must not look like a quiet week.
-            -->
-            <p class="text-sm text-muted-foreground">
-                <span
-                    class="block font-mono text-xs tracking-eyebrow uppercase"
-                >
-                    Figures as at
-                </span>
-                <span
-                    v-if="report.last_rolled_up"
-                    class="text-foreground tabular-nums"
-                >
-                    {{ utcDate(report.last_rolled_up) }} (UTC)
-                </span>
-                <span v-else class="text-destructive">
-                    never rolled up — run <code>platform:roll-up</code>
-                </span>
-            </p>
-        </header>
+        <!--
+          Freshness lives in the header's `meta`. Not decoration: the figures are only as current
+          as the rollup, and a nightly command that failed must not look like a quiet week.
+        -->
+        <AdminPageHeader
+            eyebrow="Platform · reporting"
+            title="The business's|own numbers."
+            lede="Every figure is an aggregate and names nobody, so this screen is not audited as a privacy event — the exports are."
+            :meta="
+                report.last_rolled_up
+                    ? `Figures as at ${utcDate(report.last_rolled_up)} UTC`
+                    : 'Never rolled up — run platform:roll-up'
+            "
+        />
 
         <AdminWindowFilter :filters="filters" :ranges="ranges" />
 

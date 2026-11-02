@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { useEventListener } from '@vueuse/core';
 import { CircleCheck, Info, RotateCcw, Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -146,20 +147,11 @@ function outcomeVariant(
     <Head title="Operations · queues" />
 
     <div class="flex flex-col gap-8">
-        <header class="max-w-2xl">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Platform
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                Queues and jobs
-            </h1>
-            <p class="mt-2 text-sm text-muted-foreground">
-                Failed work, queue depth and when each scheduled command was
-                last seen. Retries and drops are audited.
-            </p>
-        </header>
+        <AdminPageHeader
+            eyebrow="Platform · operations"
+            title="What is stuck,|and what is late."
+            lede="Failed work, queue depth and the scheduler. A backlog here is somebody's job not happening."
+        />
 
         <section class="flex flex-col gap-3" aria-label="Failed jobs">
             <div class="flex flex-wrap items-center justify-between gap-3">

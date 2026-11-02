@@ -19,9 +19,14 @@ use Symfony\Component\HttpFoundation\Response;
  * has got used to not having it.
  *
  * Enforced as a **redirect to enrolment**, not a refusal: an operator without 2FA has nothing to go
- * and ask anybody for, they have a thing to go and do, and the security page is where they do it.
- * The freshly seeded `super@admin.com` therefore lands on enrolment on its first visit, which is
- * the correct local experience and is written down in the runbook rather than excepted here.
+ * and ask anybody for, they have a thing to go and do, and the enrolment screen is where they do
+ * it. The freshly seeded `super@admin.com` therefore lands on enrolment on its first visit, which
+ * is the correct local experience and is written down in the runbook rather than excepted here.
+ *
+ * **It sends them to the panel's own screen, not to the product's settings.** It used to redirect
+ * to `security.edit`, which is in the customer shell — and an operator belongs to no team, so every
+ * destination in that shell's rail answers 404 and the panel's one requirement read as a broken
+ * product. `admin.security.edit` is the same enrolment, in a shell where every link works.
  *
  * It can be switched off with `ADMIN_REQUIRE_TWO_FACTOR=false`, and that exists for exactly one
  * reason: a test suite and a first-run-through of the panel should not have to solve a TOTP
@@ -47,6 +52,6 @@ final class EnsureAdminTwoFactor
             'message' => 'Set up two-factor authentication before using the admin panel.',
         ]);
 
-        return Redirect::route('security.edit');
+        return Redirect::route('admin.security.edit');
     }
 }

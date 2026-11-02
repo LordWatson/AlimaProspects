@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ScrollText } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminPager from '@/components/admin/AdminPager.vue';
 import AdminWindowFilter from '@/components/admin/AdminWindowFilter.vue';
 import { Badge } from '@/components/ui/badge';
@@ -108,21 +109,11 @@ function categoryVariant(value: string): 'brand' | 'warning' | 'outline' {
     <Head title="Audit trail" />
 
     <div class="flex flex-col gap-8">
-        <header class="max-w-2xl">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Platform
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                Audit trail
-            </h1>
-            <p class="mt-2 text-sm text-muted-foreground">
-                Every audited action across every tenant, newest first. Nothing
-                here can be edited or deleted — the table is append-only and no
-                route exists to change it.
-            </p>
-        </header>
+        <AdminPageHeader
+            eyebrow="Platform · audit"
+            title="Who did what,|and to whose data."
+            lede="Every audited act by an operator, newest first — including the reads. This screen is itself audited."
+        />
 
         <AdminWindowFilter
             :filters="filters"

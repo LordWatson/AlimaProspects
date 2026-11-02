@@ -15,6 +15,7 @@ use App\Modules\Admin\Http\Controllers\Web\PlatformReportingController;
 use App\Modules\Admin\Http\Controllers\Web\ProviderHealthController;
 use App\Modules\Admin\Http\Controllers\Web\ProvisioningController;
 use App\Modules\Admin\Http\Controllers\Web\ResourceController;
+use App\Modules\Admin\Http\Controllers\Web\SecurityController;
 use App\Modules\Admin\Http\Controllers\Web\SettingsController;
 use App\Modules\Admin\Http\Controllers\Web\SignalRunController;
 use App\Modules\Admin\Http\Controllers\Web\TeamBillingController;
@@ -53,6 +54,32 @@ use Illuminate\Support\Facades\Route;
 |   6. `throttle:admin`       — its own limiter, not the app's.
 |
 */
+
+/*
+ * **The one route without the second-factor check**, because it is where the second factor is set
+ * up. Everything else in the stack still applies — signed in, an operator, from a permitted
+ * network, the panel's own limiter, and `AdminAbility::Access` — and `PlatformContext` is
+ * deliberately absent too: enrolment reads the operator's own account and nothing else, so there is
+ * nothing here to remove tenant scoping for.
+ *
+ * It exists because the gate used to send a new operator to the **product's** security settings,
+ * and an operator belongs to no team: every link in that shell's rail answers 404. The panel asked
+ * for a second factor and handed them a room where nothing worked. `AdminRouteContractTest` names
+ * this route as the exception rather than relaxing the rule for everything.
+ */
+Route::middleware([
+    'auth',
+    EnsurePlatformAdmin::class,
+    AdminIpAllowlist::class,
+    'throttle:admin',
+])
+    ->prefix((string) config('admin.path', 'admin'))
+    ->name('admin.')
+    ->group(function (): void {
+        Route::get('security', [SecurityController::class, 'edit'])
+            ->middleware('admin.can:'.AdminAbility::Access->value)
+            ->name('security.edit');
+    });
 
 Route::middleware([
     'auth',

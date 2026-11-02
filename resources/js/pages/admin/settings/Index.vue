@@ -2,6 +2,7 @@
 import { Head, useForm } from '@inertiajs/vue3';
 import { OctagonAlert, PencilLine } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -130,22 +131,11 @@ function setList(key: string, text: string): void {
     <Head title="Platform settings" />
 
     <form class="flex max-w-3xl flex-col gap-8" @submit.prevent="submit">
-        <header>
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Platform
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                Settings
-            </h1>
-            <p class="mt-2 max-w-prose text-sm text-muted-foreground">
-                Overrides on top of <code>config/admin.php</code>. A setting
-                left at its default stores no row, so it keeps following the
-                deploy; changing one records what it replaced and who changed
-                it.
-            </p>
-        </header>
+        <AdminPageHeader
+            eyebrow="Platform · settings"
+            title="The levers that move|every tenant at once."
+            lede="Overrides on top of the deployed configuration. Each one is audited, and each says who last chose it."
+        />
 
         <section
             v-for="group in [

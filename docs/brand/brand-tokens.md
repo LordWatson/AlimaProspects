@@ -732,3 +732,50 @@ of it produced one code bug, four accessibility fixes and a wholesale regroup of
 **Recorded, not changed:** `text-lg` (18px) headings are not a step on the §3 scale and are now
 product-wide (§7c, §7e.2) — the composer adds one more. The hand-rolled checkbox-row pattern from
 §7i is untouched by this phase and still wants one `ChoiceRow`.
+
+### 7k. Added 2026-11-02 (the operations panel overhaul, 19d)
+
+The panel was rebuilt after the verdict "every page is boring, navigation is terrible, there are no
+graphs, there's no branding". Most of the answer was **applying the book to a surface that had been
+built without it**, which needs no approval and is recorded here so the next person knows it was
+deliberate:
+
+1. **One header for every screen** (`components/admin/AdminPageHeader.vue`). Eighteen hand-rolled
+   `<header>` blocks had drifted into eighteen type scales and spacings. It carries the tenant
+   `PageHero`'s **statement device** — a `|` marks where the accent tail begins — plus the DM Mono
+   eyebrow at the tracked 12px floor and a mono meta line that says **UTC** once per page instead of
+   per cell (§7f).
+2. **Deep Teal is the panel's one accent** (§1.2's one-hero-accent rule). Not Acid Lime: lime is the
+   tenant shell's hero, and an operator must never mistake one surface for the other (ADR 0014).
+   It carries the statement tail, the rail's active pill, the palette's highlighted row, the
+   series switcher's pressed state, the header's optional index numeral, and the chart mark — which
+   is **`chart-2`** (#205557, 8.1:1), the set's Teal single-series token. The first build used
+   `chart-1` and a comment that called it Deep Teal; `chart-1` is **Blue** (#4e91d4, about 3:1 as a
+   2px mark), so the panel briefly had a second data hue beside its accent. The brand review caught
+   both the hue and the comment. **Status is not among teal's uses**: the dashboard's "all clear"
+   panel uses `status.success` on its own 12% tint like the other two levels, because spending the
+   accent on a status is how a real accent stops meaning anything.
+3. **Charts are the existing set's rules on a new shape.** `components/admin/AdminSeriesChart.vue`
+   draws one daily series — one y-axis, a thin mark, a three-rule recessive grid, **direct labels**
+   for the peak and the last point rather than a tooltip, and a **text-equivalent table** in
+   `sr-only`. It exists rather than reusing `charts/TrendChart` because that one carries two series
+   cut in a _team's_ timezone, and the panel has one series always in UTC.
+4. **Status panels follow §7f.2–3 unchanged**: a 12% tint, a `/30` border, the status colour kept to
+   the icon and the border, the words in `text-foreground`, and a visually hidden level word beside
+   each icon so `warning` and `critical` do not differ by hue alone.
+5. **The rail keeps its Cloud Cream focus ring** (§7e.3) and gains a filter box and collapsible
+   groups. Each collapsible group label is a `<button>` with `aria-expanded`; the permanent ones
+   stay `<p>`, because the difference is real and should be carried by the element rather than by an
+   icon.
+
+**Flagged for brand-owner approval** — offered, not taken:
+
+- **A peek on the panel's header.** §5's product application sets one peek, one colour, one
+  placement, and it is defined against the **tenant** `PageHero`'s Ink card. The panel's header is a
+  cream editorial block with a rule, so putting the mark on it would be a _new_ application of the
+  element rather than the agreed one. It is deliberately absent; say the word and it goes on.
+- **The spectrum gradient as a chrome band.** §1.4 allows it for hero bands, motion and loaders. A
+  2px band under the panel's topbar would give the tool an unmistakable signature, but "the thin
+  rule above an operations table" is not one of the three named uses, so it is not taken here.
+- Everything already pending still is: `status.info` (§7f.4), the dark-mode `warning` / `info` /
+  `destructive` values (§7.10), and the off-scale spacing steps inherited product-wide (§7c).

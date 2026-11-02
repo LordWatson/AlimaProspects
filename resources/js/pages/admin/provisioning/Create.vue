@@ -2,6 +2,7 @@
 import { Head, usePage, useForm } from '@inertiajs/vue3';
 import { ShieldCheck, TriangleAlert } from '@lucide/vue';
 import { computed } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -83,21 +84,12 @@ function submit(): void {
     <Head title="Onboard a business" />
 
     <div class="flex max-w-3xl flex-col gap-8">
-        <header>
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Platform
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                Onboard a business
-            </h1>
-            <p class="mt-2 max-w-prose text-sm text-muted-foreground">
-                Creates the tenant, its Owner and anything you already know
-                about them, then emails the Owner a link to set their own
-                password. Check it first — the dry run writes nothing.
-            </p>
-        </header>
+        <AdminPageHeader
+            eyebrow="Platform · provisioning"
+            title="Onboard|a business."
+            lede="Creates the tenant, its owner and its trial in one transaction. Dry-run first; every field is checked before anything is written."
+            :meta="null"
+        />
 
         <!-- The dry run's answer. -->
         <section

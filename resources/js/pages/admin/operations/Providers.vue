@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { useEventListener } from '@vueuse/core';
 import { CircuitBoard, Info } from '@lucide/vue';
 import { ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -81,23 +82,11 @@ function stateOf(provider: AdminProviderHealth): {
     <Head title="Operations · providers" />
 
     <div class="flex flex-col gap-8">
-        <header class="max-w-2xl">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Platform
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                Provider health
-            </h1>
-            <p class="mt-2 text-sm text-muted-foreground">
-                The breaker's state is <strong>live</strong>; the rates are the
-                last {{ props.context.days }} complete days from the nightly
-                rollup. So a provider that started failing an hour ago shows a
-                healthy rate and an open circuit — that pairing is the useful
-                one, not a contradiction.
-            </p>
-        </header>
+        <AdminPageHeader
+            eyebrow="Platform · providers"
+            title="Who is answering,|and who is not."
+            lede="Calls, failures and circuit breakers per provider over the last week. An open breaker means we stopped asking."
+        />
 
         <div
             class="flex items-start gap-3 rounded-2xl border border-info/30 bg-info/12 px-4 py-3"

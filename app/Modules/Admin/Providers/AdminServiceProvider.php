@@ -7,6 +7,8 @@ namespace App\Modules\Admin\Providers;
 use App\Models\User;
 use App\Modules\Admin\Console\RollUpPlatformMetricsCommand;
 use App\Modules\Admin\Enums\AdminAbility;
+use App\Modules\Admin\Http\Responses\OperatorLoginResponse;
+use App\Modules\Admin\Http\Responses\OperatorTwoFactorLoginResponse;
 use App\Modules\Admin\Listeners\RecordScheduledTaskRun;
 use App\Modules\Admin\Resources\ResourceRegistry;
 use App\Modules\Admin\Services\GovernedCapabilityGate;
@@ -22,6 +24,7 @@ use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\ModuleServiceProvider;
 use App\Modules\Outreach\Contracts\TeamSendingGate;
+use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
@@ -31,6 +34,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Inertia\Inertia;
+use Laravel\Fortify\Contracts\LoginResponse;
+use Laravel\Fortify\Contracts\TwoFactorLoginResponse;
 
 /**
  * Admin module provider (Phase 19a, ADR 0014).
@@ -58,6 +64,16 @@ final class AdminServiceProvider extends ModuleServiceProvider
     {
         $this->app->singleton(ResourceRegistry::class);
 
+        // **Where a login lands.** Fortify sends everybody to one configured path, and that path
+        // assumes an account has a team — so the operator, who deliberately has none, signed in
+        // and got a 404 from the dashboard's `currentTeam()->firstOrFail()`. Bound here rather
+        // than changed in `config/fortify.php`, because the question is about *this* kind of
+        // account and Auth has no business knowing what a platform operator is. Both responses,
+        // since an operator is required to carry a second factor and would otherwise be back on
+        // the 404 the day they enrolled.
+        $this->app->singleton(LoginResponse::class, OperatorLoginResponse::class);
+        $this->app->singleton(TwoFactorLoginResponse::class, OperatorTwoFactorLoginResponse::class);
+
         // Memoised per request/job, so the decorators below can be asked inside loops.
         $this->app->scoped(TeamSuspension::class);
 
@@ -76,6 +92,47 @@ final class AdminServiceProvider extends ModuleServiceProvider
         $this->registerGates();
         $this->registerRateLimiter();
         $this->registerPlatformReporting();
+        $this->registerOperatorLanding();
+        $this->sharePanelPath();
+    }
+
+    /**
+     * Tell the panel's own screens where the panel lives.
+     *
+     * `ADMIN_PATH` moves it — the runbook recommends that for production, to keep it out of every
+     * scanner's logs — and the routes move with it, because they are registered under
+     * `prefix(config('admin.path'))`. The **rail's links did not**: they were hard-coded
+     * `/admin/...` strings, so the one deployment that hid the panel was the deployment where every
+     * link in it answered 404.
+     *
+     * Shared rather than passed per controller: it is a property of the panel, not of a screen, and
+     * twenty controllers each remembering to send it is twenty chances to forget. Scoped to
+     * `admin.*` so no tenant page carries a prop about an internal tool.
+     */
+    private function sharePanelPath(): void
+    {
+        Inertia::share([
+            'panel' => static fn (): ?array => request()->routeIs('admin.*')
+                ? ['path' => '/'.trim((string) config('admin.path', 'admin'), '/')]
+                : null,
+        ]);
+    }
+
+    /**
+     * Where an **already signed-in** operator is sent if they open a guest page.
+     *
+     * The same assumption as the login redirect, in the framework's own `guest` middleware: it
+     * sends an authenticated visitor to `dashboard`, which an account with no team cannot open. So
+     * an operator who opened `/login` out of habit got the same 404 the sign-in used to give them.
+     *
+     * Decorating the callback rather than replacing the middleware: everybody who *has* a team
+     * keeps the framework's answer, which is the dashboard.
+     */
+    private function registerOperatorLanding(): void
+    {
+        RedirectIfAuthenticated::redirectUsing(
+            static fn (Request $request): string => OperatorLoginResponse::panelFor($request) ?? route('dashboard'),
+        );
     }
 
     /**
