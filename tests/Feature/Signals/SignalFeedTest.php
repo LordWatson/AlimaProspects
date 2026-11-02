@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Auth\Support\TeamMembership;
+use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
@@ -63,7 +64,9 @@ function feedSignal(Team $team, array $attributes = []): Signal
  */
 function feedDefinitions(Team $team): void
 {
-    foreach (SignalPresetCatalogue::keys() as $key) {
+    // The UAE three, which is what these fixtures mean by "the library" — S8 added a UK pack, and
+    // counting all nine here would be asserting the catalogue's size rather than the feed's.
+    foreach (SignalPresetCatalogue::keysForMarket(Market::Uae) as $key) {
         signalDefinition($team, $key);
     }
 }

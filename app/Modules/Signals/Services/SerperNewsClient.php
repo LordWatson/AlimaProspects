@@ -68,13 +68,16 @@ final class SerperNewsClient implements NewsSearchClient
                 throw: false,
             )
             ->acceptJson()
-            ->post('/news', [
+            ->post('/news', array_filter([
                 'q' => $query->q,
+                // Omitted entirely when the region is `global` (S8): `gl` is nullable there because
+                // "anywhere" is not a country, and sending an invented code would bias the one
+                // search whose point is not to be biased. `array_filter` drops only the null.
                 'gl' => $query->gl,
                 'hl' => $query->hl,
                 'tbs' => $query->tbs,
                 'num' => $query->num,
-            ]));
+            ], static fn (mixed $value): bool => $value !== null)));
 
         // A 200 with a body that isn't a JSON object, or a `news` value that isn't a list, is not
         // "no results" — it's an unexpected payload (an HTML error/auth page behind a 200). Fail

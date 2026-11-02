@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalQueryBuilder;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
@@ -33,7 +34,7 @@ function watchIgnoring(array $ignore): SignalWatch
         ->watchingPresets([SignalPresetCatalogue::FUNDING_ROUND])
         ->create([
             'team_id' => $team->getKey(),
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
             'ignore_domains' => $ignore,
         ]));
 }
@@ -47,7 +48,7 @@ function watchIgnoring(array $ignore): SignalWatch
  */
 function queriesFor(SignalWatch $watch): array
 {
-    return app(SignalQueryBuilder::class)->build($watch, $watch->activeDefinitions()->all());
+    return app(SignalQueryBuilder::class)->build($watch, $watch->activeDefinitions()->all())->queries;
 }
 
 it('carries a watch’s own ignore list onto every query it builds', function (): void {
@@ -116,6 +117,7 @@ it('drops results from a team’s own ignored domain as well as the global list'
 
     $items = app(NewsSearchClient::class)->search(new SignalQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
         gl: 'ae',
         hl: 'en',
@@ -146,6 +148,7 @@ it('still applies the global list when a watch adds none', function (): void {
 
     $items = app(NewsSearchClient::class)->search(new SignalQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
         gl: 'ae',
         hl: 'en',

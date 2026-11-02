@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Actions;
 
 use App\Models\User;
+use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Enums\OutreachRestriction;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Enrichment\Data\SourcedValue;
@@ -25,6 +26,7 @@ use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalConverted;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalWatch;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -256,15 +258,23 @@ final class ConvertSignalToLeadAction
 
     /**
      * What `leads.raw` carries for a converted signal: the one-way pointer back at the signal, the
-     * event it was, the headline the member recognised — and the outreach restriction, when the
-     * market the signal was found in imposes one.
+     * event it was, the headline the member recognised, where the subject is — and the outreach
+     * restriction, where one applies.
      *
-     * The restriction comes from the **watch's market** ({@see Market::outreachRestriction()}), not
-     * from the company's country on the form. That distinction is the whole point: the restriction
-     * protects the *person being approached*, who is where the watch was looking, and the company
-     * they own may well be registered somewhere else. Keying it on the lead's country would quietly
-     * drop the restriction the moment a Dubai founder's lead was filed under a UK holding company —
-     * which is exactly the case it exists for.
+     * **The restriction follows the subject, not the watch** (S8, ADR 0019). Until S8 it came from
+     * `$signal->watch->market`, which was sound while every watch was UAE and every signal in it
+     * was about the UAE. The moment a watch can span places that is wrong in both directions: a
+     * London funding round found by a UAE watch got a PDPL restriction it is not subject to, and a
+     * Dubai relocation found by a UK watch got **none** — the serious direction, since nothing
+     * published can supply the prior consent PDPL requires.
+     *
+     * It is still **not** keyed on the company's country from the form, and that part of the
+     * original reasoning stands: the restriction protects the *person being approached*, and the
+     * company they own may well be registered somewhere else. A Dubai founder filed under a UK
+     * holding company keeps the restriction.
+     *
+     * The jurisdiction goes in the payload too, so a lead can explain its own restriction rather
+     * than presenting it as a fact with no provenance.
      *
      * @return array<string, mixed>
      */
@@ -278,13 +288,84 @@ final class ConvertSignalToLeadAction
             'headline' => Str::limit($signal->headline, 255),
         ];
 
-        $restriction = $signal->watch->market->outreachRestriction();
+        if (is_string($signal->jurisdiction) && $signal->jurisdiction !== '') {
+            $payload['jurisdiction'] = $signal->jurisdiction;
+        }
+
+        $restriction = $this->restrictionFor($signal);
 
         if ($restriction !== null) {
             $payload[OutreachRestriction::RAW_KEY] = $restriction->value;
         }
 
         return $payload;
+    }
+
+    /**
+     * The outreach restriction a converted lead carries, resolved in three steps (ADR 0019 §2).
+     *
+     * 1. **The signal's own resolved market**, from the jurisdiction the extraction put on it. This
+     *    is the answer in the normal case and the whole point of the phase.
+     * 2. **The watch's market** — the team's declared regime — when the article named nowhere the
+     *    place map knows.
+     * 3. **The most restrictive restriction across the watch's regions**, which only ever *adds* one
+     *    the first two did not supply. A watch over Dubai and London whose signal names neither
+     *    gets the UAE restriction, because that is the more restrictive of the two it could have
+     *    found, and the direction to fail in is obvious.
+     *
+     * A region the business holds no compliance position for contributes nothing — it cannot, and
+     * `OutreachRestriction` has exactly one case, specifically about UAE PDPL. Stamping it on a
+     * Singapore lead would make Outreach do the right thing for a reason that is false and tell a
+     * member a lie about why. Those regions are not offered for that reason (ADR 0019 §3).
+     *
+     * A **deleted watch** leaves the signal with no watch at all (`nullOnDelete`, S6 migration), in
+     * which case steps 2 and 3 have nothing to read and step 1 is all there is. Converted signals
+     * survive their watch on purpose, so this is reachable.
+     */
+    private function restrictionFor(Signal $signal): ?OutreachRestriction
+    {
+        $market = $signal->resolvedMarket();
+
+        if ($market instanceof Market) {
+            return $market->outreachRestriction();
+        }
+
+        $watch = $signal->watch;
+
+        if (! $watch instanceof SignalWatch) {
+            return null;
+        }
+
+        return $this->mostRestrictive($watch->candidateMarkets());
+    }
+
+    /**
+     * The strictest restriction among a set of markets, or null when none imposes one.
+     *
+     * "Strictest" is **not** a hard-coded ordering of the cases: it asks each one whether it allows
+     * direct marketing at all, which is the question Outreach asks and the only one that currently
+     * distinguishes them. A second restriction added later is ranked by what it forbids rather than
+     * by where somebody remembered to put it in a `match`.
+     *
+     * @param  list<Market>  $markets
+     */
+    private function mostRestrictive(array $markets): ?OutreachRestriction
+    {
+        $strictest = null;
+
+        foreach ($markets as $market) {
+            $restriction = $market->outreachRestriction();
+
+            if ($restriction === null) {
+                continue;
+            }
+
+            if ($strictest === null || (! $restriction->allowsDirectMarketing() && $strictest->allowsDirectMarketing())) {
+                $strictest = $restriction;
+            }
+        }
+
+        return $strictest;
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Core\Models\Team;
 use App\Modules\ICP\Actions\GetIcpsAction;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\Signals\Actions\CloneSignalPresetsAction;
@@ -14,6 +15,7 @@ use App\Modules\Signals\Actions\ListSignalWatchesAction;
 use App\Modules\Signals\Actions\SaveSignalWatchAction;
 use App\Modules\Signals\Actions\TriggerSignalWatchAction;
 use App\Modules\Signals\Data\SignalWatchData;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalWatchCadence;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
 use App\Modules\Signals\Http\Requests\SaveSignalWatchRequest;
@@ -61,6 +63,18 @@ final class SignalWatchController extends Controller
             'watches' => SignalWatchResource::collection($list->handle($team))->resolve($request),
             'options' => [
                 'definitions' => SignalDefinitionResource::collection($definitions)->resolve($request),
+                // Only the regions the business holds a compliance position for (ADR 0019 §3):
+                // choosing where to look also chooses how the resulting leads may be approached,
+                // and `offered` is that switch rather than a feature flag.
+                'regions' => array_map(static fn (SearchRegion $region): array => [
+                    'value' => $region->value,
+                    'label' => $region->label(),
+                    'approach_note' => $region->approachNote(),
+                    'default_locations' => $region->defaultLocations(),
+                ], SearchRegion::offered()),
+                // On screen rather than only in the validator: a member who pastes a dozen cities
+                // has to be told the cap before the save, not have the extras quietly dropped.
+                'max_locations' => (int) config('signals.max_locations_per_watch', 10),
                 'cadences' => array_map(static fn (SignalWatchCadence $cadence): array => [
                     'value' => $cadence->value,
                     'label' => $cadence->label(),
@@ -73,7 +87,7 @@ final class SignalWatchController extends Controller
             ],
             // What the one-click "set up my first watch" button creates, so the empty state can
             // name the market and the events rather than promising something vague.
-            'defaults' => $this->defaults(),
+            'defaults' => $this->defaults($team),
             'can' => ['manage' => $user->can('create', $this->transientWatch($team))],
         ]);
     }
@@ -117,14 +131,16 @@ final class SignalWatchController extends Controller
         $this->authorize('create', $this->transientWatch($team));
         $this->authorize('clone', $this->transientDefinition($team));
 
-        $definitions = $clonePresets->handleStartersForMarket($team, $user, SignalWatchData::DEFAULT_MARKET);
+        $market = SignalWatchData::marketFor($team->market);
+
+        $definitions = $clonePresets->handleStartersForMarket($team, $user, $market);
 
         /** @var list<int> $definitionIds */
         $definitionIds = array_values($definitions
             ->map(static fn (SignalDefinition $definition): int => (int) $definition->getKey())
             ->all());
 
-        $watch = $action->handle($team, $user, SignalWatchData::defaultWatch($definitionIds));
+        $watch = $action->handle($team, $user, SignalWatchData::defaultWatch($definitionIds, $market));
 
         Inertia::flash('toast', [
             'type' => 'success',
@@ -187,18 +203,26 @@ final class SignalWatchController extends Controller
      * What a new watch starts as, and what the one-click button will create.
      *
      * The types are **not** here: for a new watch the editor pre-ticks every active type the team
-     * has, and for the one-click button they are whatever cloning the market's presets produces -
-     * neither of which this method can know without a query the empty state does not need.
+     * has, and for the one-click button they are whatever cloning the market's starter presets
+     * produces — neither of which this method can know without a query the empty state does not
+     * need.
      *
-     * @return array{location: string, cadence: string}
+     * The places and the region come from the **team's own market** since S8, so a UK team's first
+     * watch looks at London rather than at Dubai (ADR 0019).
+     *
+     * @return array{locations: list<string>, regions: list<string>, cadence: string, market: string, market_label: string}
      */
-    private function defaults(): array
+    private function defaults(Team $team): array
     {
-        $default = SignalWatchData::defaultWatch();
+        $market = SignalWatchData::marketFor($team->market);
+        $default = SignalWatchData::defaultWatch(market: $market);
 
         return [
-            'location' => $default->location,
+            'locations' => $default->locations,
+            'regions' => array_map(static fn (SearchRegion $region): string => $region->value, $default->regions),
             'cadence' => $default->cadence->value,
+            'market' => $market->value,
+            'market_label' => $market->label(),
         ];
     }
 }

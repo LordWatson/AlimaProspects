@@ -30,6 +30,7 @@ use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Services\SignalJurisdictionResolver;
 use App\Modules\Signals\Services\SignalQueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -70,6 +71,7 @@ final class RunSignalWatchAction
         private readonly NewsSearchClient $news,
         private readonly AiClient $ai,
         private readonly CapabilityGate $capabilities,
+        private readonly SignalJurisdictionResolver $jurisdictions,
     ) {}
 
     public function handle(SignalWatch $watch): SignalRun
@@ -104,26 +106,26 @@ final class RunSignalWatchAction
                 'signal_watch_id' => (int) $watch->getKey(),
             ]);
 
-            return $this->complete($run, $watch, [], 0, 0, 0);
+            return $this->complete($run, $watch, [], 0, 0, 0, 0);
         }
 
         $icp = $this->activeIcp($watch->team_id);
         $profile = BusinessProfile::query()->where('team_id', $watch->team_id)->first();
 
-        $queries = $this->queries->build($watch, $definitions, $icp);
-        $queriesCount = count($queries);
+        $plan = $this->queries->build($watch, $definitions, $icp);
+        $queriesCount = $plan->count();
         $serperCostMicros = $queriesCount * (int) config('signals.cost_micros_per_request', 1_000);
 
         // --- External work: Serper search (outside any transaction) ---
         try {
-            [$items, $resultsCount] = $this->search($queries);
+            [$items, $resultsCount] = $this->search($plan->queries);
         } catch (SignalsException $e) {
             if ($e->isRetryable()) {
                 throw $e; // bubble → the job retries with backoff
             }
 
             // Misconfig/driver can never succeed; no paid request ran (the guard throws first).
-            return $this->fail($run, $watch, $e->getMessage(), $queriesCount, 0, 0);
+            return $this->fail($run, $watch, $e->getMessage(), $queriesCount, 0, 0, $plan->requested);
         }
 
         // Drop articles this team has already seen, so a re-run does no AI work on them.
@@ -145,6 +147,7 @@ final class RunSignalWatchAction
                 $queriesCount,
                 $resultsCount,
                 $costMicros,
+                $plan->requested,
             );
         }
 
@@ -157,6 +160,7 @@ final class RunSignalWatchAction
             queriesCount: $queriesCount,
             resultsCount: $resultsCount,
             costMicros: $costMicros,
+            queriesRequested: $plan->requested,
         );
     }
 
@@ -302,7 +306,7 @@ final class RunSignalWatchAction
             try {
                 $response = $this->ai->structured('signals.extract_event', [
                     'business_profile' => $this->profileSummary($profile),
-                    'location' => $watch->location,
+                    'location' => implode(', ', $this->watchedPlaces($watch)),
                     // The types, with their names, explainers and the rules that tell this kind of
                     // event from the round-ups that look like it. This is what the enum's three
                     // hard-coded descriptions used to do, now authored per team.
@@ -437,7 +441,7 @@ final class RunSignalWatchAction
      *
      * @param  list<array{0: ExtractedSignal, 1: NewsItem, 2: SignalDefinition}>  $kept
      */
-    private function complete(SignalRun $run, SignalWatch $watch, array $kept, int $queriesCount, int $resultsCount, int $costMicros): SignalRun
+    private function complete(SignalRun $run, SignalWatch $watch, array $kept, int $queriesCount, int $resultsCount, int $costMicros, int $queriesRequested = 0): SignalRun
     {
         // De-duplicate by url_hash within this run, keeping the highest-confidence result when the
         // model returns more than one for the same article.
@@ -454,12 +458,15 @@ final class RunSignalWatchAction
             $rows[] = $this->toRow($run, $watch, $extracted, $item, $definition);
         }
 
-        $created = DB::transaction(function () use ($run, $watch, $rows, $queriesCount, $resultsCount, $costMicros): int {
+        $created = DB::transaction(function () use ($run, $watch, $rows, $queriesCount, $resultsCount, $costMicros, $queriesRequested): int {
             $created = $rows === [] ? 0 : Signal::query()->insertOrIgnore($rows);
 
             $run->forceFill([
                 'status' => SignalRunStatus::Completed,
                 'queries_count' => $queriesCount,
+                // What the plan wanted, so the watch card can say coverage was trimmed (S8). A
+                // silent trim is a lie about what was searched.
+                'queries_requested' => $queriesRequested,
                 'results_count' => $resultsCount,
                 'signals_created' => $created,
                 'cost_micros' => $costMicros,
@@ -503,6 +510,15 @@ final class RunSignalWatchAction
     {
         $now = now();
 
+        // The watch's regions are the **tiebreak**, not a default: they only decide when the
+        // article names more than one place the map knows ("UK founder relocates to Dubai" names
+        // both, and a watch over Dubai means the Dubai end).
+        $regions = $watch->searchRegions();
+        $jurisdiction = $this->jurisdictions->resolve($extracted->location, $regions);
+        $resolvedMarket = $jurisdiction === null
+            ? null
+            : SignalJurisdictionResolver::marketFor($jurisdiction);
+
         return [
             'team_id' => $watch->team_id,
             'signal_watch_id' => $watch->getKey(),
@@ -519,6 +535,13 @@ final class RunSignalWatchAction
             'amount_minor' => $extracted->amountMinor,
             'currency' => $extracted->currency?->value,
             'location' => $extracted->location,
+            // **Resolved here, at extraction, and never recomputed** (S8, ADR 0019). This is the
+            // column that decides which outreach restriction a converted lead carries, so it is a
+            // deterministic place-map lookup rather than anything inferred — and it is stored as
+            // the answer that was given, because a lead's restriction must not change later
+            // because somebody tidied the lookup table.
+            'jurisdiction' => $jurisdiction,
+            'resolved_market' => $resolvedMarket?->value,
             'confidence' => $extracted->confidence,
             'relevance' => $extracted->relevance,
             'suggested_approach' => $extracted->suggestedApproach,
@@ -530,6 +553,38 @@ final class RunSignalWatchAction
             'created_at' => $now,
             'updated_at' => $now,
         ];
+    }
+
+    /**
+     * The places this watch covers, for the prompt's "watched location" line.
+     *
+     * The model geo-qualifies against this, so it has to be every place rather than the first:
+     * a watch over Dubai **and** London that only declared Dubai would have every London event
+     * marked irrelevant by the thing we asked to filter them.
+     *
+     * @return list<string>
+     */
+    private function watchedPlaces(SignalWatch $watch): array
+    {
+        $places = [];
+
+        foreach ($watch->locations ?? [] as $place) {
+            if (trim($place) !== '') {
+                $places[] = trim($place);
+            }
+        }
+
+        if ($places !== []) {
+            return $places;
+        }
+
+        foreach ($watch->searchRegions() as $region) {
+            foreach ($region->defaultLocations() as $place) {
+                $places[] = $place;
+            }
+        }
+
+        return $places;
     }
 
     /**
@@ -606,13 +661,14 @@ final class RunSignalWatchAction
      * and advancing the watch's `last_run_at` — so a persistently failing watch (e.g. a team out of
      * AI credit) backs off to its cadence instead of being re-dispatched every hour.
      */
-    private function fail(SignalRun $run, SignalWatch $watch, string $message, int $queriesCount = 0, int $resultsCount = 0, int $costMicros = 0): SignalRun
+    private function fail(SignalRun $run, SignalWatch $watch, string $message, int $queriesCount = 0, int $resultsCount = 0, int $costMicros = 0, int $queriesRequested = 0): SignalRun
     {
-        DB::transaction(function () use ($run, $watch, $message, $queriesCount, $resultsCount, $costMicros): void {
+        DB::transaction(function () use ($run, $watch, $message, $queriesCount, $resultsCount, $costMicros, $queriesRequested): void {
             $run->forceFill([
                 'status' => SignalRunStatus::Failed,
                 'error' => $message,
                 'queries_count' => $queriesCount,
+                'queries_requested' => $queriesRequested,
                 'results_count' => $resultsCount,
                 'cost_micros' => $costMicros,
                 'started_at' => $run->started_at ?? now(),

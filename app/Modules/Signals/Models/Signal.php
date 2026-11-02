@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Models;
 use App\Models\User;
 use App\Modules\Core\Concerns\BelongsToTeam;
 use App\Modules\Core\Enums\Currency;
+use App\Modules\Core\Enums\Market;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalStatus;
@@ -49,6 +50,8 @@ use Illuminate\Support\Str;
  * @property int|null $amount_minor
  * @property Currency|null $currency
  * @property string|null $location
+ * @property string|null $jurisdiction ISO-3166-1 alpha-2, resolved at extraction (S8)
+ * @property string|null $resolved_market A `Market` value, or null where the code maps to none
  * @property int $confidence
  * @property int $relevance
  * @property string|null $suggested_approach
@@ -90,6 +93,8 @@ class Signal extends Model
         'amount_minor',
         'currency',
         'location',
+        'jurisdiction',
+        'resolved_market',
         'confidence',
         'relevance',
         'suggested_approach',
@@ -171,6 +176,19 @@ class Signal extends Model
         $definition = $this->relationLoaded('definition') ? $this->definition : null;
 
         return $definition instanceof SignalDefinition ? $definition->description : null;
+    }
+
+    /**
+     * The compliance regime this signal's subject falls under, or null where none was resolved.
+     *
+     * The column is a plain string rather than an enum cast so a value written before a `Market`
+     * case was renamed cannot crash a screen — the same reasoning `OutreachRestriction::fromRaw()`
+     * uses. Null does **not** mean unrestricted: `ConvertSignalToLeadAction` falls back to the watch
+     * and then to the most restrictive of its regions (ADR 0019 section 2).
+     */
+    public function resolvedMarket(): ?Market
+    {
+        return is_string($this->resolved_market) ? Market::tryFrom($this->resolved_market) : null;
     }
 
     /**

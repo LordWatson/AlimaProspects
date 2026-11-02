@@ -137,6 +137,15 @@ export type Signal = {
     /** ISO 4217, e.g. `AED`. */
     currency: string | null;
     location: string | null;
+    /**
+     * Where the subject is, as ISO-3166-1 alpha-2, resolved deterministically at extraction.
+     *
+     * Null when the article named nowhere Alima recognises — which does **not** mean unrestricted:
+     * conversion falls back to the watch and then to the strictest of its regions (ADR 0019).
+     */
+    jurisdiction: string | null;
+    /** The compliance regime that follows from it, or null where none is recorded. */
+    resolved_market: string | null;
     /** 0–100: how sure the AI is this is a real, correctly-classified event. */
     confidence: number;
     /** 0–100: how likely this person is a high-net-worth prospect for this team. */
@@ -191,6 +200,10 @@ export type SignalRun = {
     /** Translation key, not a finished string. */
     status_label: string;
     queries_count: number;
+    /** What the plan wanted before the per-run ceiling, or null for a run from before S8. */
+    queries_requested: number | null;
+    /** How many searches the ceiling cut. Zero means none. */
+    queries_trimmed: number;
     results_count: number;
     signals_created: number;
     /** Integer micro-units. */
@@ -202,15 +215,38 @@ export type SignalRun = {
     created_at: string | null;
 };
 
+/** A region a watch may search: a Serper country/language pair, not a compliance market. */
+export type SignalRegionOption = {
+    value: string;
+    /** Translation key, not a finished string. */
+    label: string;
+    /**
+     * What choosing this region means for how the resulting leads may be approached.
+     *
+     * On the payload because choosing where to look is also choosing which rules apply, and
+     * nothing else on the watch form says so (ADR 0019).
+     */
+    approach_note: string;
+    /** The places a watch in this region starts with. */
+    default_locations?: string[];
+};
+
 /** A standing instruction to look for events in a market. */
 export type SignalWatch = {
     id: number;
     /** The team's own words — never translated. */
     name: string;
+    /**
+     * The team's declared compliance regime for this watch — a backstop for a signal whose own
+     * jurisdiction cannot be resolved, **not** the thing that picks where to look (S8, ADR 0019).
+     */
     market: string;
     /** Translation key, not a finished string. */
     market_label: string;
-    location: string;
+    /** The places this watch covers. */
+    locations: string[];
+    /** Where it searches, with the compliance note each one implies. */
+    regions: SignalRegionOption[];
     /** The types this watch looks for. Absent when the server didn't load them. */
     definitions?: SignalDefinition[];
     /** Sources this team never wants to hear from — their competitors (S6). */
@@ -246,7 +282,10 @@ export type ConvertSignalForm = {
 /** The form state the watch editor binds to. */
 export type SignalWatchForm = {
     name: string;
-    location: string;
+    /** One place per line in the form; sent as a list. */
+    locations: string[];
+    /** Region codes to search. Only the ones the server offers are accepted. */
+    regions: string[];
     /** The team's own signal types to look for (S7, ADR 0018). */
     signal_definition_ids: number[];
     /** One domain per line in the form; sent as a list. */
@@ -263,8 +302,15 @@ export type SignalWatchForm = {
  * them by cloning the library first (S7) — neither of which the server can state here.
  */
 export type SignalWatchDefaults = {
-    location: string;
+    /** The places a new watch starts with, from the team's own market. */
+    locations: string[];
+    /** The region a new watch starts in, from the team's own market. */
+    regions: string[];
     cadence: SignalWatchCadence;
+    /** The team's compliance regime, which a member cannot choose on this form. */
+    market: string;
+    /** Translation key, not a finished string. */
+    market_label: string;
 };
 
 /** The form state the signal-type editor binds to, mirroring `SignalDefinitionData::rules()`. */

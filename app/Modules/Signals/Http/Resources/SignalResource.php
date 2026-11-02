@@ -65,6 +65,12 @@ final class SignalResource extends JsonResource
             'amount_minor' => $signal->amount_minor,
             'currency' => $signal->currency?->code(),
             'location' => $signal->location,
+            // Where the subject is, resolved deterministically at extraction (S8, ADR 0019) - and
+            // the regime that follows from it, which is what decides the lead's outreach
+            // restriction on conversion. Sent so a screen can explain a restriction rather than
+            // presenting it as a fact with no provenance.
+            'jurisdiction' => $signal->jurisdiction,
+            'resolved_market' => $signal->resolved_market,
             'confidence' => $signal->confidence,
             'relevance' => $signal->relevance,
             'suggested_approach' => $signal->suggested_approach,

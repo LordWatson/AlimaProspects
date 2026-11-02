@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ArrowLeft, Pause, Play, Satellite, Trash2 } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import {
+    computed,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    watch as onChange,
+} from 'vue';
 import InputError from '@/components/InputError.vue';
 import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +33,7 @@ import { useI18n } from '@/composables/useI18n';
 import type {
     SignalCadenceOption,
     SignalDefinition,
+    SignalRegionOption,
     SignalRunProgressPayload,
     SignalRunStatus,
     SignalWatch,
@@ -48,6 +55,10 @@ const props = defineProps<{
     options: {
         /** The team's own signal types — what a watch is built from since S7 (ADR 0018). */
         definitions: SignalDefinition[];
+        /** Where a watch may look. Only regions the business has a compliance position for. */
+        regions: SignalRegionOption[];
+        /** The cap on places, so the field can say it rather than the server enforcing it alone. */
+        max_locations: number;
         cadences: SignalCadenceOption[];
         icps: { id: number; name: string; is_active: boolean }[];
     };
@@ -55,7 +66,7 @@ const props = defineProps<{
     can: { manage: boolean };
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { currency, dateTime } = useFormat();
 const page = usePage();
 
@@ -66,13 +77,108 @@ const showEditor = ref(false);
 
 const form = useForm<SignalWatchForm>({
     name: '',
-    location: props.defaults.location,
+    locations: [...props.defaults.locations],
+    regions: [...props.defaults.regions],
     signal_definition_ids: [],
     ignore_domains: [],
     cadence: props.defaults.cadence,
     is_active: true,
     icp_id: null,
 });
+
+/**
+ * One place per line, which is how somebody thinks about them, parsed into the form as they type.
+ *
+ * **Deliberately a ref and a one-way sync rather than a two-way computed.** The first version was
+ * a computed whose setter dropped blank lines and whose getter wrote the filtered text straight
+ * back into the control — so pressing Enter at the end of the text removed the line break it had
+ * just inserted, and the only way to add a second place was to split an existing line or paste
+ * one in. The textarea was not keyboard-operable for the thing it exists to do (WCAG 2.1.1,
+ * found by the S8 brand review). The raw text owns the control, the parse feeds the form, and
+ * nothing writes back.
+ */
+const locationsText = ref(props.defaults.locations.join('\n'));
+
+/** One entry per non-blank line. The server squishes, de-duplicates and caps them again. */
+function parseLines(value: string): string[] {
+    return value
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+}
+
+onChange(locationsText, (value) => {
+    form.locations = parseLines(value);
+});
+
+/**
+ * How many paid searches one check of this watch would ask for, as the member builds it.
+ *
+ * Places × regions × every template of every type ticked — the arithmetic from ADR 0019 §4, which
+ * is the number that actually matters and the one a member cannot otherwise see. "Two places cost
+ * twice as much" is true and abstract; "48 searches" is a number somebody can decide about.
+ */
+const searchesPerCheck = computed(() => {
+    const places = Math.max(form.locations.length, 1);
+    const regions = Math.max(form.regions.length, 1);
+    const templates = props.options.definitions
+        .filter((definition) =>
+            form.signal_definition_ids.includes(definition.id),
+        )
+        .reduce(
+            (total, definition) => total + definition.query_templates.length,
+            0,
+        );
+
+    return places * regions * templates;
+});
+
+/**
+ * Every place the one-click watch would cover, as a list somebody can read.
+ *
+ * It named only the first place until the S8 brand review caught it: the UAE default is Dubai *and*
+ * Abu Dhabi, so "watch Dubai every day" was quietly committing the team to twice the searches it
+ * described. A promise on a button has to be the whole promise.
+ */
+const defaultPlaces = computed(() =>
+    new Intl.ListFormat(locale.value, {
+        style: 'long',
+        type: 'conjunction',
+    }).format(props.defaults.locations),
+);
+
+/** The first place of the region the team's own market points at — never a hard-coded city. */
+const placeholderPlace = computed(
+    () =>
+        props.options.regions.find(
+            (region) => region.value === props.defaults.regions[0],
+        )?.default_locations?.[0] ?? '',
+);
+
+function toggleRegion(value: string): void {
+    form.regions = form.regions.includes(value)
+        ? form.regions.filter((region) => region !== value)
+        : [...form.regions, value];
+}
+
+/**
+ * What choosing these regions means for how the resulting leads may be approached.
+ *
+ * Shown because the watch form is where a member picks where to look, and that is also where they
+ * pick which rules apply — the one thing on this screen with a legal consequence, and nothing else
+ * would say so (ADR 0019).
+ */
+const approachNotes = computed(() =>
+    props.options.regions
+        .filter((region: SignalRegionOption) =>
+            form.regions.includes(region.value),
+        )
+        .map((region: SignalRegionOption) => ({
+            value: region.value,
+            label: region.label,
+            note: region.approach_note,
+        })),
+);
 
 /**
  * A type's name is Alima's words or the team's, and only the server knows which — see
@@ -95,17 +201,14 @@ const everyTypeId = computed(() =>
 );
 
 /**
- * The exclusion list is edited as one domain per line, which is how a team thinks about it, and
- * sent as a list. Blank lines are dropped on the way out; the server clamps and de-duplicates.
+ * The exclusion list, one domain per line. Same shape as `locationsText`, and fixed in S8 for the
+ * same reason: this one had the Enter-key defect since S6, and nobody had tried to add a second
+ * domain from the keyboard.
  */
-const ignoreDomainsText = computed({
-    get: () => form.ignore_domains.join('\n'),
-    set: (value: string) => {
-        form.ignore_domains = value
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean);
-    },
+const ignoreDomainsText = ref('');
+
+onChange(ignoreDomainsText, (value) => {
+    form.ignore_domains = parseLines(value);
 });
 
 function openNew(): void {
@@ -113,7 +216,8 @@ function openNew(): void {
     form.clearErrors();
     form.defaults({
         name: '',
-        location: props.defaults.location,
+        locations: [...props.defaults.locations],
+        regions: [...props.defaults.regions],
         // Pre-ticked: the broadest useful watch is the one most likely to find something, and a
         // first watch that finds nothing teaches the team that Signals doesn't work.
         signal_definition_ids: [...everyTypeId.value],
@@ -123,6 +227,10 @@ function openNew(): void {
         icp_id: props.options.icps.find((icp) => icp.is_active)?.id ?? null,
     });
     form.reset();
+    // The two free-text lists own their own control, so they are seeded alongside the form rather
+    // than derived from it — see `locationsText`.
+    locationsText.value = props.defaults.locations.join('\n');
+    ignoreDomainsText.value = '';
     showEditor.value = true;
 }
 
@@ -131,7 +239,8 @@ function openEdit(watch: SignalWatch): void {
     form.clearErrors();
     form.defaults({
         name: watch.name,
-        location: watch.location,
+        locations: [...watch.locations],
+        regions: watch.regions.map((region) => region.value),
         signal_definition_ids: (watch.definitions ?? []).map(
             (definition) => definition.id,
         ),
@@ -141,6 +250,8 @@ function openEdit(watch: SignalWatch): void {
         icp_id: watch.icp?.id ?? null,
     });
     form.reset();
+    locationsText.value = watch.locations.join('\n');
+    ignoreDomainsText.value = watch.ignore_domains.join('\n');
     showEditor.value = true;
 }
 
@@ -171,7 +282,8 @@ function toggleActive(watch: SignalWatch): void {
         `/signals/watches/${watch.id}`,
         {
             name: watch.name,
-            location: watch.location,
+            locations: watch.locations,
+            regions: watch.regions.map((region) => region.value),
             signal_definition_ids: (watch.definitions ?? []).map(
                 (definition) => definition.id,
             ),
@@ -427,13 +539,13 @@ onBeforeUnmount(() => {
             :icon="Satellite"
             :title="
                 t('Set up your first :location watch', {
-                    location: defaults.location,
+                    location: defaultPlaces,
                 })
             "
             :description="
                 t(
                     'We’ll add Alima’s signal types and watch :location every day — company sales, funding rounds, founders moving in. You can change any of it afterwards.',
-                    { location: defaults.location },
+                    { location: defaultPlaces },
                 )
             "
             data-test="no-watches"
@@ -442,7 +554,7 @@ onBeforeUnmount(() => {
                 <Button data-test="create-default-watch" @click="createDefault">
                     {{
                         t('Watch :location for me', {
-                            location: defaults.location,
+                            location: defaultPlaces,
                         })
                     }}
                 </Button>
@@ -505,12 +617,27 @@ onBeforeUnmount(() => {
                                     }}
                                 </Badge>
                             </div>
-                            <p class="text-sm text-muted-foreground" dir="auto">
-                                {{ watch.location }} ·
+                            <p
+                                class="text-base text-muted-foreground"
+                                dir="auto"
+                            >
+                                {{ watch.locations.join(' · ') }} ·
                                 {{ t(watch.cadence_label) }}
                                 <template v-if="watch.icp">
                                     · {{ t('shaped by') }} {{ watch.icp.name }}
                                 </template>
+                            </p>
+                            <!-- Where it searches, and the compliance note each region implies.
+                                 A member reading a watch should be able to see why its leads may
+                                 only be approached one way. -->
+                            <p
+                                v-for="region in watch.regions"
+                                :key="region.value"
+                                class="text-base text-muted-foreground"
+                                dir="auto"
+                            >
+                                {{ t(region.label) }} —
+                                {{ t(region.approach_note) }}
                             </p>
                         </div>
 
@@ -743,6 +870,23 @@ onBeforeUnmount(() => {
                                         })
                                     }}
                                 </span>
+                                <!-- A trim is coverage this run did not have, so it is said rather
+                                     than left for somebody to infer from a count that stopped
+                                     growing (ADR 0019 §4). -->
+                                <span
+                                    v-if="run.queries_trimmed > 0"
+                                    class="text-warning"
+                                    :data-test="`trimmed-${run.id}`"
+                                >
+                                    {{
+                                        t(
+                                            'Searches skipped to stay in budget: :count — use fewer places or types to cover everything.',
+                                            {
+                                                count: run.queries_trimmed,
+                                            },
+                                        )
+                                    }}
+                                </span>
                                 <span
                                     v-if="run.error"
                                     class="text-destructive"
@@ -787,27 +931,100 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="space-y-2">
-                            <Label for="watch-location">{{ t('Where') }}</Label>
-                            <Input
-                                id="watch-location"
-                                v-model="form.location"
-                                name="location"
+                            <Label for="watch-locations">{{
+                                t('Where')
+                            }}</Label>
+                            <Textarea
+                                id="watch-locations"
+                                v-model="locationsText"
+                                rows="3"
                                 required
-                                aria-describedby="watch-location-hint"
+                                :aria-invalid="
+                                    form.errors.locations ? true : undefined
+                                "
+                                aria-describedby="watch-locations-hint watch-locations-cost watch-locations-error"
+                                :placeholder="placeholderPlace"
                                 dir="auto"
                             />
                             <p
-                                id="watch-location-hint"
-                                class="text-xs text-muted-foreground"
+                                id="watch-locations-hint"
+                                class="text-base text-muted-foreground"
                             >
                                 {{
                                     t(
-                                        'A city or emirate. Alima currently watches the UAE.',
+                                        'One place per line — a city, an emirate, a region. Up to :max.',
+                                        { max: options.max_locations },
                                     )
                                 }}
                             </p>
-                            <InputError :message="form.errors.location" />
+                            <!-- The arithmetic, live. Every place is searched for every type in
+                                 every region, and that multiplication is the one thing about this
+                                 field a member cannot see for themselves (ADR 0019 §4). -->
+                            <p
+                                id="watch-locations-cost"
+                                class="font-mono text-xs text-muted-foreground"
+                                data-test="searches-per-check"
+                            >
+                                {{
+                                    t('Searches per check: :count', {
+                                        count: searchesPerCheck,
+                                    })
+                                }}
+                            </p>
+                            <InputError
+                                id="watch-locations-error"
+                                :message="form.errors.locations"
+                            />
                         </div>
+
+                        <fieldset
+                            class="space-y-3"
+                            :aria-invalid="
+                                form.errors.regions ? true : undefined
+                            "
+                            aria-describedby="watch-regions-error"
+                        >
+                            <legend
+                                class="text-base font-medium text-foreground rtl:font-bold"
+                            >
+                                {{ t('Which news to search') }}
+                            </legend>
+                            <div class="space-y-2">
+                                <Label
+                                    v-for="region in options.regions"
+                                    :key="region.value"
+                                    class="flex cursor-pointer items-start gap-3 rounded-2xl border border-border p-3 transition-colors has-[:checked]:border-brand has-[:checked]:bg-brand/5 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        class="mt-0.5 size-4 accent-brand"
+                                        :value="region.value"
+                                        :checked="
+                                            form.regions.includes(region.value)
+                                        "
+                                        @change="toggleRegion(region.value)"
+                                    />
+                                    <span class="space-y-0.5">
+                                        <span
+                                            class="block text-base font-semibold text-foreground rtl:font-bold"
+                                            >{{ t(region.label) }}</span
+                                        >
+                                        <!-- Not muted. This sentence is the compliance
+                                             consequence of ticking the box, not a hint about
+                                             how to use the control. -->
+                                        <span
+                                            class="block text-base text-foreground"
+                                            dir="auto"
+                                            >{{ t(region.approach_note) }}</span
+                                        >
+                                    </span>
+                                </Label>
+                            </div>
+                            <InputError
+                                id="watch-regions-error"
+                                :message="form.errors.regions"
+                            />
+                        </fieldset>
 
                         <fieldset class="space-y-3">
                             <legend
@@ -965,6 +1182,34 @@ onBeforeUnmount(() => {
                             }}</span>
                         </Label>
                     </div>
+
+                    <!-- Said again, together, immediately before Save: picking where to look
+                         is also picking how these leads may be approached, and that is the one
+                         consequence on this form somebody should not be able to miss. It sat under
+                         the region choices until the S8 brand review pointed out that four more
+                         groups came after it, so at phone width it was off screen by the time
+                         anybody reached the button it claimed to sit beside. -->
+                    <section
+                        v-if="approachNotes.length"
+                        class="space-y-1 rounded-2xl border border-border p-4"
+                        aria-labelledby="approach-notes-heading"
+                        data-test="approach-notes"
+                    >
+                        <h3
+                            id="approach-notes-heading"
+                            class="text-base font-semibold text-foreground rtl:font-bold"
+                        >
+                            {{ t('How you may approach these leads') }}
+                        </h3>
+                        <p
+                            v-for="note in approachNotes"
+                            :key="note.value"
+                            class="text-base text-foreground"
+                            dir="auto"
+                        >
+                            {{ t(note.label) }} — {{ t(note.note) }}
+                        </p>
+                    </section>
 
                     <DialogFooter>
                         <Button

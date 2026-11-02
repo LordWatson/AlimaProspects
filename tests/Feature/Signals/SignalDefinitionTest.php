@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Auth\Support\TeamMembership;
+use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\AuditLog;
 use App\Modules\Core\Models\Team;
@@ -68,7 +69,9 @@ it('lists the team’s types and the presets they have not taken yet', function 
             ->where('definitions.0.key', SignalPresetCatalogue::FUNDING_ROUND)
             ->where('definitions.0.is_preset', false)
             // A library that keeps offering what you already have is a library you stop reading.
-            ->has('presets', 2)
+            // A test team's market is `uk`, so the library is the UK pack minus nothing (the clone
+            // above is of a UAE preset, which was never in this team's library to begin with).
+            ->has('presets', count(SignalPresetCatalogue::keysForMarket(Market::Uk)))
             ->where('presets.0.is_preset', true)
             ->has('options.categories')
             ->has('options.icons')
@@ -86,7 +89,7 @@ it('keeps the presets out of every team-scoped read', function (): void {
     $scoped = app(TeamContext::class)->run($team, fn (): int => SignalDefinition::query()->count());
 
     expect($scoped)->toBe(0)
-        ->and(app(PlatformPresetReader::class)->active())->toHaveCount(3);
+        ->and(app(PlatformPresetReader::class)->active())->toHaveCount(count(SignalPresetCatalogue::keys()));
 });
 
 it('refuses to hand back a tenant’s row through the preset reader', function (): void {
@@ -567,7 +570,8 @@ it('drops a signal type that is not this team’s when a watch is saved', functi
     $this->actingAs($user)
         ->post(route('signal-watches.store'), [
             'name' => 'Mixed',
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
+            'regions' => ['ae'],
             'signal_definition_ids' => [$mine->getKey(), $foreign->getKey()],
             'cadence' => 'daily',
         ])
@@ -591,7 +595,8 @@ it('refuses a watch whose every signal type belongs to somebody else', function 
         ->from(route('signal-watches.index'))
         ->post(route('signal-watches.store'), [
             'name' => 'Empty',
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
+            'regions' => ['ae'],
             'signal_definition_ids' => [$foreign->getKey()],
             'cadence' => 'daily',
         ])

@@ -42,6 +42,7 @@ use Illuminate\Support\Carbon;
  * @property SignalIcon $icon
  * @property bool $is_active
  * @property list<string> $query_templates
+ * @property array<string, list<string>>|null $query_templates_i18n
  * @property list<string>|null $match_keywords
  * @property array{includes?: list<string>, excludes?: list<string>}|null $classification_rules
  * @property array{min_confidence?: int|null, min_relevance?: int|null}|null $thresholds
@@ -98,6 +99,7 @@ class SignalDefinition extends Model
         'icon',
         'is_active',
         'query_templates',
+        'query_templates_i18n',
         'match_keywords',
         'classification_rules',
         'thresholds',
@@ -199,6 +201,37 @@ class SignalDefinition extends Model
     }
 
     /**
+     * This type's search templates in a given language, or an empty list when it has none.
+     *
+     * A region whose `hl` is not English asks for its own language and falls back to the English
+     * templates where there are none (ADR 0019 section 5). The **fallback is the point**: adding an
+     * Arabic-language region must never silently empty a watch, and a type nobody has translated is
+     * the normal case rather than an error. A machine translation would be worse than the fallback —
+     * it finds nothing and looks like it works.
+     *
+     * @return list<string>
+     */
+    public function templatesForLanguage(string $language): array
+    {
+        $byLanguage = $this->query_templates_i18n ?? [];
+        $templates = $byLanguage[$language] ?? null;
+
+        if (! is_array($templates)) {
+            return [];
+        }
+
+        $out = [];
+
+        foreach ($templates as $template) {
+            if (trim($template) !== '') {
+                $out[] = trim($template);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * The confidence and relevance floors a signal of this type has to clear, falling back to the
      * global `signals.*` config where the definition sets none.
      *
@@ -256,6 +289,7 @@ class SignalDefinition extends Model
             'icon' => SignalIcon::class,
             'is_active' => 'boolean',
             'query_templates' => 'array',
+            'query_templates_i18n' => 'array',
             'match_keywords' => 'array',
             'classification_rules' => 'array',
             'thresholds' => 'array',

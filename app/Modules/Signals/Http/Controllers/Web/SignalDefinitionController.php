@@ -31,10 +31,11 @@ use Inertia\Response;
  * **preset library**, which they cannot — a preset is copied into their own types and tuned from
  * there, so a platform edit never silently changes what they are paying to run (ADR 0018 §3).
  *
- * The presets are filtered to the market a watch can actually be created in
- * ({@see SignalWatchData::DEFAULT_MARKET}), not the team's own market: v1 watches are UAE-only
- * whatever market the team trades in, so offering a type whose templates only work elsewhere would
- * be offering something that finds nothing. S8 is where those two stop being different questions.
+ * The presets are filtered to **the team's own market** (S8, ADR 0019). Until S8 that was a
+ * product-wide constant, because a watch was UAE-only whatever market the team traded in; now a UK
+ * team's watch looks at the UK, so offering them the UAE pack would be offering templates that name
+ * the wrong country. A preset with no `markets` at all is offered to everyone, which is how a
+ * type that works anywhere says so.
  */
 final class SignalDefinitionController extends Controller
 {
@@ -57,7 +58,7 @@ final class SignalDefinitionController extends Controller
             // Only the presets the team has not already taken: a library that keeps offering what
             // you already have is a library you stop reading.
             'presets' => SignalDefinitionResource::collection(
-                $presets->active(SignalWatchData::DEFAULT_MARKET)
+                $presets->active(SignalWatchData::marketFor($team->market))
                     ->reject(fn ($preset): bool => $mine->contains('preset_key', $preset->key))
                     ->values(),
             )->resolve($request),

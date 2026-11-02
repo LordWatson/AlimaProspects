@@ -23,6 +23,7 @@ use Illuminate\Support\Carbon;
  * @property int $signal_watch_id
  * @property SignalRunStatus $status
  * @property int $queries_count
+ * @property int|null $queries_requested What the plan wanted before the ceiling trimmed it (S8)
  * @property int $results_count
  * @property int $signals_created
  * @property int $cost_micros
@@ -47,6 +48,7 @@ class SignalRun extends Model
         'signal_watch_id',
         'status',
         'queries_count',
+        'queries_requested',
         'results_count',
         'signals_created',
         'cost_micros',
@@ -63,6 +65,21 @@ class SignalRun extends Model
     public function watch(): BelongsTo
     {
         return $this->belongsTo(SignalWatch::class, 'signal_watch_id');
+    }
+
+    /**
+     * How many searches the ceiling cut from this run, or zero.
+     *
+     * `queries_requested` is nullable because a run from before S8 never recorded it; null reads as
+     * "nobody counted" rather than as a run that wanted nothing, so it reports no trim.
+     */
+    public function queriesTrimmed(): int
+    {
+        if ($this->queries_requested === null) {
+            return 0;
+        }
+
+        return max(0, $this->queries_requested - $this->queries_count);
     }
 
     /**
@@ -83,6 +100,7 @@ class SignalRun extends Model
         return [
             'status' => SignalRunStatus::class,
             'queries_count' => 'integer',
+            'queries_requested' => 'integer',
             'results_count' => 'integer',
             'signals_created' => 'integer',
             'cost_micros' => 'integer',

@@ -128,18 +128,30 @@ per-team export and erase for exactly that (see `docs/modules/compliance-privacy
 
 ## 7. What to promise, and what not to
 
-**Safe to promise (it is built):** Dubai/UAE watches, daily or weekly; **signal types the client
-writes themselves** on `/signals/types`, or clones from Alima's library and tunes (S7) — including
-their own confidence and relevance floors per type; the
-feed with filters; convert-to-lead into the existing pipeline with enrichment and scoring; dismiss
-with reasons; English and Arabic with full RTL; the API for their own tooling; retention and the
-data-subject export.
+**Safe to promise (it is built):** watches over **several places at once** and over both the UAE
+and the UK (S8) — so a client who sells into Dubai and London has one watch, not two — daily or
+weekly; **signal types the client writes themselves** on `/signals/types`, or clones from Alima's
+library and tunes (S7) — including their own confidence and relevance floors per type; a **UK
+preset pack** of six types alongside the UAE three (S8), every template checked against live news
+before it shipped; the feed with filters; convert-to-lead into the existing pipeline with enrichment
+and scoring; dismiss with reasons; English and Arabic with full RTL; the API for their own tooling;
+retention and the data-subject export.
 
-**Do not promise:** UK coverage (post-v1 — Companies House streaming), Arabic-language _queries_
-(the UI is Arabic; the searches are English in v1), full-article reading (v1 works from the
-headline and snippet, so amounts are best-effort), a weekly email digest, more event types
-(appointments, IPOs, DLD launches), or contact details. All of those are on the post-v1 backlog in
-`signals-plan.md` — say "that's on the roadmap", not "we can do that".
+**Do not promise:** anywhere outside the UAE and the UK (Saudi, the US, India and Singapore are
+written and deliberately switched off until the legal position for each is taken — say "not yet",
+and do not offer a date), **Companies House filings** (the UK types read news, so a change of
+control shows up when a journalist writes about it; the registry itself is S13), Arabic-language
+_queries_ (the UI is Arabic and a watch can search Arabic-language news, but the search terms
+themselves are English until the templates are written by a native speaker), full-article reading
+(signals come from the headline and snippet, so amounts are best-effort), a weekly email digest,
+or contact details. Those are on the plan in `signals-v2-plan.md` — say "that's on the roadmap",
+not "we can do that".
+
+**If they ask about multiple countries, say the honest version**, because it is the better story: a
+watch's places decide where Alima looks, and a lead's **own** country decides how they are allowed
+to approach that person (S8, ADR 0019). A Dubai founder found by a London watch still comes with
+"get consent first — reach out on LinkedIn or through a referral", because the rule follows the
+person and not the search. That is a thing a competitor's keyword alert does not do.
 
 **The one caveat worth volunteering**, because they will find it themselves: amounts and names come
 from a headline and a snippet, so occasionally one is wrong or missing. That is why the convert form

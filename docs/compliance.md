@@ -41,6 +41,13 @@
 8. **Audit trail.** Security- and privacy-relevant actions (exports, erasures, suppression changes, impersonation, consent changes) are written to the immutable audit log (Core module).
 9. **Data minimisation & security.** Store IDs not secrets; encrypt sensitive columns at rest where warranted; structured logs never contain full personal data (log IDs). Least-privilege roles.
 10. **Cross-border transfer.** Record where data is hosted (Hetzner EU) and document the UK↔UAE↔EU transfer position. ⚖️
+11. **A restriction follows the subject, not the search.** ✅ **Built (Signals S8, ADR 0019).** Where a lead is created from something the platform _found_, the outreach restriction stamped on it is derived from **where the person is**, not from where the team was looking. In Signals that is `signals.jurisdiction` / `signals.resolved_market`, resolved at extraction from the article's own place by `SignalJurisdictionResolver`; the watch's declared `market` is only a backstop, and the regions it searches only ever **add** a restriction those two did not supply. Three rules make it safe:
+    - **Unknown fails toward the restriction.** The resolver returns null rather than guessing, and null is not "unrestricted" — the candidates are then the watch's own market and regions, and the most restrictive of those wins. A guess that fails _away_ from the restriction is the failure mode this requirement exists to prevent.
+    - **Most restrictive is asked, not hard-coded.** The ordering comes from `OutreachRestriction::allowsDirectMarketing()`, so a new restriction joins it by answering that question instead of by somebody remembering to edit a `match`.
+    - **Withdrawing a region stops the searching, never the restricting.** The switch that decides where a watch may look is a statement about future spending, not about the leads a region has already produced. A lead found under a regime is held to it whatever the configuration says later, so the restriction reads the regions the watch _stored_ and only the query builder reads the ones still offered (ADR 0019 §2a). A compliance switch that relaxes a restriction when you turn it off is worse than no switch.
+    - **An ambiguous place resolves to the most restrictive candidate.** Where the source names two jurisdictions, the stricter regime wins, and the team's own configuration is consulted only between candidates that carry the same restriction either way. It must never be the thing that picks — a restriction that depends on the order somebody ticked boxes in is not a rule (ADR 0019 §2b). Specificity is settled first: one place name sitting inside another ("Wales" inside "New South Wales") is one place matched twice, not two places named.
+    - **A region with no legal position contributes nothing, and is not offered.** `SearchRegion` knows seven regions because a country code and a language are search facts with no legal content; `config('signals.regions.*.offered')` is true only for the two regimes §1 covers. Mapping an un-positioned region to the UAE flag would have Outreach do the right thing for a reason that is false, and tell a member that reason. Enabling one is a question for §5, not a config change.
+      This requirement is the general form of a defect S8 closed before it could be reached: keyed on the watch's market alone, a UK-market watch catching a Dubai event produced a lead with **no** restriction at all. Any future source that infers a person from a published place (S13's registry sources, any lead provider) is held to the same rule.
 
 ## 4. Scraping / acquisition ethics
 
@@ -53,6 +60,8 @@
 - DSAR identity verification for prospects who are not our users.
 - Standard privacy-notice wording and the controller/processor split between AlimaProspects and tenant businesses (likely tenant = controller, we = processor; confirm and reflect in the DPA).
 - Free-zone (DIFC/ADGM) overlay for UAE tenants.
+- **The regimes for Saudi Arabia, the United States, India, Singapore and an unbiased "global" search** (added Signals S8, ADR 0019). `SearchRegion` can already search all five — a `gl` and an `hl` are search facts — and all five are **switched off** (`config('signals.regions.*.offered')`), because the platform holds a legal position for exactly two markets (§1). Offering one needs a view on its direct-marketing rules and on what `OutreachRestriction` case, if any, a lead from it should carry. Until then a watch cannot name them, which is the safe half of the trade rather than an oversight.
+- **Whether "jurisdiction unknown" should be its own `OutreachRestriction` case.** Today an unresolvable place falls back to the most restrictive restriction the watch could imply, and where that is none, none. The cleaner answer is a case meaning "approach by introduction only, basis unestablished" — but what it would _oblige_ is a question for counsel, and inventing its semantics in code would be a compliance claim made by a programmer. Recorded in ADR 0019 §3.
 - Retention defaults that satisfy both "storage limitation" and tenants' commercial needs.
 - **Sentry as a sub-processor** (added Phase 20, ADR 0017). Error reporting is a processing activity
   and Sentry is a sub-processor, so it needs listing in the processing record and in the DPA's
@@ -101,15 +110,25 @@ the two deviations from the original design noted inline.
   drafting prompt is told to keep its suggested next step to a LinkedIn approach or a referral, and
   `GET /api/v1/leads/{lead}/outreach/decisions` reports the decision per channel so a mobile client
   knows before it offers a compose screen.
-    - **Deviation from the original design:** the flag is keyed on the **watch's
-      market** (`Market::outreachRestriction()`, modelled by
-      `Core\Enums\OutreachRestriction`), **not** on the converted lead's country. The
-      restriction protects the person being approached, who is where the watch was
-      looking; keying it on the company's country silently dropped the restriction the
-      moment a Dubai founder's lead was filed under a UK holding company — which is
-      precisely the case it exists for. It is also **re-asserted after de-duplication**,
-      because a merge fills `raw` only when empty and would otherwise lose it. A
-      restriction may be **added** to a lead but never dropped from one.
+    - **Deviation from the original design:** the flag is **not** keyed on the converted
+      lead's country, and never was. The restriction protects the person being
+      approached, and the company they own may be registered elsewhere — keying it on
+      the company's country silently dropped the restriction the moment a Dubai
+      founder's lead was filed under a UK holding company, which is precisely the case
+      it exists for. It is also **re-asserted after de-duplication**, because a merge
+      fills `raw` only when empty and would otherwise lose it. A restriction may be
+      **added** to a lead but never dropped from one.
+    - **Corrected in Signals S8 (ADR 0019), and this is the current behaviour.** v1 keyed
+      the flag on the **watch's market**, which was indistinguishable from "where the
+      person is" only because every watch was UAE-only. S8 let a watch span places and
+      the conflation became wrong in both directions — over-restrictive for a London
+      founder found by a UAE watch, and **permissive** for a Dubai founder found by a UK
+      watch, who would have been stamped with nothing at all. The flag now comes from
+      the signal's own `resolved_market` first, the watch's `market` as a backstop, then
+      the most restrictive across the watch's regions, each step adding and none
+      removing (§3.11 states the general rule, and `leads.raw.jurisdiction` records the
+      code the flag was derived from so a lead can explain itself later). The fix shipped
+      in the same phase that made the defect reachable rather than after it.
 - **Retention.** Dismissed signals are hard-deleted after **90 days**; signals nobody
   acts on after **180 days**; converted signals persist as long as their lead does,
   because they are that lead's provenance. The **`signals:prune`** command enforces

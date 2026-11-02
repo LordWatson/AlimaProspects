@@ -8,6 +8,7 @@ use App\Modules\Core\Support\TeamContext;
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Data\SignalQueryPlan;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalQueryBuilder;
@@ -21,11 +22,16 @@ beforeEach(function (): void {
 });
 
 /**
+ * The query texts of a plan, in order.
+ *
+ * The builder returns a {@see SignalQueryPlan} since S8 rather than a bare list, because a caller
+ * has to be able to tell forty queries from forty queries trimmed down from six hundred.
+ *
  * @return list<string>
  */
-function queryStrings(array $queries): array
+function queryStrings(SignalQueryPlan $plan): array
 {
-    return array_map(static fn (SignalQuery $q): string => $q->q, $queries);
+    return array_map(static fn (SignalQuery $q): string => $q->q, $plan->queries);
 }
 
 /**
@@ -40,7 +46,7 @@ function definitionFor(string $key): SignalDefinition
 it('builds the templates of the definitions it is given, and no others', function (): void {
     $watch = SignalWatch::factory()->make([
         'market' => Market::Uae,
-        'location' => 'Dubai',
+        'locations' => ['Dubai'],
     ]);
 
     $queries = $this->builder->build($watch, [definitionFor(SignalPresetCatalogue::FUNDING_ROUND)]);
@@ -50,9 +56,9 @@ it('builds the templates of the definitions it is given, and no others', functio
         'UAE Series B funding',
         'Dubai startup Series A funding round',
     ])
-        ->and($queries)->each->toBeInstanceOf(SignalQuery::class);
+        ->and($queries->queries)->each->toBeInstanceOf(SignalQuery::class);
 
-    foreach ($queries as $q) {
+    foreach ($queries->queries as $q) {
         expect($q->eventKey)->toBe(SignalPresetCatalogue::FUNDING_ROUND)
             ->and($q->gl)->toBe('ae')
             ->and($q->hl)->toBe('en')
@@ -63,7 +69,7 @@ it('builds the templates of the definitions it is given, and no others', functio
 it('substitutes the watch location into {location} templates', function (): void {
     $watch = SignalWatch::factory()->make([
         'market' => Market::Uae,
-        'location' => 'Abu Dhabi',
+        'locations' => ['Abu Dhabi'],
     ]);
 
     $queries = $this->builder->build($watch, [definitionFor(SignalPresetCatalogue::RELOCATION)]);
@@ -77,7 +83,7 @@ it('substitutes the watch location into {location} templates', function (): void
 it('falls back to the market default location when the watch location is blank', function (): void {
     $watch = SignalWatch::factory()->make([
         'market' => Market::Uae,
-        'location' => '',
+        'locations' => [],
     ]);
 
     $queries = $this->builder->build($watch, [definitionFor(SignalPresetCatalogue::RELOCATION)]);
@@ -88,16 +94,16 @@ it('falls back to the market default location when the watch location is blank',
 it('covers every definition it is given', function (): void {
     $watch = SignalWatch::factory()->make([
         'market' => Market::Uae,
-        'location' => 'Dubai',
+        'locations' => ['Dubai'],
     ]);
 
-    $definitions = array_map(definitionFor(...), SignalPresetCatalogue::keys());
+    $definitions = array_map(definitionFor(...), SignalPresetCatalogue::keysForMarket(Market::Uae));
 
     $queries = $this->builder->build($watch, $definitions);
-    $keys = array_values(array_unique(array_map(static fn (SignalQuery $q): string => $q->eventKey, $queries)));
+    $keys = array_values(array_unique(array_map(static fn (SignalQuery $q): string => $q->eventKey, $queries->queries)));
 
-    expect($keys)->toEqualCanonicalizing(SignalPresetCatalogue::keys())
-        ->and(count($queries))->toBe(8); // 3 + 3 + 2 templates
+    expect($keys)->toEqualCanonicalizing(SignalPresetCatalogue::keysForMarket(Market::Uae))
+        ->and($queries->count())->toBe(8); // 3 + 3 + 2 templates
 });
 
 it('builds a hand-authored definition from its own templates', function (): void {
@@ -106,15 +112,15 @@ it('builds a hand-authored definition from its own templates', function (): void
         'query_templates' => ['{location} company hiring surge', '{location} opens new office'],
     ]);
 
-    $watch = SignalWatch::factory()->make(['market' => Market::Uae, 'location' => 'Dubai']);
+    $watch = SignalWatch::factory()->make(['market' => Market::Uae, 'locations' => ['Dubai']]);
 
-    $queries = $this->builder->build($watch, [$definition]);
+    $plan = $this->builder->build($watch, [$definition]);
 
-    expect(queryStrings($queries))->toBe([
+    expect(queryStrings($plan))->toBe([
         'Dubai company hiring surge',
         'Dubai opens new office',
     ])
-        ->and($queries[0]->eventKey)->toBe('hiring_surge');
+        ->and($plan->queries[0]->eventKey)->toBe('hiring_surge');
 });
 
 it('reads the templates off the definition, not out of config', function (): void {
@@ -122,7 +128,7 @@ it('reads the templates off the definition, not out of config', function (): voi
     // is seed data only since S7, and the builder must not consult it.
     config()->set('signals.templates.uae.funding_round', ['config template that must not appear']);
 
-    $watch = SignalWatch::factory()->make(['market' => Market::Uae, 'location' => 'Dubai']);
+    $watch = SignalWatch::factory()->make(['market' => Market::Uae, 'locations' => ['Dubai']]);
 
     $queries = queryStrings($this->builder->build($watch, [definitionFor(SignalPresetCatalogue::FUNDING_ROUND)]));
 
@@ -138,14 +144,14 @@ it('de-duplicates identical templates across definitions', function (): void {
         'query_templates' => ['{location} company sold'],
     ]);
 
-    $watch = SignalWatch::factory()->make(['market' => Market::Uae, 'location' => 'Dubai']);
+    $watch = SignalWatch::factory()->make(['market' => Market::Uae, 'locations' => ['Dubai']]);
 
     // Same text, different keys — so both are kept, because a result has to be attributable to the
     // type that asked for it.
-    expect(count($this->builder->build($watch, [$one, $two])))->toBe(2);
+    expect($this->builder->build($watch, [$one, $two])->count())->toBe(2);
 
     // Same text, same key — one query.
-    expect(count($this->builder->build($watch, [$one, $one])))->toBe(1);
+    expect($this->builder->build($watch, [$one, $one])->count())->toBe(1);
 });
 
 it('appends an ICP buying signal as an extra query when it maps to a watched definition', function (): void {
@@ -164,20 +170,20 @@ it('appends an ICP buying signal as an extra query when it maps to a watched def
         $watch = SignalWatch::factory()->make([
             'team_id' => $team->getKey(),
             'market' => Market::Uae,
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
         ]);
 
         return [$watch, $icp->fresh()];
     });
 
-    $queries = queryStrings($this->builder->build(
+    $plan = $this->builder->build(
         $watch,
         [definitionFor(SignalPresetCatalogue::FUNDING_ROUND)],
         $icp,
-    ));
+    );
 
-    expect($queries)->toContain('Dubai recently raised funding')
-        ->and(count($queries))->toBe(4); // 3 templates + 1 buying-signal query
+    expect(queryStrings($plan))->toContain('Dubai recently raised funding')
+        ->and($plan->count())->toBe(4); // 3 templates + 1 buying-signal query
 });
 
 it('ignores a buying signal that matches no definition keyword', function (): void {
@@ -196,7 +202,7 @@ it('ignores a buying signal that matches no definition keyword', function (): vo
         $watch = SignalWatch::factory()->make([
             'team_id' => $team->getKey(),
             'market' => Market::Uae,
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
         ]);
 
         return [$watch, $icp->fresh()];
@@ -204,7 +210,7 @@ it('ignores a buying signal that matches no definition keyword', function (): vo
 
     $queries = $this->builder->build($watch, [definitionFor(SignalPresetCatalogue::FUNDING_ROUND)], $icp);
 
-    expect(count($queries))->toBe(3); // templates only
+    expect($queries->count())->toBe(3); // templates only
 });
 
 it('ignores a buying signal whose keywords belong to a definition this watch does not use', function (): void {
@@ -224,7 +230,7 @@ it('ignores a buying signal whose keywords belong to a definition this watch doe
         $watch = SignalWatch::factory()->make([
             'team_id' => $team->getKey(),
             'market' => Market::Uae,
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
         ]);
 
         return [$watch, $icp->fresh()];
@@ -232,7 +238,7 @@ it('ignores a buying signal whose keywords belong to a definition this watch doe
 
     $queries = $this->builder->build($watch, [definitionFor(SignalPresetCatalogue::FUNDING_ROUND)], $icp);
 
-    expect(count($queries))->toBe(3); // templates only; the acquisition signal is dropped
+    expect($queries->count())->toBe(3); // templates only; the acquisition signal is dropped
 });
 
 it('matches an ambiguous buying signal to the first definition given, deterministically', function (): void {
@@ -257,7 +263,7 @@ it('matches an ambiguous buying signal to the first definition given, determinis
             SignalWatch::factory()->make([
                 'team_id' => $team->getKey(),
                 'market' => Market::Uae,
-                'location' => 'Dubai',
+                'locations' => ['Dubai'],
             ]),
             $icp->fresh(),
         ];
@@ -269,7 +275,7 @@ it('matches an ambiguous buying signal to the first definition given, determinis
     $acquisitionFirst = $this->builder->build($watch, [$acquisition, $funding], $icp);
     $fundingFirst = $this->builder->build($watch, [$funding, $acquisition], $icp);
 
-    $extra = static fn (array $queries): SignalQuery => collect($queries)
+    $extra = static fn (SignalQueryPlan $plan): SignalQuery => collect($plan->queries)
         ->firstOrFail(static fn (SignalQuery $q): bool => $q->q === 'Dubai sold a stake to an investment firm');
 
     expect($extra($acquisitionFirst)->eventKey)->toBe(SignalPresetCatalogue::ACQUISITION)

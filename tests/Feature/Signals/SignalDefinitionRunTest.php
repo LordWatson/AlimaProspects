@@ -77,7 +77,7 @@ function runOver(Team $team, array $definitions, array $aiResponse): SignalRun
 {
     $watch = app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()
         ->watching($definitions)
-        ->create(['team_id' => $team->getKey(), 'location' => 'Dubai']));
+        ->create(['team_id' => $team->getKey(), 'locations' => ['Dubai']]));
 
     test()->fakeNews->willReturn([
         test()->fakeNews->item('Acme did something notable', 'https://gulfbusiness.com/acme'),
@@ -178,7 +178,7 @@ it('completes an empty run rather than failing when every type is paused', funct
 
     $watch = app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()
         ->watching([$paused])
-        ->create(['team_id' => $team->getKey(), 'location' => 'Dubai']));
+        ->create(['team_id' => $team->getKey(), 'locations' => ['Dubai']]));
 
     $run = app(TeamContext::class)->run($team, fn (): SignalRun => app(RunSignalWatchAction::class)->handle($watch));
 

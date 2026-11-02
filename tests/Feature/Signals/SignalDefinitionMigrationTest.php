@@ -2,9 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Modules\Core\Enums\Market;
+use App\Modules\Core\Models\Team;
+use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -79,15 +83,15 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
     // has already been **converted**, which is the row whose provenance must survive.
     $watchAll = SignalWatch::withoutGlobalScopes()->create([
         'team_id' => $teamA->getKey(), 'name' => 'All events', 'market' => 'uae',
-        'location' => 'Dubai', 'cadence' => 'daily', 'is_active' => true,
+        'locations' => ['Dubai'], 'regions' => ['ae'], 'cadence' => 'daily', 'is_active' => true,
     ]);
     $watchPaused = SignalWatch::withoutGlobalScopes()->create([
         'team_id' => $teamA->getKey(), 'name' => 'Paused', 'market' => 'uae',
-        'location' => 'Dubai', 'cadence' => 'weekly', 'is_active' => false,
+        'locations' => ['Dubai'], 'regions' => ['ae'], 'cadence' => 'weekly', 'is_active' => false,
     ]);
     $watchB = SignalWatch::withoutGlobalScopes()->create([
         'team_id' => $teamB->getKey(), 'name' => 'Team B', 'market' => 'uae',
-        'location' => 'Abu Dhabi', 'cadence' => 'daily', 'is_active' => true,
+        'locations' => ['Abu Dhabi'], 'regions' => ['ae'], 'cadence' => 'daily', 'is_active' => true,
     ]);
 
     $runA = DB::table('signal_runs')->insertGetId([
@@ -100,7 +104,7 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
     rewindToV1Shape();
 
     DB::table('signal_watches')->where('id', $watchAll->getKey())
-        ->update(['event_types' => json_encode(SignalPresetCatalogue::keys())]);
+        ->update(['event_types' => json_encode(SignalPresetCatalogue::keysForMarket(Market::Uae))]);
     DB::table('signal_watches')->where('id', $watchPaused->getKey())
         ->update(['event_types' => json_encode([SignalPresetCatalogue::RELOCATION])]);
     DB::table('signal_watches')->where('id', $watchB->getKey())
@@ -129,7 +133,7 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
     $presets = SignalDefinition::withoutGlobalScope('team')->whereNull('team_id')->get();
 
     expect($presets)->toHaveCount(3)
-        ->and($presets->pluck('key')->sort()->values()->all())->toBe(SignalPresetCatalogue::keys())
+        ->and($presets->pluck('key')->sort()->values()->all())->toBe(SignalPresetCatalogue::keysForMarket(Market::Uae))
         ->and($presets->pluck('scope_id')->unique()->all())->toBe([SignalDefinition::PLATFORM_SCOPE])
         // A preset is not itself a clone, so it carries no provenance of one.
         ->and($presets->pluck('preset_key')->filter()->all())->toBe([]);
@@ -139,7 +143,7 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
         $mine = SignalDefinition::withoutGlobalScope('team')->where('team_id', $team->getKey())->get();
 
         expect($mine)->toHaveCount(3)
-            ->and($mine->pluck('preset_key')->sort()->values()->all())->toBe(SignalPresetCatalogue::keys())
+            ->and($mine->pluck('preset_key')->sort()->values()->all())->toBe(SignalPresetCatalogue::keysForMarket(Market::Uae))
             ->and($mine->pluck('preset_version')->unique()->all())->toBe([1])
             // The generated column agrees with the team, which is what makes `unique(scope_id, key)`
             // mean "one key per scope".
@@ -158,7 +162,7 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
     // with raw `DB` and no active team, so an assertion that depended on whichever team happened to
     // be active would be testing the harness rather than the migration. (`createUserWithTeam()`
     // leaves the last team it made active, which is exactly how that goes wrong.)
-    expect(watchedKeys($watchAll))->toBe(SignalPresetCatalogue::keys())
+    expect(watchedKeys($watchAll))->toBe(SignalPresetCatalogue::keysForMarket(Market::Uae))
         // A paused watch is migrated like any other: un-pausing it must put it back the way it was.
         ->and(watchedKeys($watchPaused))->toBe([SignalPresetCatalogue::RELOCATION])
         ->and(watchedKeys($watchB))->toBe([SignalPresetCatalogue::FUNDING_ROUND]);
@@ -198,7 +202,7 @@ it('is idempotent, so a half-applied run can simply be re-run', function (): voi
 
     $watch = SignalWatch::withoutGlobalScopes()->create([
         'team_id' => $team->getKey(), 'name' => 'A watch', 'market' => 'uae',
-        'location' => 'Dubai', 'cadence' => 'daily', 'is_active' => true,
+        'locations' => ['Dubai'], 'regions' => ['ae'], 'cadence' => 'daily', 'is_active' => true,
     ]);
 
     rewindToV1Shape();
@@ -235,4 +239,56 @@ it('leaves a team that never used Signals without a library', function (): void 
         ->and(SignalDefinition::withoutGlobalScope('team')->whereNull('team_id')->count())->toBe(3);
 
     unwindV1Shape();
+});
+
+/*
+ * The S8 UK-preset migration's rollback, which the S8 review found deleting team data.
+ *
+ * Its `down()` matched `key` and then `team_id IS NULL **or** preset_key = key`, which reads like
+ * tidying up after itself and is in fact deleting a team's own tuned clone of the preset — and with
+ * it, by FK, the attribution on every signal that clone had classified. A rollback may remove only
+ * what the migration inserted.
+ */
+
+function ukPresetMigration(): object
+{
+    return require base_path('database/migrations/2026_11_02_120006_seed_uk_signal_presets.php');
+}
+
+/**
+ * Platform rows, read the only way they can be — see `PlatformPresetReader` for why that is rare.
+ *
+ * @return Builder<SignalDefinition>
+ */
+function platformDefinitions(): Builder
+{
+    return SignalDefinition::query()->withoutGlobalScope('team')->whereNull('team_id');
+}
+
+it('rolls the UK pack back without touching a team clone of it', function (): void {
+    $team = Team::factory()->create();
+
+    // The pack is already there — the migration ran when the test database was built — so this is
+    // the state a real rollback meets: platform rows, plus one team's clone of one of them.
+    $preset = platformDefinitions()->where('key', 'uk_acquisition')->firstOrFail();
+
+    $clone = app(TeamContext::class)->run($team, fn (): SignalDefinition => SignalDefinition::factory()->create([
+        'team_id' => $team->getKey(),
+        'key' => 'uk_acquisition',
+        'name' => 'Acquisition (our wording)',
+        'preset_key' => 'uk_acquisition',
+        'preset_version' => $preset->version,
+    ]));
+
+    ukPresetMigration()->down();
+
+    expect(platformDefinitions()->where('key', 'like', 'uk_%')->count())->toBe(0)
+        // The three UAE presets are not this migration's to remove.
+        ->and(platformDefinitions()->count())->toBe(3);
+
+    // And the team's own copy, with its own wording, is still there.
+    $kept = SignalDefinition::query()->withoutGlobalScope('team')->find($clone->getKey());
+
+    expect($kept)->not->toBeNull()
+        ->and($kept->name)->toBe('Acquisition (our wording)');
 });

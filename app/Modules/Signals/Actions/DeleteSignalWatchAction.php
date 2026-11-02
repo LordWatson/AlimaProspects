@@ -38,7 +38,8 @@ final class DeleteSignalWatchAction
             $removable = $watch->signals()->where('status', '!=', SignalStatus::Converted)->count();
 
             $this->audit->log('signals.watch_deleted', $watch, [
-                'location' => $watch->location,
+                'locations' => $watch->locations ?? [],
+                'regions' => $watch->regions ?? [],
                 'cadence' => $watch->cadence->value,
                 'signals_deleted' => $removable,
                 // The converted signals that outlive the watch, because they are the provenance of

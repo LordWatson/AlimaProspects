@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Models;
 use App\Modules\Core\Concerns\BelongsToTeam;
 use App\Modules\Core\Enums\Market;
 use App\Modules\ICP\Models\Icp;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalWatchCadence;
 use App\Modules\Signals\Services\SignalQueryBuilder;
 use Database\Factories\SignalWatchFactory;
@@ -27,14 +28,21 @@ use Illuminate\Support\Carbon;
  * The types used to be a JSON list of `SignalEventType` values on this row. Since S7 they are rows
  * of their own, reached through the `signal_watch_definition` pivot — a pivot rather than a JSON
  * column of ids because "which watches use this definition?" is then one join on both MySQL and
- * SQLite (ADR 0018 §5).
+ * SQLite (ADR 0018 section 5).
+ *
+ * Since S8 the single `location` is `locations` (a list) and the implicit market-to-`gl` mapping
+ * is `regions` (a list of {@see SearchRegion}). `market` stays, demoted to the team's **declared
+ * regime** for this watch: it seeds defaults and backstops a signal whose own jurisdiction cannot
+ * be resolved, and it no longer decides where to look (ADR 0019). Those were two questions one
+ * column was answering.
  *
  * @property int $id
  * @property int $team_id
  * @property int|null $icp_id
  * @property string $name
- * @property Market $market
- * @property string $location
+ * @property Market $market The team's declared regime for this watch - a backstop, not the `gl` (S8).
+ * @property list<string>|null $locations
+ * @property list<string>|null $regions
  * @property list<string>|null $ignore_domains
  * @property SignalWatchCadence $cadence
  * @property bool $is_active
@@ -57,7 +65,8 @@ class SignalWatch extends Model
         'icp_id',
         'name',
         'market',
-        'location',
+        'locations',
+        'regions',
         'ignore_domains',
         'cadence',
         'is_active',
@@ -123,6 +132,89 @@ class SignalWatch extends Model
     }
 
     /**
+     * The regions this watch searches, as enum cases, dropping any that is no longer **offered**.
+     *
+     * `offered` is a compliance switch rather than a feature flag (ADR 0019 section 3): a region
+     * switched off because the business has taken no position on its law has to stop being
+     * searched, including for the watches that already named it. Falls back to the region matching
+     * the watch's own market, which is what the S8 backfill gave every v1 watch.
+     *
+     * @return list<SearchRegion>
+     */
+    public function searchRegions(): array
+    {
+        $regions = [];
+
+        foreach ($this->regions ?? [] as $value) {
+            $region = SearchRegion::tryFrom($value);
+
+            if ($region !== null && $region->isOffered() && ! in_array($region, $regions, strict: true)) {
+                $regions[] = $region;
+            }
+        }
+
+        return $regions === [] ? [SearchRegion::forMarket($this->market)] : $regions;
+    }
+
+    /**
+     * Every region stored on this watch, offered or not, de-duplicated.
+     *
+     * The difference from {@see searchRegions()} is the whole point of having both. `offered` is a
+     * compliance switch over what a watch may *search from now on*, so a region switched off has to
+     * stop costing money. It must **not** stop restricting: a signal this watch already found under
+     * `ae` was found there whatever the config says today, and dropping that region from the
+     * restriction backstop would quietly turn a UAE lead into an unrestricted one — the exact
+     * fail-permissive direction ADR 0019 section 3 forbids. So the restriction reads this, and only
+     * the query builder reads the filtered list.
+     *
+     * No fallback to the watch's market here: {@see candidateMarkets()} includes that already, and a
+     * fallback would make "stored" mean something it doesn't.
+     *
+     * @return list<SearchRegion>
+     */
+    public function storedRegions(): array
+    {
+        $regions = [];
+
+        foreach ($this->regions ?? [] as $value) {
+            $region = SearchRegion::tryFrom($value);
+
+            if ($region !== null && ! in_array($region, $regions, strict: true)) {
+                $regions[] = $region;
+            }
+        }
+
+        return $regions;
+    }
+
+    /**
+     * The markets this watch could produce leads under, for the restriction backstop.
+     *
+     * Only the regions that map to a regime the business holds contribute; one with none adds
+     * nothing, because the app cannot say what the rules are there (ADR 0019 section 3). The
+     * watch's own market is always included, since it is the team's declared answer.
+     *
+     * Reads {@see storedRegions()} rather than {@see searchRegions()} — see there for why switching
+     * a region off must not relax a restriction.
+     *
+     * @return list<Market>
+     */
+    public function candidateMarkets(): array
+    {
+        $markets = [$this->market];
+
+        foreach ($this->storedRegions() as $region) {
+            $market = $region->market();
+
+            if ($market !== null && ! in_array($market, $markets, strict: true)) {
+                $markets[] = $market;
+            }
+        }
+
+        return $markets;
+    }
+
+    /**
      * The runs this watch has produced.
      *
      * @return HasMany<SignalRun, $this>
@@ -149,6 +241,8 @@ class SignalWatch extends Model
     {
         return [
             'market' => Market::class,
+            'locations' => 'array',
+            'regions' => 'array',
             'ignore_domains' => 'array',
             'cadence' => SignalWatchCadence::class,
             'is_active' => 'boolean',

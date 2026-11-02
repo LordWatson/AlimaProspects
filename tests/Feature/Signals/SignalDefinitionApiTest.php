@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Auth\Enums\TokenAbility;
+use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
@@ -79,9 +80,12 @@ it('lists, shows, creates, updates and deletes signal types', function (): void 
 it('serves the preset library read-only', function (): void {
     Sanctum::actingAs($this->user, ['*']);
 
+    // A test team's market is `uk` (the `teams.market` default), so the library it is offered is
+    // the **UK pack** — which is the S8 behaviour worth asserting: a UK team is not shown templates
+    // that name Dubai.
     $this->getJson(route('api.v1.signal-definitions.presets'))
         ->assertOk()
-        ->assertJsonCount(3, 'data')
+        ->assertJsonCount(count(SignalPresetCatalogue::keysForMarket(Market::Uk)), 'data')
         ->assertJsonPath('data.0.is_preset', true)
         // A preset's wording is ours, so a client knows to translate it.
         ->assertJsonPath('data.0.translatable', true);

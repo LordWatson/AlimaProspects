@@ -158,7 +158,7 @@ final class CloneSignalPresetsAction
      */
     public function handleStartersForMarket(Team $team, User $actor, Market $market): Collection
     {
-        $starters = SignalPresetCatalogue::starterKeys();
+        $starters = SignalPresetCatalogue::starterKeys($market);
 
         /** @var list<string> $keys */
         $keys = array_values($this->presets->active($market)

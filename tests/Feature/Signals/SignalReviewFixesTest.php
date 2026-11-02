@@ -11,6 +11,7 @@ use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Data\ConvertSignalData;
 use App\Modules\Signals\Data\ExtractedSignal;
 use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalRun;
@@ -160,7 +161,8 @@ it('refuses a new watch once the team is at its ceiling', function (): void {
 
     foreach (['One', 'Two'] as $name) {
         $this->actingAs($user)->post(route('signal-watches.store'), [
-            'name' => $name, 'location' => 'Dubai',
+            'name' => $name, 'locations' => ['Dubai'],
+            'regions' => ['ae'],
             'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
             'cadence' => 'daily',
         ])->assertRedirect();
@@ -171,7 +173,8 @@ it('refuses a new watch once the team is at its ceiling', function (): void {
     $this->actingAs($user)
         ->from(route('signal-watches.index'))
         ->post(route('signal-watches.store'), [
-            'name' => 'Three', 'location' => 'Dubai',
+            'name' => 'Three', 'locations' => ['Dubai'],
+            'regions' => ['ae'],
             'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
             'cadence' => 'daily',
         ])
@@ -194,7 +197,8 @@ it('still lets an existing watch be edited at the ceiling', function (): void {
     // The cap is on create: an existing watch is already counted, so editing it must not fail.
     $this->actingAs($user)
         ->patch(route('signal-watches.update', ['watch' => $watch->getKey()]), [
-            'name' => 'Renamed', 'location' => 'Dubai',
+            'name' => 'Renamed', 'locations' => ['Dubai'],
+            'regions' => ['ae'],
             'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::RELOCATION]),
             'cadence' => 'weekly',
         ])
@@ -216,7 +220,8 @@ it('reports the ceiling through the API envelope', function (): void {
     Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signal-watches.store'), [
-        'name' => 'Nope', 'location' => 'Dubai',
+        'name' => 'Nope', 'locations' => ['Dubai'],
+        'regions' => ['ae'],
         'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
         'cadence' => 'daily',
     ])
@@ -273,6 +278,7 @@ it('drops an ignored source however the host is dressed up', function (): void {
 
     $items = app(NewsSearchClient::class)->search(new SignalQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
         gl: 'ae', hl: 'en', tbs: 'qdr:w', num: 20,
     ));
@@ -302,6 +308,7 @@ it('stores the canonical link, so userinfo can’t dress up the destination', fu
 
     $items = app(NewsSearchClient::class)->search(new SignalQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
         gl: 'ae', hl: 'en', tbs: 'qdr:w', num: 20,
     ));
@@ -318,11 +325,11 @@ it('normalises a team’s own ignored domain written with a trailing dot', funct
         ->watchingPresets([SignalPresetCatalogue::FUNDING_ROUND])
         ->create([
             'team_id' => $team->getKey(),
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
             'ignore_domains' => ['Rival.ae.', 'https://www.other.ae/'],
         ]));
 
-    $queries = app(SignalQueryBuilder::class)->build($watch, $watch->activeDefinitions()->all());
+    $queries = app(SignalQueryBuilder::class)->build($watch, $watch->activeDefinitions()->all())->queries;
 
     expect($queries[0]->ignoreDomains)->toBe(['rival.ae', 'other.ae']);
 });

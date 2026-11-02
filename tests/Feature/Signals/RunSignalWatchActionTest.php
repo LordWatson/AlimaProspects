@@ -6,6 +6,7 @@ use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\AiPlatform\Contracts\AiTransport;
 use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Billing\Enums\BillingMetric;
+use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
@@ -87,7 +88,7 @@ function dubaiWatch(Team $team, array $keys = [SignalPresetCatalogue::FUNDING_RO
         ->watchingPresets($keys)
         ->create([
             'team_id' => $team->getKey(),
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
         ]));
 }
 
@@ -344,4 +345,52 @@ it('adopts the run that "Run now" queued instead of opening a second', function 
     expect((int) $run->getKey())->toBe((int) $queued->getKey())
         ->and($run->status)->toBe(SignalRunStatus::Completed)
         ->and($count)->toBe(1);
+});
+
+/*
+ * The extraction end of S8 (ADR 0019 §2 step 1). The resolver had thorough coverage of its own and
+ * the conversion had coverage of what it does with the answer, but nothing asserted that a **run**
+ * actually writes one — found as a gap by the S8 review. A signal with a null `resolved_market`
+ * falls back to its watch, so this failing silently would look like nothing worse than every lead
+ * taking the backstop.
+ */
+
+it('records the jurisdiction the article names on every signal it creates', function (): void {
+    Event::fake([SignalsDetected::class]);
+
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Acme closes $40m Series A', 'https://gulfbusiness.com/acme')]);
+    $this->fakeAi->queueStructured(aiEvents([fundingEvent(index: 0)]));
+
+    runWatchFor($team, $watch);
+
+    $signal = app(TeamContext::class)->run($team, fn (): ?Signal => Signal::query()->first());
+
+    // "Dubai" is what the AI put in `location`; the resolver is what turns it into a legal answer.
+    expect($signal->location)->toBe('Dubai')
+        ->and($signal->jurisdiction)->toBe('AE')
+        ->and($signal->resolvedMarket())->toBe(Market::Uae);
+});
+
+it('leaves the jurisdiction null when the article names nowhere it knows', function (): void {
+    Event::fake([SignalsDetected::class]);
+
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Acme closes $40m Series A', 'https://gulfbusiness.com/acme')]);
+    $this->fakeAi->queueStructured(aiEvents([
+        array_merge(fundingEvent(index: 0), ['location' => 'remote-first']),
+    ]));
+
+    runWatchFor($team, $watch);
+
+    $signal = app(TeamContext::class)->run($team, fn (): ?Signal => Signal::query()->first());
+
+    // Null rather than a guess — and null is not "unrestricted": the conversion falls back to the
+    // watch and then to the most restrictive of its regions.
+    expect($signal->jurisdiction)->toBeNull()
+        ->and($signal->resolved_market)->toBeNull();
 });

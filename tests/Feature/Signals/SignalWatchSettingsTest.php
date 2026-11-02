@@ -8,6 +8,7 @@ use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\AuditLog;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\ICP\Models\Icp;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalWatchCadence;
 use App\Modules\Signals\Jobs\RunSignalWatchJob;
 use App\Modules\Signals\Models\Signal;
@@ -35,7 +36,7 @@ it('lists the team’s watches with their recent runs and options', function ():
 
     app(TeamContext::class)->run($team, function () use ($team): void {
         $watch = SignalWatch::factory()
-            ->watchingPresets(SignalPresetCatalogue::keys())
+            ->watchingPresets(SignalPresetCatalogue::keysForMarket(Market::Uae))
             ->create([
                 'team_id' => $team->getKey(),
                 'name' => 'Dubai wealth events',
@@ -72,7 +73,9 @@ it('lists the team’s watches with their recent runs and options', function ():
             ->where('watches.0.next_due_at', fn (?string $due): bool => $due !== null)
             ->has('options.definitions', 3)
             ->has('options.cadences', 2)
-            ->has('defaults.location')
+            ->has('defaults.locations')
+            ->has('defaults.regions')
+            ->has('options.regions')
             ->where('can.manage', true));
 });
 
@@ -101,7 +104,8 @@ it('creates a watch and audits it', function (): void {
     $this->actingAs($user)
         ->post(route('signal-watches.store'), [
             'name' => 'Dubai founders',
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
+            'regions' => ['ae'],
             'signal_definition_ids' => signalDefinitionIds($team, [
                 SignalPresetCatalogue::ACQUISITION,
                 SignalPresetCatalogue::FUNDING_ROUND,
@@ -121,8 +125,10 @@ it('creates a watch and audits it', function (): void {
         ])
         ->and($watch->cadence)->toBe(SignalWatchCadence::Weekly)
         ->and($watch->is_active)->toBeTrue()
-        // v1 is UAE-only: the market is set by the DTO, not taken from the form.
-        ->and($watch->market)->toBe(Market::Uae)
+        // The market is **the team's own** since S8 (ADR 0019), not a product-wide constant and
+        // never the form's. A test team's `teams.market` is the `'uk'` default, so this is Uk — and
+        // that is the behaviour worth asserting: a member cannot choose which law applies to them.
+        ->and($watch->market)->toBe(Market::Uk)
         // Never run, so the hourly scheduler treats it as due and picks it up within the hour.
         ->and($watch->last_run_at)->toBeNull();
 
@@ -133,12 +139,14 @@ it('ignores a market posted by a tampered form', function (): void {
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
 
-    // A UK watch would have no query templates and would silently find nothing, so the posted
-    // value is ignored rather than honoured.
+    // A member cannot choose which compliance regime applies to them, so a posted `market` is
+    // ignored and the team's own is used (S8, ADR 0019). Where to *look* is `regions`, which is on
+    // the form and validated against the regions the business has taken a position on.
     $this->actingAs($user)
         ->post(route('signal-watches.store'), [
             'name' => 'London founders',
-            'location' => 'London',
+            'locations' => ['London'],
+            'regions' => ['ae'],
             'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
             'cadence' => 'daily',
             'market' => 'uk',
@@ -146,7 +154,7 @@ it('ignores a market posted by a tampered form', function (): void {
         ->assertRedirect();
 
     expect(SignalWatch::withoutGlobalScopes()->where('team_id', $team->getKey())->sole()->market)
-        ->toBe(Market::Uae);
+        ->toBe(Market::Uk);
 });
 
 it('creates the one-click default watch for a team with none', function (): void {
@@ -165,17 +173,22 @@ it('creates the one-click default watch for a team with none', function (): void
     // Since S7 this also has to **clone the library presets first** - the team had no signal types
     // a moment ago, and a watch is built from theirs (ADR 0018). That is what keeps the shortest
     // path one click instead of making them assemble a library before they can look at anything.
-    expect($watch->location)->toBe('Dubai')
-        ->and($watch->eventKeys())->toBe(SignalPresetCatalogue::keys())
+    // **The team's own market decides where it looks** (S8, ADR 0019). A test team's
+    // `teams.market` is the `'uk'` default, so the one-click watch is a London watch over the UK
+    // starter pack — which is the point of the phase: a UK team's first watch is a UK watch.
+    expect($watch->locations)->toBe(['London'])
+        ->and($watch->regions)->toBe(['gb'])
+        ->and($watch->market)->toBe(Market::Uk)
+        ->and($watch->eventKeys())->toBe(SignalPresetCatalogue::starterKeys(Market::Uk))
         ->and($watch->cadence)->toBe(SignalWatchCadence::Daily)
         ->and($watch->is_active)->toBeTrue();
 
     $definitions = SignalDefinition::withoutGlobalScopes()->where('team_id', $team->getKey())->get();
 
-    expect($definitions)->toHaveCount(3)
+    expect($definitions)->toHaveCount(count(SignalPresetCatalogue::starterKeys(Market::Uk)))
         // Clones, carrying the provenance that lets S15 offer the diff when a preset moves on.
         ->and($definitions->pluck('preset_key')->sort()->values()->all())
-        ->toBe(SignalPresetCatalogue::keys());
+        ->toBe(SignalPresetCatalogue::starterKeys(Market::Uk));
 });
 
 it('validates a watch', function (): void {
@@ -183,9 +196,10 @@ it('validates a watch', function (): void {
 
     $this->actingAs($user)
         ->post(route('signal-watches.store'), [
-            'name' => '', 'location' => '', 'signal_definition_ids' => [], 'cadence' => 'hourly',
+            'name' => '', 'locations' => [],
+            'regions' => [], 'signal_definition_ids' => [], 'cadence' => 'hourly',
         ])
-        ->assertSessionHasErrors(['name', 'location', 'signal_definition_ids', 'cadence']);
+        ->assertSessionHasErrors(['name', 'locations', 'regions', 'signal_definition_ids', 'cadence']);
 });
 
 it('refuses an ICP from another team', function (): void {
@@ -200,7 +214,8 @@ it('refuses an ICP from another team', function (): void {
     $this->actingAs($user)
         ->post(route('signal-watches.store'), [
             'name' => 'Dubai',
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
+            'regions' => ['ae'],
             'signal_definition_ids' => signalDefinitionIds(
                 $user->currentTeam()->firstOrFail(),
                 [SignalPresetCatalogue::ACQUISITION],
@@ -223,7 +238,8 @@ it('updates a watch without making a reactivated one instantly due', function ()
     $this->actingAs($user)
         ->patch(route('signal-watches.update', ['watch' => $watch->getKey()]), [
             'name' => 'Back on',
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
+            'regions' => ['ae'],
             'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::FUNDING_ROUND]),
             'cadence' => 'daily',
             'is_active' => true,
@@ -356,7 +372,8 @@ it('stops a read-only member managing or running watches', function (): void {
         ->assertInertia(fn ($page) => $page->where('can.manage', false));
 
     $this->actingAs($readOnly)->post(route('signal-watches.store'), [
-        'name' => 'Nope', 'location' => 'Dubai',
+        'name' => 'Nope', 'locations' => ['Dubai'],
+        'regions' => ['ae'],
         'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
         'cadence' => 'daily',
     ])->assertForbidden();
@@ -385,7 +402,8 @@ it('404s on another team’s watch rather than admitting it exists', function ()
 
     $this->actingAs($user)
         ->patch(route('signal-watches.update', ['watch' => $watch->getKey()]), [
-            'name' => 'Mine now', 'location' => 'Dubai',
+            'name' => 'Mine now', 'locations' => ['Dubai'],
+            'regions' => ['ae'],
             'signal_definition_ids' => signalDefinitionIds($user->currentTeam()->firstOrFail(), [SignalPresetCatalogue::ACQUISITION]),
             'cadence' => 'daily',
         ])
@@ -426,4 +444,102 @@ it('leaves a queued run on the screen the moment a member presses Run now', func
             ->where('watches.0.runs.0.status', 'queued')
             ->where('watches.0.runs.0.signals_created', 0)
             ->where('watches.0.runs.0.started_at', null));
+});
+
+/*
+ * Found by the S8 review, and the sharpest of its findings because nothing on screen would show it.
+ *
+ * `market` is the watch's compliance regime (ADR 0019 §2 step 2) and it comes from the **team**
+ * row, not the form — a member cannot choose which law applies to them. It was being re-applied on
+ * every save, and `teams.market` defaults to `uk`: so a UAE team that had never visited its
+ * settings would have had every watch flip to `uk` the first time anybody renamed one, losing the
+ * backstop that keeps a Dubai lead restricted when an article names nowhere.
+ */
+
+it('does not rewrite a watch market when a member edits it', function (): void {
+    $user = createUserWithTeam();
+    $team = $user->currentTeam()->firstOrFail();
+
+    // The team row says `uk` — the column default, which is what a team that never visited its
+    // settings carries. The watch says `uae`, which is what the S8 backfill gave every v1 watch.
+    $team->forceFill(['market' => Market::Uk->value])->save();
+
+    $watch = app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()->create([
+        'team_id' => $team->getKey(),
+        'market' => Market::Uae,
+    ]));
+
+    $this->actingAs($user)
+        ->patch(route('signal-watches.update', ['watch' => $watch->getKey()]), [
+            'name' => 'Renamed, nothing else',
+            'locations' => ['Dubai'],
+            'regions' => ['ae'],
+            'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
+            'cadence' => 'daily',
+            'is_active' => true,
+        ])
+        ->assertRedirect(route('signal-watches.index'));
+
+    $watch->refresh();
+
+    expect($watch->name)->toBe('Renamed, nothing else')
+        ->and($watch->market)->toBe(Market::Uae);
+});
+
+it('refuses a region the business has taken no compliance position on', function (): void {
+    // `offered` is the switch, and it is a compliance switch rather than a feature flag: a watch
+    // that could name Singapore would produce leads nobody has decided the rules for (ADR 0019 §3).
+    $user = createUserWithTeam();
+    $team = $user->currentTeam()->firstOrFail();
+
+    $this->actingAs($user)
+        ->post(route('signal-watches.store'), [
+            'name' => 'Singapore',
+            'locations' => ['Singapore'],
+            'regions' => ['sg'],
+            'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
+            'cadence' => 'daily',
+            'is_active' => true,
+        ])
+        ->assertSessionHasErrors('regions.0');
+});
+
+it('remembers a withdrawn region the editor could not show', function (): void {
+    // The companion to the restriction fix: `storedRegions()` keeps the backstop, but only while
+    // the row survives. The form is sent the *offered* regions, so a member editing this watch
+    // never sees the withdrawn one and cannot have meant to untick it — and the save would
+    // otherwise drop it, taking the backstop with it.
+    $user = createUserWithTeam();
+    $team = $user->currentTeam()->firstOrFail();
+
+    $watch = app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()->create([
+        'team_id' => $team->getKey(),
+        'market' => Market::Uk,
+        'locations' => ['London', 'Dubai'],
+        'regions' => ['gb', 'ae'],
+    ]));
+
+    config()->set('signals.regions.ae.offered', false);
+
+    $this->actingAs($user)
+        ->patch(route('signal-watches.update', ['watch' => $watch->getKey()]), [
+            'name' => 'Renamed',
+            'locations' => ['London', 'Dubai'],
+            // What the editor would post: only the regions it was given.
+            'regions' => ['gb'],
+            'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
+            'cadence' => 'daily',
+            'is_active' => true,
+        ])
+        ->assertRedirect(route('signal-watches.index'));
+
+    expect($watch->refresh()->regions)->toEqualCanonicalizing(['gb', 'ae']);
+
+    // It is remembered, not searched: the query builder drops it on its own.
+    $searched = array_map(
+        static fn (SearchRegion $region): string => $region->value,
+        $watch->searchRegions(),
+    );
+
+    expect($searched)->toBe(['gb']);
 });

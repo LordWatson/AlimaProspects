@@ -6,6 +6,7 @@ namespace Database\Factories;
 
 use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Models\Team;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalWatchCadence;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
@@ -34,8 +35,12 @@ class SignalWatchFactory extends Factory
             'team_id' => Team::factory(),
             'icp_id' => null,
             'name' => 'Dubai wealth events',
+            // The market is the team's declared compliance regime and the location/region are where
+            // to look - two questions one column used to answer (S8, ADR 0019). A fixture declares
+            // both, so a test that cares about one is not implicitly asserting the other.
             'market' => Market::Uae,
-            'location' => 'Dubai',
+            'locations' => ['Dubai'],
+            'regions' => [SearchRegion::Ae->value],
             'cadence' => SignalWatchCadence::Daily,
             'is_active' => true,
             'last_run_at' => null,
@@ -86,6 +91,35 @@ class SignalWatchFactory extends Factory
 
             $watch->definitions()->sync($rows);
         });
+    }
+
+    /**
+     * A UK watch: London, `gb`, and the UK compliance regime.
+     *
+     * The second market S8 makes possible, and the shape most of this phase's tests need.
+     */
+    public function uk(string $name = 'London wealth events'): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'name' => $name,
+            'market' => Market::Uk,
+            'locations' => ['London'],
+            'regions' => [SearchRegion::Gb->value],
+        ]);
+    }
+
+    /**
+     * A watch spanning places and regions - the thing S8 exists for.
+     *
+     * @param  list<string>  $locations
+     * @param  list<SearchRegion>  $regions
+     */
+    public function covering(array $locations, array $regions): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'locations' => $locations,
+            'regions' => array_map(static fn (SearchRegion $region): string => $region->value, $regions),
+        ]);
     }
 
     public function inactive(): static

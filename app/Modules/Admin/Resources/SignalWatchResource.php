@@ -72,7 +72,13 @@ final class SignalWatchResource extends AdminResource
             // machinery than the answer is worth, and `/admin/signals` already shows each signal's
             // own `event_key`, which is the question an operator actually asks.
             ResourceColumn::text('ignore_domains', 'Ignored domains'),
-            ResourceColumn::text('location', 'Location'),
+            // `locations` and `regions` are JSON lists since S8 (ADR 0019), which the registry's
+            // text column renders as the raw array. That is honest and readable for an operator
+            // answering "where is this watch looking" - the alternative would be a formatter for
+            // one read-only detail panel. `market` stays in the index columns above, where it means
+            // the team's declared compliance regime rather than where the watch looks.
+            ResourceColumn::text('locations', 'Places'),
+            ResourceColumn::text('regions', 'Regions'),
         ];
     }
 

@@ -629,3 +629,50 @@ Four things were left as judgements rather than changed, and are flagged here fo
 4. **Grade B still depends on `--info`** (§7.6, §7.7) and the dark `--brand`, `--warning`, `--info`
    and `--destructive` values remain unapproved (§7.10). Nothing new was built on them; the two
    places that had been were moved off (items 9 and 13 above).
+
+### 7i. Added 2026-11-02 (the Signals watch form, S8)
+
+Geography made the watch form the one settings screen in the product with a **legal** consequence:
+choosing where to look also chooses how the resulting leads may be approached. Four things came out
+of the brand review of it, and two are records rather than changes.
+
+1. **The approach note is not helper text.** It was styled exactly like every other muted hint in
+   the dialog, so the one sentence on the form with a legal consequence read as advice to skim. The
+   per-row note is now `text-foreground` rather than muted, and the summary that repeats it is a
+   real `<h3>` in a labelled `<section>` rather than a mono eyebrow — a tracked-caps label reads as
+   a category, and this is a statement.
+2. **It moved to immediately above Save.** The code comment claimed it sat "where somebody is about
+   to press Save" and it did not: four more groups came after it, so at phone width or 200% zoom it
+   was off screen by the time anybody reached the button. A claim like that in a comment is worth
+   checking against the DOM order.
+3. **`text-warning` on the trim line is correct and stays.** `--warning` `#8A5A00` is
+   `status.warning`, nowhere near Signal Orange `#F03D2A`, 5.3:1 on canvas at `text-sm`, and the
+   words carry the meaning without the colour. Reduced coverage is a real degradation rather than a
+   §7f.5 "not a problem", so amber is the right register. The copy gained the way out ("use fewer
+   places or types to cover everything") — a warning with no remedy is just an apology.
+4. **A `<textarea>` whose value is a filtered round trip is not keyboard-operable.** Pressing Enter
+   at the end of the text removed the line break it had just inserted, so the only way to add a
+   second place was to split an existing line or paste one in (WCAG 2.1.1). Both lists on this form
+   had it — the skip list since S6 — and both now keep their raw text in a `ref` and parse one way
+   into the form. **Worth checking anywhere else a two-way computed filters what it writes back.**
+
+**Flagged for brand-owner approval (§7):**
+
+1. **The approach-note wording, in both languages.** It is compliance copy: the UAE note now
+   carries "never" with the force the English intends, and the UK note says what a member may
+   actually do rather than naming a document. The Arabic was rewritten in the same pass and needs a
+   native **legal-register** reader — the first version said "sea" for "search", softened "never" to
+   "and not", and used "customers" for prospects on a line where that imprecision matters.
+2. **Whether the region note should link to the LIA page.** It currently names the assessment in
+   words. A link would be more useful and puts a second action inside a checkbox label.
+3. **The dark `--warning` `#D9B15A` is still the unapproved §7.10 value**, and this is now one more
+   place that depends on it. Added to the re-measure list.
+
+**Left standing, recorded so the next pass does not rediscover it:** the region rows are the fourth
+hand-rolled checkbox row in this dialog (`accent-brand` on a native input inside a `<Label>`, with
+`has-[:checked]` styling). They pass focus, hit area, keyboard and 1.4.1 — the native tick carries
+the state, not the tint — but the dialog now shows two checkbox looks, this one and
+`ui/checkbox/Checkbox.vue`'s Ink-filled one. **One `ChoiceRow` component should take both, before a
+fifth copy.** The dialog also still hand-rolls `Label` + control + `InputError` rather than using
+`FormField` (§7h); S8 wired the describedby chain and `aria-invalid` on the two fields it touched
+rather than converting the form, which is a bigger change than a geography phase should carry.

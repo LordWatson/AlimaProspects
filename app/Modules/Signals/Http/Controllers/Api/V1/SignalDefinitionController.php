@@ -30,6 +30,9 @@ use Illuminate\Http\Response;
  * in tens, and a client that has to page through it to render a picker is a client we made do extra
  * work for nothing. `PaginatedIndexRequest` governs the endpoints that return a tenant's own
  * growing collections; this is not one.
+ *
+ * It is filtered to **the team's own market** since S8 (ADR 0019) — a UK team is offered the UK
+ * pack, and a preset with no `markets` is offered to everyone.
  */
 final class SignalDefinitionController extends Controller
 {
@@ -45,7 +48,7 @@ final class SignalDefinitionController extends Controller
     }
 
     /**
-     * The platform preset library, filtered to the market a watch can be created in.
+     * The platform preset library, filtered to the team's own market.
      */
     public function presets(Request $request, PlatformPresetReader $presets): AnonymousResourceCollection
     {
@@ -56,7 +59,9 @@ final class SignalDefinitionController extends Controller
         // Read-only.
         $this->authorize('viewAny', $this->transientDefinition($team));
 
-        return SignalDefinitionResource::collection($presets->active(SignalWatchData::DEFAULT_MARKET));
+        return SignalDefinitionResource::collection(
+            $presets->active(SignalWatchData::marketFor($team->market)),
+        );
     }
 
     public function show(Request $request, int $definition): SignalDefinitionResource

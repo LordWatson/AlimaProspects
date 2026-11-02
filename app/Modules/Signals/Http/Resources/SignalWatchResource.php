@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Signals\Http\Resources;
 
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Models\SignalWatch;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -35,9 +36,19 @@ final class SignalWatchResource extends JsonResource
         return [
             'id' => $watch->id,
             'name' => $watch->name,
+            // The team's declared compliance regime for this watch, which since S8 is a
+            // backstop rather than the thing that picks where to look (ADR 0019).
             'market' => $watch->market->value,
             'market_label' => $watch->market->label(),
-            'location' => $watch->location,
+            'locations' => $watch->locations ?? [],
+            // Sent with their labels and their **approach note**, because choosing where to look is
+            // also choosing how the resulting leads may be approached and nothing else on the
+            // screen says so.
+            'regions' => array_map(static fn (SearchRegion $region): array => [
+                'value' => $region->value,
+                'label' => $region->label(),
+                'approach_note' => $region->approachNote(),
+            ], $watch->searchRegions()),
             'definitions' => $this->whenLoaded(
                 'definitions',
                 fn (): array => SignalDefinitionResource::collection($watch->definitions)->resolve($request),

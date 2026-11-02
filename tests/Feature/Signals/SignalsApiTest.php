@@ -204,7 +204,8 @@ it('lists, shows, creates, updates and deletes watches', function (): void {
     // Create — 201 with the new watch.
     $created = $this->postJson(route('api.v1.signal-watches.store'), [
         'name' => 'Dubai founders',
-        'location' => 'Dubai',
+        'locations' => ['Dubai'],
+        'regions' => ['ae'],
         'signal_definition_ids' => signalDefinitionIds($team, [
             SignalPresetCatalogue::ACQUISITION,
             SignalPresetCatalogue::FUNDING_ROUND,
@@ -228,7 +229,8 @@ it('lists, shows, creates, updates and deletes watches', function (): void {
 
     $this->patchJson(route('api.v1.signal-watches.update', ['watch' => $created]), [
         'name' => 'Renamed',
-        'location' => 'Abu Dhabi',
+        'locations' => ['Abu Dhabi'],
+        'regions' => ['ae'],
         'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::RELOCATION]),
         'cadence' => 'weekly',
         'is_active' => false,
@@ -251,10 +253,10 @@ it('validates a watch', function (): void {
     Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signal-watches.store'), [
-        'name' => '', 'location' => '', 'signal_definition_ids' => [], 'cadence' => 'hourly',
+        'name' => '', 'locations' => [], 'regions' => [], 'signal_definition_ids' => [], 'cadence' => 'hourly',
     ])
         ->assertStatus(422)
-        ->assertApiValidationErrors(['name', 'location', 'signal_definition_ids', 'cadence']);
+        ->assertApiValidationErrors(['name', 'locations', 'regions', 'signal_definition_ids', 'cadence']);
 });
 
 it('accepts a run and answers 202 without waiting for it', function (): void {
@@ -341,7 +343,8 @@ it('stops a read-only token managing watches', function (): void {
 
     $this->getJson(route('api.v1.signal-watches.index'))->assertOk();
     $this->postJson(route('api.v1.signal-watches.store'), [
-        'name' => 'Nope', 'location' => 'Dubai',
+        'name' => 'Nope', 'locations' => ['Dubai'],
+        'regions' => ['ae'],
         'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
         'cadence' => 'daily',
     ])->assertForbidden();

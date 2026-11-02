@@ -47,7 +47,9 @@ return [
     // Serper `tbs` recency window: past week.
     'recency' => env('SIGNALS_RECENCY', 'qdr:w'),
 
-    // Interface language for results (v1: English only).
+    // Fallback interface language for results. **Per region since S8** (ADR 0019 §5) — this is
+    // only the default a region inherits when it declares no `hl` of its own, and nothing reads it
+    // directly any more: `SearchRegion::hl()` is the one that decides.
     'hl' => env('SIGNALS_HL', 'en'),
 
     // Indicative billed cost of one /news query, in micro-units (~$0.001). Surfaced on
@@ -87,13 +89,104 @@ return [
     'min_confidence' => (int) env('SIGNALS_MIN_CONFIDENCE', 60),
     'min_relevance' => (int) env('SIGNALS_MIN_RELEVANCE', 40),
 
-    // Per-market search settings. `gl` is the Serper country code; `default_location` seeds a watch
-    // when the ICP has no Geography value.
+    /*
+     * Per-market search settings.
+     *
+     * **Superseded by `regions` below (S8, ADR 0019)** and kept only because
+     * `SignalWatchData::defaultWatch()` still seeds a watch's first place from
+     * `markets.<market>.default_location`. `gl` is no longer read from here at all — a watch picks
+     * `SearchRegion`s and each one carries its own `gl`, because "where do we look" and "which rules
+     * apply" turned out to be different questions that one column was answering.
+     */
     'markets' => [
         'uae' => [
             'gl' => 'ae',
             'default_location' => 'Dubai',
         ],
+        'uk' => [
+            'gl' => 'gb',
+            'default_location' => 'London',
+        ],
+    ],
+
+    /*
+     * Where a watch may look (S8, ADR 0019). Keyed by `SearchRegion` value, which is also the
+     * Serper `gl` code.
+     *
+     * **`offered` is a compliance switch, not a feature flag.** The enum knows about seven regions
+     * because `gl`/`hl` carry no legal content, but choosing a region also chooses how the leads it
+     * produces may be approached — and the app holds a position on exactly two jurisdictions
+     * (ADR 0007: UK legitimate interest, UAE PDPL prior consent). A region with no position
+     * contributes nothing to a lead's outreach restriction, so offering one would mean shipping
+     * leads nobody has decided the rules for. Turning one on is a one-line change here **and** a
+     * question for counsel — see `docs/compliance.md` §5.
+     *
+     * `hl` is the Serper interface language for results from the region. `ae` stays `en` until
+     * somebody writes Arabic query templates: a machine-translated search query finds nothing and
+     * looks like it works (ADR 0019 §5).
+     */
+    'regions' => [
+        'ae' => [
+            'offered' => (bool) env('SIGNALS_REGION_AE', true),
+            'hl' => env('SIGNALS_REGION_AE_HL', 'en'),
+            'default_locations' => ['Dubai', 'Abu Dhabi'],
+        ],
+        'gb' => [
+            'offered' => (bool) env('SIGNALS_REGION_GB', true),
+            'hl' => 'en',
+            'default_locations' => ['London'],
+        ],
+        // ⚖️ No compliance position recorded. Ready in code, not offered to a team.
+        'sa' => ['offered' => (bool) env('SIGNALS_REGION_SA', false), 'hl' => 'en', 'default_locations' => ['Riyadh']],
+        'us' => ['offered' => (bool) env('SIGNALS_REGION_US', false), 'hl' => 'en', 'default_locations' => ['New York']],
+        'in' => ['offered' => (bool) env('SIGNALS_REGION_IN', false), 'hl' => 'en', 'default_locations' => ['Mumbai']],
+        'sg' => ['offered' => (bool) env('SIGNALS_REGION_SG', false), 'hl' => 'en', 'default_locations' => ['Singapore']],
+        'global' => ['offered' => (bool) env('SIGNALS_REGION_GLOBAL', false), 'hl' => 'en', 'default_locations' => []],
+    ],
+
+    // How many places one watch may cover, and how many regions (S8). The product of templates and
+    // locations is what a run pays for, so these two and `max_queries_per_run` are one budget seen
+    // from three sides.
+    'max_locations_per_watch' => (int) env('SIGNALS_MAX_LOCATIONS_PER_WATCH', 10),
+    'max_regions_per_watch' => (int) env('SIGNALS_MAX_REGIONS_PER_WATCH', 5),
+
+    /*
+     * Free-text place → ISO-3166-1 alpha-2, for `SignalJurisdictionResolver` (S8, ADR 0019).
+     *
+     * This map is the input to a **legal** rule: it decides which outreach restriction a converted
+     * lead carries, so it is deterministic data rather than anything inferred, and a place it does
+     * not know resolves to **null** — which fails toward the restriction rather than away from it.
+     *
+     * Matching is case-insensitive and whole-token, so "Dubai" matches "Dubai, UAE" and
+     * "Dubai-based" without "Mumbai" matching "umbai". Longer keys are tried first, so
+     * "New South Wales" cannot be decided by "Wales".
+     *
+     * Adding a place is a config line. Keep the aliases a newspaper would actually print.
+     */
+    'jurisdictions' => [
+        'AE' => [
+            'united arab emirates', 'uae', 'u.a.e.', 'emirates',
+            'dubai', 'dxb', 'abu dhabi', 'sharjah', 'ajman', 'fujairah',
+            'ras al khaimah', 'umm al quwain', 'difc', 'adgm', 'dmcc', 'jebel ali',
+        ],
+        'GB' => [
+            'united kingdom', 'uk', 'u.k.', 'great britain', 'britain',
+            'england', 'scotland', 'wales', 'northern ireland',
+            'london', 'manchester', 'birmingham', 'leeds', 'glasgow', 'edinburgh',
+            'bristol', 'liverpool', 'cardiff', 'belfast', 'cambridge', 'oxford',
+            'the city of london', 'canary wharf',
+        ],
+        'SA' => ['saudi arabia', 'saudi', 'ksa', 'riyadh', 'jeddah', 'dammam', 'neom'],
+        'US' => [
+            'united states', 'usa', 'u.s.', 'u.s.a.', 'america',
+            'new york', 'nyc', 'san francisco', 'california', 'texas', 'boston', 'chicago',
+        ],
+        'IN' => ['india', 'mumbai', 'bengaluru', 'bangalore', 'delhi', 'new delhi', 'hyderabad', 'chennai', 'pune'],
+        'SG' => ['singapore'],
+        'QA' => ['qatar', 'doha'],
+        'KW' => ['kuwait'],
+        'BH' => ['bahrain', 'manama'],
+        'OM' => ['oman', 'muscat'],
     ],
 
     // Source domains to drop from /news results: property portals (the client's competitors) and

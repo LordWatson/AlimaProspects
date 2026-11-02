@@ -1,6 +1,6 @@
 # Signals
 
-> Status: **v1 complete (S0–S6) · v2 in progress (S7 landed; S8–S16 planned, see `signals-v2-plan.md`)**
+> Status: **v1 complete (S0–S6) · v2 in progress (S7–S8 landed; S9–S16 planned, see `signals-v2-plan.md`)**
 > Owner: Product · Last updated: 2026-11-02
 
 ## Purpose
@@ -29,7 +29,11 @@ deploy, so a recruiter watching for a hiring surge and a contractor watching for
 permission are configuration rather than a release. v1's three types are the first three
 entries in a **platform preset library** teams clone from.
 
-Still UAE-only, and still one `location` per watch — S8 is the phase that changes that.
+**S8 made it multi-market** (ADR 0019). A watch covers several places and several
+`SearchRegion`s at once, so a team selling into Dubai and London has one watch rather than two, and
+the UK is a first-class market with its own preset pack. The same phase fixed a compliance defect
+that multi-geography would otherwise have made live: the outreach restriction on a converted lead
+now **follows the signal's own jurisdiction** rather than the watch's market.
 
 ## Code map
 
@@ -59,6 +63,17 @@ Still UAE-only, and still one `location` per watch — S8 is the phase that chan
       branch on all four. That test, "does the application branch on the value", is the line
       ADR 0018 §1 draws, and it is the only place in the codebase where `CLAUDE.md` §2's
       "enums for every type column" is set aside.
+    - **Enums (S8 ✅):** `SearchRegion` (`Ae`, `Gb`, `Sa`, `Us`, `In`, `Sg`, `Global`) — **where to
+      look**, which ADR 0019 separates from `Core\Enums\Market`'s **which rules apply**. It carries
+      a nullable `gl()` (`global` sends no country code at all), an `hl()`, `defaultLocations()`,
+      an `approachNote()` for the watch form, and a **nullable** `market()`: "we can search here and
+      we have not taken a legal position here" is a representable state, and the alternative —
+      adding `Market` cases — would be a programmer asserting a compliance position the business
+      has not taken. It stays an enum because the app does branch on it: `gl`/`hl` per case, and
+      `isOffered()` gates it against `config('signals.regions.*.offered')`, which is **true only for
+      `ae` and `gb`** — the two regimes ADR 0007 covers. The other five are ready in code and not
+      offered, so turning one on is a config line _and_ a compliance decision (⚖️
+      `docs/compliance.md` §5).
     - **Models (S7 ✅):** `SignalDefinition` — what a signal type _is_: its name, its one-line
       explainer, its `query_templates`, its `match_keywords` (the ICP map), its
       `classification_rules` (`includes` / `excludes`, handed to the AI), its own `thresholds`,
@@ -178,6 +193,18 @@ Still UAE-only, and still one `location` per watch — S8 is the phase that chan
       company name and `alreadyConverted()` for a dismiss/restore of a converted signal
       — and for the one conversion case that can't be made idempotent: a converted
       signal whose lead has been deleted.
+    - **Services (S8 ✅):** `SignalJurisdictionResolver` — the AI's free-text `location`
+      ("Dubai, UAE", "London") to an ISO-3166-1 alpha-2 code, from the deterministic place map in
+      `config('signals.jurisdictions')`. Three properties matter. It matches **whole tokens**
+      (`(?<![\p{L}\p{N}])…(?![\p{L}\p{N}])`), so "Indiana" is not India and "Ukraine" is not the
+      UK. Its aliases are sorted **longest-first across every country at once**, not within each
+      one — sorting per country let "Wales" (GB) beat "New South Wales" (AU) depending on map
+      order, which a test caught. And it returns **null when unsure** rather than guessing, because
+      null fails toward the restriction (ADR 0019 §3) while a guess fails away from it. The watch's
+      own regions are a tiebreak only, never a source of an answer.
+    - **Data (S8 ✅):** `SignalQueryPlan` — the queries a run will make _and_ the number it wanted
+      (`requested`), so `wasTrimmed()` can be true and the watch card can say coverage was reduced.
+      A silent trim is a lie about what was searched.
     - **Log channel (S1 ✅):** `signals` (daily, `config/logging.php`) — log IDs/counts
       only, never names or article text.
     - **Testing:** `app/Modules/Signals/Testing/FakeNewsSearchClient` (canned Dubai
@@ -234,6 +261,14 @@ Still UAE-only, and still one `location` per watch — S8 is the phase that chan
     - Two base components were extracted rather than copying `Input`'s class string a
       fifth time: `ui/native-select/NativeSelect.vue` and `ui/textarea/Textarea.vue`.
       ~15 older call sites across the app still hand-roll these — see "Known limitations".
+- **The query builder, after S8.** `SignalQueryBuilder` loops **region → place → type →
+  template**, and that nesting order _is_ the trim order, because the ceiling keeps the first N.
+  So a watch cut down to budget loses whole places — a gap a member can see on the card — rather
+  than a slice of every type's templates everywhere, which is one nobody could. The count is
+  `regions × locations × definitions × templates`: six types of ten templates over ten places in
+  two regions is **twelve hundred paid searches for one run of one watch**, where v1 could not
+  exceed eight. `signals.max_queries_per_run` is what holds that, and S8 is the phase that made it
+  bite in a second dimension.
 - **Shared:** `resources/js/shared/types/signals.ts` (S5; S7 replaced the `SignalEventType`
   union with a `SignalEventKey` alias, added `SignalDefinition`, `SignalCategory` and
   `SignalIcon`, and `SignalWatch.event_types` became `SignalWatch.definitions`).
@@ -247,11 +282,23 @@ Still UAE-only, and still one `location` per watch — S8 is the phase that chan
   templates** (**seed data only since S7** — the query builder no longer reads them; they are the
   record of what the three platform presets were created with), and
   `retention.{dismissed_days,unactioned_days}`. Every key documented in `.env.example`.
+  **S8 added `regions`** (per region: `label`, `gl`, `hl`, `market`, `offered`, `default_locations`,
+  `approach_note`), **`jurisdictions`** (the resolver's place map), `max_locations_per_watch` (10)
+  and `max_regions_per_watch` (5). `markets` and the top-level `hl` are marked **superseded** and
+  kept only as seed data — `hl` is now a property of the region, which is what makes Arabic a
+  content decision rather than an architectural one.
 - **Platform data:** `Support/SignalPresetCatalogue` declares the library in code and
   `database/seeders/SignalPresetSeeder` writes it, registered in `DatabaseSeeder` beside
   `TeamRolesSeeder` and the prompt registry — all three are product data every install needs. The
   S7 data migration carries a **frozen copy** of the three v1 presets rather than reading the
   catalogue, because a migration is a snapshot and S9 grows that catalogue into six vertical packs.
+  **S8 added the UK pack** — `uk_acquisition`, `uk_funding`, `uk_psc_change`, `uk_insolvency`,
+  `uk_planning`, `uk_leadership` — behind `SignalPresetCatalogue::keysForMarket()` and
+  `starterKeys(?Market)`, and seeded by its own frozen migration rather than the seeder alone. That
+  migration is the part that is easy to leave out and the part that matters: `teams.market` already
+  defaults to `uk`, so without it a UK team on a fresh database opened an **empty library** and the
+  one-click first watch failed. Every UK template was spiked against live Serper before shipping —
+  see the spike table below, which is also why `uk_psc_change` is **not a starter**.
 
 ## MVP vs post-MVP
 
@@ -260,7 +307,7 @@ Still UAE-only, and still one `location` per watch — S8 is the phase that chan
 convert-to-lead into the existing pipeline with the UAE prior-consent flag;
 dismiss/restore; API v1 parity; retention sweep + DSAR hook + per-team ignore list.
 **v2 (S7–S16, `signals-v2-plan.md`):** S7 ✅ turned the event types into data a team owns.
-S8 takes the geography multi-market and moves the outreach restriction from the watch to the
+S8 ✅ took the geography multi-market and moved the outreach restriction from the watch to the
 signal's own jurisdiction; S9 adds the builder (preset library, plain-language composer,
 preview-before-you-save); S10–S16 add watchlists, clustering, scoring, pluggable sources,
 playbooks, delivery and cost governance.
@@ -288,6 +335,15 @@ It is **virtual rather than stored**, and that is a MySQL requirement: MySQL ref
 cascade like every other tenant table's does. The stored version passed the whole SQLite suite and
 failed on the first `php artisan migrate` against MySQL.
 
+**S8 split geography from compliance in the columns too** (ADR 0019). `signal_watches.location`
+(one string) became `locations` (a list, max 10) and `regions` (a list of `SearchRegion`, max 5);
+`market` **stays** on the watch, demoted to the team's declared regime for it — a default and a
+backstop, no longer the thing that picks Serper's `gl`. On the other side, a signal now records
+**its own** `jurisdiction` (ISO-3166-1 alpha-2) and `resolved_market`, derived once at extraction
+and never recomputed. Denormalised deliberately: a lead has to be able to explain its own
+restriction later, and tidying the place map must not retroactively re-label signals that have
+already produced leads.
+
 ```mermaid
 erDiagram
     teams ||--o{ signal_watches : has
@@ -312,6 +368,7 @@ erDiagram
         string icon "SignalIcon (allowlist)"
         bool is_active
         json query_templates "list<string>"
+        json query_templates_i18n "nullable, locale => list<string> (S8)"
         json match_keywords "nullable, ICP map"
         json classification_rules "nullable, includes/excludes"
         json thresholds "nullable, min_confidence/min_relevance"
@@ -325,7 +382,7 @@ erDiagram
     }
     signal_watch_definition {
         id id PK
-        id team_id FK "redundant, and what makes a cross-tenant pairing impossible"
+        id team_id FK "redundant; defence in depth against a cross-tenant pairing"
         id signal_watch_id FK
         id signal_definition_id FK
     }
@@ -334,8 +391,9 @@ erDiagram
         id team_id FK
         id icp_id FK "nullable"
         string name
-        string market "uae"
-        string location "e.g. Dubai"
+        string market "the team's declared regime for this watch (S8: a default, not gl)"
+        json locations "list<string>, max 10 (S8, was `location`)"
+        json regions "list<SearchRegion>, max 5 (S8)"
         string cadence "daily|weekly"
         bool is_active
         json ignore_domains "nullable, per-team (S6)"
@@ -347,6 +405,7 @@ erDiagram
         id signal_watch_id FK
         string status "queued|running|completed|failed"
         int queries_count
+        int queries_requested "what the plan wanted before the ceiling trimmed it (S8)"
         int results_count
         int signals_created
         bigint cost_micros
@@ -371,7 +430,9 @@ erDiagram
         string counterparty_name "nullable"
         bigint amount_minor "nullable"
         string currency "nullable"
-        string location "nullable"
+        string location "nullable, the AI's free text"
+        char jurisdiction "nullable, ISO-3166-1 alpha-2, resolved from `location` (S8)"
+        string resolved_market "nullable, Market the jurisdiction implies (S8)"
         int confidence "0-100"
         int relevance "0-100"
         text suggested_approach "nullable"
@@ -396,8 +457,11 @@ tuning, not for display: "not an event" across a week says the classifier is too
 loose, "not relevant" says the queries or the relevance floor are.
 
 **A converted signal leaves nothing of itself on the lead but a pointer.** The lead
-carries `raw.signal_id` / `raw.event_type` / `raw.headline` and, where the market
-requires it, `raw.outreach_restriction` - see the conversion flow below. The FK is
+carries `raw.signal_id` / `raw.event_type` / `raw.headline`, since S8 `raw.jurisdiction`, and
+where the law requires it `raw.outreach_restriction` - see the conversion flow below. **Since S8
+that restriction follows the subject, not the watch**: the signal's own `resolved_market` first,
+the watch's `market` as a backstop, then the most restrictive restriction across the watch's
+regions - each step may only _add_ one. The FK is
 one-way and `nullOnDelete`, so Lead Sourcing never depends on Signals.
 
 ## Key flows
@@ -493,15 +557,36 @@ and `RunSignalWatchAction` adopts that row rather than opening a second. A refus
    `ScoreEnrichedLead` listener) - and fire `SignalConverted` (team, signal, lead,
    `attached`).
 
-**The UAE outreach restriction comes from the watch's market, not the company's
-country.** `Market::outreachRestriction()` (Core) returns `UaePriorConsent` for the UAE
-and null for the UK, and the value is stored as `leads.raw.outreach_restriction` behind
-`Core\Enums\OutreachRestriction`. The distinction matters: the restriction protects
-the **person being approached**, who is where the watch was looking, and the company
-they own may be registered elsewhere - keying it on the lead's country would quietly
-drop the restriction the moment a Dubai founder's lead was filed under a UK holding
-company, which is exactly the case it exists for. `LeadResource` sends it on **every**
-lead, and `docs/modules/outreach.md` records what Phase 11 must do with it.
+**The outreach restriction follows the subject of the signal** (S8, ADR 0019).
+`ConvertSignalToLeadAction::restrictionFor()` asks three things in order and keeps the most
+restrictive answer:
+
+1. the **signal's own `resolved_market`**, resolved at extraction from the AI's free-text
+   `location` - this is the answer in the normal case;
+2. the **watch's `market`**, the team's own declared regime, as the backstop when the article
+   named no place we recognise;
+3. the **most restrictive restriction across the watch's regions**, where a region maps to a
+   `Market` at all - only ever used to _add_ one the first two did not supply.
+
+Each step may add a restriction and none may remove one (`docs/compliance.md` §5a), and
+"most restrictive" is ranked by `OutreachRestriction::allowsDirectMarketing()` rather than a
+hard-coded `match`, so a new case joins the ordering by answering that question instead of by
+somebody remembering to edit a list. A region with **no** `Market` contributes nothing: the only
+restriction the app has is specifically about UAE PDPL, and stamping it on a Singapore lead would
+make Outreach do the right thing for a reason that is false.
+
+v1 keyed this on the watch's market alone, which was indistinguishable from the above while every
+watch was UAE-only - and wrong in **both** directions the moment S8 let a watch span places. The
+serious direction is the permissive one: a UK-market watch catching a Dubai relocation would have
+produced a lead with **no** restriction, and Outreach would have seen no reason to refuse a cold
+email. That is why the fix landed in the same phase that made it reachable.
+
+What has not changed is why it is not keyed on the **lead's** country: the restriction protects the
+person being approached, and the company they own may be registered elsewhere - a Dubai founder
+filed under a UK holding company is exactly the case it exists for. `leads.raw.jurisdiction`
+records the code the restriction was derived from, so a lead can explain its own flag later.
+`LeadResource` sends the restriction on **every** lead, and `docs/modules/outreach.md` records what
+Phase 11 does with it.
 
 **Concurrency.** The conversion runs with `attempts: 3`, because this action takes row
 locks in an order `LeadDeduplicator` doesn't know about - signal, then the attached
@@ -674,6 +759,76 @@ Method: `POST https://google.serper.dev/news` with the ADR 0010 key, `num=20`, o
 request per template. To reproduce, re-run the templates above against `/news` with
 `gl=ae, hl=en, tbs=qdr:w`.
 
+## Serper News spike — UK pack (2026-11-02, S8)
+
+Ran every UK preset template against `POST https://google.serper.dev/news` with
+`gl=gb, hl=en, tbs=qdr:w, num=20`, substituting `London`. 24 requests in total across two passes
+(~$0.024). Goal, as in S0: find out which templates actually return events before shipping them,
+because **nobody can tell by reading one**.
+
+The S0 finding held — it is a Serper fact, not a UAE fact. Two templates returned **zero**, and both
+failed the same way: a tight multi-word phrase plus a one-week recency window matches no headline.
+
+| Template (as first written)                          | Results | Verdict                                                                                                                                                                 |
+| ---------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{location} company acquired`                        | 10      | Keep. Genuine: Amanat/Cornerstone, Baird Capital/Blue Matter, Zurich/AIG.                                                                                               |
+| `UK business sold private equity`                    | 10      | Keep. Mixed — some commentary, some real ("Rise in founder exits of UK companies").                                                                                     |
+| `{location} founder sells stake`                     | 5       | Keep. Genuine: Two Sigma stake sale, Thea Green exits Nails Inc.                                                                                                        |
+| `{location} startup raises funding`                  | 10      | Keep. Genuine: Machenta $40m, Obsero seed, Ares Intelligence €2.9m.                                                                                                     |
+| `UK startup Series A funding round`                  | 10      | Keep. Genuine, overlaps the above (same week's stories).                                                                                                                |
+| `UK scaleup raises million`                          | 8       | **Replace.** Almost no events — weekly round-ups, a law-society digest. → `{location} company secures investment` (10, genuine: £2m smoothie-bar raise, £35.5m bridge). |
+| `UK company change of ownership Companies House`     | 10      | **Drop.** Ten results, not one event: an AI sector study, a Budget summary, registry statistics.                                                                        |
+| `{location} company new majority shareholder`        | 8       | Keep, weak. One genuine (Saba Capital discloses 5% of Derwent London) among LSE notices.                                                                                |
+| `{location} company enters administration`           | **0**   | **Replace.** → `{location} business goes into administration` (10, genuine: GP websites offline, Poundland notice).                                                     |
+| `UK business insolvency administrators appointed`    | 10      | Keep. Genuine: Poundland collapse across BBC, RTE, The Grocer.                                                                                                          |
+| `{location} planning permission granted development` | 10      | Keep. Genuine: 15 homes on east London green belt, a green-belt data centre.                                                                                            |
+| `{location} council approves scheme`                 | 10      | Keep. Genuine: Soho development approved by Westminster, Hillingdon tower block.                                                                                        |
+| `{location} appoints chief executive`                | 10      | Keep. Genuine: merged London trust, Spin, Peabody.                                                                                                                      |
+| `UK company appoints new managing director`          | **0**   | **Replace.** → `{location} appoints managing director` (10). Dropping two filler words is the whole difference.                                                         |
+
+**Verdict: proceed, with two types flagged.** Acquisition, funding, insolvency, planning and
+appointments all clear the ~3-genuine-events-a-week bar comfortably. **`uk_psc_change` does not**,
+and the reason is structural rather than a bad template: a change in people with significant control
+is a **registry filing**, not a story a journalist files, so no keyword search over news will find it
+reliably. It ships in the library, marked **not a starter** so it stays out of the one-click first
+watch, and S13's Companies House source is what makes it work. `uk_insolvency` has the same shape
+(a filing before it is a story) but did find real collapses, because insolvency of a known name
+_is_ news.
+
+**Also learned:** "people moves" and "this week in funding" round-ups are as common in UK news as
+the UAE equivalents the S0 spike found, so every UK preset's `excludes` names them. The AI's
+relevance score remains the main filter; the templates only decide what it gets to look at.
+
+## What the S8 reviews changed
+
+Both review agents (`laravel-module-reviewer`, `brand-reviewer`) ran against the finished phase and
+found real defects, which is the reason they are in the phase checklist rather than a formality.
+
+**Backend — five, three of them fail-permissive.** Every one was a place where a second reading of
+an existing concept had been adopted without anybody deciding to: `offered` meaning both "may
+search" and "is restricted by" (so withdrawing a region relaxed the restriction on signals it had
+already produced); the watch's region **order** standing in for the ambiguity rule (so "UK founder
+relocates to Dubai" resolved to whichever region the member ticked first, and a lead about somebody
+moving to Dubai could come out unrestricted); `market` being re-applied from the team row on every
+save, so renaming a watch moved its compliance regime — and since `teams.market` defaults to `uk`,
+a UAE team that never visited its settings would have had every watch flip on the first edit; and
+the UK-preset migration's rollback deleting "its own" rows, where that had been read to include a
+team's tuned clone. The fifth was arithmetic: the plan was nested region-major, so a ceiling below
+one region's worth of queries spent the whole budget on the first region and left the second with
+nothing — a member who asked for two jurisdictions silently got one. See ADR 0019 §2a, §2b and §4;
+each fix has a regression test named after what it was.
+
+**Frontend — four, one functional.** The places textarea was **not keyboard-operable**: a two-way
+computed filtered blank lines and wrote the result back, so pressing Enter at the end removed the
+line break it had just inserted (WCAG 2.1.1). The skip list had the same defect since S6. Both now
+keep their raw text and parse one way. The approach note was styled as helper text and the summary
+panel sat four groups above the Save button it claimed to sit beside; the note is no longer muted
+and the panel is now the last thing read before Save. The one-click promise named only the first
+default place while the default is two, quietly doubling what it committed the team to. And the
+Arabic needed rewriting rather than correcting — it said "sea" for "search", softened "never" to
+"and not", and called prospects customers on a compliance line. See `docs/brand/brand-tokens.md`
+§7i, including what was left standing and what still needs brand-owner sign-off.
+
 ## Permissions
 
 | Ability                                      | Owner | Admin | Member | Read-only |
@@ -693,13 +848,25 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` double-
 
 ## Known limitations / TODO
 
-- **UAE-only, snippet-only, English-only.** S7 made the _types_ a team's own; it did not touch
-  the geography. A watch still has one `location`, `markets` still only has `uae` templates, and
-  `SaveSignalWatchRequest` still refuses a posted market — **S8** is the phase for all of that, and
-  for moving the outreach restriction off the watch's market and onto the signal's own
-  jurisdiction (which is a latent compliance bug the moment a watch spans places; see
-  `signals-v2-plan.md` S8). No full-article fetch either, so amounts/names are best-effort from
-  title + snippet.
+- **Snippet-only.** No full-article fetch, so amounts and names are best-effort from title +
+  snippet. This is the oldest limitation in the module and the one most likely to be worth fixing.
+- **Two markets, and the other five regions are code without a decision.** S8 made the geography
+  plural, but `config('signals.regions.*.offered')` is true only for `ae` and `gb`. `sa`, `us`,
+  `in`, `sg` and `global` have working `gl`/`hl` and sit behind a config line — what they do **not**
+  have is a compliance position, and that is the blocker, not the code (⚖️ ADR 0019 §3,
+  `docs/compliance.md` §5). Switching one on without one ships a watch that produces leads nobody
+  has decided the rules for.
+- **English query templates only — the plumbing for Arabic shipped without the content.** A
+  definition may carry `query_templates_i18n`, a region carries its own `hl`, and a region whose
+  `hl` is not `en` uses the translated templates where a type has them and the English ones where
+  it does not. **Nothing has them yet.** This is deliberate: a machine-translated search query is
+  worse than none, because it finds nothing while looking like it works. It wants the
+  native-speaker pass already pending below.
+- **The jurisdiction resolver is a place map and will not know every town.** Its failure mode is
+  null, which fails toward the restriction, and a missing place is a line in
+  `config('signals.jurisdictions')` rather than a code change. What it cannot do is disambiguate a
+  genuinely ambiguous place name on its own — the watch's regions break a tie, and where they
+  cannot it returns null.
 - **Serper `/news` relative dates** ("3 days ago") parse best-effort to UTC; fall back
   to the run time when unparseable (S2 risk).
 - **Query templates are the main quality lever**, and since S7 they are a **row a team owns**
@@ -844,5 +1011,6 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` double-
 | 2026-10-29 | S2    | Serper News client & ICP-driven query builder: `config/signals.php` (Serper reused from ADR 0010 by env reference, own HTTP/circuit-breaker/cost tuning, `results_per_query`/`recency`/thresholds/`ignore_domains`/retention, and the loosened UAE templates from the S0 spike); `SignalQuery`/`NewsItem` DTOs; `NewsSearchClient` contract; `SerperNewsClient` (POST `/news`, maps `news[]`, clamps text, rejects non-http(s) links, drops `ignore_domains`, collapses dup URLs, retry-on-429/5xx + circuit breaker + fail-fast key); `SignalQueryBuilder` (deterministic; location override, event-type templates, buying-signal→watched-event-type extra queries); `SignalItemNormaliser` (canonical URL → `url_hash`); `FakeNewsSearchClient`. Tests: builder table tests, client payload mapping/ignore-domains/non-http/dedupe/retry/circuit/missing-key/driver, URL canonicalisation. Every env key in `.env.example`. Serper faked in every test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `config/signals.php`, `.env.example`, `app/Modules/Signals/{Contracts,Data,Services,Testing,Providers,Exceptions}/*`, `tests/{Unit,Feature}/Signals/*`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 2026-10-29 | S1    | Scaffolded the module (ADR 0002) and built the data model: 4 enums, 3 migrations (`signal_watches`/`signal_runs`/`signals`, all team-scoped, unique `(team_id, url_hash)` + feed index `(team_id, status, published_at)`, one-way `signals.lead_id → leads` `nullOnDelete`), 3 `BelongsToTeam` models + factories, `SignalWatchPolicy`/`SignalPolicy`, `SignalsException`, the `signals` log channel, and the `SignalsServiceProvider` (registered via Core base provider). Tests: enum coverage, cross-tenant isolation + auto-assign for all three models, per-team `url_hash` uniqueness, and `lead_id` nulling on lead delete. `signal_watches.ignore_domains` deferred to S6 per plan. No external calls.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `app/Modules/Signals/**`, `database/migrations/2026_10_29_18000{1,2,3}_*`, `database/factories/Signal*Factory.php`, `config/logging.php`, `bootstrap/providers.php`, `tests/{Unit,Feature}/Signals/*`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | 2026-10-30 | 15    | **`SignalsPersonalDataExporter` has a caller.** Compliance's `PersonalDataLocator` asks it on every name-matched data-subject request, closing this module's last open dependency on a later phase. Two things came out of wiring it up: its `LIKE ... ESCAPE '\'` was an **unterminated string literal in MySQL** (the backslash escapes the closing quote) — it passed every SQLite test and would have failed every production query, and is now `!`, the character `LeadQueryBuilder` settled on for the same reason; and the Phase 15 retention sweep now **deletes the signals attached to a lead it removes**, because `lead_id` is `nullOnDelete` and `signals:prune` never sweeps a converted signal, so one whose lead was deleted would have outlived it with a named individual still on it and nothing left to remove it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `app/Modules/Signals/Services/SignalsPersonalDataExporter.php`, `app/Modules/Compliance/{Services/PersonalDataLocator,Services/LeadAnonymiser,Actions/PurgeExpiredDataAction,Actions/EraseSubjectDataAction}.php`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 2026-11-02 | S8    | **Geography went plural, and the outreach restriction moved onto the signal** (ADR 0019). `signal_watches.location` became `locations` (max 10) + `regions` (max 5, the new `SearchRegion` enum), and `market` was demoted to the team’s declared regime for the watch rather than the thing that picks Serper’s `gl`. The reason the two had to be separated is a compliance defect that multi-geography would have made live: keyed on the watch’s market, a UK watch catching a Dubai relocation produced a lead with **no** restriction at all, and Outreach would have seen no reason to refuse a cold email. `ConvertSignalToLeadAction` now resolves it from the signal’s own `resolved_market` first (derived at extraction by `SignalJurisdictionResolver`), the watch’s `market` as a backstop, then the most restrictive across the watch’s regions — each step may only add one, ranked by `allowsDirectMarketing()` rather than a hard-coded `match`. `SignalQueryBuilder` was rewritten to loop region → place → type → template, which is also the trim order, so a watch cut to the `max_queries_per_run` ceiling loses whole places rather than a slice of everything; the run records `queries_requested` beside `queries_count` and the card says so, because a silent trim is a lie about what was searched. Six migrations (backfill to `places=["Dubai"] regions=["ae"]`, verified round-trip on MySQL and losslessly reversible), the **UK preset pack** (6 types, every template spiked against live Serper first — two returned zero and `uk_psc_change` ships as a non-starter because a PSC filing is not news), seeded by its own frozen migration because `teams.market` already defaults to `uk` and without it a UK team opened an empty library. `hl` became a property of the region and definitions gained `query_templates_i18n`, which is the plumbing for Arabic without the content. 5 regions are ready in code and **not offered**, because what they lack is a compliance position, not code (⚖️). 45 new tests (`SignalJurisdictionResolverTest`, `SignalGeographyTest`, 5 conversion cases).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | 2026-11-02 | S7    | **Signal types became data** (ADR 0018). `SignalEventType` is gone: nothing in the app branched on which case it was — it picked templates, rendered a label and a description, mapped an ICP keyword and grouped a report, all properties of a type rather than decisions about one — so it became a `signal_definitions` row a team owns, created and tuned on **`/signals/types`** without a deploy. v1's three types are the first three entries in a **platform preset library** (`team_id = null`), which a team **clones** rather than references, so a platform edit never silently changes what they are paying to run and their tuning never leaks upward. A watch reaches its types through the `signal_watch_definition` **pivot** rather than a JSON column of ids — a deviation from the S7 plan, because "which watches use this definition?" is `JSON_CONTAINS` on MySQL and `json_each` on SQLite, and only one of those would ever have run here. Thresholds are **per type** now, falling back to the global config. `signals.event_type` was renamed `event_key` and is **denormalised beside the FK** so a signal outlives the type that classified it. **`signals.extract_event` v2**: the schema's `event_type` enum could not survive per-team keys, so the keys and their include/exclude rules are injected into the body and `RunSignalWatchAction::resolveDefinition()` **rejects any key the run did not offer** — that Action is now the guard the schema used to be, which is the one real safety change in this phase. 5 migrations, run round-trip against the local MySQL, which is how **two MySQL-only failures** were found: a _stored_ generated `scope_id` refuses a cascading FK on its base column (now virtual), and Laravel's generated pivot index name is 67 characters against MySQL's 64-character limit (now named). A third bug came from `Event::fake()` — `scope_id` had been maintained by a model `creating` hook, which the suite suppressed, silently writing every row into the platform scope; a column carrying a uniqueness invariant cannot depend on anything a caller might skip, so the database computes it. Tests (37 new): the data migration repoints paused watches and converted signals and is idempotent; a hostile `event_type` is dropped; per-type thresholds bite; a preset refuses a tenant edit with a 404; an all-paused watch completes empty rather than failing. **`laravel-module-reviewer` and `brand-reviewer` then found six things worth fixing, three of them real defects.** Backend: (a) the clone path looked up an existing clone with the default scope, so a team who **deleted a type and re-added it from the library** hit a unique violation and a 500 - `unique(scope_id, key)` knows nothing about `deleted_at`, and the same collision came from a team writing their own type called "Acquisition"; both now go through `SignalDefinitionKeyAllocator`, which restores a trashed clone and suffixes a key somebody else took. (b) `Signal::definition()` was a plain `belongsTo`, so the soft-delete scope made a removed type's signals read "Hiring Surge Uae" on every card, report row and lead-origin panel - exactly what ADR 0018 section 4 promises it would not; `withTrashed()` on the relation and on the report's label query. (c) `SignalFilters::onlyKnownKeys()` **dropped** a key the team no longer had, which answered a filtered request with the whole feed and made a deleted type's signals impossible to isolate - it is gone, and a key is honoured as given, because a key is not meaningless after a delete the way a removed enum case was. Also: the one-click default clones a **declared starter set** rather than everything (the library grows to six packs in S9 and would blow the ceiling); a `signals.max_queries_per_run` ceiling closes the 30x cost exposure this phase opened (25 types x 10 templates against v1's 8); the data migration's `down()` no longer deletes a team's own type that happens to share a preset key; and the ADR's claim that the pivot's `team_id` made a cross-tenant pairing "impossible at the database level" is corrected to defence-in-depth, since the FKs are single-column. Frontend: the editor used `DialogContent`, which has no `max-h` and no overflow, so **Save was unreachable on a laptop or at 200% zoom** (WCAG 1.4.10) - now `DialogScrollContent`; closing it discarded a long hand-written form with no prompt (now `UnsavedChangesDialog`, per section 7h.11); the editor is rebuilt on the shared `FormField`/`FormErrorSummary` set, so it has `aria-invalid`, an error summary and required/optional in words; prose moved off `text-sm` to the 16px body floor and the `dt` rail became DM Mono eyebrows; the lime icon tiles became lilac circles (one accent, and section 5's feature-icon shape); the ceiling is explained in words rather than only disabling buttons; a long team-authored name truncates with a `title` instead of clipping; and "Confidence floor"/"Relevance floor" became "How sure Alima must be" / "How well it must fit you". | `app/Modules/Signals/{Models/SignalDefinition,Enums/{SignalCategory,SignalIcon},Support/{SignalPreset,SignalPresetCatalogue},Services/PlatformPresetReader,Data/SignalDefinitionData,Actions/{List,Save,Delete}SignalDefinitionAction,Actions/CloneSignalPresetsAction,Policies/SignalDefinitionPolicy,Http/**}.php`, `database/migrations/2026_11_02_1000{01..05}_*`, `database/seeders/{SignalPresetSeeder,AiPromptTemplateSeeder,DatabaseSeeder,DemoSeeder}.php`, `database/factories/Signal*Factory.php`, `app/Modules/{Reporting/Actions/BuildSignalBreakdownAction,Admin/Resources/Signal*Resource,Compliance/Services/TeamDataArchiver}.php`, `config/signals.php`, `.env.example`, `resources/js/{pages/signals/*,components/signals/SignalTypeIcon.vue,shared/types/signals.ts}`, `lang/{en,ar}.json`, `docs/{decisions/0018-*,modules/signals.md,ai-prompts.md,api/openapi.json}`, `tests/**/Signals/*`                                                                                                          |
 | 2026-11-01 | UI    | **The feed says what is narrowing it.** The event-type chips are now the shared `FilterToggle`/`FilterGroup` — one chip for the whole product, with the tick that keeps the on state from being colour alone — and the filters in force are summarised above the feed as removable chips (`ActiveFilters`). The filters themselves stay behind the disclosure, which is right for controls used occasionally, but it meant a member could land on a shared link showing four signals out of two hundred with nothing on screen to say why. The feed also dims while a filter request is in flight (`useNavigating()`). No server change. The app-wide hand-rolled `<select>` follow-up recorded in Phase S5/S6 is now down to a handful of call sites.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `resources/js/pages/signals/Index.vue`, `resources/js/components/list/*`, `lang/{en,ar}.json`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Services\SignalItemNormaliser;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
 use App\Modules\Signals\Testing\FakeNewsSearchClient;
@@ -11,6 +12,7 @@ function fakeQuery(int $num = 20): SignalQuery
 {
     return new SignalQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
         gl: 'ae',
         hl: 'en',

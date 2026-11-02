@@ -269,61 +269,61 @@ falling back to the watch's market only when the signal has none. "Unknown" reso
 
 ### Tasks
 
-1. [ ] **ADR 0019 — "Search geography is not the compliance market"**: two concepts were one
+1. [x] **ADR 0019 — "Search geography is not the compliance market"**: two concepts were one
        column. `search_region` (a Serper `gl`/`hl` pair plus place names — a question about
        _where to look_) and `Market` (the compliance regime, currency and locale — a question
        about _which rules apply_). A watch picks regions; a **signal** carries a jurisdiction;
        `Market::outreachRestriction()` is asked of the signal's jurisdiction. Record the
        more-restrictive-on-unknown rule and why.
-2. [ ] **`Core\Enums\Market` gains nothing.** Resist adding `Saudi`, `Global` and friends here
+2. [x] **`Core\Enums\Market` gains nothing.** Resist adding `Saudi`, `Global` and friends here
        — it is the compliance regime enum, and every case on it implies a legal position the app
        does not yet hold (ADR 0007). Instead add **`Signals\Enums\SearchRegion`** (or a
        `SearchRegion` value object over `config/signals.regions`) with `gl`, `hl`,
        `default_locations` and a **nullable** `market` saying which compliance regime, if any,
        this region maps to. Seed `ae`, `gb`, `sa`, `us`, `in`, `sg`, `global`. A region with
        **no** market maps to the restrictive default, and the ADR says why.
-3. [ ] **Migration `watches_cover_many_places`** — `signal_watches.locations` (json
+3. [x] **Migration `watches_cover_many_places`** — `signal_watches.locations` (json
        `list<string>`, max 10) replaces `location`; `signal_watches.regions` (json
        `list<SearchRegion>`, max 5) replaces the implicit market→`gl`. Keep `market` on the
        watch as the **team's own declared regime** for it (it still seeds defaults and still
        backstops a signal with no resolvable jurisdiction) but it stops driving `gl`. Backfill:
        `location` → `[location]`, `market = uae` → `regions = ['ae']`.
-4. [ ] **Migration `signals_carry_a_jurisdiction`** — `signals.jurisdiction` (string 8,
+4. [x] **Migration `signals_carry_a_jurisdiction`** — `signals.jurisdiction` (string 8,
        nullable, ISO-3166-1 alpha-2) and `signals.resolved_market` (string, nullable, a
        `Market` value). Both set at extraction.
-5. [ ] **`SignalJurisdictionResolver`** (`Services/`) — the AI's free-text `location` → a
+5. [x] **`SignalJurisdictionResolver`** (`Services/`) — the AI's free-text `location` → a
        country code, **deterministic, no AI**: a config map of place names and aliases per
        region (`Dubai`, `DXB`, `Abu Dhabi`, `United Arab Emirates`, `UAE` → `AE`), the watch's
        regions as the tiebreak, and null when it cannot tell. Unit-tested hard; this is the
        input to a legal rule, so it gets the coverage a legal rule deserves.
-6. [ ] **`ConvertSignalToLeadAction` asks the signal.** `resolvedMarket() ?? watch->market`,
+6. [x] **`ConvertSignalToLeadAction` asks the signal.** `resolvedMarket() ?? watch->market`,
        and when **neither** resolves, the most restrictive restriction across the watch's
        regions. Keep `raw.outreach_restriction` surviving the de-duplicator merge exactly as it
        does now, and add the **jurisdiction** to `raw` as well, so a lead can explain its own
        restriction. Extend `tests/Feature/Signals/ConvertSignalToLeadActionTest.php` with four
        cases: signal-UK/watch-UAE, signal-UAE/watch-UK, signal-unknown/watch-UAE,
        signal-unknown/watch-multi-region.
-7. [ ] **`SignalQueryBuilder` goes multi-place.** One query per (definition template ×
+7. [x] **`SignalQueryBuilder` goes multi-place.** One query per (definition template ×
        location), de-duplicated, with a **hard ceiling** on the product
        (`signals.max_queries_per_run`, default 40) and a deterministic trim order, so a team
        picking 6 definitions × 10 locations gets a predictable, affordable run rather than 240
        queries — and the run records that it trimmed, **visibly**, on the watch card. A silent
        trim is a lie about coverage.
-8. [ ] **`hl` per region**, which unlocks the v1 backlog's **Arabic-language queries** for
+8. [x] **`hl` per region**, which unlocks the v1 backlog's **Arabic-language queries** for
        free: a region can declare `hl: ar` and a definition can carry `query_templates_ar`.
        Ship the plumbing; writing Arabic _templates_ is a content task, flagged for the
        native-speaker pass already pending in `signals.md`.
-9. [ ] **UK presets.** A platform pack for `gb`: `acquisition`, `funding_round`,
+9. [x] **UK presets.** A platform pack for `gb`: `acquisition`, `funding_round`,
        `administration_or_insolvency`, `psc_change` (a change in people with significant
        control — the UK's closest published analogue to "the owner just sold"),
        `planning_permission_granted`, `senior_appointment`. Templates written and **spiked
        against live Serper `/news` the way S0 was** — the S0 finding (exact phrases and
        `-based` return zero; plain keywords return 3–10) is a Serper fact, not a UAE fact, so
        the same discipline applies. Record the spike table in `docs/modules/signals.md`.
-10. [ ] **The watch editor takes places and regions**, with the team's market pre-selecting a
+10. [x] **The watch editor takes places and regions**, with the team's market pre-selecting a
         region and an explainer that names the compliance consequence in brand voice: a UAE
         signal is approached by introduction, not cold email, wherever the watch lives.
-11. [ ] **API + docs** — `locations` / `regions` on the watch endpoints, `jurisdiction` on the
+11. [x] **API + docs** — `locations` / `regions` on the watch endpoints, `jurisdiction` on the
         signal resource, `openapi.json` regenerated, `docs/compliance.md` §3 updated with the
         follows-the-subject rule.
 
@@ -1018,7 +1018,7 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | Phase | Title                                           | Status                | Depends on   |
 | ----- | ----------------------------------------------- | --------------------- | ------------ |
 | S7    | Signal definitions become data                  | ☑ **Done** 2026-11-02 | —            |
-| S8    | Geography, and the jurisdiction bug             | ☐ Not started         | S7           |
+| S8    | Geography, and the jurisdiction bug             | ☑ **Done** 2026-11-02 | S7           |
 | S9    | The signal builder (library, composer, preview) | ☐ Not started         | S7, S8       |
 | S10   | Watchlists & account monitoring                 | ☐ Not started         | S7, S8       |
 | S11   | Clustering & redirect-safe dedupe               | ☐ Not started         | S7           |

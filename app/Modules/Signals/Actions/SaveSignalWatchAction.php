@@ -10,6 +10,7 @@ use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\Signals\Data\SignalWatchData;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
@@ -57,6 +58,18 @@ final class SaveSignalWatchAction
             $definitionIds = $this->definitionIds($team, $data->definitionIds, $watch);
 
             if ($watch instanceof SignalWatch) {
+                // **`market` is set once, on create, and never rewritten by an edit.** It is the
+                // compliance regime this watch's leads fall back to (ADR 0019 §2 step 2), and it
+                // arrives here from the *team* row rather than the form. Re-applying it on update
+                // would mean renaming a watch, or unticking a type, silently moved its outreach
+                // restriction — and `teams.market` defaults to `uk`, so a UAE team that never
+                // visited its settings would have had its watches flip to `uk` on the first edit
+                // and lose the backstop entirely. Changing a watch's regime is a deliberate act,
+                // not a side effect of touching the form.
+                unset($attributes['market']);
+
+                $attributes['regions'] = $this->withWithdrawnRegions($watch, $attributes['regions']);
+
                 $watch->forceFill($attributes)->save();
                 // `sync`, not `attach`: the form posts the whole set, so a type the member
                 // unticked has to come off as well as a new one going on.
@@ -84,6 +97,30 @@ final class SaveSignalWatchAction
 
             return $created->load('definitions');
         }));
+    }
+
+    /**
+     * Put back any region the editor could not have offered the member.
+     *
+     * A region whose compliance position has been withdrawn is filtered out of the payload the
+     * screen receives (`SignalWatchResource` sends `searchRegions()`), so a member re-saving the
+     * watch cannot have meant to remove it — and dropping it silently would take the restriction
+     * backstop for the signals that region has already produced along with it (ADR 0019 §2a). The
+     * query builder filters by `isOffered()` on its own, so keeping the row costs nothing and
+     * searches nothing: the watch stops looking there and still remembers that it did.
+     *
+     * @param  list<string>  $posted
+     * @return list<string>
+     */
+    private function withWithdrawnRegions(SignalWatch $watch, array $posted): array
+    {
+        foreach ($watch->storedRegions() as $region) {
+            if (! $region->isOffered() && ! in_array($region->value, $posted, strict: true)) {
+                $posted[] = $region->value;
+            }
+        }
+
+        return $posted;
     }
 
     /**
@@ -211,7 +248,8 @@ final class SaveSignalWatchAction
     private function properties(SignalWatchData $data, array $definitionIds): array
     {
         return [
-            'location' => $data->location,
+            'locations' => $data->locations,
+            'regions' => array_map(static fn (SearchRegion $region): string => $region->value, $data->regions),
             // The ids rather than the keys: a key can be read off the definition row, and the ids
             // are what the pivot actually holds - so an audit row and the table agree.
             'signal_definition_ids' => $definitionIds,

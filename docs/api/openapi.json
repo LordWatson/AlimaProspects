@@ -5477,7 +5477,7 @@
         "/signal-definitions/presets": {
             "get": {
                 "operationId": "v1.signal-definitions.presets",
-                "summary": "The platform preset library, filtered to the market a watch can be created in",
+                "summary": "The platform preset library, filtered to the team's own market",
                 "tags": [
                     "SignalDefinition"
                 ],
@@ -9887,15 +9887,34 @@
             },
             "SaveSignalWatchRequest": {
                 "type": "object",
-                "description": "Validates a watch on create and update. The rules come from {@see SignalWatchData::rules()} so\nthe web (S5) and API (S6) endpoints can't drift apart on what a watch may be, with the ICP's\nexistence scoped to the member's own team here \u2014 the one check that needs the request to know\nwho is asking. Authorisation lives in the controller via `SignalWatchPolicy`.\n\n`market` is deliberately **not** accepted: v1 is UAE-only and the value is set by the DTO (see\n{@see SignalWatchData::DEFAULT_MARKET}), so a posted market is ignored rather than honoured into\na watch that would silently find nothing.",
+                "description": "Validates a watch on create and update. The rules come from {@see SignalWatchData::rules()} so\nthe web (S5) and API (S6) endpoints can't drift apart on what a watch may be, with the ICP's\nexistence scoped to the member's own team here \u2014 the one check that needs the request to know\nwho is asking. Authorisation lives in the controller via `SignalWatchPolicy`.\n\n`market` is deliberately **not** accepted. Since S8 it is the team's **own** compliance regime\n(ADR 0019), read from the team row rather than from the form \u2014 a member cannot choose which law\napplies to them, and letting a form say so would be letting a tampered request pick its own\noutreach restriction. Where to *look* is `regions`, which is on the form and validated against\nthe regions the business has actually taken a position on.",
                 "properties": {
                     "name": {
                         "type": "string",
                         "maxLength": 120
                     },
-                    "location": {
-                        "type": "string",
-                        "maxLength": 120
+                    "locations": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "maxLength": 120
+                        },
+                        "minItems": 1,
+                        "maxItems": 10
+                    },
+                    "regions": {
+                        "type": "array",
+                        "description": "**Only the regions the business has a compliance position for.** `offered` is not a\nfeature flag: choosing where to look also chooses how the resulting leads may be\napproached, and a region with no recorded position would mean leads nobody has\ndecided the rules for (ADR 0019 \u00a73).",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "ae",
+                                "gb"
+                            ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 5,
+                        "uniqueItems": true
                     },
                     "signal_definition_ids": {
                         "type": "array",
@@ -9937,7 +9956,8 @@
                 },
                 "required": [
                     "name",
-                    "location",
+                    "locations",
+                    "regions",
                     "signal_definition_ids",
                     "cadence"
                 ],
@@ -10271,6 +10291,19 @@
                             "null"
                         ]
                     },
+                    "jurisdiction": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "Where the subject is, resolved deterministically at extraction (S8, ADR 0019) - and\nthe regime that follows from it, which is what decides the lead's outreach\nrestriction on conversion. Sent so a screen can explain a restriction rather than\npresenting it as a fact with no provenance."
+                    },
+                    "resolved_market": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "confidence": {
                         "type": "integer"
                     },
@@ -10373,6 +10406,8 @@
                     "amount_minor",
                     "currency",
                     "location",
+                    "jurisdiction",
+                    "resolved_market",
                     "confidence",
                     "relevance",
                     "suggested_approach",
@@ -10396,6 +10431,7 @@
                     },
                     "market": {
                         "type": "string",
+                        "description": "The team's declared compliance regime for this watch, which since S8 is a\nbackstop rather than the thing that picks where to look (ADR 0019).",
                         "enum": [
                             "uk",
                             "uae"
@@ -10408,8 +10444,16 @@
                             "United Arab Emirates"
                         ]
                     },
-                    "location": {
-                        "type": "string"
+                    "locations": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "regions": {
+                        "type": "array",
+                        "description": "Sent with their labels and their **approach note**, because choosing where to look is\nalso choosing how the resulting leads may be approached and nothing else on the\nscreen says so.",
+                        "items": {}
                     },
                     "definitions": {
                         "type": "array",
@@ -10487,7 +10531,8 @@
                     "name",
                     "market",
                     "market_label",
-                    "location",
+                    "locations",
+                    "regions",
                     "ignore_domains",
                     "cadence",
                     "cadence_label",

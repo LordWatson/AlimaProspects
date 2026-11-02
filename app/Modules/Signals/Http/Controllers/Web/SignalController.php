@@ -85,7 +85,13 @@ final class SignalController extends Controller
             'watchCount' => $watchCount,
             // What a first watch would cover, so the empty state can name the market rather than
             // hard-coding "Dubai" in the markup.
-            'defaults' => ['location' => SignalWatchData::defaultWatch()->location],
+            // What a first watch would cover, so the empty state can name the place rather than
+            // hard-coding one. From the **team's** market since S8 (ADR 0019).
+            'defaults' => [
+                'location' => SignalWatchData::defaultWatch(
+                    market: SignalWatchData::marketFor($team->market),
+                )->locations[0] ?? '',
+            ],
             // The convert modal's stage picker. Resolved here rather than on open, so clicking
             // Convert shows a form rather than a spinner.
             'stages' => PipelineStageResource::collection($ensureStages->handle($team))->resolve($request),

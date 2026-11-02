@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Data;
 
 use App\Modules\Core\Enums\Market;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalWatchCadence;
 use App\Modules\Signals\Http\Requests\SaveSignalWatchRequest;
 use App\Modules\Signals\Models\SignalWatch;
@@ -16,11 +17,12 @@ use Spatie\LaravelData\Data;
  * The validated input for creating or updating a {@see SignalWatch} (from
  * {@see SaveSignalWatchRequest}).
  *
- * `market` is **not** taken from the form. v1 Signals is UAE-only (ADR 0011): the query templates,
- * the `gl` code and the outreach posture are all per-market, and a market with none of those would
- * produce a watch that silently finds nothing. It is set from {@see self::DEFAULT_MARKET} until a
- * second market's templates exist, and the decision is recorded here rather than in a controller
- * so there is one place to change when that happens (S8).
+ * `market` is **not** taken from the form, and since S8 it means something narrower than it used
+ * to (ADR 0019). It is the team's **declared compliance regime** for this watch — a backstop for a
+ * signal whose own jurisdiction cannot be resolved, and the seed for the watch's first region. It
+ * no longer decides where to look: that is `regions`, and each region carries its own Serper `gl`
+ * and `hl`. The value comes from the **team's** market rather than a product-wide constant, which
+ * is what makes a UK team's first watch a UK watch.
  *
  * Since S7 the watched types are **definition ids**, not enum values (ADR 0018): a signal type is a
  * row the team owns. The ids are carried as plain integers here and resolved to the team's own rows
@@ -29,7 +31,14 @@ use Spatie\LaravelData\Data;
  */
 final class SignalWatchData extends Data
 {
-    /** v1 is UAE-only — the only market with query templates (`config/signals.php`). */
+    /**
+     * The market a watch falls back to when the team has none recorded.
+     *
+     * Kept because the preset library and the one-click first watch both need *a* market to filter
+     * and seed from, and a team row with a missing or unrecognised `market` must not take a screen
+     * down. Prefer {@see self::marketFor()} over this constant: reading the team's own market is the
+     * point of S8.
+     */
     public const Market DEFAULT_MARKET = Market::Uae;
 
     private const int MAX_NAME = 120;
@@ -47,12 +56,15 @@ final class SignalWatchData extends Data
     public const int MAX_DEFINITIONS = 50;
 
     /**
+     * @param  list<string>  $locations  The places this watch covers (S8). Never empty.
+     * @param  list<SearchRegion>  $regions  Where to search (S8). Never empty.
      * @param  list<int>  $definitionIds  The team's signal types this watch watches for.
      * @param  list<string>  $ignoreDomains  Sources this team never wants to hear from (S6).
      */
     public function __construct(
         public readonly string $name,
-        public readonly string $location,
+        public readonly array $locations,
+        public readonly array $regions,
         public readonly array $definitionIds,
         public readonly SignalWatchCadence $cadence = SignalWatchCadence::Daily,
         public readonly bool $isActive = true,
@@ -62,13 +74,29 @@ final class SignalWatchData extends Data
     ) {}
 
     /**
+     * The compliance regime a watch of this team's falls under.
+     *
+     * `Team::market` is a plain string with a `'uk'` default rather than an enum cast, so an
+     * unrecognised value resolves to {@see self::DEFAULT_MARKET} instead of throwing — a team row
+     * somebody edited by hand must not take the watch screen down.
+     */
+    public static function marketFor(?string $teamMarket): Market
+    {
+        return Market::tryFrom((string) $teamMarket) ?? self::DEFAULT_MARKET;
+    }
+
+    /**
      * @param  array<string, mixed>  $validated
      */
-    public static function fromValidated(array $validated): self
+    public static function fromValidated(array $validated, ?Market $market = null): self
     {
+        $market ??= self::DEFAULT_MARKET;
+        $regions = self::regions($validated['regions'] ?? null, $market);
+
         return new self(
-            name: self::text($validated['name'] ?? null, self::MAX_NAME) ?? self::defaultName(),
-            location: self::text($validated['location'] ?? null, self::MAX_LOCATION) ?? self::defaultLocation(),
+            name: self::text($validated['name'] ?? null, self::MAX_NAME) ?? self::defaultName($market),
+            locations: self::locations($validated['locations'] ?? null, $regions),
+            regions: $regions,
             definitionIds: self::ids($validated['signal_definition_ids'] ?? null),
             cadence: SignalWatchCadence::tryFrom((string) ($validated['cadence'] ?? '')) ?? SignalWatchCadence::Daily,
             // A missing checkbox is false in a form post, so "absent" has to mean the default
@@ -76,27 +104,34 @@ final class SignalWatchData extends Data
             isActive: array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true,
             icpId: isset($validated['icp_id']) ? (int) $validated['icp_id'] : null,
             ignoreDomains: self::domains($validated['ignore_domains'] ?? null),
+            market: $market,
         );
     }
 
     /**
-     * The one-click default watch for a team that has none (S5): the market's default location,
-     * every type the team has, daily. Deliberately the broadest useful watch — a first watch that
-     * finds nothing teaches the team that Signals doesn't work.
+     * The one-click default watch for a team that has none (S5): the region's default places, every
+     * type the team has, daily. Deliberately the broadest useful watch — a first watch that finds
+     * nothing teaches the team that Signals doesn't work.
      *
-     * The ids come from the caller rather than from here, because "every type" is now a question
-     * about the team's library: the controller clones the market's presets first
-     * (`CloneSignalPresetsAction`) and passes what it got.
+     * The ids come from the caller rather than from here, because "every type" is a question about
+     * the team's library: the controller clones the market's starter presets first
+     * (`CloneSignalPresetsAction`) and passes what it got. The **market** comes from the caller too
+     * since S8, because a UK team's first watch should look at the UK.
      *
      * @param  list<int>  $definitionIds
      */
-    public static function defaultWatch(array $definitionIds = []): self
+    public static function defaultWatch(array $definitionIds = [], ?Market $market = null): self
     {
+        $market ??= self::DEFAULT_MARKET;
+        $region = SearchRegion::forMarket($market);
+
         return new self(
-            name: self::defaultName(),
-            location: self::defaultLocation(),
+            name: self::defaultName($market),
+            locations: self::locations(null, [$region]),
+            regions: [$region],
             definitionIds: $definitionIds,
             cadence: SignalWatchCadence::Daily,
+            market: $market,
         );
     }
 
@@ -113,7 +148,8 @@ final class SignalWatchData extends Data
         return [
             'name' => $this->name,
             'market' => $this->market,
-            'location' => $this->location,
+            'locations' => $this->locations,
+            'regions' => array_map(static fn (SearchRegion $region): string => $region->value, $this->regions),
             'cadence' => $this->cadence,
             'is_active' => $this->isActive,
             'icp_id' => $this->icpId,
@@ -138,7 +174,14 @@ final class SignalWatchData extends Data
     {
         return [
             'name' => ['required', 'string', 'max:'.self::MAX_NAME],
-            'location' => ['required', 'string', 'max:'.self::MAX_LOCATION],
+            'locations' => ['required', 'array', 'min:1', 'max:'.self::maxLocations()],
+            'locations.*' => ['string', 'max:'.self::MAX_LOCATION],
+            // **Only the regions the business has a compliance position for.** `offered` is not a
+            // feature flag: choosing where to look also chooses how the resulting leads may be
+            // approached, and a region with no recorded position would mean leads nobody has
+            // decided the rules for (ADR 0019 §3).
+            'regions' => ['required', 'array', 'min:1', 'max:'.self::maxRegions()],
+            'regions.*' => ['string', 'distinct', 'in:'.implode(',', SearchRegion::offeredValues())],
             'signal_definition_ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_DEFINITIONS],
             'signal_definition_ids.*' => ['integer', 'distinct', 'min:1'],
             'cadence' => ['required', 'string', 'in:'.implode(',', SignalWatchCadence::values())],
@@ -149,17 +192,100 @@ final class SignalWatchData extends Data
         ];
     }
 
-    private static function defaultName(): string
+    private static function defaultName(Market $market): string
     {
-        return self::defaultLocation().' wealth events';
+        return self::defaultLocation($market).' wealth events';
     }
 
-    private static function defaultLocation(): string
+    private static function defaultLocation(Market $market): string
     {
-        $market = self::DEFAULT_MARKET->value;
-        $location = config("signals.markets.{$market}.default_location", 'Dubai');
+        $location = config("signals.markets.{$market->value}.default_location");
 
-        return is_string($location) && $location !== '' ? $location : 'Dubai';
+        if (is_string($location) && $location !== '') {
+            return $location;
+        }
+
+        return SearchRegion::forMarket($market)->defaultLocations()[0] ?? 'Dubai';
+    }
+
+    private static function maxLocations(): int
+    {
+        return max(1, (int) config('signals.max_locations_per_watch', 10));
+    }
+
+    private static function maxRegions(): int
+    {
+        return max(1, (int) config('signals.max_regions_per_watch', 5));
+    }
+
+    /**
+     * The places a watch covers, squished, de-duplicated and bounded — never empty.
+     *
+     * Falls back to the regions' own default places, because a watch that searched nowhere would
+     * complete successfully having found nothing, which is the most confusing failure this feature
+     * could have. The rules require at least one, so this only fires for the one-click path and for
+     * a caller that sent a list of blanks.
+     *
+     * @param  list<SearchRegion>  $regions
+     * @return list<string>
+     */
+    private static function locations(mixed $value, array $regions): array
+    {
+        $locations = [];
+
+        foreach (is_array($value) ? $value : [] as $entry) {
+            if (! is_string($entry)) {
+                continue;
+            }
+
+            $place = self::text($entry, self::MAX_LOCATION);
+
+            if ($place !== null && ! in_array($place, $locations, strict: true)) {
+                $locations[] = $place;
+            }
+        }
+
+        if ($locations === []) {
+            foreach ($regions as $region) {
+                foreach ($region->defaultLocations() as $place) {
+                    if (! in_array($place, $locations, strict: true)) {
+                        $locations[] = $place;
+                    }
+                }
+            }
+        }
+
+        return array_slice($locations, 0, self::maxLocations());
+    }
+
+    /**
+     * The regions a watch searches — never empty, and never one the business has no position on.
+     *
+     * An unoffered region is **dropped rather than rejected**, the same treatment an out-of-team
+     * ICP or signal type gets: it can only arrive from a tampered form or from a region switched
+     * off since the watch was saved, and in both cases saving the watch without it is better than
+     * refusing a change the member had every right to make. Falls back to the region matching their
+     * market, so the result is always a watch that looks somewhere.
+     *
+     * @return list<SearchRegion>
+     */
+    private static function regions(mixed $value, Market $market): array
+    {
+        $regions = [];
+
+        foreach (is_array($value) ? $value : [] as $entry) {
+            $region = is_string($entry) ? SearchRegion::tryFrom($entry) : null;
+
+            if ($region !== null && $region->isOffered() && ! in_array($region, $regions, strict: true)) {
+                $regions[] = $region;
+            }
+        }
+
+        if ($regions === []) {
+            $regions[] = SearchRegion::forMarket($market);
+        }
+
+        return array_slice($regions, 0, self::maxRegions());
     }
 
     /**

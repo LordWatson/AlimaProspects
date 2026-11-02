@@ -5,6 +5,71 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-02 — Signals S8: a watch covers places, plural — and a restriction follows the person
+
+**One watch can now cover Dubai and London.** v1 gave a watch a single `location` and a `market`,
+and the market picked both the country Serper searched and the compliance rule stamped on every lead
+the watch produced. A watch now carries a list of **places** (up to ten) and a list of **regions**
+(up to five), the UK is a first-class market with its own six-type preset pack, and `market` is
+demoted to what it should always have been: the team's declared regime for that watch, a default and
+a backstop.
+
+**The reason those two jobs had to be separated is a compliance defect, and it is the important part
+of this phase.** While every watch was UAE-only, "where we looked" and "whose law applies" had the
+same answer, so one column could serve both and nobody had to notice. The moment a watch spans
+places the conflation is wrong in both directions — and the serious direction is the permissive
+one: a UK-market watch catching a Dubai relocation would have produced a lead with **no restriction
+at all**, and Outreach would have seen no reason to refuse a cold email to somebody whose law
+requires their prior consent. The restriction now comes from the signal's **own** jurisdiction,
+resolved from the article's place at extraction, with the watch's market as a backstop and its
+regions able only to add. Unknown fails _toward_ the restriction, never away from it. The fix
+shipped in the same phase that made the defect reachable rather than in a later one, which is the
+whole point of doing it this way round. ADR 0019 records the reasoning; `docs/compliance.md` §3.11
+states it as a rule every future source is held to.
+
+Five of the seven regions the code knows about are **switched off**, and that is deliberate: what
+they lack is a compliance position, not code. `Core\Enums\Market` was not grown to cover them,
+because every case on it asserts a position the business has actually taken, and a `Market` case
+with nothing behind it is a legal claim made by a programmer. Turning one on is a config line _and_
+a question for counsel (⚖️ `docs/compliance.md` §5).
+
+Two smaller things worth knowing. The query count is now
+`regions × places × types × templates`, which is twelve hundred paid searches for one run of one
+watch at the limits where v1 could not exceed eight — so the ceiling added in S7's review now bites
+in a second dimension, the trim drops **whole places** rather than a slice of everything (a gap a
+member can see), and the run records what it _wanted_ beside what it ran so the card can say
+coverage was reduced. A silent trim is a lie about what was searched. And `hl` became a property of
+the region rather than one setting for the whole product, with definitions able to carry translated
+templates — the plumbing for Arabic search, shipped without the content, because a
+machine-translated search query finds nothing while looking like it works.
+
+**The review pass found five backend defects and four frontend ones, and they are worth naming**
+because they share a shape: every backend one was a place where a second reading of an existing
+concept had been adopted without anybody deciding to. The switch that says a region may no longer
+be searched was also deciding whether leads it had already produced were restricted. The order a
+member ticked region boxes in was deciding an ambiguous jurisdiction, so "UK founder relocates to
+Dubai" could resolve to the UK and come out unrestricted. A watch's compliance regime was
+re-applied from the team row on every save, so renaming a watch moved it — and `teams.market`
+defaults to `uk`. A rollback deleting "its own" rows read that as including a team's tuned clone.
+Three of the five failed permissively, and none would have failed a test that existed. The fifth was
+arithmetic: the query plan was nested region-major, so a tight ceiling spent the whole budget on the
+first region and gave the second nothing — asking for two jurisdictions and silently getting one.
+
+On the frontend the sharpest one was simpler: the places textarea could not be typed into. A
+two-way computed filtered blank lines and wrote the result straight back, so pressing Enter at the
+end of the text removed the line break it had just inserted, and the only way to add a second place
+was to split an existing line or paste one in. The skip list had had the same defect since S6. The
+Arabic for the new copy also needed rewriting rather than correcting: it said "sea" where it meant
+"search", softened "never" to "and not", and called prospects customers on a line about what the
+law permits.
+
+Every UK template was spiked against live Serper before shipping, the same way S0 spiked the UAE
+ones, and the same lesson held: two of fourteen returned **zero** results and no amount of reading
+them would have told us which. `uk_psc_change` ships in the library but **not** as a starter,
+because a change in people with significant control is a registry filing rather than a story a
+journalist files — S13's Companies House source is what will make it work. The table is in
+`docs/modules/signals.md`.
+
 ### Added — 2026-11-02 — Signals S7: signal types became data
 
 **You can write your own signal types.** v1 shipped three — acquisition, funding round, relocation —
