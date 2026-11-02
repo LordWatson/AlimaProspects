@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Signals\Http\Controllers\Web\SignalController;
 use App\Modules\Signals\Http\Controllers\Web\SignalDefinitionController;
 use App\Modules\Signals\Http\Controllers\Web\SignalWatchController;
+use App\Modules\Signals\Http\Controllers\Web\SignalWatchlistController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -27,6 +28,13 @@ Route::middleware(['auth', 'verified', 'capability:signals'])->group(function ()
     Route::post('signals/{signal}/convert', [SignalController::class, 'convert'])
         ->whereNumber('signal')
         ->name('signals.convert');
+    // "Add to this lead" (S10): the alternative to converting, when the event is about a company
+    // the team already has. It creates no lead, which is why it is its own route rather than a flag
+    // on `convert` — a route that sometimes creates a lead and sometimes does not is a route nobody
+    // can reason about from its name.
+    Route::post('signals/{signal}/attach', [SignalController::class, 'attach'])
+        ->whereNumber('signal')
+        ->name('signals.attach');
     Route::post('signals/{signal}/dismiss', [SignalController::class, 'dismiss'])
         ->whereNumber('signal')
         ->name('signals.dismiss');
@@ -65,6 +73,31 @@ Route::middleware(['auth', 'verified', 'capability:signals'])->group(function ()
     Route::delete('signals/types/{definition}', [SignalDefinitionController::class, 'destroy'])
         ->whereNumber('definition')
         ->name('signal-definitions.destroy');
+
+    // The accounts screen (S10): the watchlists a team keeps, and the names on them. Nested
+    // under `signals/` for the same sidebar reason as the other two settings screens.
+    Route::get('signals/accounts', [SignalWatchlistController::class, 'index'])
+        ->name('signal-watchlists.index');
+    Route::post('signals/accounts', [SignalWatchlistController::class, 'store'])
+        ->name('signal-watchlists.store');
+    Route::patch('signals/accounts/{watchlist}', [SignalWatchlistController::class, 'update'])
+        ->whereNumber('watchlist')
+        ->name('signal-watchlists.update');
+    Route::delete('signals/accounts/{watchlist}', [SignalWatchlistController::class, 'destroy'])
+        ->whereNumber('watchlist')
+        ->name('signal-watchlists.destroy');
+    Route::post('signals/accounts/{watchlist}/entries', [SignalWatchlistController::class, 'storeEntries'])
+        ->whereNumber('watchlist')
+        ->name('signal-watchlists.entries.store');
+    Route::delete('signals/accounts/{watchlist}/entries/{entry}', [SignalWatchlistController::class, 'destroyEntry'])
+        ->whereNumber('watchlist')
+        ->whereNumber('entry')
+        ->name('signal-watchlists.entries.destroy');
+    // Rebuilding a list from the pipeline is a handful of indexed queries and no external call, so
+    // it needs no throttle of its own beyond the policy — unlike "run now", which spends money.
+    Route::post('signals/accounts/{watchlist}/sync', [SignalWatchlistController::class, 'sync'])
+        ->whereNumber('watchlist')
+        ->name('signal-watchlists.sync');
 
     // Nested under `signals/` so the sidebar's `startsWith` match keeps Signals lit while a
     // member is in its settings — it is one destination as far as they are concerned. The route

@@ -39,6 +39,7 @@ import type {
     SignalWatch,
     SignalWatchDefaults,
     SignalWatchForm,
+    SignalWatchlistOption,
 } from '@/types';
 
 defineOptions({
@@ -61,6 +62,11 @@ const props = defineProps<{
         max_locations: number;
         cadences: SignalCadenceOption[];
         icps: { id: number; name: string; is_active: boolean }[];
+        /**
+         * The lists a watch can follow instead of places (S10). Only the team's active lists with
+         * something on them: pointing a watch at an empty one is a watch that searches nothing.
+         */
+        watchlists: SignalWatchlistOption[];
     };
     defaults: SignalWatchDefaults;
     can: { manage: boolean };
@@ -84,6 +90,7 @@ const form = useForm<SignalWatchForm>({
     cadence: props.defaults.cadence,
     is_active: true,
     icp_id: null,
+    signal_watchlist_id: null,
 });
 
 /**
@@ -225,6 +232,9 @@ function openNew(): void {
         cadence: props.defaults.cadence,
         is_active: true,
         icp_id: props.options.icps.find((icp) => icp.is_active)?.id ?? null,
+        // Places by default. A watch over the team's own accounts is the warmer question, but it
+        // is a deliberate choice rather than something to be opted into by omission.
+        signal_watchlist_id: null,
     });
     form.reset();
     // The two free-text lists own their own control, so they are seeded alongside the form rather
@@ -248,12 +258,20 @@ function openEdit(watch: SignalWatch): void {
         cadence: watch.cadence,
         is_active: watch.is_active,
         icp_id: watch.icp?.id ?? null,
+        signal_watchlist_id: watch.signal_watchlist_id,
     });
     form.reset();
     locationsText.value = watch.locations.join('\n');
     ignoreDomainsText.value = watch.ignore_domains.join('\n');
     showEditor.value = true;
 }
+
+/** The list the form is currently pointed at, if any (S10). */
+const followedList = computed(() =>
+    props.options.watchlists.find(
+        (list) => list.id === form.signal_watchlist_id,
+    ),
+);
 
 function toggleDefinition(id: number): void {
     form.signal_definition_ids = form.signal_definition_ids.includes(id)
@@ -293,6 +311,9 @@ function toggleActive(watch: SignalWatch): void {
             cadence: watch.cadence,
             is_active: !watch.is_active,
             icp_id: watch.icp?.id ?? null,
+            // Carried through for the same reason as the skip-list: this posts the whole watch,
+            // and dropping it here would quietly unpoint the watch every time somebody paused it.
+            signal_watchlist_id: watch.signal_watchlist_id,
         },
         { preserveScroll: true },
     );
@@ -617,12 +638,23 @@ onBeforeUnmount(() => {
                                     }}
                                 </Badge>
                             </div>
+                            <!-- What it covers. A watch pointed at a list says so instead of its
+                                 places, because the places are not what it searches (S10). -->
                             <p
                                 class="text-base text-muted-foreground"
                                 dir="auto"
                             >
-                                {{ watch.locations.join(' · ') }} ·
-                                {{ t(watch.cadence_label) }}
+                                <template v-if="watch.watchlist_name">
+                                    {{
+                                        t('Following :name', {
+                                            name: watch.watchlist_name,
+                                        })
+                                    }}
+                                </template>
+                                <template v-else>
+                                    {{ watch.locations.join(' · ') }}
+                                </template>
+                                · {{ t(watch.cadence_label) }}
                                 <template v-if="watch.icp">
                                     · {{ t('shaped by') }} {{ watch.icp.name }}
                                 </template>
@@ -928,6 +960,60 @@ onBeforeUnmount(() => {
                                 dir="auto"
                             />
                             <InputError :message="form.errors.name" />
+                        </div>
+
+                        <!-- What this watch follows (S10, ADR 0021). A watch asks what happened
+                             **in a place** or what happened **to these companies**, never both —
+                             so this is one select rather than two half-used sections, and the
+                             places below stay on the row either way, so unpointing a watch gives
+                             the member back the geography they chose. -->
+                        <div v-if="options.watchlists.length" class="space-y-2">
+                            <Label for="watch-follows">{{
+                                t('What this watch follows')
+                            }}</Label>
+                            <select
+                                id="watch-follows"
+                                v-model="form.signal_watchlist_id"
+                                name="signal_watchlist_id"
+                                class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                                aria-describedby="watch-follows-hint"
+                                data-test="watch-follows"
+                            >
+                                <option :value="null">
+                                    {{
+                                        t('Places — what happens where I sell')
+                                    }}
+                                </option>
+                                <option
+                                    v-for="list in options.watchlists"
+                                    :key="list.id"
+                                    :value="list.id"
+                                >
+                                    {{
+                                        t('My accounts: :name (:count)', {
+                                            name: list.name,
+                                            count: list.entries_count,
+                                        })
+                                    }}
+                                </option>
+                            </select>
+                            <p
+                                id="watch-follows-hint"
+                                class="text-base text-muted-foreground"
+                            >
+                                {{
+                                    followedList
+                                        ? t(
+                                              'This watch asks what happened to those companies, a few at a time, instead of what happened in the places below.',
+                                          )
+                                        : t(
+                                              'Point it at a list of accounts to watch companies you already work instead of places.',
+                                          )
+                                }}
+                            </p>
+                            <InputError
+                                :message="form.errors.signal_watchlist_id"
+                            />
                         </div>
 
                         <div class="space-y-2">

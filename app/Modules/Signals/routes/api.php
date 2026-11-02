@@ -6,6 +6,7 @@ use App\Modules\Auth\Enums\TokenAbility;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalDefinitionController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalWatchController;
+use App\Modules\Signals\Http\Controllers\Api\V1\SignalWatchlistController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -28,6 +29,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->whereNumber('signal')
         ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signals.convert');
+    Route::post('signals/{signal}/attach', [SignalController::class, 'attach'])
+        ->whereNumber('signal')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signals.attach');
     Route::post('signals/{signal}/dismiss', [SignalController::class, 'dismiss'])
         ->whereNumber('signal')
         ->middleware('ability:'.TokenAbility::SignalsWrite->value)
@@ -81,6 +86,44 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->whereNumber('definition')
         ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signal-definitions.destroy');
+
+    // Watchlists (S10). `SignalsRead`/`SignalsWrite` rather than a scope of their own: a
+    // watchlist is where a watch looks, and a token that could read the feed but not the accounts
+    // it is about is a credential nobody would mean to issue.
+    //
+    // `entries` is a **bulk** add, bounded by the list's own cap, because a team with a CRM has
+    // this list somewhere else already and typing it into a textarea is the worse answer.
+    Route::get('signal-watchlists', [SignalWatchlistController::class, 'index'])
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-watchlists.index');
+    Route::post('signal-watchlists', [SignalWatchlistController::class, 'store'])
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-watchlists.store');
+    Route::get('signal-watchlists/{watchlist}', [SignalWatchlistController::class, 'show'])
+        ->whereNumber('watchlist')
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-watchlists.show');
+    Route::patch('signal-watchlists/{watchlist}', [SignalWatchlistController::class, 'update'])
+        ->whereNumber('watchlist')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-watchlists.update');
+    Route::delete('signal-watchlists/{watchlist}', [SignalWatchlistController::class, 'destroy'])
+        ->whereNumber('watchlist')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-watchlists.destroy');
+    Route::post('signal-watchlists/{watchlist}/entries', [SignalWatchlistController::class, 'storeEntries'])
+        ->whereNumber('watchlist')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-watchlists.entries.store');
+    Route::delete('signal-watchlists/{watchlist}/entries/{entry}', [SignalWatchlistController::class, 'destroyEntry'])
+        ->whereNumber('watchlist')
+        ->whereNumber('entry')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-watchlists.entries.destroy');
+    Route::post('signal-watchlists/{watchlist}/sync', [SignalWatchlistController::class, 'sync'])
+        ->whereNumber('watchlist')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-watchlists.sync');
 
     Route::get('signal-watches', [SignalWatchController::class, 'index'])
         ->middleware('ability:'.TokenAbility::SignalsRead->value)

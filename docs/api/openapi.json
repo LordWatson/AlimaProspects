@@ -4830,6 +4830,22 @@
                         }
                     },
                     {
+                        "name": "scope",
+                        "in": "query",
+                        "description": "Which half of the feed (S10). `in:` rather than permissive, unlike the filters\nbelow, because there are exactly two and neither can go stale \u2014 but `nullable`, so\nthe plain `/signals` URL the app has always had still means \"everything\".",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "enum": [
+                                "all",
+                                "accounts",
+                                null
+                            ]
+                        }
+                    },
+                    {
                         "name": "event_keys[]",
                         "in": "query",
                         "schema": {
@@ -5111,6 +5127,107 @@
                     },
                     "404": {
                         "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signals/{signal}/attach": {
+            "post": {
+                "operationId": "v1.signals.attach",
+                "description": "200 and **the signal**, not the lead: the same shape `convert` returns, for the same reason \u2014\na client needs one call to show \"this is now on lead 41\", and returning a different resource\nfrom the two endpoints would make them two integrations rather than one. Nothing is created,\nwhich is the whole point of the endpoint.",
+                "summary": "Add this event to the lead it is about, creating no lead (S10)",
+                "tags": [
+                    "Signal"
+                ],
+                "parameters": [
+                    {
+                        "name": "signal",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`SignalResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/SignalResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "watch",
+                                                        "lead"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -6478,6 +6595,697 @@
                 }
             }
         },
+        "/signal-watchlists": {
+            "get": {
+                "operationId": "v1.signal-watchlists.index",
+                "tags": [
+                    "SignalWatchlist"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `SignalWatchlistResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SignalWatchlistResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "v1.signal-watchlists.store",
+                "tags": [
+                    "SignalWatchlist"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SaveSignalWatchlistRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "`SignalWatchlistResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/SignalWatchlistResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "entries"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-watchlists/{watchlist}": {
+            "get": {
+                "operationId": "v1.signal-watchlists.show",
+                "tags": [
+                    "SignalWatchlist"
+                ],
+                "parameters": [
+                    {
+                        "name": "watchlist",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`SignalWatchlistResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalWatchlistResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "v1.signal-watchlists.update",
+                "tags": [
+                    "SignalWatchlist"
+                ],
+                "parameters": [
+                    {
+                        "name": "watchlist",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SaveSignalWatchlistRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`SignalWatchlistResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/SignalWatchlistResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "entries"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "v1.signal-watchlists.destroy",
+                "tags": [
+                    "SignalWatchlist"
+                ],
+                "parameters": [
+                    {
+                        "name": "watchlist",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-watchlists/{watchlist}/entries": {
+            "post": {
+                "operationId": "v1.signal-watchlists.entries.store",
+                "summary": "Add accounts in bulk. 200 with the list, not 201: the list already existed",
+                "tags": [
+                    "SignalWatchlist"
+                ],
+                "parameters": [
+                    {
+                        "name": "watchlist",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AddWatchlistEntriesRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`SignalWatchlistResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalWatchlistResource"
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "added": {
+                                                    "type": "integer"
+                                                },
+                                                "duplicates": {
+                                                    "type": "integer"
+                                                },
+                                                "skipped": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "added",
+                                                "duplicates",
+                                                "skipped"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-watchlists/{watchlist}/entries/{entry}": {
+            "delete": {
+                "operationId": "v1.signal-watchlists.entries.destroy",
+                "tags": [
+                    "SignalWatchlist"
+                ],
+                "parameters": [
+                    {
+                        "name": "watchlist",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "entry",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-watchlists/{watchlist}/sync": {
+            "post": {
+                "operationId": "v1.signal-watchlists.sync",
+                "summary": "Bring a pipeline list in step now rather than tonight",
+                "tags": [
+                    "SignalWatchlist"
+                ],
+                "parameters": [
+                    {
+                        "name": "watchlist",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`SignalWatchlistResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalWatchlistResource"
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "added": {
+                                                    "type": "integer"
+                                                },
+                                                "removed": {
+                                                    "type": "integer"
+                                                },
+                                                "kept": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "added",
+                                                "removed",
+                                                "kept"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/outreach/do-not-contact": {
             "get": {
                 "operationId": "v1.outreach.suppressions.index",
@@ -7187,6 +7995,62 @@
             }
         },
         "schemas": {
+            "AddWatchlistEntriesRequest": {
+                "type": "object",
+                "description": "Validates a batch of names being added to a watchlist (S10).\n\n**Bounded to the list's own cap** rather than to some round number: a request that could hold more\nentries than a list may contain is a request whose tail is guaranteed to be discarded, and the\nmember would have no way to know which half took. The Action then skips what would overflow and\nreports it, so the screen can say the list is full.\n\nThe web screen posts a textarea, one name per line, and the API posts the structured form. Both\narrive here as `entries[]` \u2014 the shaping of the textarea is the controller's job, so the\nvalidation rules describe one shape rather than two.",
+                "properties": {
+                    "entries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "maxLength": 160
+                                },
+                                "entity_type": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ],
+                                    "enum": [
+                                        "company",
+                                        "person",
+                                        null
+                                    ]
+                                },
+                                "aliases": {
+                                    "type": [
+                                        "array",
+                                        "null"
+                                    ],
+                                    "items": {
+                                        "type": "string",
+                                        "maxLength": 160
+                                    },
+                                    "maxItems": 5
+                                },
+                                "domain": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ],
+                                    "maxLength": 255
+                                }
+                            },
+                            "required": [
+                                "name"
+                            ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 250
+                    }
+                },
+                "required": [
+                    "entries"
+                ],
+                "title": "AddWatchlistEntriesRequest"
+            },
             "ApiError": {
                 "type": "object",
                 "properties": {
@@ -9163,6 +10027,7 @@
                             "task_due",
                             "lead_assigned",
                             "signals_detected",
+                            "signal_on_account",
                             "insights_ready",
                             "credit_low",
                             "payment_failed",
@@ -10250,6 +11115,13 @@
                             "null"
                         ]
                     },
+                    "signal_watchlist_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "Scoped to the member's own team (S10). The watch then reads `$watch->watchlist`\nthrough the ambient tenancy scope, so an id from another team would be a watch\npointed at a list its owner cannot see \u2014 and the FK itself is not team-qualified."
+                    },
                     "ignore_domains": {
                         "type": [
                             "array",
@@ -10270,6 +11142,55 @@
                     "cadence"
                 ],
                 "title": "SaveSignalWatchRequest"
+            },
+            "SaveSignalWatchlistRequest": {
+                "type": "object",
+                "description": "Validates a watchlist on create and update (S10).\n\nThe rules come from {@see SignalWatchlistData::rules()} so the web and API endpoints cannot drift\non what a watchlist may be. Authorisation lives in the controller via `SignalWatchlistPolicy`.\n\nThe stage and owner ids are **not** checked against the team's own rows here, deliberately: the\nsame treatment a watch's ICP gets. An id from another team can only arrive from a tampered form,\nand the sync drops it rather than failing \u2014 a list that mirrors \"my open stages\" should not stop\nsyncing because somebody deleted a stage.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "source_kind": {
+                        "type": "string",
+                        "description": "Only the kinds a member may actually choose. `segment` exists on the enum and is\nrefused here, because a case with no implementation behind it is worse than no case.",
+                        "enum": [
+                            "pipeline",
+                            "manual"
+                        ]
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "stages": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "description": "Both are \"which of my own things to mirror\", so both are bounded by what a team\nplausibly has rather than left open.",
+                        "items": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "maxItems": 20
+                    },
+                    "owners": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "maxItems": 50
+                    }
+                },
+                "required": [
+                    "name",
+                    "source_kind"
+                ],
+                "title": "SaveSignalWatchlistRequest"
             },
             "ScoreGrade": {
                 "type": "string",
@@ -10903,6 +11824,68 @@
                             "company_name"
                         ]
                     },
+                    "matched_lead": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "description": "The lead this event is **about** (S10), as opposed to the one it was converted into.\nNot `whenLoaded`: the card decides what to offer from it \u2014 \"add this to Acme Ltd\"\nrather than \"convert\" \u2014 so a feed that forgot to eager-load it would silently show\nevery matched signal as unmatched. The relation is loaded by the list Action. The confidence travels with it because the member is owed it: the way account\nmonitoring goes wrong is an event pinned to the wrong company, so the weaker match\nsays so and \"convert anyway\" stays a visible choice.",
+                        "properties": {
+                            "id": {
+                                "type": "integer"
+                            },
+                            "company_name": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "confidence": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "enum": [
+                                    "exact",
+                                    "likely",
+                                    null
+                                ]
+                            },
+                            "confidence_label": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "enum": [
+                                    "Same name",
+                                    "Probably the same",
+                                    null
+                                ]
+                            },
+                            "confidence_explanation": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "enum": [
+                                    "The name in the article is the name on this lead.",
+                                    "The names match apart from the company type, so this is very likely the same business \u2014 check before you rely on it.",
+                                    null
+                                ]
+                            },
+                            "needs_confirmation": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "company_name",
+                            "confidence",
+                            "confidence_label",
+                            "confidence_explanation",
+                            "needs_confirmation"
+                        ]
+                    },
                     "created_at": {
                         "type": [
                             "string",
@@ -10940,6 +11923,7 @@
                     "published_at",
                     "actioned_at",
                     "deletes_in_days",
+                    "matched_lead",
                     "created_at"
                 ],
                 "title": "SignalResource"
@@ -10989,6 +11973,19 @@
                         "items": {
                             "type": "string"
                         }
+                    },
+                    "signal_watchlist_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "Which accounts this watch follows instead of places (S10). The id is what the form\nposts back; the name is so the card can say \"following My pipeline\" without the\nclient holding the whole list of watchlists."
+                    },
+                    "watchlist_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "cadence": {
                         "type": "string",
@@ -11058,6 +12055,8 @@
                     "locations",
                     "regions",
                     "ignore_domains",
+                    "signal_watchlist_id",
+                    "watchlist_name",
                     "cadence",
                     "cadence_label",
                     "is_active",
@@ -11066,6 +12065,99 @@
                     "created_at"
                 ],
                 "title": "SignalWatchResource"
+            },
+            "SignalWatchlistResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "source_kind": {
+                        "type": "string",
+                        "enum": [
+                            "manual",
+                            "pipeline",
+                            "segment"
+                        ]
+                    },
+                    "source_kind_label": {
+                        "type": "string",
+                        "description": "Translation keys, not finished strings: the client passes them through `t()`.",
+                        "enum": [
+                            "Names I add",
+                            "My pipeline",
+                            "A saved view"
+                        ]
+                    },
+                    "source_kind_description": {
+                        "type": "string",
+                        "enum": [
+                            "You add the companies and people. Alima watches exactly those.",
+                            "Alima mirrors the leads you are working and keeps the list up to date overnight.",
+                            "Alima follows a saved view of leads."
+                        ]
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "is_synced": {
+                        "type": "boolean"
+                    },
+                    "can_edit_entries": {
+                        "type": "boolean"
+                    },
+                    "entries_count": {
+                        "type": "integer"
+                    },
+                    "stages": {
+                        "type": "array",
+                        "items": {}
+                    },
+                    "owners": {
+                        "type": "array",
+                        "items": {}
+                    },
+                    "synced_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "watches_count": {
+                        "type": "integer",
+                        "description": "How many watches are pointed at it \u2014 what pausing or deleting it would stop. Only\nwhen the caller asked for the count; this resource serialises a list."
+                    },
+                    "entries": {
+                        "type": "array",
+                        "description": "Resolved here, like every other nested collection in the app: an unresolved\ncollection reaches an Inertia page wrapped in its own `data` key, so the screen\nwould read `entries.data` while the API read `entries`.",
+                        "items": {}
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "source_kind",
+                    "source_kind_label",
+                    "source_kind_description",
+                    "is_active",
+                    "is_synced",
+                    "can_edit_entries",
+                    "entries_count",
+                    "stages",
+                    "owners",
+                    "synced_at",
+                    "created_at"
+                ],
+                "title": "SignalWatchlistResource"
             },
             "StartDiscoveryRequest": {
                 "type": "object",

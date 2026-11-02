@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Signals\Data;
 
+use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Signals\Actions\ConvertSignalToLeadAction;
 use App\Modules\Signals\Models\Signal;
 use Illuminate\Support\Str;
@@ -85,6 +86,28 @@ final class ConvertSignalData extends Data
             personRole: self::text($signal->subject_person_role),
             locality: self::text($signal->location) ?? self::defaultLocality(),
             country: self::defaultCountry(),
+        );
+    }
+
+    /**
+     * What "add this to that lead" converts with (S10).
+     *
+     * The signal's own extraction, with the **lead's** company name rather than the article's. That
+     * is the whole difference and it matters: the article writes a company the way a journalist
+     * does, the lead holds the name the team filed it under, and attaching must not quietly rename
+     * their record to the newspaper's spelling. Everything else — the person, their role, the place
+     * — is what the event says, because that is the new information.
+     */
+    public static function fromSignalForLead(Signal $signal, Lead $lead): self
+    {
+        return new self(
+            companyName: $lead->company_name,
+            personName: self::text($signal->subject_person_name),
+            personRole: self::text($signal->subject_person_role),
+            locality: self::text($signal->location),
+            // No country default: the lead already has one, and a default would overwrite nothing
+            // but could fill a gap with a guess from the watch's market rather than the event's.
+            country: null,
         );
     }
 

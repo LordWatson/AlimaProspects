@@ -228,6 +228,53 @@ final class SignalsException extends DomainException
     }
 
     /**
+     * A team is at its watchlist ceiling.
+     *
+     * Every list is searched by every watch pointed at it and every entry on it is a paid search,
+     * so the ceiling is on creating them as well as on their size — the same reasoning as the watch
+     * and definition ceilings (S10).
+     */
+    public static function tooManyWatchlists(int $max): self
+    {
+        $e = new self("You can have up to {$max} watchlists. Remove one, or add these accounts to a list you already have.");
+        $e->errorCode = 'signals.too_many_watchlists';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * Somebody tried to hand-edit a list a job maintains.
+     *
+     * A pipeline list's entries are an **output**: adding a name the next sync would delete is a
+     * screen that argues with itself, so the message points at what to change instead.
+     */
+    public static function watchlistIsSynced(): self
+    {
+        $e = new self('This list mirrors your pipeline, so Alima keeps it up to date. Change which stages it follows, or start a list of your own.');
+        $e->errorCode = 'signals.watchlist_is_synced';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * An "add to this lead" arrived for a signal with no lead to add it to.
+     *
+     * Reachable from a stale screen: the match was shown, somebody opened a second tab, and the
+     * lead was deleted or anonymised in between. The member is told plainly rather than handed a
+     * new lead they did not ask for.
+     */
+    public static function noLeadToAttachTo(): self
+    {
+        $e = new self('That lead is no longer there. Convert this signal into a new lead instead.');
+        $e->errorCode = 'signals.no_lead_to_attach_to';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
      * A watch was saved naming no signal type that this team actually has.
      *
      * Distinct from a validation error on purpose: ids are dropped rather than rejected when they

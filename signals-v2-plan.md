@@ -488,7 +488,7 @@ can be switched off; a monitor over your own pipeline cannot, without going blin
 
 ### Tasks
 
-1. [ ] **Migrations** — `signal_watchlists` (team-scoped: name, `source_kind`
+1. [x] **Migrations** — `signal_watchlists` (team-scoped: name, `source_kind`
        (`manual` | `pipeline` | `segment`), `is_active`, sync settings) and
        `signal_watchlist_entries` (watchlist, `entity_type` (`company` | `person`), `name`,
        `aliases` json, `domain` nullable, `lead_id` nullable FK `nullOnDelete`, `is_active`).
@@ -496,39 +496,42 @@ can be switched off; a monitor over your own pipeline cannot, without going blin
        (nullable) — a watch is **either** topical (definitions × locations) **or** entity-scoped
        (definitions × entities), and the model should make that difference explicit rather than
        leaving two half-filled column sets.
-2. [ ] **`SignalQueryBuilder` learns entity queries** — `"{entity}" {definition keyword}` per
-       entity × definition, with the same hard ceiling and the same visible trim. Entity queries
-       **do** want the exact-phrase quoting the S0 spike told us to drop for topical ones,
-       because a company name is precisely the case where a phrase match is right. Spike that
-       assumption and record the result rather than assuming either way.
-3. [ ] **`SyncPipelineWatchlistAction` + `SyncPipelineWatchlistJob`** — populate a
+2. [x] **`SignalQueryBuilder` learns entity queries** — per entity × region, with the same hard
+       ceiling. The plan expected `"{entity}" {definition keyword}` and asked for the quoting
+       assumption to be spiked rather than assumed. **It was, and it was wrong both ways:** every
+       quoted query returned zero (12/12) and appending a keyword _lost_ genuine results, so a
+       company is searched by **bare name alone** and a person by name + the definition's first
+       match keyword (ADR 0021 §3, table in `docs/modules/signals.md`). The ceiling then stopped
+       being a trim and became a **ring** (`signal_watches.entity_cursor`), because trimming a
+       250-account list to the first forty would never search the eighty-ninth account at all.
+3. [x] **`SyncPipelineWatchlistAction` + `SyncPipelineWatchlistJob`** — populate a
        `pipeline`-kind watchlist from the team's leads, filtered by stage and/or owner, capped
        (`signals.watchlist.max_entries`, default 250), scheduled nightly, idempotent, and
        **honouring suppression and erasure**: a lead anonymised by Compliance leaves the
        watchlist on the next sync, and a DSAR erasure removes its entries in the same
        transaction as the rest. Coordinate with `LeadAnonymiser` / `TeamDataArchiver` rather
        than discovering this in Compliance's tests.
-4. [ ] **Match a signal to an existing lead.** `SignalLeadMatcher` — subject company /
+4. [x] **Match a signal to an existing lead.** `SignalLeadMatcher` — subject company /
        counterparty / person against the team's leads using the **same** normalisation
        `SourcedLead::dedupeKey()` and `LeadDeduplicator` already use. **Reuse them; do not write
        a third name-matching rule** — three normalisers is how two leads become three. On a
        match, set `signals.matched_lead_id` (a new nullable FK, distinct from `lead_id`, which
        means "converted into") and write a `LeadActivityType::SignalMatched` timeline entry on
        the lead.
-5. [ ] **"Attach to lead" replaces "convert" when a match exists.** The card offers _Add to
+5. [x] **"Attach to lead" replaces "convert" when a match exists.** The card offers _Add to
        {Lead}_ — writing the timeline entry, the origin stamp and the activity, and creating
        **no** lead — or _Convert anyway_ for the false-positive case. Reuse
        `ConvertSignalToLeadAction`'s attach-or-create path; it already handles the
        fill-gaps-never-overwrite rule and the `field_sources` stamping (ADR 0008).
-6. [ ] **Account-signal notification** — `NotificationType::SignalOnAccount`, routed by
+6. [x] **Account-signal notification** — `NotificationType::SignalOnAccount`, routed by
        `NotificationDispatcher` (never `$user->notify()`), aggregated per run the way
        `AnnounceTopLeadsJob` aggregates, and **addressed to the lead's owner** where there is
        one. An event about an account somebody owns should reach that person, not the team.
-7. [ ] **Feed + lead detail UI** — a _My accounts_ tab in the feed, scoped to matched signals;
+7. [x] **Feed + lead detail UI** — a _My accounts_ tab in the feed, scoped to matched signals;
        and the lead detail "The event" panel (S4) grows into a **list** of events in date order.
        A small change with a large effect: the lead page becomes a timeline of what has happened
        to that company.
-8. [ ] **API + docs** — watchlist CRUD, bulk-add entries (a bounded CSV-shaped payload),
+8. [x] **API + docs** — watchlist CRUD, bulk-add entries (a bounded CSV-shaped payload),
        `matched_lead` on the signal resource, `openapi.json`, module docs.
 
 **Data model:** `signal_watchlists`, `signal_watchlist_entries`, `signals.matched_lead_id`,
@@ -1020,7 +1023,7 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | S7    | Signal definitions become data                  | ☑ **Done** 2026-11-02 | —            |
 | S8    | Geography, and the jurisdiction bug             | ☑ **Done** 2026-11-02 | S7           |
 | S9    | The signal builder (library, composer, preview) | ☑ **Done** 2026-11-02 | S7, S8       |
-| S10   | Watchlists & account monitoring                 | ☐ Not started         | S7, S8       |
+| S10   | Watchlists & account monitoring                 | ☑ **Done** 2026-11-02 | S7, S8       |
 | S11   | Clustering & redirect-safe dedupe               | ☐ Not started         | S7           |
 | S12   | Ranking, learning & explainability              | ☐ Not started         | S7, S11      |
 | S13   | Pluggable signal sources                        | ☐ Not started         | S7, S8       |

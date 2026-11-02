@@ -55,6 +55,17 @@ enum LeadActivityType: string
     // the `attached` property carries — exactly how `Imported` carries `merged`.
     case SignalConverted = 'signal_converted';
 
+    /**
+     * Something happened to this company, and Alima noticed without being asked (Signals S10).
+     *
+     * Distinct from {@see self::SignalConverted}, and the difference is the phase's whole point:
+     * that one says *this lead exists because of an event*, this one says *an event happened to a
+     * lead you already had*. One is provenance; the other is news. A lead's timeline becomes a
+     * record of what has happened to that company, which is what makes the page worth opening in
+     * the morning.
+     */
+    case SignalMatched = 'signal_matched';
+
     public function label(): string
     {
         return match ($this) {
@@ -72,6 +83,7 @@ enum LeadActivityType: string
             self::Created => 'Added by hand',
             self::Contacted => 'Contacted',
             self::SignalConverted => 'From a signal',
+            self::SignalMatched => 'Something happened',
         };
     }
 
@@ -82,7 +94,9 @@ enum LeadActivityType: string
     public function isAutomatic(): bool
     {
         return match ($this) {
-            self::Discovered, self::Enriched, self::Scored => true,
+            // `SignalMatched` is the clearest case there is: a scheduled watch found it and
+            // attributing it to whoever happened to be logged in would be a small lie.
+            self::Discovered, self::Enriched, self::Scored, self::SignalMatched => true,
             self::StageChanged, self::NoteAdded, self::TaskCreated, self::TaskCompleted,
             self::Assigned, self::Unassigned, self::TagsChanged, self::Imported,
             self::Created, self::Contacted, self::SignalConverted => false,

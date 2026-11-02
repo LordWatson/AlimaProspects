@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Data;
 
 use App\Modules\Signals\Actions\ListSignalsAction;
+use App\Modules\Signals\Enums\SignalScope;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\SignalDefinition;
 use DateTimeImmutable;
@@ -51,6 +52,15 @@ final class SignalFilters extends Data
         public readonly ?DateTimeImmutable $from = null,
         public readonly ?DateTimeImmutable $to = null,
         public readonly ?int $minRelevance = null,
+        /**
+         * `accounts` narrows the feed to signals matched to one of the team's own leads (S10).
+         *
+         * A **scope** rather than a status, because it is orthogonal to one: "new events about my
+         * accounts" and "converted events about my accounts" are both questions somebody asks, and
+         * folding this into `SignalStatus` would have produced six statuses that are really two
+         * questions crossed.
+         */
+        public readonly SignalScope $scope = SignalScope::All,
     ) {}
 
     /**
@@ -76,6 +86,9 @@ final class SignalFilters extends Data
             from: $from,
             to: $to,
             minRelevance: self::relevance($input['min_relevance'] ?? null),
+            // An unrecognised scope lands on everything, like an unrecognised status lands on New:
+            // a stale bookmark shows a feed rather than a 404.
+            scope: SignalScope::tryFrom((string) ($input['scope'] ?? '')) ?? SignalScope::All,
         );
     }
 
@@ -89,6 +102,9 @@ final class SignalFilters extends Data
     {
         return [
             'status' => $this->status->value,
+            // The scope travels with the filters so the URL reproduces what is on screen and a
+            // shared link opens the same feed — the standing rule for this screen since S5.
+            'scope' => $this->scope->value,
             'event_keys' => $this->eventKeys,
             // Date inputs speak `Y-m-d`, not ISO-8601 with a timezone.
             'from' => $this->from?->format('Y-m-d'),

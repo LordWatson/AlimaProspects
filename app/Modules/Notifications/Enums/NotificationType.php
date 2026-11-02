@@ -47,6 +47,20 @@ enum NotificationType: string
     /** A watch ran and brought back new signals. */
     case SignalsDetected = 'signals_detected';
 
+    /**
+     * Something happened to a company this member is already working (S10).
+     *
+     * Distinct from {@see self::SignalsDetected} because the **audience** is different, which is
+     * the only reason worth adding a case for: a discovery signal is news for the team, since
+     * nobody owns a stranger, and an event about an account somebody is working is news for that
+     * person. Sending this to the team would make it everybody's to ignore.
+     *
+     * **Aggregated per run and per recipient** by `AnnounceAccountSignals`: six matched accounts
+     * send one notification saying six. A watch runs daily, so the alternative is a feature
+     * somebody switches off inside a week.
+     */
+    case SignalOnAccount = 'signal_on_account';
+
     // --- AI Insights (Phase 14) ---
     /**
      * The day's insights are ready: what has gone cold, who is worth a call, and what Alima made
@@ -113,6 +127,7 @@ enum NotificationType: string
             self::TaskDue => 'A task reminder comes due',
             self::LeadAssigned => 'A lead is assigned to me',
             self::SignalsDetected => 'New signals arrive',
+            self::SignalOnAccount => 'Something happens to an account I am working',
             self::InsightsReady => 'The daily insights are ready',
             self::CreditLow => 'An allowance is running low',
             self::PaymentFailed => 'A payment fails',
@@ -130,6 +145,7 @@ enum NotificationType: string
             self::TaskDue => 'When something you asked to be reminded about is due.',
             self::LeadAssigned => 'When a colleague gives you a lead to work.',
             self::SignalsDetected => 'When a watch finds a new trigger event.',
+            self::SignalOnAccount => 'When Alima finds news about a company already in your pipeline. Sent to whoever is working it.',
             self::InsightsReady => 'Each morning: who is going cold, and who is worth a call today.',
             self::CreditLow => 'Owners and admins only — work stops when a plan allowance runs out.',
             self::PaymentFailed => 'Owners and admins only — a card was declined and the subscription is at risk.',
@@ -146,7 +162,12 @@ enum NotificationType: string
     {
         return match ($this) {
             self::DiscoveryComplete, self::TopLeads, self::SignalsDetected => NotificationGroup::Finding,
-            self::TaskDue, self::LeadAssigned => NotificationGroup::MyWork,
+            // **My work, not Finding.** This is the one Signals notification that is not about
+            // discovery: it is about an account this member is already responsible for, and it
+            // belongs beside "a lead is assigned to me" rather than beside "new signals arrive".
+            // A member who switched off discovery noise has not asked to stop hearing about their
+            // own pipeline.
+            self::SignalOnAccount, self::TaskDue, self::LeadAssigned => NotificationGroup::MyWork,
             self::CreditLow, self::PaymentFailed, self::AssessmentReviewDue, self::Announcement => NotificationGroup::Account,
             // With the digest rather than with Finding: both are a round-up a member reads once a
             // day, and both are the kind of thing somebody switches off together.
@@ -163,7 +184,12 @@ enum NotificationType: string
     {
         return match ($this) {
             // About *their own* work and time-sensitive: worth an email and a buzz.
-            self::TaskDue, self::LeadAssigned => [
+            //
+            // `SignalOnAccount` is here for the same reason: an acquisition at a company somebody
+            // is working is the most time-sensitive thing this product produces — the window in
+            // which a call is welcome is days — and it is about an account they own rather than a
+            // stranger. An in-app badge alone would be read when they next happened to log in.
+            self::SignalOnAccount, self::TaskDue, self::LeadAssigned => [
                 NotificationChannel::InApp,
                 NotificationChannel::Mail,
                 NotificationChannel::Push,
@@ -210,8 +236,11 @@ enum NotificationType: string
             // A failed payment and a due assessment both have a clock on them: Stripe retries for
             // a fortnight, and a lapsed assessment stops discovery. Holding either until 8am
             // tomorrow spends a day of a window somebody needed.
+            // An event at a company somebody is working has a window of days, and holding it
+            // until the morning round-up spends one of them. It is also the notification most
+            // likely to produce a phone call, which is the point of the feature.
             self::TaskDue, self::LeadAssigned, self::CreditLow, self::Digest,
-            self::PaymentFailed, self::AssessmentReviewDue => false,
+            self::PaymentFailed, self::AssessmentReviewDue, self::SignalOnAccount => false,
             self::DiscoveryComplete, self::TopLeads, self::SignalsDetected, self::InsightsReady,
             self::Announcement => true,
         };

@@ -40,6 +40,7 @@ final class NotificationPresenter
             NotificationType::TaskDue => $this->taskDue($payload),
             NotificationType::LeadAssigned => $this->leadAssigned($payload),
             NotificationType::SignalsDetected => $this->signalsDetected($payload),
+            NotificationType::SignalOnAccount => $this->signalOnAccount($payload),
             NotificationType::InsightsReady => $this->insightsReady($payload),
             NotificationType::CreditLow => $this->creditLow($payload),
             NotificationType::PaymentFailed => $this->paymentFailed($payload),
@@ -146,6 +147,35 @@ final class NotificationPresenter
             params: ['count' => $count],
             url: '/signals',
             actionLabel: 'See the signals',
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function signalOnAccount(array $payload): NotificationContent
+    {
+        // `count` is **accounts**, not events: the sentence is about companies, and six articles
+        // about one company is still news about one account (S10 review finding). `events` is the
+        // other number, and the body uses it where it differs.
+        $count = $this->count($payload, 'count');
+        $events = max($count, $this->count($payload, 'events'));
+        $company = $this->text($payload, 'company');
+        $leadId = $this->id($payload, 'lead_id');
+
+        // Leads with the company, because that is what makes this worth opening: the member knows
+        // the name, and "something happened to one of yours" is the whole message. One account gets
+        // its own sentence and a link straight to the lead; several get the count and the feed,
+        // since no single lead is the right destination.
+        return new NotificationContent(
+            type: NotificationType::SignalOnAccount,
+            title: $count === 1 ? 'News about :company' : 'News about :count of your accounts',
+            body: $count === 1
+                ? 'Something happened at a company you are working. Worth a look while it is fresh.'
+                : 'Alima found events at companies you are working. Worth a look while they are fresh.',
+            params: ['count' => $count, 'company' => $company, 'events' => $events],
+            url: $count === 1 && $leadId !== null ? '/leads/'.$leadId : '/signals?status=new&scope=accounts',
+            actionLabel: $count === 1 ? 'Open the lead' : 'See what happened',
         );
     }
 

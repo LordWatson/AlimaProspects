@@ -10,6 +10,8 @@ use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Models\SignalWatchlist;
+use App\Modules\Signals\Models\SignalWatchlistEntry;
 use Illuminate\Http\Request;
 
 /**
@@ -83,6 +85,49 @@ trait ResolvesSignals
             ->where('team_id', $team->getKey())
             ->with(['team', ...$with])
             ->findOrFail($definitionId));
+    }
+
+    /**
+     * @param  list<string>  $with  Extra relations the response needs loaded.
+     */
+    protected function watchlist(Request $request, int $watchlistId, array $with = []): SignalWatchlist
+    {
+        $team = $this->team($request);
+
+        return app(TeamContext::class)->run($team, fn (): SignalWatchlist => SignalWatchlist::query()
+            ->where('team_id', $team->getKey())
+            ->with(['team', ...$with])
+            ->findOrFail($watchlistId));
+    }
+
+    /**
+     * One entry, resolved **through its list** so an id from another team's list is a 404.
+     *
+     * The entry table carries its own `team_id` and the global scope uses it, so this is belt and
+     * braces — but an entry is the one row in this module a member deletes by id from a screen that
+     * lists dozens of them, which is exactly where an id gets mistyped or replayed.
+     */
+    protected function watchlistEntry(Request $request, int $watchlistId, int $entryId): SignalWatchlistEntry
+    {
+        $team = $this->team($request);
+        $watchlist = $this->watchlist($request, $watchlistId);
+
+        return app(TeamContext::class)->run($team, fn (): SignalWatchlistEntry => SignalWatchlistEntry::query()
+            ->where('team_id', $team->getKey())
+            ->where('signal_watchlist_id', $watchlist->getKey())
+            ->findOrFail($entryId));
+    }
+
+    /**
+     * A transient, team-scoped watchlist for authorising list/create.
+     */
+    protected function transientWatchlist(Team $team): SignalWatchlist
+    {
+        $watchlist = new SignalWatchlist;
+        $watchlist->forceFill(['team_id' => $team->getKey()]);
+        $watchlist->setRelation('team', $team);
+
+        return $watchlist;
     }
 
     /**

@@ -13,6 +13,7 @@ use App\Modules\LeadsWorkspace\Models\LeadTask;
 use App\Modules\Outreach\Models\ContactAttempt;
 use App\Modules\Outreach\Models\OutreachMessage;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalWatchlistEntry;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -97,6 +98,18 @@ final class LeadAnonymiser
             // The provenance of a converted lead (§5a). Deleted rather than scrubbed: a signal is
             // its headline and its link, and both name the person.
             Signal::query()->withoutGlobalScopes()->where('lead_id', $leadId)->delete();
+
+            // And the signals merely **about** this lead (S10), which is the same disclosure by a
+            // different column: a matched signal was never converted, so `lead_id` is null on it
+            // and the sweep above would have left a named headline and a live link behind. Found
+            // while writing S10 rather than by this module's tests, which is the right order.
+            Signal::query()->withoutGlobalScopes()->where('matched_lead_id', $leadId)->delete();
+
+            // The watchlist entries that name this company. Deleted rather than detached: an entry
+            // *is* a name, and leaving it would put the name Compliance just erased back into a
+            // search query the next time a watch ran. The nightly sync would drop it too — this is
+            // what makes it immediate and part of the same transaction as the rest of the erasure.
+            SignalWatchlistEntry::query()->withoutGlobalScopes()->where('lead_id', $leadId)->delete();
 
             $lead->forceFill([
                 // Keep the restriction, drop everything else the provider sent.

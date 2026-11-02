@@ -6,6 +6,7 @@ namespace App\Modules\Signals\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Core\Models\Team;
+use App\Modules\Core\Support\TeamContext;
 use App\Modules\ICP\Actions\GetIcpsAction;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\Signals\Actions\CloneSignalPresetsAction;
@@ -22,6 +23,7 @@ use App\Modules\Signals\Http\Requests\SaveSignalWatchRequest;
 use App\Modules\Signals\Http\Resources\SignalDefinitionResource;
 use App\Modules\Signals\Http\Resources\SignalWatchResource;
 use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -84,12 +86,47 @@ final class SignalWatchController extends Controller
                     'name' => $icp->name,
                     'is_active' => $icp->is_active,
                 ])->values()->all(),
+                // The lists a watch can be pointed at (S10). Active ones with something on them:
+                // pointing a watch at an empty list is a watch that searches nothing, and a picker
+                // that offers one is a trap rather than a choice. A team with no lists is sent to
+                // the accounts screen by the editor instead of being shown an empty select.
+                'watchlists' => $this->watchlists($team),
             ],
             // What the one-click "set up my first watch" button creates, so the empty state can
             // name the market and the events rather than promising something vague.
             'defaults' => $this->defaults($team),
             'can' => ['manage' => $user->can('create', $this->transientWatch($team))],
         ]);
+    }
+
+    /**
+     * The team's usable watchlists, for the editor's picker (S10).
+     *
+     * @return list<array{id: int, name: string, source_kind: string, entries_count: int}>
+     */
+    private function watchlists(Team $team): array
+    {
+        return app(TeamContext::class)->run($team, static function () use ($team): array {
+            $rows = [];
+
+            $lists = SignalWatchlist::query()
+                ->where('team_id', $team->getKey())
+                ->where('is_active', true)
+                ->where('entries_count', '>', 0)
+                ->orderBy('name')
+                ->get(['id', 'name', 'source_kind', 'entries_count']);
+
+            foreach ($lists as $list) {
+                $rows[] = [
+                    'id' => (int) $list->id,
+                    'name' => $list->name,
+                    'source_kind' => $list->source_kind->value,
+                    'entries_count' => (int) $list->entries_count,
+                ];
+            }
+
+            return $rows;
+        });
     }
 
     public function store(SaveSignalWatchRequest $request, SaveSignalWatchAction $action): RedirectResponse

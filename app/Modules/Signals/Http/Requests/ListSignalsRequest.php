@@ -6,6 +6,7 @@ namespace App\Modules\Signals\Http\Requests;
 
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Data\SignalFilters;
+use App\Modules\Signals\Enums\SignalScope;
 use App\Modules\Signals\Enums\SignalStatus;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -32,6 +33,10 @@ final class ListSignalsRequest extends FormRequest
     {
         return [
             'status' => ['nullable', 'string', 'in:'.implode(',', SignalStatus::values())],
+            // Which half of the feed (S10). `in:` rather than permissive, unlike the filters
+            // below, because there are exactly two and neither can go stale — but `nullable`, so
+            // the plain `/signals` URL the app has always had still means "everything".
+            'scope' => ['nullable', 'string', 'in:'.implode(',', SignalScope::values())],
             // Signal definition keys since S7 (ADR 0018). The bound is a team's library ceiling
             // rather than a fixed set of cases, and membership is not checked here for the reason
             // `SignalFilters` gives: an unknown key narrows to nothing, which is what a stale

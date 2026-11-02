@@ -55,6 +55,11 @@ final class SignalWatchResource extends JsonResource
             ),
             // The team's own exclusion list (S6) — their competitors, which only they can know.
             'ignore_domains' => $watch->ignore_domains ?? [],
+            // Which accounts this watch follows instead of places (S10). The id is what the form
+            // posts back; the name is so the card can say "following My pipeline" without the
+            // client holding the whole list of watchlists.
+            'signal_watchlist_id' => $watch->signal_watchlist_id,
+            'watchlist_name' => $watch->relationLoaded('watchlist') ? $watch->watchlist?->name : null,
             'cadence' => $watch->cadence->value,
             'cadence_label' => $watch->cadence->label(),
             'is_active' => $watch->is_active,

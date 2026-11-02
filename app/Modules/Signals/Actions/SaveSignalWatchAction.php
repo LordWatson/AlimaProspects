@@ -14,6 +14,7 @@ use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Models\SignalWatchlist;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -54,6 +55,7 @@ final class SaveSignalWatchAction
         return $this->teamContext->run($team, fn (): SignalWatch => DB::transaction(function () use ($team, $actor, $data, $watch): SignalWatch {
             $attributes = $data->toAttributes();
             $attributes['icp_id'] = $this->icpId($team, $data->icpId, $watch);
+            $attributes['signal_watchlist_id'] = $this->watchlistId($team, $data->watchlistId, $watch);
 
             $definitionIds = $this->definitionIds($team, $data->definitionIds, $watch);
 
@@ -239,6 +241,38 @@ final class SaveSignalWatchAction
     }
 
     /**
+     * The watchlist this watch follows: the one the member chose if it is theirs, else none (S10).
+     *
+     * Checked here as well as in the FormRequest, and team-scoped both times. The FK is not
+     * team-qualified and `planFor()` reads `$watch->watchlist` through the ambient tenancy scope,
+     * so a watch pointed at another team's list would be a watch whose owner cannot see what it
+     * searches — and the request is not the only caller of this Action.
+     */
+    private function watchlistId(Team $team, ?int $watchlistId, ?SignalWatch $watch): ?int
+    {
+        if ($watchlistId === null) {
+            return null;
+        }
+
+        $exists = SignalWatchlist::query()
+            ->where('team_id', $team->getKey())
+            ->whereKey($watchlistId)
+            ->exists();
+
+        if ($exists) {
+            return $watchlistId;
+        }
+
+        Log::channel('signals')->warning('Ignored an out-of-team watchlist on a signal watch.', [
+            'team_id' => (int) $team->getKey(),
+            'signal_watch_id' => $watch?->getKey(),
+            'signal_watchlist_id' => $watchlistId,
+        ]);
+
+        return null;
+    }
+
+    /**
      * What the audit row records: the shape of the watch, never a second copy of the team's own
      * wording beyond its name (CLAUDE.md logging rules).
      *
@@ -258,6 +292,9 @@ final class SaveSignalWatchAction
             // How many, not which: a team's competitor list is their commercial business, and the
             // audit trail has no need of a copy.
             'ignore_domains_count' => count($data->ignoreDomains),
+            // Whether this watch follows accounts rather than places, and which list — an id, which
+            // is the one thing about a watchlist worth recording here.
+            'signal_watchlist_id' => $data->watchlistId,
         ];
     }
 }

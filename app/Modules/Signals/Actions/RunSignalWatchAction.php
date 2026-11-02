@@ -16,13 +16,20 @@ use App\Modules\Core\Support\TeamContext;
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
+use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadsWorkspace\Actions\RecordLeadActivityAction;
+use App\Modules\LeadsWorkspace\Enums\LeadActivityType;
 use App\Modules\Onboarding\Models\BusinessProfile;
 use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Data\ExtractedSignal;
 use App\Modules\Signals\Data\NewsItem;
 use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Data\SignalQueryEntity;
+use App\Modules\Signals\Data\SignalQueryPlan;
+use App\Modules\Signals\Data\SignalQuerySpec;
 use App\Modules\Signals\Enums\SignalRunStatus;
 use App\Modules\Signals\Enums\SignalStatus;
+use App\Modules\Signals\Events\AccountSignalsDetected;
 use App\Modules\Signals\Events\SignalRunProgressed;
 use App\Modules\Signals\Events\SignalsDetected;
 use App\Modules\Signals\Exceptions\SignalsException;
@@ -30,7 +37,10 @@ use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Models\SignalWatchlist;
+use App\Modules\Signals\Models\SignalWatchlistEntry;
 use App\Modules\Signals\Services\SignalJurisdictionResolver;
+use App\Modules\Signals\Services\SignalLeadMatcher;
 use App\Modules\Signals\Services\SignalQueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -59,6 +69,21 @@ use Illuminate\Support\Str;
  *    {@see SignalDefinition::effectiveThresholds()} falls back to the global `signals.*` config, so
  *    an untuned definition behaves exactly as v1 did.
  *
+ * **Since S10 a watch is either topical or entity-scoped** (ADR 0021). A topical watch asks what
+ * happened in a place; an entity-scoped one asks what happened to a list of named accounts, which is
+ * the warm version of the same question. Two things follow:
+ *
+ * 1. **An entity run searches a window of the list, not all of it.** A pipeline watchlist holds up
+ *    to 250 accounts and a run is capped at forty searches, because every search is money. So the
+ *    run takes the next forty from where the last one stopped (`signal_watches.entity_cursor`) and
+ *    comes round again tomorrow — a daily watch covers 250 accounts about every six days. Trimming
+ *    to the first forty, which is what the topical trim does, would mean the eighty-ninth account
+ *    was never searched at all, silently, forever.
+ * 2. **Every kept signal is matched against the team's own leads** ({@see SignalLeadMatcher}),
+ *    whether the watch was entity-scoped or not — a topical watch finding an event about a company
+ *    already in the pipeline is exactly as useful, and the member should not have to have predicted
+ *    it. A match writes `matched_lead_id`, a confidence, and one timeline entry on that lead.
+ *
  * A watch whose every type has been paused produces an **empty, completed run**, not a failed one:
  * nothing went wrong, there was simply nothing to look for.
  */
@@ -72,6 +97,8 @@ final class RunSignalWatchAction
         private readonly AiClient $ai,
         private readonly CapabilityGate $capabilities,
         private readonly SignalJurisdictionResolver $jurisdictions,
+        private readonly SignalLeadMatcher $matcher,
+        private readonly RecordLeadActivityAction $activity,
     ) {}
 
     public function handle(SignalWatch $watch): SignalRun
@@ -112,7 +139,7 @@ final class RunSignalWatchAction
         $icp = $this->activeIcp($watch->team_id);
         $profile = BusinessProfile::query()->where('team_id', $watch->team_id)->first();
 
-        $plan = $this->queries->build($watch, $definitions, $icp);
+        [$plan, $nextCursor] = $this->planFor($watch, $definitions, $icp);
         $queriesCount = $plan->count();
         $serperCostMicros = $queriesCount * (int) config('signals.cost_micros_per_request', 1_000);
 
@@ -161,6 +188,7 @@ final class RunSignalWatchAction
             resultsCount: $resultsCount,
             costMicros: $costMicros,
             queriesRequested: $plan->requested,
+            nextCursor: $nextCursor,
         );
     }
 
@@ -435,13 +463,153 @@ final class RunSignalWatchAction
     }
 
     /**
+     * The queries this run will make, and where the next entity run should start.
+     *
+     * A topical watch is unchanged: definitions × places × regions, trimmed to the ceiling. An
+     * entity watch takes the **next window** of its list — `signals.watchlist.window` accounts
+     * starting at the watch's cursor, wrapping round — so a 250-account pipeline is covered over
+     * days rather than its first forty being searched every day and the rest never (ADR 0021).
+     *
+     * @param  list<SignalDefinition>  $definitions
+     * @return array{0: SignalQueryPlan, 1: int|null} the plan, and the cursor to store on success
+     */
+    private function planFor(SignalWatch $watch, array $definitions, ?Icp $icp): array
+    {
+        $watchlist = $watch->watchlist;
+
+        if (! $watchlist instanceof SignalWatchlist || ! $watchlist->is_active) {
+            // Topical, or pointed at a list somebody has paused. A paused list searches nothing
+            // rather than falling back to places: the member said what they wanted watched.
+            if ($watch->signal_watchlist_id !== null) {
+                return [new SignalQueryPlan([], 0), null];
+            }
+
+            return [$this->queries->build($watch, $definitions, $icp), null];
+        }
+
+        /** @var list<SignalWatchlistEntry> $all */
+        $all = $watchlist->activeEntries()->get()->all();
+
+        if ($all === []) {
+            return [new SignalQueryPlan([], 0), null];
+        }
+
+        $cursor = max(0, (int) $watch->entity_cursor) % count($all);
+
+        // Wraps, so the list is a ring rather than a queue that empties: the 249th account is
+        // searched on day six and the first again on day seven.
+        $slice = array_merge(array_slice($all, $cursor), array_slice($all, 0, $cursor));
+
+        // **Taken by cost, not by count** — a review finding, and the exact failure the ring exists
+        // to prevent. One entity is one query *per region* (and, for a person, per definition), so
+        // forty entities over two regions build eighty queries and the plan's trim keeps forty: the
+        // last twenty entities were never searched, yet a cursor advanced by "entities taken" would
+        // step past them and lose them on every lap. So the window is filled until the next entity
+        // would not fit inside `max_queries_per_run`, and the cursor advances by the entities that
+        // actually fit. `signals.watchlist.window` stays as an upper bound on top of that, because
+        // a member who wants a cheaper watch should be able to say so.
+        $entities = [];
+        $window = max(1, (int) config('signals.watchlist.window', 40));
+        $budget = max(1, (int) config('signals.max_queries_per_run', 40));
+        $regions = max(1, count(SignalQuerySpec::forEntities($watch, [])->regions));
+        $spent = 0;
+
+        foreach ($slice as $entry) {
+            if (count($entities) >= $window) {
+                break;
+            }
+
+            $entity = SignalQueryEntity::fromEntry($entry);
+            $cost = count($entity->names) * $regions * ($entity->searchableAlone() ? 1 : max(1, count($definitions)));
+
+            // Always take the first one, however expensive: an entity nobody can afford would
+            // otherwise block the ring forever and the list would go quiet with no explanation.
+            if ($entities !== [] && $spent + $cost > $budget) {
+                break;
+            }
+
+            $entities[] = $entity;
+            $spent += $cost;
+        }
+
+        return [
+            $this->queries->buildFromSpec(SignalQuerySpec::forEntities($watch, $entities), $definitions),
+            ($cursor + count($entities)) % count($all),
+        ];
+    }
+
+    /**
+     * Match this run's new signals to the team's own leads, and record what matched.
+     *
+     * Runs **inside** the transaction that inserted them, so a lead whose timeline says an event
+     * happened always has the signal behind it. Scoped to this run, which makes it idempotent for
+     * free: a re-run inserts nothing, so there is nothing to announce twice.
+     *
+     * The notification is raised after commit, aggregated per run, and addressed to the lead's
+     * owners — never `$user->notify()` and never one per signal (CLAUDE.md).
+     */
+    private function recordMatches(SignalRun $run, SignalWatch $watch): void
+    {
+        /** @var list<Signal> $matched */
+        $matched = Signal::query()
+            ->where('signal_run_id', $run->getKey())
+            ->whereNotNull('matched_lead_id')
+            ->with('matchedLead')
+            ->get()
+            ->all();
+
+        if ($matched === []) {
+            return;
+        }
+
+        foreach ($matched as $signal) {
+            $lead = $signal->matchedLead;
+
+            if (! $lead instanceof Lead) {
+                continue;
+            }
+
+            $this->activity->handle(
+                lead: $lead,
+                type: LeadActivityType::SignalMatched,
+                subject: $signal,
+                properties: [
+                    'signal_id' => (int) $signal->getKey(),
+                    'event_type' => $signal->event_key,
+                    // A value, not a sentence: the wording is composed at render time (EN/AR).
+                    'headline' => Str::limit($signal->headline, 160),
+                    'confidence' => $signal->match_confidence?->value,
+                ],
+                // No actor: nobody did this. A scheduled watch found it, and a timeline entry
+                // attributed to whoever happens to be logged in would be a small lie.
+                actor: null,
+            );
+        }
+
+        $teamId = (int) $run->team_id;
+        $runId = (int) $run->getKey();
+        $count = count($matched);
+
+        DB::afterCommit(static function () use ($teamId, $runId, $count): void {
+            event(new AccountSignalsDetected($teamId, $runId, $count));
+        });
+
+        Log::channel('signals')->info('Signals matched to existing leads.', [
+            'team_id' => $teamId,
+            'signal_watch_id' => (int) $watch->getKey(),
+            'run_id' => $runId,
+            'matched' => $count,
+        ]);
+    }
+
+    /**
      * Persist the kept signals + the run totals in one transaction. `insertOrIgnore` on
      * `(team_id, url_hash)` makes a re-run idempotent and never overwrites an existing (possibly
      * converted) signal. Fires {@see SignalsDetected} after commit.
      *
      * @param  list<array{0: ExtractedSignal, 1: NewsItem, 2: SignalDefinition}>  $kept
      */
-    private function complete(SignalRun $run, SignalWatch $watch, array $kept, int $queriesCount, int $resultsCount, int $costMicros, int $queriesRequested = 0): SignalRun
+    private function complete(SignalRun $run, SignalWatch $watch, array $kept, int $queriesCount, int $resultsCount, int $costMicros, int $queriesRequested = 0, ?int $nextCursor = null): SignalRun
     {
         // De-duplicate by url_hash within this run, keeping the highest-confidence result when the
         // model returns more than one for the same article.
@@ -458,8 +626,19 @@ final class RunSignalWatchAction
             $rows[] = $this->toRow($run, $watch, $extracted, $item, $definition);
         }
 
-        $created = DB::transaction(function () use ($run, $watch, $rows, $queriesCount, $resultsCount, $costMicros, $queriesRequested): int {
+        $created = DB::transaction(function () use ($run, $watch, $rows, $queriesCount, $resultsCount, $costMicros, $queriesRequested, $nextCursor): int {
             $created = $rows === [] ? 0 : Signal::query()->insertOrIgnore($rows);
+
+            // The timeline entries for signals matched to a lead, written **inside** the same
+            // transaction as the signals themselves: a lead whose timeline says an event happened
+            // and a feed with no such signal in it would be a worse state than neither.
+            //
+            // Scoped to this run, which is what makes it idempotent for free: a re-run inserts
+            // nothing (`insertOrIgnore` on `(team_id, url_hash)`), so there is nothing new to
+            // announce and no second entry to write.
+            if ($created > 0) {
+                $this->recordMatches($run, $watch);
+            }
 
             $run->forceFill([
                 'status' => SignalRunStatus::Completed,
@@ -475,7 +654,15 @@ final class RunSignalWatchAction
                 'finished_at' => now(),
             ])->save();
 
-            $watch->forceFill(['last_run_at' => now()])->save();
+            // Where the next entity run starts, written **only** when this run was entity-scoped:
+            // a topical run has no cursor to advance, and a freshly loaded model may not have the
+            // column hydrated at all, so writing it unconditionally would try to store null in a
+            // NOT NULL column. Advanced on completion only, so a failed run does not skip the
+            // accounts it never got to.
+            $watch->forceFill(array_filter(
+                ['last_run_at' => now(), 'entity_cursor' => $nextCursor],
+                static fn (mixed $value): bool => $value !== null,
+            ))->save();
 
             $teamId = (int) $run->team_id;
             $runId = (int) $run->getKey();
@@ -519,10 +706,23 @@ final class RunSignalWatchAction
             ? null
             : SignalJurisdictionResolver::marketFor($jurisdiction);
 
+        // Is this event about a company the team already has? (S10) Answered **here**, while the
+        // row is being built, so a signal is never stored unmatched and then corrected — the match
+        // is one of its own columns from birth. The matcher errs toward no match by design; a null
+        // here means the signal behaves exactly as it did before this phase.
+        $match = $this->matcher->match(
+            (int) $watch->team_id,
+            $extracted->subjectCompanyName,
+            $extracted->counterpartyName,
+            $extracted->subjectPersonName,
+        );
+
         return [
             'team_id' => $watch->team_id,
             'signal_watch_id' => $watch->getKey(),
             'signal_run_id' => $run->getKey(),
+            'matched_lead_id' => $match?->lead->getKey(),
+            'match_confidence' => $match?->confidence->value,
             'signal_definition_id' => $definition->getKey(),
             'event_key' => $definition->key,
             'status' => SignalStatus::New->value,

@@ -15,6 +15,7 @@ use App\Modules\Notifications\Console\SendDigestsCommand;
 use App\Modules\Notifications\Console\SendTaskRemindersCommand;
 use App\Modules\Notifications\Contracts\PushSender;
 use App\Modules\Notifications\Http\Resources\NotificationResource;
+use App\Modules\Notifications\Listeners\AnnounceAccountSignals;
 use App\Modules\Notifications\Listeners\AnnounceDiscoveryRun;
 use App\Modules\Notifications\Listeners\AnnounceLeadAssignment;
 use App\Modules\Notifications\Listeners\AnnounceSignals;
@@ -22,6 +23,7 @@ use App\Modules\Notifications\Listeners\AnnounceTopLeads;
 use App\Modules\Notifications\Services\FcmPushSender;
 use App\Modules\Notifications\Services\NotificationReader;
 use App\Modules\Scoring\Events\LeadScored;
+use App\Modules\Signals\Events\AccountSignalsDetected;
 use App\Modules\Signals\Events\SignalsDetected;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Repository as Cache;
@@ -118,6 +120,9 @@ final class NotificationsServiceProvider extends ModuleServiceProvider
         Event::listen(LeadScored::class, AnnounceTopLeads::class);
         Event::listen(LeadAssigned::class, AnnounceLeadAssignment::class);
         Event::listen(SignalsDetected::class, AnnounceSignals::class);
+        // Separate from the above, because the audience is: that one tells the team about
+        // discoveries, this one tells the owner of a lead that something happened to it (S10).
+        Event::listen(AccountSignalsDetected::class, AnnounceAccountSignals::class);
     }
 
     private function registerSchedule(): void

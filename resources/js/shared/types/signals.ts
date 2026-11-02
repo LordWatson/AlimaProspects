@@ -176,12 +176,31 @@ export type Signal = {
      * whose lead has since been deleted, which the card reads as "the lead is gone".
      */
     lead?: { id: number; company_name: string } | null;
+    /**
+     * The lead this event is **about** (S10), as opposed to the one it was converted into.
+     *
+     * Present whenever the matcher recognised the company, which is what makes the card offer
+     * "add this to Acme Ltd" instead of "convert". The confidence travels with it because the
+     * member is owed it: the way account monitoring goes wrong is an event pinned to the wrong
+     * company, so the weaker match says so and "convert anyway" stays a visible choice.
+     */
+    matched_lead: {
+        id: number;
+        company_name: string | null;
+        confidence: SignalMatchConfidence | null;
+        /** Translation keys, not finished strings. */
+        confidence_label: string | null;
+        confidence_explanation: string | null;
+        needs_confirmation: boolean;
+    } | null;
     created_at: string | null;
 };
 
 /** The feed's tab + filter state, mirroring `SignalFilters::toFormState()`. */
 export type SignalFilterState = {
     status: SignalStatus;
+    /** Which half of the feed: everything, or only events about the team's own accounts (S10). */
+    scope: SignalScope;
     /** Signal definition keys. Any the team no longer has is dropped by the server. */
     event_keys: SignalEventKey[];
     /** `Y-m-d`, as a date input speaks it. */
@@ -271,6 +290,14 @@ export type SignalWatch = {
      */
     next_due_at: string | null;
     icp?: { id: number; name: string } | null;
+    /**
+     * The accounts this watch follows **instead of** places (S10, ADR 0021).
+     *
+     * Null is a topical watch, which is what every watch was before S10. The name comes down with
+     * it so a card can say which list without the client joining two props together.
+     */
+    signal_watchlist_id: number | null;
+    watchlist_name: string | null;
     signals_count?: number;
     runs?: SignalRun[];
     created_at: string | null;
@@ -302,6 +329,8 @@ export type SignalWatchForm = {
     cadence: SignalWatchCadence;
     is_active: boolean;
     icp_id: number | null;
+    /** The watchlist this watch follows, or null for a watch that searches places (S10). */
+    signal_watchlist_id: number | null;
 };
 
 /**
@@ -449,6 +478,90 @@ export type SignalPreviewResult = {
     /** Translation key, not a finished string. */
     diagnosis: string;
     items: SignalPreviewItem[];
+};
+
+/**
+ * Which half of the feed is on screen (S10).
+ *
+ * A **scope**, not a status, and the two are orthogonal: "new events about my accounts" and
+ * "converted events about my accounts" are both questions, so folding this into `SignalStatus`
+ * would have produced six cases that were really two questions crossed.
+ */
+export type SignalScope = 'all' | 'accounts';
+
+/** A scope with the sentence its empty state shows. */
+export type SignalScopeOption = {
+    value: SignalScope;
+    /** Translation key, not a finished string. */
+    label: string;
+    /** Translation key, not a finished string. */
+    empty_message: string;
+};
+
+/** Where a watchlist's names come from. `segment` is declared server-side and not offered. */
+export type WatchlistSourceKind = 'manual' | 'pipeline' | 'segment';
+
+export type WatchlistEntityType = 'company' | 'person';
+
+/**
+ * How sure Alima is that an event is about a lead the team already has (S10).
+ *
+ * There is no "low": a weak guess is **not a match**, because the way account monitoring goes
+ * wrong is an event pinned to the wrong company.
+ */
+export type SignalMatchConfidence = 'exact' | 'likely';
+
+/** One account on a watchlist. */
+export type SignalWatchlistEntry = {
+    id: number;
+    entity_type: WatchlistEntityType;
+    /** Translation key, not a finished string. */
+    entity_type_label: string;
+    /** The member's own spelling — the comparison key is never sent. */
+    name: string;
+    aliases: string[];
+    domain: string | null;
+    is_active: boolean;
+    lead_id: number | null;
+    lead?: { id: number; company_name: string } | null;
+};
+
+/** A set of accounts a team wants watched. */
+export type SignalWatchlist = {
+    id: number;
+    name: string;
+    source_kind: WatchlistSourceKind;
+    /** Translation keys, not finished strings. */
+    source_kind_label: string;
+    source_kind_description: string;
+    is_active: boolean;
+    is_synced: boolean;
+    /** Whether a member may add and remove names: a synced list's entries are an output. */
+    can_edit_entries: boolean;
+    entries_count: number;
+    stages: number[];
+    owners: number[];
+    synced_at: string | null;
+    watches_count?: number;
+    entries?: SignalWatchlistEntry[];
+    created_at: string | null;
+};
+
+/** One choosable watchlist, as the watch editor's picker reads it (S10). */
+export type SignalWatchlistOption = {
+    id: number;
+    name: string;
+    source_kind: WatchlistSourceKind;
+    entries_count: number;
+};
+
+/** The form state the watchlist editor binds to, mirroring `SignalWatchlistData::rules()`. */
+export type SignalWatchlistForm = {
+    name: string;
+    source_kind: WatchlistSourceKind;
+    is_active: boolean;
+    stages: number[];
+    owners: number[];
 };
 
 /** A category with its section explainer, for grouping the library. */

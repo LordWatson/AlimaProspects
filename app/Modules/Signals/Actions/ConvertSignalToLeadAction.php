@@ -76,10 +76,18 @@ final class ConvertSignalToLeadAction
      * Convert `$signal` and return the lead it produced — a fresh one, the team's existing record
      * of that company, or (on a repeat) the lead an earlier conversion already made.
      *
+     * **`$attachTo` is S10's "Add to this lead".** Given a lead, the signal is attached to *that*
+     * row rather than to whatever its dedupe key finds — because the matcher found it by **name**,
+     * and a lead keyed by registry number has a different dedupe key from a name-keyed one. Nothing
+     * else about the conversion changes: the same gap-filling, the same `field_sources` provenance,
+     * the same timeline entry, the same outreach restriction. That reuse is the point — a parallel
+     * "attach" implementation would be a second place for the fill-gaps-never-overwrite rule to
+     * live, and the second one would be the one that got it wrong.
+     *
      * @throws SignalsException when no company name is available, or when an earlier conversion's
      *                          lead has since been deleted.
      */
-    public function handle(Signal $signal, User $actor, ConvertSignalData $data): Lead
+    public function handle(Signal $signal, User $actor, ConvertSignalData $data, ?Lead $attachTo = null): Lead
     {
         if (trim($data->companyName) === '') {
             // A relocation signal often names a person and no company. Rather than invent a holding
@@ -88,14 +96,14 @@ final class ConvertSignalToLeadAction
         }
 
         try {
-            [$lead, $attached, $alreadyConverted] = $this->runConversion($signal, $actor, $data);
+            [$lead, $attached, $alreadyConverted] = $this->runConversion($signal, $actor, $data, $attachTo);
         } catch (UniqueConstraintViolationException) {
             // Two members converted signals about the same *new* company at once and we lost the
             // insert: the row lock can't hold a row that doesn't exist yet. The winner exists now,
             // so a fresh attempt finds and attaches to it. Retried out here rather than inside the
             // transaction — a failed statement aborts the surrounding transaction on some drivers,
             // which is the trap `ImportLeadsAction` avoids the same way.
-            [$lead, $attached, $alreadyConverted] = $this->runConversion($signal, $actor, $data);
+            [$lead, $attached, $alreadyConverted] = $this->runConversion($signal, $actor, $data, $attachTo);
         }
 
         // The caller still holds the pre-conversion model (the action works on its own locked copy),
@@ -138,9 +146,9 @@ final class ConvertSignalToLeadAction
      *
      * @return array{0: Lead, 1: bool, 2: bool}
      */
-    private function runConversion(Signal $signal, User $actor, ConvertSignalData $data): array
+    private function runConversion(Signal $signal, User $actor, ConvertSignalData $data, ?Lead $attachTo = null): array
     {
-        return DB::transaction(fn (): array => $this->convert($signal, $actor, $data), attempts: 3);
+        return DB::transaction(fn (): array => $this->convert($signal, $actor, $data, $attachTo), attempts: 3);
     }
 
     /**
@@ -150,7 +158,7 @@ final class ConvertSignalToLeadAction
      * @return array{0: Lead, 1: bool, 2: bool} the lead, whether it was attached to rather than
      *                                          created, and whether this was a repeat conversion
      */
-    private function convert(Signal $signal, User $actor, ConvertSignalData $data): array
+    private function convert(Signal $signal, User $actor, ConvertSignalData $data, ?Lead $attachTo = null): array
     {
         /** @var Signal $locked */
         $locked = Signal::query()
@@ -164,7 +172,7 @@ final class ConvertSignalToLeadAction
 
         $attributes = $this->toSourcedLead($locked, $data)->toLeadAttributes();
 
-        [$lead, $attached] = $this->attachOrCreate($locked, $data, $attributes);
+        [$lead, $attached] = $this->attachOrCreate($locked, $data, $attributes, $attachTo);
 
         // Catches the company the team already has under a *different* key — keyed by registry
         // number while this one is keyed by domain, say. The survivor is the most authoritative
@@ -380,10 +388,28 @@ final class ConvertSignalToLeadAction
      * @param  array<string, mixed>  $attributes
      * @return array{0: Lead, 1: bool}
      */
-    private function attachOrCreate(Signal $signal, ConvertSignalData $data, array $attributes): array
+    private function attachOrCreate(Signal $signal, ConvertSignalData $data, array $attributes, ?Lead $attachTo = null): array
     {
         $teamId = (int) $signal->team_id;
         $dedupeKey = (string) $attributes['dedupe_key'];
+
+        // A named target (S10's "Add to this lead") is preferred over the dedupe key, because the
+        // matcher found it by name and this team's row may be keyed by a registry number instead.
+        // Re-read under a lock and **re-scoped by team**: the caller resolved it, and a target from
+        // another tenant would be the worst bug this phase could have.
+        if ($attachTo instanceof Lead) {
+            $target = Lead::query()
+                ->where('team_id', $teamId)
+                ->whereKey($attachTo->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if ($target instanceof Lead) {
+                $this->fillGaps($target, $attributes);
+
+                return [$target, true];
+            }
+        }
 
         $existing = $this->lockByDedupeKey($teamId, $dedupeKey);
 

@@ -33,6 +33,9 @@ final class ListSignalWatchesAction
             ->where('team_id', $team->getKey())
             ->with([
                 'icp:id,name',
+                // The accounts it follows, if any (S10) — so a card can say "following My
+                // pipeline" rather than making the client join two props together.
+                'watchlist:id,name,is_active,entries_count',
                 // The watched types (S7, ADR 0018). Eager-loaded rather than left to the resource:
                 // `SignalWatchResource` sends them with their explainers, and a `whenLoaded` that
                 // nobody loaded would quietly leave a watch looking like it watches for nothing.

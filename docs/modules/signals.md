@@ -1,6 +1,6 @@
 # Signals
 
-> Status: **v1 complete (S0–S6) · v2 in progress (S7–S9 landed; S10–S16 planned, see `signals-v2-plan.md`)**
+> Status: **v1 complete (S0–S6) · v2 in progress (S7–S10 landed; S11–S16 planned, see `signals-v2-plan.md`)**
 > Owner: Product · Last updated: 2026-11-02
 
 ## Purpose
@@ -28,6 +28,14 @@ the type was not. **S7 made that claim true** (ADR 0018): a signal type is now a
 deploy, so a recruiter watching for a hiring surge and a contractor watching for planning
 permission are configuration rather than a release. v1's three types are the first three
 entries in a **platform preset library** teams clone from.
+
+**S10 made it a monitor as well as a feed** (ADR 0021). A watch can be pointed at a **watchlist**
+of companies instead of at a place, and the obvious list is the team's own pipeline — mirrored
+nightly, so nothing is typed. Every kept signal, from any watch, is matched against the team's
+leads; a match puts the event **on that lead** rather than offering it as a stranger, and the card
+offers _Add to Acme Ltd_ where it used to offer _Convert to lead_. The cold question ("who just came
+into money?") is unchanged; the warm one ("what just happened to the forty accounts I am working?")
+is new, and it is the one a team cannot switch off without going blind.
 
 **S9 made it a builder** (ADR 0020). A member describes a buying moment in a sentence, Alima
 drafts the definition, and — the part that matters — they see **what it would have found** before
@@ -240,6 +248,44 @@ now **follows the signal's own jurisdiction** rather than the watch's market.
       same `SignalQuerySpec` the builder uses so the estimate and the run cannot drift.
       `SignalPresetPack` — the seven library groupings, in code and **not** in the database
       (ADR 0020 §7).
+    - **Pointing a watch at a list (S10 ✅):** `signal_watches.signal_watchlist_id` travels
+      through `SignalWatchData` → `SaveSignalWatchRequest` (existence scoped to the member's own
+      team) → `SaveSignalWatchAction` (scoped again, because the request is not its only caller) →
+      `SignalWatchResource` → the editor's own **What this watch follows** picker. It is offered
+      only the team's active lists that hold something: a watch pointed at an empty list searches
+      nothing. An out-of-team id is **rejected** rather than dropped, unlike a definition id —
+      see "What the S10 reviews changed".
+    - **Models (S10 ✅):** `SignalWatchlist` (a team's set of accounts: `source_kind`,
+      `is_active`, `sync_settings` → stages/owners, `entries_count`, `synced_at`) and
+      `SignalWatchlistEntry` (`entity_type`, the member's `name`, `aliases`, `domain`, a nullable
+      `lead_id`, and the `normalised_name` the unique index is on). The normalised key is set by a
+      **mutator on `name`**, not by a `creating` hook — S7's lesson: a hook does not run for a
+      factory under `Event::fake()`, and a comparison key that is sometimes absent is worse than
+      none. `searchNames()` is what a query is built from, `matchKeys()` what a match is tested
+      against.
+    - **Enums (S10 ✅):** `WatchlistSourceKind` (`Manual`, `Pipeline`, `Segment` — the last
+      declared and **not offered**, see ADR 0021 §2; `offered()` returns pipeline first because
+      that is the answer for almost everybody), `WatchlistEntityType` (`Company`, `Person`;
+      `isSearchableAlone()` is what makes a person's query differ from a company's),
+      `SignalMatchConfidence` (`Exact`, `Likely` — **there is no `Low`**, because a weak guess is
+      not a match) and `SignalScope` (`All`, `Accounts` — a scope, **not** a status; it carries the
+      sentence its own empty state shows).
+    - **Services (S10 ✅):** `SignalLeadMatcher` — is this event about a company the team already
+      has? Watchlist declaration first, then the subject company, then the counterparty; strict name
+      is `Exact`, bare name is `Likely`, a corroborating person upgrades `Likely` to `Exact`, and
+      anything weaker is **null**. It reuses `LeadSourcing\Support\CompanyNameKey` rather than
+      normalising names a third time (ADR 0021 §6), and it skips an anonymised lead.
+    - **Actions (S10 ✅):** `SyncPipelineWatchlistAction` (mirrors the pipeline: an add/remove
+      **diff**, never a rebuild, because an entry carries the `lead_id` the matcher relies on;
+      capped at `signals.watchlist.max_entries` keeping the most recently worked leads; drops an
+      anonymised lead), `SaveSignalWatchlistAction` (list cap, immutable `source_kind`, an immediate
+      first sync so a new pipeline list is not an empty list and a promise),
+      `AddWatchlistEntriesAction` (bulk, duplicates **skipped not refused**, stops at the cap and
+      says so, refuses a synced list), `RemoveWatchlistEntryAction` (two writes — the row and the
+      cached count — so it is one transaction or it is a counter that drifts) and
+      `DeleteSignalWatchlistAction`.
+    - **Jobs (S10 ✅):** `SyncPipelineWatchlistsJob` — `ShouldBeUnique`, chunked over teams with a
+      per-team try/catch, scheduled `dailyAt('02:40')`. One team's bad row does not stop the rest.
     - **Log channel (S1 ✅):** `signals` (daily, `config/logging.php`) — log IDs/counts
       only, never names or article text.
     - **Testing:** `app/Modules/Signals/Testing/FakeNewsSearchClient` (canned Dubai
@@ -274,6 +320,16 @@ now **follows the signal's own jurisdiction** rather than the watch's market.
       `TriggerSignalWatchAction`, and a per-member `signals-run` throttle
       (`signals.run_rate_limit`, default 10/min). A run spends real money, and a token is
       easier to loop than a button.
+    - **Accounts (S10)** — web: `signal-watchlists.index/store/update/destroy`,
+      `signal-watchlists.entries.store/destroy` and `signal-watchlists.sync` at
+      **`/signals/accounts`**, plus `signals.attach`. API: the same set under
+      `/api/v1/signal-watchlists*` and `POST /api/v1/signals/{signal}/attach`, on
+      `TokenAbility::SignalsRead`/`SignalsWrite` — a watchlist is where a watch looks, and a token
+      that could read the feed but not the accounts it is about is a credential nobody would mean
+      to issue. `attach` is its **own route** rather than a flag on `convert`: a route that
+      sometimes creates a lead and sometimes does not is a route nobody can reason about from its
+      name. `sync` needs no throttle of its own — it is indexed queries and no external call —
+      unlike `run`, which spends money.
     - Broadcast: reuses the `teams.{teamId}` private channel.
 - **Frontend (S5 ✅; S7 ✅):** `resources/js/pages/signals/{Index,Watches,Types}.vue`,
   `resources/js/components/signals/{SignalCard,ConvertSignalModal,DismissSignalDialog,SignalTypeIcon}.vue`,
@@ -297,6 +353,15 @@ now **follows the signal's own jurisdiction** rather than the watch's market.
       S8's review made to the watch form: a two-way computed that filtered blank lines and wrote the
       result back ate the Enter key, so the only way to add a second template was to split a line or
       paste (WCAG 2.1.1). They are refs with a one-way parse now.
+    - **`Accounts.vue` (S10)** is the accounts screen: a section per list with its names, the
+      stage picker for a mirrored list, the paste-a-column dialog for a typed one, and — because
+      nobody can see this for themselves — **the rotation in words** ("checked every 7 days"), since
+      a long list that seems quiet otherwise reads as a broken feature. `SignalCard` grew an
+      `info`-tinted panel naming the matched lead and explaining the confidence in a sentence, with
+      **Add to {Lead}** as the primary action and **Convert anyway** beside it as a real button —
+      converting is the one that makes a duplicate here, so it is the quiet one. The feed gained a
+      **scope** row (pills, above the status tabs, because two axes must not read as one list of
+      six), and the lead detail's "The event" panel became a **list** of events in date order.
     - **Whose words are these?** A type's name and description are Alima's or the team's, and only
       the server knows which: `SignalDefinition::usesPlatformWording()` is "cloned, and never
       edited since" (`version === 1`), and it rides on every payload as `translatable`. A screen
@@ -377,7 +442,7 @@ sources, playbooks, delivery and cost governance.
 
 ## Data model
 
-Six tables. A `signal_definition` defines _what a signal type is_; a `signal_watch` defines
+Eight tables. A `signal_definition` defines _what a signal type is_; a `signal_watch` defines
 _where and how often to look_, and reaches its types through the `signal_watch_definition` pivot;
 each run of it (`signal_run`) records cost and totals; each kept event is a `signal`, unique per
 team on `url_hash` so one article never becomes two signals. A converted signal points one-way at
@@ -396,6 +461,27 @@ It is **virtual rather than stored**, and that is a MySQL requirement: MySQL ref
 `ON DELETE CASCADE` on the base column of a _stored_ generated column, and `team_id` has to
 cascade like every other tenant table's does. The stored version passed the whole SQLite suite and
 failed on the first `php artisan migrate` against MySQL.
+
+**S10 added two tables and two columns on each of `signals` and `signal_watches`** (ADR 0021).
+`signal_watchlists` is a team's set of accounts (`source_kind`, `is_active`, `sync_settings` →
+stages and owners, `entries_count`, `synced_at`) and `signal_watchlist_entries` holds the names,
+unique on `(signal_watchlist_id, normalised_name)` so "ACME LTD" is already-present when "Acme Ltd"
+is there — which is exactly what pasting a column produces.
+
+Four of those columns are the phase:
+
+- **`signal_watches.signal_watchlist_id`** (nullable, `nullOnDelete`) is what makes a watch
+  topical **or** entity-scoped — one column rather than a flag and two half-filled column sets
+  (ADR 0021 §1). Deleting a list leaves its watches searching by place again, which the toast says
+  out loud because it is not what anybody would assume.
+- **`signal_watches.entity_cursor`** is where the next run starts. A long list is a **ring**: a run
+  searches a window (`signals.watchlist.window`, 40) and wraps, so 250 accounts come round about
+  every six days. It advances only on a **completed** run, so a failure does not skip the accounts
+  it never reached.
+- **`signals.matched_lead_id`** is the lead an event is **about**, which is a different column from
+  `lead_id` ("the lead this was converted into"). Both are nullable `nullOnDelete`, and the index
+  `(team_id, matched_lead_id, published_at)` is what the "My accounts" feed reads.
+- **`signals.match_confidence`** travels with it, because the member is owed it (ADR 0021 §5).
 
 **S9 added one table and it holds no results.** `signal_previews` is the ledger behind "show me
 what this finds": team, who pressed it, a hash of the draft, the query and result counts, and the
@@ -572,6 +658,45 @@ Four things in that sequence are the phase rather than the plumbing:
   somebody, which is the point when it differs from the stored row by three words they just typed.
 - **Preview classifies with the real prompt.** `signals.extract_event` v2 with the draft as the only
   offered type; a preview that used a different prompt would be previewing a search nobody will run.
+
+### Watching your own accounts (S10, ADR 0021)
+
+```mermaid
+sequenceDiagram
+    participant Night as SyncPipelineWatchlistsJob (02:40)
+    participant Sync as SyncPipelineWatchlistAction
+    participant Run as RunSignalWatchAction
+    participant M as SignalLeadMatcher
+    participant L as Lead timeline
+    participant N as AnnounceAccountSignals
+
+    Night->>Sync: per team, per pipeline list
+    Sync->>Sync: diff leads in stages vs entries (add/remove, cap, drop anonymised)
+    Run->>Run: window of entries from entity_cursor (ring)
+    Run->>Run: one bare-name query per entity per region
+    Run->>M: subject / counterparty / person, per kept signal
+    M-->>Run: lead + Exact | Likely, or null
+    Run->>L: LeadActivityType::SignalMatched (same transaction as the signal)
+    Run->>N: AccountSignalsDetected (after commit)
+    N->>N: group by lead, resolve owners, one notification each
+```
+
+Five things in that sequence are the decisions rather than the plumbing:
+
+- **Every kept signal is matched**, not only an entity watch's. A topical watch finding an event
+  about a company already in the pipeline is exactly as useful, and a member should not have had to
+  predict it.
+- **The match is a column of the row being built**, so a signal is never stored unmatched and then
+  corrected — and the timeline entry is written in the **same transaction** as the signal. A lead
+  whose history says an event happened, with no such signal in the feed, is the worse state.
+- **Idempotent for free.** A re-run inserts no signal (`insertOrIgnore` on `(team_id, url_hash)`),
+  so there is no second timeline entry and nobody is told twice.
+- **The notification goes to the lead's owners**, aggregated per run — one notification saying six,
+  not six notifications. A lead nobody owns falls back to the team, deliberately.
+- **"Add to {Lead}" is `ConvertSignalToLeadAction` with a named target**, not a second Action: the
+  fill-gaps-never-overwrite rule and the `field_sources` stamping (ADR 0008) hold without a copy,
+  and `ConvertSignalData::fromSignalForLead()` keeps **the lead's** company name rather than the
+  article's.
 
 ## Key flows
 
@@ -908,6 +1033,66 @@ _is_ news.
 the UAE equivalents the S0 spike found, so every UK preset's `excludes` names them. The AI's
 relevance score remains the main filter; the templates only decide what it gets to look at.
 
+## What the S10 reviews changed
+
+Two agents read this phase (`laravel-module-reviewer`, `brand-reviewer`), and between them they
+found one thing that mattered more than everything else put together.
+
+**The feature could not be reached.** `signal_watches.signal_watchlist_id` existed, was fillable,
+and was set by **nothing outside the tests** — not the DTO, not the request, not the Action, not the
+form. Every entity-scoped test built its watch through the factory, so the whole suite passed while
+the phase's acceptance criterion ("a team points a watch at its pipeline") was impossible in
+production. The lesson is about the tests rather than the column: a factory is a convenient way to
+reach a state, and it will happily reach a state the product cannot. It is now wired end to end —
+`SignalWatchData`, `SaveSignalWatchRequest` (existence scoped to the member's own team),
+`SaveSignalWatchAction` (team-scoped again, because the request is not its only caller), the
+resource, the watch editor's own picker and the watch card — with a test that posts the form and a
+test that another team's list is **rejected** rather than dropped. An out-of-team definition id is
+dropped and logged; a list is refused, because a watch silently pointed at nothing would look
+configured and quietly search places instead.
+
+**The ring advanced by the wrong number.** It took `window` entities and advanced the cursor by how
+many it took — but one entity is one query _per region_, and the plan is then trimmed to
+`max_queries_per_run`. Forty accounts over two regions build eighty queries, forty survive the trim,
+and the cursor stepped past twenty accounts that were never searched. On every lap. That is the
+exact failure the ring was introduced to prevent, reintroduced one level down. The window is now
+filled **by cost** — regions × names, and × definitions for a person — and the cursor advances by
+the entities that actually fit. The first entity is always taken however expensive, because an
+unaffordable account must not block the ring.
+
+**A deleted lead left a name nobody could remove.** `lead_id` is `nullOnDelete` and a lead is not
+soft-deleted, so deleting one left a row holding a company name with nothing behind it — on a list
+that refuses hand edits, so the member could not clear it up, while it went on being searched and
+paid for and counting against the cap. The sync owns that cleanup now.
+
+Three smaller matcher findings, all in the same direction — **say less, more deliberately**:
+
+- It took no team and relied on the ambient `TeamContext`. `BelongsToTeam` applies no scope when
+  there is none, so a caller outside the context would have matched against every tenant's leads.
+  It takes a `$teamId` and scopes every query explicitly, with a test that runs it with **no**
+  context at all.
+- A watchlist hit found through the _looser_ key was labelled `Exact`, which suppressed the very
+  confirmation prompt the weaker case exists for. The precedence is now **every certain source
+  before any inferred one**: the team's statement about the exact name, then the subject's own name,
+  then the watchlist's looser name, then the counterparty.
+- An ambiguous looser match picked whichever row came back first. Two leads that agree only once
+  their legal forms are dropped are a question, not an answer, so it returns **null**.
+
+It also read every lead in the team for every signal, twice. The index is built once per team per
+run; fifty signals against twenty thousand leads was a million hydrated models.
+
+From the brand review, the one that changed a decision: the matched panel was a `status.info` tint,
+and that was wrong twice — it spent a _status_ colour on something that is not a status, and it put
+a third hue on a card whose one accent is the type chip. It is a neutral panel now, which also drops
+the phase's dependency on a token still pending sign-off (`brand-tokens.md` §7.6). The rest were
+accessibility: 14px delete targets in dense chips (24px now), focus falling to `<body>` when the
+chip holding it was unmounted, a row of identical "Remove this list" labels, error-summary anchors
+pointing at ids that did not exist, a scope pill distinguished by colour alone, an entity type said
+only by an icon, and a disabled "New list" with no reason beside it. Plus three Arabic corrections:
+`:count days` cannot be pluralised in Arabic at all (the unit moved into the label), "حساباتي" reads
+as a bank account where the English means companies, and "عملية بيع" is a sales transaction rather
+than a company changing hands.
+
 ## What the S9 reviews changed
 
 Three agents read the finished phase — `laravel-module-reviewer`, `brand-reviewer` and
@@ -1032,25 +1217,69 @@ but one came back full.
    trackers, "best hotels" listicles — every pack met them. Every preset's `excludes` names the ones
    its own spike surfaced, and the relevance floor does the rest.
 
+## Serper News spike — entity queries (2026-11-02, S10)
+
+The S10 plan said a company name is precisely the case where exact-phrase quoting is right, and
+asked for that to be checked rather than assumed. 24 live calls, about $0.024, six companies in the
+news that week, four query shapes each:
+
+| Subject                 | Quoted     | Bare             | Bare + keyword                      |
+| ----------------------- | ---------- | ---------------- | ----------------------------------- |
+| Majid Al Futtaim        | **0**      | 9 (9 on topic)   | **0**                               |
+| Derwent London          | **0**      | 10 (7 on topic)  | 3 (3 on topic)                      |
+| the other four subjects | **0** each | 70–100% on topic | fewer results than bare, every time |
+
+**Every quoted query returned zero — twelve of twelve** (two quoted shapes per subject), including a
+single-word name where quoting cannot change the meaning. The endpoint appears not to serve quoted queries with a recency window at
+all, which is the same wall the S0 spike hit from the other side.
+
+And **adding a keyword lost genuine results rather than sharpening them** — Majid Al Futtaim went
+from nine to none. So an entity query is a **bare name**, a company is searched with no keyword at
+all, and `signals.extract_event` decides whether what comes back is an event of a watched type. A
+**person** is the exception: "Jane Smith" returns every Jane Smith alive, so a person entity gets
+one query per definition qualified by that definition's first match keyword.
+
+The consequence is a cost shape, not just a query shape: one entity is one query per region, so a
+250-account list cannot be searched in one run. Hence the ring (`entity_cursor`), and hence the
+screen saying how long a list takes to come round.
+
 ## Permissions
 
-| Ability                                      | Owner | Admin | Member | Read-only |
-| -------------------------------------------- | ----- | ----- | ------ | --------- |
-| View signals, watches + the type library     | ✅    | ✅    | ✅     | ✅        |
-| Create/update/delete watches; run-now        | ✅    | ✅    | ✅     | ❌        |
-| Create/update/delete signal types; clone one | ✅    | ✅    | ✅     | ❌        |
-| Dismiss / restore / convert a signal         | ✅    | ✅    | ✅     | ❌        |
+| Ability                                       | Owner | Admin | Member | Read-only |
+| --------------------------------------------- | ----- | ----- | ------ | --------- |
+| View signals, watches + the type library      | ✅    | ✅    | ✅     | ✅        |
+| Create/update/delete watches; run-now         | ✅    | ✅    | ✅     | ❌        |
+| Create/update/delete signal types; clone one  | ✅    | ✅    | ✅     | ❌        |
+| Dismiss / restore / convert / attach a signal | ✅    | ✅    | ✅     | ❌        |
+| View the accounts the team watches            | ✅    | ✅    | ✅     | ✅        |
+| Create/update/delete a watchlist; sync one    | ✅    | ✅    | ✅     | ❌        |
 
 **Nobody edits a platform preset.** It is not a role question — a preset belongs to the product,
 and a team clones it (ADR 0018 §3). `SignalDefinitionPolicy::update()`/`delete()` refuse one for
 every role, and the team-scoped read in `ResolvesSignals::definition()` makes the attempt a 404
 before the policy is even consulted.
 
-Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` double-check `team_id` behind the
+`sync` is a **write** although it creates nothing of its own: it rewrites a list's entries from the
+pipeline, and a Read-only member pressing it would be changing what the team pays to search.
+`attach` takes the same ability as `convert`, because it writes to a lead.
+
+Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `SignalWatchlistPolicy` double-check `team_id` behind the
 `BelongsToTeam` global scope (ADR 0006). Authoritative role via `User::roleOn($team)`.
 
 ## Known limitations / TODO
 
+- **A long watchlist is searched slowly** (S10). One entity is one query per region and a run is
+  capped at 40, so 250 accounts come round about every six days. The screen says the number rather
+  than hiding it; raising `signals.watchlist.window` raises the bill proportionally.
+- **`Likely` will be wrong sometimes** (S10). Two businesses whose names differ only by a legal form
+  do exist. It is labelled, explained in words, and _Convert anyway_ is a real button — which is the
+  most that can be promised about an inference over company names.
+- **One acquisition is still several cards** (S10 makes this more visible, S11 fixes it): searching a
+  company by name returns every outlet that covered the same event.
+- **A person entity costs more per head than a company** (one query per definition rather than one
+  in total), and nothing on the screen says so — because the screen only offers companies for now.
+- **The strongest account signals are filings, not news** (a PSC change, a shareholding change).
+  A keyword search cannot find a filing reliably; S13 reads the registries.
 - **A retried search is not separately accounted for.** The ledger counts one paid request per
   query; a 429 or a connection error sends a second HTTP call, and whether the provider bills it is
   unconfirmed. The same arrangement a real run has had since S2, flagged here because S9 is the
@@ -1239,3 +1468,4 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` double-
 | 2026-11-02 | S8    | **Geography went plural, and the outreach restriction moved onto the signal** (ADR 0019). `signal_watches.location` became `locations` (max 10) + `regions` (max 5, the new `SearchRegion` enum), and `market` was demoted to the team’s declared regime for the watch rather than the thing that picks Serper’s `gl`. The reason the two had to be separated is a compliance defect that multi-geography would have made live: keyed on the watch’s market, a UK watch catching a Dubai relocation produced a lead with **no** restriction at all, and Outreach would have seen no reason to refuse a cold email. `ConvertSignalToLeadAction` now resolves it from the signal’s own `resolved_market` first (derived at extraction by `SignalJurisdictionResolver`), the watch’s `market` as a backstop, then the most restrictive across the watch’s regions — each step may only add one, ranked by `allowsDirectMarketing()` rather than a hard-coded `match`. `SignalQueryBuilder` was rewritten to loop region → place → type → template, which is also the trim order, so a watch cut to the `max_queries_per_run` ceiling loses whole places rather than a slice of everything; the run records `queries_requested` beside `queries_count` and the card says so, because a silent trim is a lie about what was searched. Six migrations (backfill to `places=["Dubai"] regions=["ae"]`, verified round-trip on MySQL and losslessly reversible), the **UK preset pack** (6 types, every template spiked against live Serper first — two returned zero and `uk_psc_change` ships as a non-starter because a PSC filing is not news), seeded by its own frozen migration because `teams.market` already defaults to `uk` and without it a UK team opened an empty library. `hl` became a property of the region and definitions gained `query_templates_i18n`, which is the plumbing for Arabic without the content. 5 regions are ready in code and **not offered**, because what they lack is a compliance position, not code (⚖️). 45 new tests (`SignalJurisdictionResolverTest`, `SignalGeographyTest`, 5 conversion cases).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | 2026-11-02 | S7    | **Signal types became data** (ADR 0018). `SignalEventType` is gone: nothing in the app branched on which case it was — it picked templates, rendered a label and a description, mapped an ICP keyword and grouped a report, all properties of a type rather than decisions about one — so it became a `signal_definitions` row a team owns, created and tuned on **`/signals/types`** without a deploy. v1's three types are the first three entries in a **platform preset library** (`team_id = null`), which a team **clones** rather than references, so a platform edit never silently changes what they are paying to run and their tuning never leaks upward. A watch reaches its types through the `signal_watch_definition` **pivot** rather than a JSON column of ids — a deviation from the S7 plan, because "which watches use this definition?" is `JSON_CONTAINS` on MySQL and `json_each` on SQLite, and only one of those would ever have run here. Thresholds are **per type** now, falling back to the global config. `signals.event_type` was renamed `event_key` and is **denormalised beside the FK** so a signal outlives the type that classified it. **`signals.extract_event` v2**: the schema's `event_type` enum could not survive per-team keys, so the keys and their include/exclude rules are injected into the body and `RunSignalWatchAction::resolveDefinition()` **rejects any key the run did not offer** — that Action is now the guard the schema used to be, which is the one real safety change in this phase. 5 migrations, run round-trip against the local MySQL, which is how **two MySQL-only failures** were found: a _stored_ generated `scope_id` refuses a cascading FK on its base column (now virtual), and Laravel's generated pivot index name is 67 characters against MySQL's 64-character limit (now named). A third bug came from `Event::fake()` — `scope_id` had been maintained by a model `creating` hook, which the suite suppressed, silently writing every row into the platform scope; a column carrying a uniqueness invariant cannot depend on anything a caller might skip, so the database computes it. Tests (37 new): the data migration repoints paused watches and converted signals and is idempotent; a hostile `event_type` is dropped; per-type thresholds bite; a preset refuses a tenant edit with a 404; an all-paused watch completes empty rather than failing. **`laravel-module-reviewer` and `brand-reviewer` then found six things worth fixing, three of them real defects.** Backend: (a) the clone path looked up an existing clone with the default scope, so a team who **deleted a type and re-added it from the library** hit a unique violation and a 500 - `unique(scope_id, key)` knows nothing about `deleted_at`, and the same collision came from a team writing their own type called "Acquisition"; both now go through `SignalDefinitionKeyAllocator`, which restores a trashed clone and suffixes a key somebody else took. (b) `Signal::definition()` was a plain `belongsTo`, so the soft-delete scope made a removed type's signals read "Hiring Surge Uae" on every card, report row and lead-origin panel - exactly what ADR 0018 section 4 promises it would not; `withTrashed()` on the relation and on the report's label query. (c) `SignalFilters::onlyKnownKeys()` **dropped** a key the team no longer had, which answered a filtered request with the whole feed and made a deleted type's signals impossible to isolate - it is gone, and a key is honoured as given, because a key is not meaningless after a delete the way a removed enum case was. Also: the one-click default clones a **declared starter set** rather than everything (the library grows to six packs in S9 and would blow the ceiling); a `signals.max_queries_per_run` ceiling closes the 30x cost exposure this phase opened (25 types x 10 templates against v1's 8); the data migration's `down()` no longer deletes a team's own type that happens to share a preset key; and the ADR's claim that the pivot's `team_id` made a cross-tenant pairing "impossible at the database level" is corrected to defence-in-depth, since the FKs are single-column. Frontend: the editor used `DialogContent`, which has no `max-h` and no overflow, so **Save was unreachable on a laptop or at 200% zoom** (WCAG 1.4.10) - now `DialogScrollContent`; closing it discarded a long hand-written form with no prompt (now `UnsavedChangesDialog`, per section 7h.11); the editor is rebuilt on the shared `FormField`/`FormErrorSummary` set, so it has `aria-invalid`, an error summary and required/optional in words; prose moved off `text-sm` to the 16px body floor and the `dt` rail became DM Mono eyebrows; the lime icon tiles became lilac circles (one accent, and section 5's feature-icon shape); the ceiling is explained in words rather than only disabling buttons; a long team-authored name truncates with a `title` instead of clipping; and "Confidence floor"/"Relevance floor" became "How sure Alima must be" / "How well it must fit you". | `app/Modules/Signals/{Models/SignalDefinition,Enums/{SignalCategory,SignalIcon},Support/{SignalPreset,SignalPresetCatalogue},Services/PlatformPresetReader,Data/SignalDefinitionData,Actions/{List,Save,Delete}SignalDefinitionAction,Actions/CloneSignalPresetsAction,Policies/SignalDefinitionPolicy,Http/**}.php`, `database/migrations/2026_11_02_1000{01..05}_*`, `database/seeders/{SignalPresetSeeder,AiPromptTemplateSeeder,DatabaseSeeder,DemoSeeder}.php`, `database/factories/Signal*Factory.php`, `app/Modules/{Reporting/Actions/BuildSignalBreakdownAction,Admin/Resources/Signal*Resource,Compliance/Services/TeamDataArchiver}.php`, `config/signals.php`, `.env.example`, `resources/js/{pages/signals/*,components/signals/SignalTypeIcon.vue,shared/types/signals.ts}`, `lang/{en,ar}.json`, `docs/{decisions/0018-*,modules/signals.md,ai-prompts.md,api/openapi.json}`, `tests/**/Signals/*`                                                                                                          |
 | 2026-11-01 | UI    | **The feed says what is narrowing it.** The event-type chips are now the shared `FilterToggle`/`FilterGroup` — one chip for the whole product, with the tick that keeps the on state from being colour alone — and the filters in force are summarised above the feed as removable chips (`ActiveFilters`). The filters themselves stay behind the disclosure, which is right for controls used occasionally, but it meant a member could land on a shared link showing four signals out of two hundred with nothing on screen to say why. The feed also dims while a filter request is in flight (`useNavigating()`). No server change. The app-wide hand-rolled `<select>` follow-up recorded in Phase S5/S6 is now down to a handful of call sites.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `resources/js/pages/signals/Index.vue`, `resources/js/components/list/*`, `lang/{en,ar}.json`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2026-11-02 | S10   | **Account monitoring: a watch can be pointed at companies instead of places** (ADR 0021). Two tables (`signal_watchlists`, `signal_watchlist_entries`, unique on the normalised name) plus `signal_watches.signal_watchlist_id`/`entity_cursor` and `signals.matched_lead_id`/`match_confidence`. A `pipeline` list mirrors the team's own leads nightly (`SyncPipelineWatchlistAction` — a diff, not a rebuild; capped at 250 keeping the most recently worked; drops an anonymised lead), a `manual` list takes names pasted one per line, and `segment` is declared and not offered. **The spike contradicted the plan**: every quoted query returned zero (12/12) and adding a keyword _lost_ results, so an entity query is a bare name — which made a 250-account list exceed the per-run ceiling, hence `entity_cursor` and the ring — a window filled by what one run can **afford** (regions × names), not by a fixed count. `SignalLeadMatcher` reuses the one name rule, extracted to `LeadSourcing\Support\CompanyNameKey` (`for()` strict, `bare()` legal-forms-only — `holdings`/`group` came back out after they made "Acme" match "Acme Holdings Ltd"); two confidences and **no third**, because a weak guess is not a match. A match writes `matched_lead_id` and one `SignalMatched` timeline entry inside the signal's own transaction, and raises `AccountSignalsDetected` → `AnnounceAccountSignals` → `NotificationType::SignalOnAccount`, aggregated per run and addressed to the **lead's owners** (team only where nobody owns it). The card offers _Add to {Lead}_ (`ConvertSignalToLeadAction` with a named target — no lead created, gaps filled only) with _Convert anyway_ beside it; the feed gained a `SignalScope` **scope**, not a fourth status, with the counts scoped to match; the lead page's "The event" became a list. `LeadAnonymiser` now deletes matched signals and watchlist entries in the erasure transaction and `TeamDataArchiver` exports `signal_watchlists.csv`. A watch is pointed at a list from the watch editor's own **What this watch follows** picker. 9 web + 9 API routes, 52 tests of its own.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |

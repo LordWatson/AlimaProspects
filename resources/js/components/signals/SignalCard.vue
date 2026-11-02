@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { ExternalLink, Undo2 } from '@lucide/vue';
+import { Building2, ExternalLink, Undo2 } from '@lucide/vue';
 import { computed } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,16 @@ import type { Signal } from '@/types';
  *   the value, so a screen reader doesn't read it twice.
  *
  * Nothing here can show a contact detail, because a signal holds none (ADR 0011).
+ *
+ * **Matched cards (S10).** When the event is about a company the team already has, the primary
+ * action changes from "Convert to lead" — which would make a second copy — to "Add to Acme Ltd".
+ * Three rules, all of them from this phase's own risk note (a wrong match is the way account
+ * monitoring fails):
+ *
+ *  - The match is **named and explained** in words, never only implied by the button's label.
+ *  - The weaker match says it is weaker, in text, not in a colour.
+ *  - **Convert anyway** stays on the card as a real button, because the member is the one who
+ *    knows whether two companies with the same name are the same company.
  */
 const props = defineProps<{
     signal: Signal;
@@ -42,6 +52,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     convert: [signal: Signal];
+    /** Accept the match: the event joins a lead that already exists (S10). */
+    attach: [signal: Signal];
     dismiss: [signal: Signal];
     restore: [signal: Signal];
 }>();
@@ -73,7 +85,16 @@ const isNew = computed(() => props.signal.status === 'new');
 const isDismissed = computed(() => props.signal.status === 'dismissed');
 const isConverted = computed(() => props.signal.status === 'converted');
 
+/**
+ * The lead this event appears to be about — present only when the matcher was sure enough to say
+ * so, which means a card either offers "add to it" or does not mention it at all.
+ */
+const matched = computed(() => props.signal.matched_lead);
+
+const matchedHref = computed(() => `/leads/${matched.value?.id ?? ''}`);
+
 const cardTestId = computed(() => `signal-${props.signal.id}`);
+const attachTestId = computed(() => `attach-${props.signal.id}`);
 const convertTestId = computed(() => `convert-${props.signal.id}`);
 const dismissTestId = computed(() => `dismiss-${props.signal.id}`);
 const restoreTestId = computed(() => `restore-${props.signal.id}`);
@@ -167,6 +188,44 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                 }}</span>
             </p>
 
+            <!-- This is about somebody you already know.
+
+                 **A neutral panel, not a status tint.** It was `status.info` for one draft and the
+                 brand review was right about it twice: the card's one accent is the lilac type chip
+                 (brand-tokens.md §2.1) and a blue panel beside a brand rule and a teal button is a
+                 third hue; and `status.info` is a *status* colour, which this is not reporting —
+                 it is a fact about the card. (It is also still pending sign-off, §7.6/§7f.4, and a
+                 customer surface is the wrong place to spend a pending token.) The name is a link,
+                 so a member can check who Alima means before accepting it. -->
+            <div
+                v-if="matched"
+                class="flex flex-wrap items-start gap-x-2 gap-y-1 rounded-2xl border border-border bg-accent/60 p-3 text-sm text-foreground"
+                :data-test="`matched-${signal.id}`"
+            >
+                <Building2
+                    class="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                />
+                <p dir="auto">
+                    <template v-if="matched.company_name">
+                        {{ t('About a lead you already have:') }}
+                        <Link
+                            :href="matchedHref"
+                            class="rounded font-semibold underline decoration-dotted underline-offset-4 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none rtl:font-bold"
+                            >{{ matched.company_name }}</Link
+                        >
+                    </template>
+                    <template v-else>
+                        {{ t('About a lead you already have.') }}
+                    </template>
+                    <!-- `text-foreground`, not muted: on a tinted panel the words stay at full
+                         contrast (§7f.3), and on the weaker match this sentence is the caution. -->
+                    <span v-if="matched.confidence_explanation">
+                        {{ t(matched.confidence_explanation) }}
+                    </span>
+                </p>
+            </div>
+
             <!-- Why it was cleared away, and how long it has left. Plain text: the tab already
                  says it was dismissed. The countdown is the promise compliance.md §5a makes to the
                  team — kept visible so retention never deletes something they assumed was safe. -->
@@ -249,7 +308,35 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                         >
                             {{ t('Dismiss') }}
                         </Button>
+
+                        <!-- Matched: adding it to the lead is the primary action, and converting
+                             is still there for the member who thinks Alima has the wrong Acme.
+                             Converting is the destructive-by-accident one here — it makes a
+                             duplicate — so it is the quiet button, not the loud one. -->
+                        <template v-if="matched">
+                            <Button
+                                variant="outline"
+                                :data-test="convertTestId"
+                                @click="emit('convert', signal)"
+                            >
+                                {{ t('Convert anyway') }}
+                            </Button>
+                            <Button
+                                :data-test="attachTestId"
+                                @click="emit('attach', signal)"
+                            >
+                                {{
+                                    matched.company_name
+                                        ? t('Add to :company', {
+                                              company: matched.company_name,
+                                          })
+                                        : t('Add to the lead')
+                                }}
+                            </Button>
+                        </template>
+
                         <Button
+                            v-else
                             :data-test="convertTestId"
                             @click="emit('convert', signal)"
                         >

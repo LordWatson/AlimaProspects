@@ -5,6 +5,48 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-02 — Signals S10: account monitoring
+
+**Signals can now watch the accounts you already have, not only the strangers who just came into
+money.**
+
+A watch used to ask one question: _what happened in Dubai?_ It can now ask the warm version —
+_what happened to the forty companies I am working?_ The obvious list is the team's own pipeline, so
+Alima mirrors it every night and nobody types anything: point a list at a stage or two, and an
+acquisition of a company somebody is mid-deal with lands on that lead's page the morning it is
+published, in that person's notifications.
+
+**The event goes on the lead, not beside it.** Every signal any watch finds is matched against the
+team's own leads. Where it matches, the card stops offering _Convert to lead_ — which would make a
+second copy of a company somebody is already working — and offers **Add to Acme Ltd**, which creates
+nothing, fills only the gaps in the record and writes the event onto the lead's history. The lead
+page's "The event" panel became a **list** of events in date order, which is a small change with a
+large effect on whether the page is worth opening in the morning.
+
+**It errs toward saying nothing.** The way account monitoring fails is an event pinned to the wrong
+company, so there are exactly two confidences and no third: the team's own statement or an identical
+name, and a name that agrees once the legal form is set aside. Anything weaker is **not a match** and
+the signal behaves exactly as it did before. The confidence is named and explained in words on the
+card, and **Convert anyway** is a real button beside the primary one — the member is the one who
+knows whether two companies with the same name are the same company.
+
+**The spike contradicted the plan, and the plan asked it to.** S10 was written expecting a company
+name to be the one case where exact-phrase quoting is right. Twenty-four live calls later: **every
+quoted query returned zero, twelve of twelve**, and adding a keyword to a bare name _lost_ genuine
+results rather than sharpening them — one subject went from nine results to none. So an entity query
+is a bare name and the classifier decides what it found. That changed the cost shape too: one
+account is one search per region, so a 250-account list cannot be covered in one run. It is searched
+as a **ring** — as many as one check can afford, continuing where the last stopped, round again about every six days — and the
+screen says that number out loud, because a long list that seems quiet otherwise reads as a broken
+feature.
+
+A watch is pointed at a list from the watch editor itself, and the two reviews this phase went through are worth a line of their own: between them they found that **nothing outside the tests could point a watch at a list at all** — a green suite sitting on top of an unreachable feature, because every test reached the state through a factory. What was decided was right; what was missing was the wiring. Both are now tested from the form in.
+
+Also in this phase: the one company-name rule was extracted so the deduplicator and the matcher read
+the same normalisation (three normalisers is how two leads become three); erasure reaches the
+watchlists, in Compliance's own transaction; and nine web and nine API routes, with the counts of a
+bulk add travelling beside the list rather than inside it. ADR 0021 records the decisions.
+
 ### Added — 2026-11-02 — Signals S9: the builder
 
 **You can describe a signal in a sentence, and see what it finds before you keep it.**

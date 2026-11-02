@@ -16,6 +16,7 @@ use App\Modules\LeadsWorkspace\Actions\FindLeadAction;
 use App\Modules\LeadsWorkspace\Actions\ListLeadsAction;
 use App\Modules\LeadsWorkspace\Actions\ListSavedViewsAction;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
+use App\Modules\LeadsWorkspace\Data\LeadOrigin;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\Concerns\ResolvesWorkspace;
 use App\Modules\LeadsWorkspace\Http\Requests\ListLeadsRequest;
 use App\Modules\LeadsWorkspace\Http\Requests\StoreLeadRequest;
@@ -170,6 +171,13 @@ final class LeadController extends Controller
             // converted signal, say. Resolved through a contract, so the workspace renders the
             // panel without depending on whichever module created the lead.
             'origin' => $this->teamContext->run($team, fn (): ?array => $origin->originFor($model)?->toArray()),
+            // Everything that has happened to this company, newest first (S10). The single
+            // `origin` above stays for the heading — *why this lead exists* — and this is the
+            // history underneath it, which is what makes the page worth opening in the morning.
+            'events' => $this->teamContext->run($team, fn (): array => array_map(
+                static fn (LeadOrigin $event): array => $event->toArray(),
+                $origin->eventsFor($model),
+            )),
             'discoveryRun' => $model->discoveryRun === null ? null : [
                 'id' => $model->discoveryRun->id,
                 'source_label' => $model->discoveryRun->source->label(),

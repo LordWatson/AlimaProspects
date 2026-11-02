@@ -85,6 +85,26 @@ return [
     'max_queries_per_run' => (int) env('SIGNALS_MAX_QUERIES_PER_RUN', 40),
 
     /*
+     * Watchlists (S10): the accounts a team wants watched by name.
+     *
+     * **`max_entries` is a cost ceiling, not a form limit.** Every account on a list is a paid
+     * search, and a mirrored pipeline grows on its own — so the sync stops adding at this number
+     * rather than following a team's pipeline to four figures. `window` is the other half: a run
+     * searches this many accounts and the next one continues from where it stopped
+     * (`signal_watches.entity_cursor`), so 250 accounts are covered about every six days at forty a
+     * day. Trimming to the first forty every day would mean the rest were never searched at all.
+     *
+     * `window` is deliberately the same order as `max_queries_per_run`: the window decides how many
+     * accounts are asked about and that ceiling decides how many searches may result, and a window
+     * far larger than the ceiling would just be trimmed back silently.
+     */
+    'watchlist' => [
+        'max_entries' => (int) env('SIGNALS_WATCHLIST_MAX_ENTRIES', 250),
+        'window' => (int) env('SIGNALS_WATCHLIST_WINDOW', 40),
+        'max_lists_per_team' => (int) env('SIGNALS_WATCHLIST_MAX_LISTS', 5),
+    ],
+
+    /*
      * The builder's two AI paths (S9): drafting a definition, and previewing one before it is saved.
      *
      * **Preview is a user-triggered spend loop**, which is the only reason these keys exist. A

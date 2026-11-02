@@ -59,6 +59,16 @@ final class SignalQueryBuilder
     private const int MAX_QUERY = 200;
 
     /**
+     * The `eventKey` an entity query carries.
+     *
+     * A company is searched by name with no event word in it, so the query is not *about* one type
+     * — the classifier decides which of the watch's types the article turns out to be, as it always
+     * has. The key is only the dedupe map's key here, and a sentinel says that plainly rather than
+     * naming an arbitrary definition and implying a claim the query does not make.
+     */
+    private const string ENTITY_KEY = '*account';
+
+    /**
      * The queries one run of a watch would ask for.
      *
      * @param  list<SignalDefinition>  $definitions  The types to build for, in priority order.
@@ -87,6 +97,10 @@ final class SignalQueryBuilder
         $num = max(1, min($resultsPerQuery ?? (int) config('signals.results_per_query', 20), 100));
         $ignoreDomains = $spec->ignoreDomains;
 
+        if ($spec->isEntityScoped()) {
+            return $this->buildEntityQueries($spec, $definitions, $tbs, $num, $maxQueries);
+        }
+
         /** @var array<string, SignalQuery> $queries keyed by region|eventKey|q to dedupe */
         $queries = [];
 
@@ -114,6 +128,109 @@ final class SignalQueryBuilder
         }
 
         return $this->plan(array_values($queries), $spec, $maxQueries);
+    }
+
+    /**
+     * The queries an **entity-scoped** watch asks: one per account, by name (S10).
+     *
+     * **A bare name, not a quoted phrase, and that is a spike finding rather than a preference.**
+     * The plan assumed a company name was the one case where exact-phrase quoting is right, and
+     * asked for it to be checked. It was, over six companies that were in the news that week, and
+     * **every quoted query returned zero** — twelve of twelve, including single-word names where
+     * quoting cannot even change the meaning. Serper's `/news` endpoint with a recency window
+     * appears not to serve quoted queries at all, which is the same wall the S0 spike hit from the
+     * other side. The table is in `docs/modules/signals.md`.
+     *
+     * **A company is searched by name alone, with no keyword appended**, which is the second thing
+     * the spike settled. The bare name was 70–100% on topic by itself, and adding a keyword cost
+     * genuine results rather than sharpening them: one subject went from nine results to **none**.
+     * So the search finds everything about the account and `signals.extract_event` decides whether
+     * any of it is an event of a watched type — which is what the classifier is for, and it already
+     * receives the watch's definitions.
+     *
+     * **A person is not searched by name alone**, because "Jane Smith" returns every Jane Smith
+     * alive. Each person entity gets one query per definition, qualified by that definition's first
+     * match keyword — the stems a team already wrote for ICP matching, which are exactly the words
+     * that appear in a sentence about this kind of event.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     */
+    private function buildEntityQueries(
+        SignalQuerySpec $spec,
+        array $definitions,
+        string $tbs,
+        int $num,
+        ?int $maxQueries,
+    ): SignalQueryPlan {
+        /** @var array<string, SignalQuery> $queries */
+        $queries = [];
+
+        // **Entity, then region, then (for a person) type.** Entity outermost, because the trim
+        // keeps the first N and an account half-searched is worse than an account not searched this
+        // run — the cursor brings it round tomorrow either way.
+        foreach ($spec->entities as $entity) {
+            foreach ($spec->regions as $region) {
+                foreach ($entity->names as $name) {
+                    if ($entity->searchableAlone()) {
+                        // Through `compose()` with no placeholder, so a name gets the same squish
+                        // and the same 200-character clamp a template does. A watchlist name is
+                        // member-typed and reaches a provider URL.
+                        $this->push(
+                            $queries,
+                            $region,
+                            self::ENTITY_KEY,
+                            $this->compose($name, ''),
+                            $tbs,
+                            $num,
+                            $spec->ignoreDomains,
+                        );
+
+                        continue;
+                    }
+
+                    foreach ($definitions as $definition) {
+                        $qualifier = $this->qualifierFor($definition);
+
+                        if ($qualifier === '') {
+                            continue;
+                        }
+
+                        $this->push(
+                            $queries,
+                            $region,
+                            $definition->key,
+                            $this->compose($name.' '.$qualifier, ''),
+                            $tbs,
+                            $num,
+                            $spec->ignoreDomains,
+                        );
+                    }
+                }
+            }
+        }
+
+        return $this->plan(array_values($queries), $spec, $maxQueries);
+    }
+
+    /**
+     * The word that makes a person's name into a question about an event.
+     *
+     * The definition's first match keyword, which is a stem a team wrote for ICP matching and
+     * therefore already the word a sentence about this event would use ("acqui", "rais", "exit").
+     * Falls back to the definition's own name, lower-cased, so a type with no keywords still
+     * produces something askable rather than nothing.
+     */
+    private function qualifierFor(SignalDefinition $definition): string
+    {
+        foreach ($definition->match_keywords ?? [] as $keyword) {
+            $clean = Str::squish($keyword);
+
+            if ($clean !== '') {
+                return $clean;
+            }
+        }
+
+        return Str::lower(Str::squish($definition->name));
     }
 
     /**

@@ -60,6 +60,12 @@ final class SignalWatchData extends Data
      * @param  list<SearchRegion>  $regions  Where to search (S8). Never empty.
      * @param  list<int>  $definitionIds  The team's signal types this watch watches for.
      * @param  list<string>  $ignoreDomains  Sources this team never wants to hear from (S6).
+     * @param  int|null  $watchlistId  The accounts this watch follows instead of places (S10). Null
+     *                                 is a **topical** watch, which is what every watch was before
+     *                                 S10 — the two are exclusive, and the column is the difference
+     *                                 rather than a flag (ADR 0021 §1). The places stay on the row
+     *                                 either way, because unpointing a watch should give it back
+     *                                 the geography the member chose rather than an empty form.
      */
     public function __construct(
         public readonly string $name,
@@ -71,6 +77,7 @@ final class SignalWatchData extends Data
         public readonly ?int $icpId = null,
         public readonly array $ignoreDomains = [],
         public readonly Market $market = self::DEFAULT_MARKET,
+        public readonly ?int $watchlistId = null,
     ) {}
 
     /**
@@ -105,6 +112,9 @@ final class SignalWatchData extends Data
             icpId: isset($validated['icp_id']) ? (int) $validated['icp_id'] : null,
             ignoreDomains: self::domains($validated['ignore_domains'] ?? null),
             market: $market,
+            watchlistId: isset($validated['signal_watchlist_id'])
+                ? max(1, (int) $validated['signal_watchlist_id'])
+                : null,
         );
     }
 
@@ -156,6 +166,7 @@ final class SignalWatchData extends Data
             // Null rather than [] when empty, so "never configured" stays distinguishable from
             // "deliberately empty" (see the migration).
             'ignore_domains' => $this->ignoreDomains === [] ? null : $this->ignoreDomains,
+            'signal_watchlist_id' => $this->watchlistId,
         ];
     }
 
@@ -187,6 +198,12 @@ final class SignalWatchData extends Data
             'cadence' => ['required', 'string', 'in:'.implode(',', SignalWatchCadence::values())],
             'is_active' => ['boolean'],
             'icp_id' => ['nullable', 'integer'],
+            // The list this watch follows (S10). Existence is checked **against the member's own
+            // team** in the FormRequest, not here, for the same reason `icp_id` is: this file
+            // describes a shape and the request knows who is asking. Unlike a definition id, an
+            // out-of-team value is *rejected* rather than dropped — a watch silently pointed at
+            // nothing would look configured and search places instead.
+            'signal_watchlist_id' => ['nullable', 'integer', 'min:1'],
             'ignore_domains' => ['nullable', 'array', 'max:'.self::MAX_IGNORE_DOMAINS],
             'ignore_domains.*' => ['string', 'max:255'],
         ];

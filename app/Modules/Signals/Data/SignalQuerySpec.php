@@ -41,6 +41,11 @@ final class SignalQuerySpec
      *                                           against this to **label** a skipped source instead
      *                                           of dropping it, which is the one place it differs
      *                                           from a run (ADR 0020 §4). The same list on a watch.
+     * @param  list<SignalQueryEntity>  $entities  Named accounts to search for (S10). A spec has
+     *                                             **either** places or entities: a watch asks
+     *                                             "what happened in Dubai?" or "what happened to
+     *                                             these forty companies?", and conflating the two
+     *                                             would multiply one cost by the other.
      * @param  int|null  $teamId  For the log line only; a draft belongs to a team, a spec does not.
      * @param  int|null  $watchId  Null for a preview, which is how a log line says which it was.
      */
@@ -49,9 +54,40 @@ final class SignalQuerySpec
         public readonly array $locations,
         public readonly array $ignoreDomains,
         public readonly array $teamIgnoreDomains = [],
+        public readonly array $entities = [],
         public readonly ?int $teamId = null,
         public readonly ?int $watchId = null,
     ) {}
+
+    /**
+     * The spec an **entity-scoped** run searches by: these accounts, in the watch's own regions.
+     *
+     * The places are left empty and that is the distinction, not a flag: an entity query is a name,
+     * and a name does not want a city appended to it. The region still applies, because `gl` decides
+     * which country's press a name is searched in and a UK account is reported by UK outlets.
+     *
+     * @param  list<SignalQueryEntity>  $entities
+     */
+    public static function forEntities(SignalWatch $watch, array $entities): self
+    {
+        $domains = self::domains($watch->ignore_domains ?? []);
+
+        return new self(
+            regions: self::regions($watch->regions ?? [], $watch->market),
+            locations: [],
+            ignoreDomains: $domains,
+            teamIgnoreDomains: $domains,
+            entities: $entities,
+            teamId: (int) $watch->team_id,
+            watchId: (int) $watch->getKey(),
+        );
+    }
+
+    /** Whether this spec is about named accounts rather than places. */
+    public function isEntityScoped(): bool
+    {
+        return $this->entities !== [];
+    }
 
     /**
      * The spec a scheduled or manual run searches by.

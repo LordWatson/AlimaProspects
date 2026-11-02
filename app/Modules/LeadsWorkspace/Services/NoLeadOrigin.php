@@ -21,4 +21,12 @@ final class NoLeadOrigin implements LeadOriginProvider
     {
         return null;
     }
+
+    /**
+     * @return list<LeadOrigin>
+     */
+    public function eventsFor(Lead $lead): array
+    {
+        return [];
+    }
 }

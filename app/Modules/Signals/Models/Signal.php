@@ -10,6 +10,7 @@ use App\Modules\Core\Enums\Currency;
 use App\Modules\Core\Enums\Market;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Signals\Enums\SignalDismissReason;
+use App\Modules\Signals\Enums\SignalMatchConfidence;
 use App\Modules\Signals\Enums\SignalStatus;
 use Database\Factories\SignalFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -61,6 +62,8 @@ use Illuminate\Support\Str;
  * @property string $url_hash
  * @property array<string, mixed> $raw
  * @property int|null $lead_id
+ * @property int|null $matched_lead_id the lead this event is **about** (S10), not converted into
+ * @property SignalMatchConfidence|null $match_confidence
  * @property int|null $actioned_by
  * @property Carbon|null $actioned_at
  * @property Carbon|null $created_at
@@ -104,6 +107,8 @@ class Signal extends Model
         'url_hash',
         'raw',
         'lead_id',
+        'matched_lead_id',
+        'match_confidence',
         'actioned_by',
         'actioned_at',
     ];
@@ -203,6 +208,20 @@ class Signal extends Model
     }
 
     /**
+     * The lead this event is **about**, as opposed to the one it was converted into (S10).
+     *
+     * The distinction is the whole point of account monitoring: a matched signal belongs on a
+     * lead's page the morning it is published, without anybody converting anything and without a
+     * second row for a company the team already has.
+     *
+     * @return BelongsTo<Lead, $this>
+     */
+    public function matchedLead(): BelongsTo
+    {
+        return $this->belongsTo(Lead::class, 'matched_lead_id');
+    }
+
+    /**
      * The member who dismissed or converted this signal.
      *
      * @return BelongsTo<User, $this>
@@ -220,6 +239,7 @@ class Signal extends Model
         return [
             'status' => SignalStatus::class,
             'dismiss_reason' => SignalDismissReason::class,
+            'match_confidence' => SignalMatchConfidence::class,
             'amount_minor' => 'integer',
             'currency' => Currency::class,
             'confidence' => 'integer',

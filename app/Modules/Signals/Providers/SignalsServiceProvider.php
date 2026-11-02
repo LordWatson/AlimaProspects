@@ -10,11 +10,14 @@ use App\Modules\ModuleServiceProvider;
 use App\Modules\Signals\Console\DispatchDueSignalWatchesCommand;
 use App\Modules\Signals\Console\PruneSignalsCommand;
 use App\Modules\Signals\Contracts\NewsSearchClient;
+use App\Modules\Signals\Jobs\SyncPipelineWatchlistsJob;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Policies\SignalDefinitionPolicy;
 use App\Modules\Signals\Policies\SignalPolicy;
+use App\Modules\Signals\Policies\SignalWatchlistPolicy;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
 use App\Modules\Signals\Services\SerperNewsClient;
 use App\Modules\Signals\Services\SignalItemNormaliser;
@@ -36,6 +39,7 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         SignalWatch::class => SignalWatchPolicy::class,
         Signal::class => SignalPolicy::class,
         SignalDefinition::class => SignalDefinitionPolicy::class,
+        SignalWatchlist::class => SignalWatchlistPolicy::class,
     ];
 
     public function boot(): void
@@ -50,6 +54,12 @@ final class SignalsServiceProvider extends ModuleServiceProvider
             // Hourly: queue a run for each active watch whose cadence is due (the command decides
             // which).
             $schedule->command('signals:dispatch-due')->hourly()->withoutOverlapping();
+
+            // Nightly, **before** the small hours when most daily watches come due (S10): bring
+            // every pipeline watchlist in step with its team's leads, so a company added to the
+            // pipeline today is being watched tomorrow morning rather than the morning after.
+            // Idempotent and `ShouldBeUnique`, so this and a manual sync cannot race.
+            $schedule->job(new SyncPipelineWatchlistsJob)->dailyAt('02:40')->withoutOverlapping();
 
             // Daily, off-peak: the retention sweep (S6). Dismissed signals go after 90 days and
             // unactioned ones after 180 — a six-month-old funding round isn't a trigger event any

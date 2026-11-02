@@ -39,6 +39,14 @@ final class SaveSignalWatchRequest extends FormRequest
                 'integer',
                 Rule::exists('icps', 'id')->where('team_id', $this->user()?->currentTeamId()),
             ],
+            // Scoped to the member's own team (S10). The watch then reads `$watch->watchlist`
+            // through the ambient tenancy scope, so an id from another team would be a watch
+            // pointed at a list its owner cannot see — and the FK itself is not team-qualified.
+            'signal_watchlist_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('signal_watchlists', 'id')->where('team_id', $this->user()?->currentTeamId()),
+            ],
         ];
     }
 

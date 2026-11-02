@@ -106,7 +106,7 @@ flowchart TD
 | 8   | Enrichment & Data Quality     | MVP                         | `modules/enrichment-data-quality.md`     |
 | 9   | Scoring & Matching            | MVP                         | `modules/scoring-matching.md`            |
 | 10  | Leads Workspace               | MVP                         | `modules/leads-workspace.md`             |
-| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7 landed   | `modules/signals.md`                     |
+| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S10      | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (built, Phase 11)       | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (built, Phase 13)       | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | MVP (built, Phase 14)       | `modules/ai-insights.md`                 |
@@ -170,6 +170,18 @@ flowchart TD
   preview the feature and the composer the convenience. The preview persists nothing except a
   `signal_previews` ledger row, because a user-triggered spend loop needs a cap and a cost with no
   row cannot be capped.
+- **A feed and a monitor are the same machinery pointed differently (Signals, S10, ADR 0021):** a
+  watch carries either places or a **watchlist**, never both, because conflating them multiplies one
+  cost by the other. The generalisable parts are three. **Matching is a column of the row being
+  written**, not a correction applied afterwards, and the lead's timeline entry is written in the
+  same transaction as the signal — a record saying an event happened with no event behind it is the
+  worse state. **A per-run ceiling over a long list has to rotate, not trim**: trimming keeps the
+  first N forever, so the eighty-ninth account is never searched at all, which is the failure nobody
+  sees; a cursor makes the list a ring and the screen says how long it takes to come round. And
+  **a weak match is no match** — two confidences, both explained in words on the card, with the
+  override a first-class button, because the member is the one who knows whether two companies with
+  the same name are the same company. The name rule behind it has exactly one definition
+  (`LeadSourcing\Support\CompanyNameKey`), read by both the deduplicator and the matcher.
 - **Where we search is not which law applies (Signals, S8, ADR 0019):** `Signals\Enums\SearchRegion`
   answers "where do we look" — a Serper country code and a language — and `Core\Enums\Market`
   answers "which rules apply". One column was doing both jobs, which was harmless only while every

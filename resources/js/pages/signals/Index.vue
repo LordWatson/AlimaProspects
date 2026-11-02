@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { Satellite, Settings2, SlidersHorizontal } from '@lucide/vue';
+import {
+    Building2,
+    Satellite,
+    Settings2,
+    SlidersHorizontal,
+} from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ActiveFilters, FilterGroup, FilterToggle } from '@/components/list';
 import PageHero from '@/components/PageHero.vue';
@@ -23,6 +28,8 @@ import type {
     SignalDismissReasonOption,
     SignalEventKey,
     SignalFilterState,
+    SignalScope,
+    SignalScopeOption,
     SignalsDetectedPayload,
     SignalStatus,
 } from '@/types';
@@ -51,6 +58,8 @@ const props = defineProps<{
         /** The team's own signal types — the chips are drawn from these since S7 (ADR 0018). */
         definitions: SignalDefinition[];
         dismiss_reasons: SignalDismissReasonOption[];
+        /** The two halves of the feed (S10), each with the sentence its empty state shows. */
+        scopes: SignalScopeOption[];
     };
     stages: PipelineStage[];
     watchCount: number;
@@ -83,6 +92,19 @@ const tabs: { value: SignalStatus; label: string }[] = [
     { value: 'dismissed', label: 'Dismissed' },
 ];
 
+/**
+ * The second axis (S10): whose companies these events are about.
+ *
+ * Deliberately **not** a fourth status tab. "New events about my accounts" and "converted events
+ * about my accounts" are both questions somebody asks, so the two sets of tabs cross rather than
+ * concatenate — and the status row keeps its counts, which are scoped to the chosen half.
+ */
+const scope = computed<SignalScope>(() => props.filters.scope ?? 'all');
+
+const currentScope = computed<SignalScopeOption | undefined>(() =>
+    props.options.scopes.find((option) => option.value === scope.value),
+);
+
 // --- Server-driven filtering --------------------------------------------------------------------
 // Every change is a real navigation, so the URL always reproduces what is on screen and a shared
 // link opens the same feed.
@@ -103,6 +125,8 @@ function typeLabel(definition: SignalDefinition): string {
 
 type SignalQueryParams = {
     status: SignalStatus;
+    /** Omitted when it is "everything", so the plain feed keeps the URL it always had. */
+    scope?: SignalScope;
     event_keys: SignalEventKey[];
     from?: string;
     to?: string;
@@ -115,6 +139,7 @@ function queryFor(changes: Partial<SignalFilterState>): SignalQueryParams {
 
     return {
         status: next.status,
+        scope: next.scope === 'accounts' ? 'accounts' : undefined,
         event_keys: next.event_keys,
         from: next.from ?? undefined,
         to: next.to ?? undefined,
@@ -123,11 +148,12 @@ function queryFor(changes: Partial<SignalFilterState>): SignalQueryParams {
 }
 
 /** The tab's href, so a tab is a real, shareable URL rather than a button that fetches. */
-function tabHref(status: SignalStatus): string {
-    const query = queryFor({ status });
+function tabHref(changes: Partial<SignalFilterState>): string {
+    const query = queryFor(changes);
     const params = new URLSearchParams();
 
     params.set('status', query.status);
+    if (query.scope) params.set('scope', query.scope);
     query.event_keys.forEach((key) => params.append('event_keys[]', key));
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
@@ -243,6 +269,30 @@ function removeChip(chip: ActiveFilterChip): void {
 // --- Modals -------------------------------------------------------------------------------------
 const converting = ref<Signal | null>(null);
 const dismissing = ref<Signal | null>(null);
+
+/**
+ * "Add this to Acme Ltd" — the match, accepted (S10).
+ *
+ * No modal: there is nothing to decide. Converting asks for a stage and an owner because it makes
+ * a lead; this one adds an event to a lead that already has both. **Convert anyway** stays on the
+ * card for the member who thinks the match is wrong, which is the whole reason the confidence is
+ * shown next to it.
+ */
+function attach(signal: Signal): void {
+    router.post(
+        `/signals/${signal.id}/attach`,
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () =>
+                announce(
+                    t('Added to :company.', {
+                        company: signal.matched_lead?.company_name ?? '',
+                    }),
+                ),
+        },
+    );
+}
 
 function restore(signal: Signal): void {
     router.post(
@@ -375,6 +425,45 @@ onBeforeUnmount(() => {
 
             <!-- Tabs -->
             <div class="space-y-4">
+                <!-- Which half of the feed. Pills rather than a second underlined row, so the
+                     two axes do not read as one list of six. -->
+                <nav
+                    class="flex flex-wrap items-center gap-2"
+                    :aria-label="t('Which signals to show')"
+                >
+                    <Link
+                        v-for="option in options.scopes"
+                        :key="option.value"
+                        :href="tabHref({ scope: option.value })"
+                        preserve-scroll
+                        :aria-current="
+                            scope === option.value ? 'page' : undefined
+                        "
+                        :data-test="`scope-${option.value}`"
+                        class="rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        :class="
+                            scope === option.value
+                                ? 'border-brand bg-brand/10 font-semibold text-brand rtl:font-bold'
+                                : 'border-border font-medium text-muted-foreground hover:text-foreground'
+                        "
+                    >
+                        {{ t(option.label) }}
+                    </Link>
+
+                    <Button
+                        v-if="can.manageWatches"
+                        variant="ghost"
+                        size="sm"
+                        class="ms-auto"
+                        as-child
+                    >
+                        <Link href="/signals/accounts">
+                            <Building2 class="size-4" aria-hidden="true" />
+                            {{ t('Accounts') }}
+                        </Link>
+                    </Button>
+                </nav>
+
                 <!-- Links, not tabs: each one navigates, so it can be opened in a new tab,
                      bookmarked and shared. `role="tab"` would promise arrow-key traversal and a
                      tabpanel that aren't there — and the Filters button could not live inside a
@@ -384,12 +473,12 @@ onBeforeUnmount(() => {
                 >
                     <nav
                         class="flex flex-wrap items-center gap-2"
-                        :aria-label="t('Signals')"
+                        :aria-label="t('Signal status')"
                     >
                         <Link
                             v-for="tab in tabs"
                             :key="tab.value"
-                            :href="tabHref(tab.value)"
+                            :href="tabHref({ status: tab.value })"
                             preserve-scroll
                             :aria-current="
                                 filters.status === tab.value
@@ -535,6 +624,7 @@ onBeforeUnmount(() => {
                     :signal="signal"
                     :can-action="can.action"
                     @convert="converting = $event"
+                    @attach="attach"
                     @dismiss="dismissing = $event"
                     @restore="restore"
                 />
@@ -559,6 +649,20 @@ onBeforeUnmount(() => {
             >
                 <Button variant="outline" @click="clearFilters">
                     {{ t('Clear filters') }}
+                </Button>
+            </EmptyState>
+
+            <EmptyState
+                v-else-if="scope === 'accounts'"
+                :icon="Building2"
+                :title="t('Nothing about your own accounts yet')"
+                :description="t(currentScope?.empty_message ?? '')"
+                data-test="no-account-signals"
+            >
+                <Button v-if="can.manageWatches" variant="outline" as-child>
+                    <Link href="/signals/accounts">{{
+                        t('Set up an account list')
+                    }}</Link>
                 </Button>
             </EmptyState>
 

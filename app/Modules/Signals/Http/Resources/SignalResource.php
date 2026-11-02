@@ -95,6 +95,22 @@ final class SignalResource extends JsonResource
                 'id' => $signal->lead->id,
                 'company_name' => $signal->lead->company_name,
             ]),
+            // The lead this event is **about** (S10), as opposed to the one it was converted into.
+            // Not `whenLoaded`: the card decides what to offer from it — "add this to Acme Ltd"
+            // rather than "convert" — so a feed that forgot to eager-load it would silently show
+            // every matched signal as unmatched. The relation is loaded by the list Action.
+            //
+            // The confidence travels with it because the member is owed it: the way account
+            // monitoring goes wrong is an event pinned to the wrong company, so the weaker match
+            // says so and "convert anyway" stays a visible choice.
+            'matched_lead' => $signal->matched_lead_id === null ? null : [
+                'id' => (int) $signal->matched_lead_id,
+                'company_name' => $signal->matchedLead?->company_name,
+                'confidence' => $signal->match_confidence?->value,
+                'confidence_label' => $signal->match_confidence?->label(),
+                'confidence_explanation' => $signal->match_confidence?->explanation(),
+                'needs_confirmation' => $signal->match_confidence?->warrantsConfirmation() ?? false,
+            ],
             'created_at' => $signal->created_at?->toIso8601String(),
         ];
     }

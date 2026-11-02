@@ -68,6 +68,8 @@ class SignalWatch extends Model
         'locations',
         'regions',
         'ignore_domains',
+        'signal_watchlist_id',
+        'entity_cursor',
         'cadence',
         'is_active',
         'last_run_at',
@@ -212,6 +214,26 @@ class SignalWatch extends Model
         }
 
         return $markets;
+    }
+
+    /**
+     * The watchlist this watch is pointed at, when it watches accounts rather than places (S10).
+     *
+     * A watch is **either** topical or entity-scoped, and the presence of this is the distinction —
+     * no `kind` column, because a `kind` that could disagree with the list would be a second source
+     * of truth about the same thing.
+     *
+     * @return BelongsTo<SignalWatchlist, $this>
+     */
+    public function watchlist(): BelongsTo
+    {
+        return $this->belongsTo(SignalWatchlist::class, 'signal_watchlist_id');
+    }
+
+    /** Whether this watch searches for named accounts rather than for places. */
+    public function isEntityScoped(): bool
+    {
+        return $this->signal_watchlist_id !== null;
     }
 
     /**

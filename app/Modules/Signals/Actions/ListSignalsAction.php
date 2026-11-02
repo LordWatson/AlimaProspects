@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Actions;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Data\SignalFilters;
+use App\Modules\Signals\Enums\SignalScope;
 use App\Modules\Signals\Models\Signal;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -47,7 +48,15 @@ final class ListSignalsAction
                 // watch's name to say which watch found this. `definition` is what the card's event
                 // label reads (S7, ADR 0018) - eager-loaded, because a page of cards would
                 // otherwise be a page of queries, and `preventLazyLoading` would say so.
-                ->with(['watch:id,name', 'lead:id,company_name', 'definition']);
+                // `matchedLead` too since S10: the card offers "add this to Acme Ltd" rather
+                // than "convert" when the event is about a company the team already has, and it
+                // has to be able to name it.
+                ->with(['watch:id,name', 'lead:id,company_name', 'matchedLead:id,company_name', 'definition']);
+
+            if ($filters->scope === SignalScope::Accounts) {
+                // The warm half of the feed: only events about companies the team already works.
+                $query->whereNotNull('matched_lead_id');
+            }
 
             if ($filters->eventKeys !== []) {
                 // The stored key, not the FK: a signal whose definition has been deleted keeps its
@@ -82,10 +91,16 @@ final class ListSignalsAction
      *
      * @return array<string, int>
      */
-    public function counts(Team $team): array
+    public function counts(Team $team, ?SignalScope $scope = null): array
     {
+        // Scoped with the feed since S10, or the numbers on the tabs would answer a different
+        // question from the tabs: "My accounts / New 4" beside four hundred cold signals is a
+        // member being told the feature is broken.
+        $accountsOnly = $scope === SignalScope::Accounts;
+
         return $this->teamContext->run($team, static fn (): array => Signal::query()
             ->where('team_id', $team->getKey())
+            ->when($accountsOnly, static fn ($query) => $query->whereNotNull('matched_lead_id'))
             ->groupBy('status')
             ->selectRaw('status, count(*) as aggregate')
             ->pluck('aggregate', 'status')

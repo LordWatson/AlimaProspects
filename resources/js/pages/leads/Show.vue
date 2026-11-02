@@ -89,6 +89,14 @@ const props = defineProps<{
     discoveryRun: LeadDiscoveryRun | null;
     /** Where the lead came from when its `source` isn't the whole story (a converted signal). */
     origin: LeadOrigin | null;
+    /**
+     * Everything that has happened to this company, newest first (S10).
+     *
+     * `origin` is still *why this lead exists*; this is the history, and for a lead a watchlist is
+     * monitoring it is the part worth opening the page for. It includes the origin, so the panel
+     * drops that one entry rather than printing the same article twice.
+     */
+    events: LeadOrigin[];
     can: { work: boolean };
 }>();
 
@@ -135,6 +143,28 @@ const freshness = computed(
  * they pick up the phone.
  */
 const restriction = computed(() => props.lead.outreach_restriction);
+
+/**
+ * The events worth listing under the origin (S10).
+ *
+ * `events` includes the one the lead was converted from, which the panel above already shows in
+ * full — printing it twice would read as two things having happened. Matched on the **article**,
+ * because `href` is the feed tab the signal lives in and every converted signal shares one: a
+ * filter on that would hide the lead's whole history rather than one duplicate.
+ */
+const otherEvents = computed(() => {
+    const first = props.origin;
+
+    if (first === null) {
+        return props.events;
+    }
+
+    return props.events.filter((event) =>
+        first.url !== null
+            ? event.url !== first.url
+            : event.headline !== first.headline,
+    );
+});
 
 const website = computed(() => {
     const site = props.lead.website;
@@ -581,23 +611,23 @@ const hasRolePreference = computed(
                     </template>
                 </section>
 
-                <!-- The event: read-only. Why this lead exists at all, when "a provider found it"
+                <!-- The event, and then everything since: read-only. Why this lead exists at all, when "a provider found it"
                      isn't the whole story — a converted signal and the event behind it. Named for
                      what it shows, so it doesn't read as a second "Where this came from" (which is
                      further down, and is about per-field provenance). The server resolves this
                      through a contract, so the panel renders whatever module filled it in. -->
                 <section
-                    v-if="origin"
+                    v-if="origin || otherEvents.length"
                     class="space-y-4 rounded-2xl border border-border bg-card p-6"
                     data-test="origin"
                 >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
-                        {{ t('The event') }}
+                        {{ otherEvents.length ? t('Events') : t('The event') }}
                     </h2>
 
-                    <div class="flex items-start gap-3">
+                    <div v-if="origin" class="flex items-start gap-3">
                         <span
                             class="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-muted-foreground"
                             aria-hidden="true"
@@ -621,14 +651,14 @@ const hasRolePreference = computed(
 
                     <!-- The article's own words, so it is read as quoted, not as Alima's copy. -->
                     <blockquote
-                        v-if="origin.headline"
+                        v-if="origin?.headline"
                         class="border-s-2 border-border ps-3 text-sm text-foreground"
                         dir="auto"
                     >
                         {{ origin.headline }}
                     </blockquote>
 
-                    <dl class="space-y-3 text-sm">
+                    <dl v-if="origin" class="space-y-3 text-sm">
                         <div v-if="origin.source_name" class="space-y-0.5">
                             <dt class="text-xs text-muted-foreground">
                                 {{ t('Published by') }}
@@ -650,7 +680,10 @@ const hasRolePreference = computed(
                         </div>
                     </dl>
 
-                    <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                    <div
+                        v-if="origin"
+                        class="flex flex-wrap gap-x-4 gap-y-2 text-sm"
+                    >
                         <a
                             v-if="origin.url"
                             :href="origin.url"
@@ -672,6 +705,83 @@ const hasRolePreference = computed(
                             {{ t('See the signal') }}
                         </Link>
                     </div>
+
+                    <!-- Everything else that has happened to this company (S10). Compact rows
+                         rather than a second copy of the panel above: this is a history, and an
+                         account a watchlist is following grows one of these every few weeks. Not
+                         the activity timeline — that is what *we* did, this is what happened to
+                         *them*. -->
+                    <ol
+                        v-if="otherEvents.length"
+                        class="space-y-3 border-t border-border pt-4"
+                        data-test="lead-events"
+                    >
+                        <li
+                            v-for="(event, index) in otherEvents"
+                            :key="index"
+                            class="space-y-1 border-s-2 border-border ps-3"
+                        >
+                            <div
+                                class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"
+                            >
+                                <p
+                                    class="text-sm font-semibold text-foreground rtl:font-bold"
+                                >
+                                    {{ t(event.label) }}
+                                </p>
+                                <time
+                                    v-if="event.occurred_at"
+                                    class="font-mono text-xs text-muted-foreground"
+                                    :datetime="event.occurred_at"
+                                    dir="ltr"
+                                >
+                                    {{ dateTime(event.occurred_at) }}
+                                </time>
+                            </div>
+
+                            <p
+                                v-if="event.headline"
+                                class="text-sm text-foreground"
+                                dir="auto"
+                            >
+                                {{ event.headline }}
+                            </p>
+
+                            <div
+                                class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+                            >
+                                <span
+                                    v-if="event.source_name"
+                                    class="text-muted-foreground"
+                                    dir="auto"
+                                    >{{ event.source_name }}</span
+                                >
+                                <a
+                                    v-if="event.url"
+                                    :href="event.url"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="inline-flex items-center gap-1 rounded text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                                >
+                                    {{ t('Read the article') }}
+                                    <ExternalLink
+                                        class="size-3"
+                                        aria-hidden="true"
+                                    />
+                                    <span class="sr-only">{{
+                                        t('(opens in a new tab)')
+                                    }}</span>
+                                </a>
+                                <Link
+                                    v-if="event.href"
+                                    :href="event.href"
+                                    class="rounded text-brand underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                                >
+                                    {{ t('See the signal') }}
+                                </Link>
+                            </div>
+                        </li>
+                    </ol>
                 </section>
 
                 <!-- Where this came from -->
