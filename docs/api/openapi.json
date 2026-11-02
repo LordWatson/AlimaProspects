@@ -5618,6 +5618,166 @@
                 }
             }
         },
+        "/signal-definitions/compose": {
+            "post": {
+                "operationId": "v1.signal-definitions.compose",
+                "description": "200, not 201: nothing is created. The draft is for a client to show somebody, who then posts\nit to `store` if they want it \u2014 the AI drafts and the user owns, on the API as much as on the\nscreen.",
+                "summary": "Draft a signal definition from a plain-language description (S9)",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ComposeSignalDefinitionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`SignalDraftResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalDraftResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-definitions/preview": {
+            "post": {
+                "operationId": "v1.signal-definitions.preview",
+                "description": "Takes a whole definition rather than an id, deliberately: a preview is about the text the\ncaller has in hand, which is the point when it differs from any stored row.",
+                "summary": "Run a definition against live news without saving it (S9)",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PreviewSignalDefinitionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`SignalPreviewResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalPreviewResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/signal-definitions/{definition}": {
             "get": {
                 "operationId": "v1.signal-definitions.show",
@@ -7401,6 +7561,21 @@
                     "done"
                 ],
                 "title": "CompleteLeadTaskRequest"
+            },
+            "ComposeSignalDefinitionRequest": {
+                "type": "object",
+                "description": "The member's description of a buying moment, on its way to the composer (S9).\n\nOne field, and the only interesting thing about it is the **upper bound**. The brief reaches a\nreasoning-tier prompt, so its length is a cost as well as an injection surface \u2014 ADR 0017's rule\nis that a prompt input is bounded in characters by a validator *and* a truncation, because a rule\ncan be skipped by a path nobody thought about. The Action truncates again for that reason.\n\nThe lower bound earns its place too: a three-character brief produces a confident, generic and\nuseless draft, which costs the same as a good one.",
+                "properties": {
+                    "brief": {
+                        "type": "string",
+                        "minLength": 10,
+                        "maxLength": 1000
+                    }
+                },
+                "required": [
+                    "brief"
+                ],
+                "title": "ComposeSignalDefinitionRequest"
             },
             "ContactAttemptResource": {
                 "type": "object",
@@ -9452,6 +9627,139 @@
                 ],
                 "title": "OutreachTemplateResource"
             },
+            "PreviewSignalDefinitionRequest": {
+                "type": "object",
+                "description": "The definition to preview: whatever is in the form, saved or not (S9).\n\n**The same rules as saving one**, from {@see SignalDefinitionData::rules()}, which is the point\nrather than a convenience: a preview of something that could not be saved would answer a question\nnobody asked. It also means the composer's draft, a hand-written type and a saved type being\nre-tuned all travel the same path, so there is one thing to test and one thing to go wrong.\n\nNo id, deliberately. A preview is about the **text in front of the member**, which may differ from\nthe row it came from by three words they have just typed \u2014 and previewing the stored version would\nquietly answer about the wrong thing.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "description": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "liquidity",
+                            "growth",
+                            "movement",
+                            "distress",
+                            "hiring",
+                            "regulatory",
+                            "custom"
+                        ]
+                    },
+                    "icon": {
+                        "type": "string",
+                        "enum": [
+                            "satellite",
+                            "handshake",
+                            "trending-up",
+                            "plane",
+                            "building-2",
+                            "users",
+                            "file-text",
+                            "triangle-alert",
+                            "landmark",
+                            "trophy"
+                        ]
+                    },
+                    "query_templates": {
+                        "type": "array",
+                        "description": "At least one: a definition with no template is a type that can never find anything,\nwhich is a worse outcome than a validation message.",
+                        "items": {
+                            "type": "string",
+                            "maxLength": 200
+                        },
+                        "minItems": 1,
+                        "maxItems": 10
+                    },
+                    "match_keywords": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "maxLength": 60
+                        },
+                        "maxItems": 20
+                    },
+                    "includes": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "maxLength": 200
+                        },
+                        "maxItems": 10
+                    },
+                    "excludes": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "maxLength": 200
+                        },
+                        "maxItems": 10
+                    },
+                    "min_confidence": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "min_relevance": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "suggested_approach_hint": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "markets": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "uk",
+                                "uae"
+                            ]
+                        },
+                        "maxItems": 2,
+                        "uniqueItems": true
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "name",
+                    "description",
+                    "category",
+                    "icon",
+                    "query_templates"
+                ],
+                "title": "PreviewSignalDefinitionRequest"
+            },
             "PushDeviceResource": {
                 "type": "object",
                 "properties": {
@@ -10129,6 +10437,26 @@
                             "null"
                         ]
                     },
+                    "pack": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "Which vertical bundle the library browses this under, and whether the live spike\nfound it thin (S9). Resolved from the catalogue by key rather than read off the row,\nbecause a pack is how the platform organises its own presets and has no business on a\ntenant's columns \u2014 see `SignalPresetPack`. A clone keeps its origin's pack, which is\nhow \"you took this from the recruitment pack\" stays sayable; a hand-written type has\nno pack at all, and that is the honest answer.",
+                        "enum": [
+                            "general",
+                            "luxury_real_estate",
+                            "recruitment",
+                            "b2b_saas",
+                            "wealth_management",
+                            "construction",
+                            "ma_advisory",
+                            null
+                        ]
+                    },
+                    "is_thin": {
+                        "type": "boolean"
+                    },
                     "version": {
                         "type": "integer"
                     },
@@ -10169,10 +10497,206 @@
                     "markets",
                     "preset_key",
                     "preset_version",
+                    "pack",
+                    "is_thin",
                     "version",
                     "created_at"
                 ],
                 "title": "SignalDefinitionResource"
+            },
+            "SignalDraftResource": {
+                "type": "object",
+                "properties": {
+                    "viable": {
+                        "type": "boolean"
+                    },
+                    "reason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "summary": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "definition": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "properties": {
+                            "name": {
+                                "type": "string"
+                            },
+                            "description": {
+                                "type": "string"
+                            },
+                            "category": {
+                                "type": "string",
+                                "enum": [
+                                    "liquidity",
+                                    "growth",
+                                    "movement",
+                                    "distress",
+                                    "hiring",
+                                    "regulatory",
+                                    "custom"
+                                ]
+                            },
+                            "icon": {
+                                "type": "string",
+                                "enum": [
+                                    "satellite",
+                                    "handshake",
+                                    "trending-up",
+                                    "plane",
+                                    "building-2",
+                                    "users",
+                                    "file-text",
+                                    "triangle-alert",
+                                    "landmark",
+                                    "trophy"
+                                ]
+                            },
+                            "query_templates": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "match_keywords": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "includes": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "excludes": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "min_confidence": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "min_relevance": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "suggested_approach_hint": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "markets": {
+                                "type": [
+                                    "array",
+                                    "null"
+                                ],
+                                "items": {}
+                            },
+                            "is_active": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": [
+                            "name",
+                            "description",
+                            "category",
+                            "icon",
+                            "query_templates",
+                            "match_keywords",
+                            "includes",
+                            "excludes",
+                            "min_confidence",
+                            "min_relevance",
+                            "suggested_approach_hint",
+                            "markets",
+                            "is_active"
+                        ]
+                    }
+                },
+                "required": [
+                    "viable",
+                    "reason",
+                    "summary",
+                    "definition"
+                ],
+                "title": "SignalDraftResource"
+            },
+            "SignalPreviewResource": {
+                "type": "object",
+                "properties": {
+                    "queries": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "queries_requested": {
+                        "type": "integer"
+                    },
+                    "was_trimmed": {
+                        "type": "boolean"
+                    },
+                    "result_count": {
+                        "type": "integer"
+                    },
+                    "event_count": {
+                        "type": "integer"
+                    },
+                    "kept_count": {
+                        "type": "integer"
+                    },
+                    "cost_micros": {
+                        "type": "integer"
+                    },
+                    "classified": {
+                        "type": "boolean"
+                    },
+                    "diagnosis": {
+                        "type": "string",
+                        "enum": [
+                            "This signal type works. Save it and add it to a watch.",
+                            "Real events came back, and your thresholds rejected all of them. Lower how sure Alima must be, or the relevance floor.",
+                            "The searches found news, but none of it reads as this kind of event. Try plainer templates, or sharpen \"what counts\".",
+                            "These searches found no news at all this week. The templates are probably too specific \u2014 try plainer keywords.",
+                            "Your searches found news, but Alima could not check it just now. Try again in a minute \u2014 nothing is wrong with your signal type."
+                        ]
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {}
+                    }
+                },
+                "required": [
+                    "queries",
+                    "queries_requested",
+                    "was_trimmed",
+                    "result_count",
+                    "event_count",
+                    "kept_count",
+                    "cost_micros",
+                    "classified",
+                    "diagnosis",
+                    "items"
+                ],
+                "title": "SignalPreviewResource"
             },
             "SignalResource": {
                 "type": "object",

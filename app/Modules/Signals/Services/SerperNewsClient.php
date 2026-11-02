@@ -9,6 +9,7 @@ use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Data\NewsItem;
 use App\Modules\Signals\Data\SignalQuery;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Support\IgnoredDomains;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -44,6 +45,7 @@ final class SerperNewsClient implements NewsSearchClient
         private readonly HttpFactory $http,
         private readonly CircuitBreaker $breaker,
         private readonly SignalItemNormaliser $normaliser,
+        private readonly IgnoredDomains $ignored,
     ) {}
 
     public function search(SignalQuery $query): array
@@ -100,12 +102,6 @@ final class SerperNewsClient implements NewsSearchClient
             throw SignalsException::newsProviderFailed();
         }
 
-        // The global list (property portals, aggregators) plus this watch's own (S6) — a client's
-        // competitors are only knowable by that client.
-        /** @var list<string> $configured */
-        $configured = (array) config('signals.ignore_domains', []);
-        $ignore = array_values(array_unique([...$configured, ...$query->ignoreDomains]));
-
         $items = [];
         $seenHashes = [];
 
@@ -119,13 +115,12 @@ final class SerperNewsClient implements NewsSearchClient
                 continue;
             }
 
-            // Normalised through the same helper the dedupe hash uses, so a trailing-dot FQDN
-            // (`bayut.com.`) or a tab-in-the-authority host (`bayut\t.com` → `bayut_.com`) can't
-            // walk past a list the team thought excluded it. An unrecognisable host is dropped
-            // outright rather than let through unchecked.
-            $host = $this->normaliser->host((string) parse_url($item->link, PHP_URL_HOST));
-
-            if ($host === null || $this->isIgnored($host, $ignore)) {
+            // The global list (property portals, aggregators) plus this watch's own (S6) — a
+            // client's competitors are only knowable by that client. Asked of `IgnoredDomains`
+            // rather than tested here, because S9's preview has to label what this drops and the
+            // two must not disagree by a hair of normalisation. An unreadable host counts as
+            // blocked: a link whose authority cannot be parsed is not one we can vouch for.
+            if ($this->ignored->blocksUrl($item->link, $query->ignoreDomains)) {
                 continue;
             }
 
@@ -214,31 +209,6 @@ final class SerperNewsClient implements NewsSearchClient
         } catch (Throwable) {
             return null;
         }
-    }
-
-    /**
-     * Whether an already-normalised host (or any parent of it) is on the ignore list.
-     *
-     * The list's own entries are normalised here too — they come from config and from a team's
-     * typing, so a trailing dot or a `www.` prefix on either side must not decide the outcome.
-     *
-     * @param  list<string>  $ignore
-     */
-    private function isIgnored(string $host, array $ignore): bool
-    {
-        foreach ($ignore as $blocked) {
-            $normalised = Str::replaceStart('www.', '', rtrim(Str::lower(trim((string) $blocked)), '.'));
-
-            if ($normalised === '') {
-                continue;
-            }
-
-            if ($host === $normalised || Str::endsWith($host, '.'.$normalised)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

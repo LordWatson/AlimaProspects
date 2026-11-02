@@ -36,7 +36,8 @@ it('lists the team’s watches with their recent runs and options', function ():
 
     app(TeamContext::class)->run($team, function () use ($team): void {
         $watch = SignalWatch::factory()
-            ->watchingPresets(SignalPresetCatalogue::keysForMarket(Market::Uae))
+            // The starters: a realistic watch, not all thirty presets the S9 library ships.
+            ->watchingPresets(SignalPresetCatalogue::starterKeys(Market::Uae))
             ->create([
                 'team_id' => $team->getKey(),
                 'name' => 'Dubai wealth events',

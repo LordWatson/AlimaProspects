@@ -81,6 +81,15 @@ export type SignalDefinition = {
     /** Which library preset this was cloned from, and at which version. */
     preset_key: SignalEventKey | null;
     preset_version: number | null;
+    /**
+     * The vertical bundle the library browses this under, or null for a type nobody shipped.
+     *
+     * Resolved from the catalogue by key on the server, never stored on the row — a pack is how the
+     * platform organises its own presets, not a property of a team's type (S9).
+     */
+    pack: SignalPresetPack | null;
+    /** Whether the live spike found this preset thin: a real event that is simply rare (S9). */
+    is_thin: boolean;
     version: number;
     /** How many watches use it — what removing it would cost. Present when the server counted. */
     watches_count?: number;
@@ -328,6 +337,118 @@ export type SignalDefinitionForm = {
     min_relevance: number | null;
     suggested_approach_hint: string | null;
     is_active: boolean;
+};
+
+/**
+ * A vertical bundle of library presets (S9).
+ *
+ * `general` is where the market starter sets live — a change of ownership is not a vertical's
+ * concern, it is everybody's.
+ */
+export type SignalPresetPack =
+    | 'general'
+    | 'luxury_real_estate'
+    | 'recruitment'
+    | 'b2b_saas'
+    | 'wealth_management'
+    | 'construction'
+    | 'ma_advisory';
+
+/** A pack with the line that says who it is for — a filter nobody recognises is one nobody presses. */
+export type SignalPackOption = {
+    value: SignalPresetPack;
+    /** Translation key, not a finished string. */
+    label: string;
+    /** Translation key, not a finished string. */
+    audience: string;
+};
+
+/**
+ * What one template of this definition would cost the team a month (S9).
+ *
+ * Sent **per template** so the form can multiply as somebody types, rather than as a total that
+ * would need a round trip to change. The server owns the arithmetic (ADR 0019 §4): regions × places
+ * × templates per run, times how often the team's watches run.
+ */
+export type SignalCostFacts = {
+    templates: number;
+    queries_per_run: number;
+    runs_per_month: number;
+    queries_per_month: number;
+    cost_micros_per_month: number;
+    watch_count: number;
+    /** True when the team has no watch yet, so this is "if you add it to one daily watch". */
+    hypothetical: boolean;
+    micros_per_search: number;
+};
+
+/**
+ * What the composer drafted, flashed back from `POST /signals/types/compose` (S9).
+ *
+ * `viable: false` is a real answer with a reason: "find me rich people in Dubai" is not an event a
+ * news search can find, and a composer that drafted plausible templates for it would cost a team
+ * money every day forever.
+ */
+export type SignalDraft = {
+    viable: boolean;
+    reason: string | null;
+    /** What the composer understood the brief to mean, in its own words. */
+    summary: string | null;
+    definition: SignalDefinitionForm | null;
+};
+
+/** What a preview did with one article, and why (S9). */
+export type SignalPreviewVerdict =
+    | 'ignored_domain'
+    | 'not_an_event'
+    | 'wrong_location'
+    | 'below_confidence'
+    | 'below_relevance'
+    | 'kept'
+    /** The AI never got to it — out of credit, or it answered unusably twice. Not a finding. */
+    | 'unclassified';
+
+export type SignalPreviewItem = {
+    headline: string;
+    url: string;
+    source: string | null;
+    published_at: string | null;
+    verdict: SignalPreviewVerdict;
+    /** Translation key, not a finished string. */
+    verdict_label: string;
+    /** Translation key, not a finished string — what to change about this one. */
+    verdict_advice: string;
+    /** Whether the templates found an event at all, whatever happened to it afterwards. */
+    found_an_event: boolean;
+    confidence: number | null;
+    relevance: number | null;
+    summary: string | null;
+    subject_company_name: string | null;
+    subject_person_name: string | null;
+    location: string | null;
+    /** The query that found it, so a member can see which template is pulling its weight. */
+    query: string;
+};
+
+/**
+ * What a preview found, flashed back from `POST /signals/types/preview` (S9).
+ *
+ * The counts and the `diagnosis` come from the server because "no news at all", "news but no
+ * events" and "events your thresholds rejected" are three different problems with three different
+ * fixes — and a client re-deriving which one it is would be a second implementation of the only
+ * judgement this screen makes.
+ */
+export type SignalPreviewResult = {
+    queries: string[];
+    queries_requested: number;
+    was_trimmed: boolean;
+    result_count: number;
+    event_count: number;
+    kept_count: number;
+    cost_micros: number;
+    /** Translation key, not a finished string. */
+    diagnosis: string;
+    items: SignalPreviewItem[];
 };
 
 /** A category with its section explainer, for grouping the library. */

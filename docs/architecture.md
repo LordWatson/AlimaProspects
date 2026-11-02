@@ -158,6 +158,18 @@ flowchart TD
 - **Charts:** hand-built in `resources/js/components/charts/`, no charting dependency, on the validated `--chart-*` tokens (brand-tokens.md §7.7) and the `dataviz` guidance. At most two series per chart; everything else is single-series magnitude.
 - **AI safety:** scraped/web content is **data, never instructions**; structured JSON output validated; per-team cost/credit logging (AI Platform). **Bounded on input since Phase 20** (ADR 0017), in two places for two problems: an oversized untrusted block is _truncated_ (a scraped page arriving too big is a normal Tuesday) and the whole rendered prompt being over the limit is _refused_ with a 413 before the transport — a near-context-limit call is slow, is charged to the team's allowance whatever comes back, and is the shape a prompt-injection attempt takes when the aim is to push the system instructions out of the model's attention. Characters, not tokens, because a token count is only knowable by making the call the bound exists to avoid.
 - **Signal types are data, not an enum (Signals, S7, ADR 0018):** a `SignalDefinition` is a row a team owns — its name, its search templates, its include/exclude rules and its own thresholds — so a new kind of trigger event is configuration rather than a deploy. The exception to `CLAUDE.md` §2's "enums for every type column" is deliberate and has a test: **does the application branch on the value?** It does for `SignalStatus`, `SignalRunStatus`, `SignalWatchCadence` and `SignalDismissReason`, which stay enums; it never did for the event type, which only ever got carried, displayed, templated and grouped by. The table holds two scopes — `team_id = null` is a **platform preset** every team can read and only the platform can write — and `Signals\Services\PlatformPresetReader` is the single place that removes the tenancy scope to read them, replacing it with a stricter one, the same way `Admin\Support\PlatformContext` isolates that trick (ADR 0016). A team **clones** a preset rather than referencing it, so a platform edit never silently changes what a team is paying to run.
+- **An AI that writes configuration gets a preview (Signals, S9, ADR 0020):** every other prompt
+  in the product returns content somebody reads once; the signal composer returns a **standing
+  instruction to spend money every day**. Three rules follow, and they generalise to any future
+  prompt that writes settings rather than prose. The AI **drafts and never saves** — the member reads,
+  edits and commits, so a prompt never has write access to a recurring cost. The model's output is
+  bounded **three times**: by the schema, by the _save path's own validation rules_
+  (`DraftSignalDefinition::fromAi()`), and by `UntrustedContent` around the one input a customer
+  wrote. And the output is **previewed against reality before it is kept**, because the S0 spike
+  established that nobody can tell whether a query template works by reading it — which makes the
+  preview the feature and the composer the convenience. The preview persists nothing except a
+  `signal_previews` ledger row, because a user-triggered spend loop needs a cap and a cost with no
+  row cannot be capped.
 - **Where we search is not which law applies (Signals, S8, ADR 0019):** `Signals\Enums\SearchRegion`
   answers "where do we look" — a Serper country code and a language — and `Core\Enums\Market`
   answers "which rules apply". One column was doing both jobs, which was harmless only while every

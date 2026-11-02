@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Models\SignalDefinition;
@@ -33,6 +32,24 @@ uses(RefreshDatabase::class);
  * The migration instance, loaded from its own file so the test can only ever pass by the real one
  * working.
  */
+/**
+ * The three presets the S7 migration creates — **frozen**, like the migration itself.
+ *
+ * It read `v1PresetKeys()` until S9 filled the library out into
+ * vertical packs and that became twenty-four keys. The migration did not change; the question the
+ * test was asking did. A frozen migration deserves a frozen expectation.
+ *
+ * @return list<string>
+ */
+function v1PresetKeys(): array
+{
+    return [
+        SignalPresetCatalogue::ACQUISITION,
+        SignalPresetCatalogue::FUNDING_ROUND,
+        SignalPresetCatalogue::RELOCATION,
+    ];
+}
+
 function eventTypeMigration(): object
 {
     return require base_path('database/migrations/2026_11_02_100004_migrate_signal_event_types_to_definitions.php');
@@ -104,7 +121,7 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
     rewindToV1Shape();
 
     DB::table('signal_watches')->where('id', $watchAll->getKey())
-        ->update(['event_types' => json_encode(SignalPresetCatalogue::keysForMarket(Market::Uae))]);
+        ->update(['event_types' => json_encode(v1PresetKeys())]);
     DB::table('signal_watches')->where('id', $watchPaused->getKey())
         ->update(['event_types' => json_encode([SignalPresetCatalogue::RELOCATION])]);
     DB::table('signal_watches')->where('id', $watchB->getKey())
@@ -133,7 +150,7 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
     $presets = SignalDefinition::withoutGlobalScope('team')->whereNull('team_id')->get();
 
     expect($presets)->toHaveCount(3)
-        ->and($presets->pluck('key')->sort()->values()->all())->toBe(SignalPresetCatalogue::keysForMarket(Market::Uae))
+        ->and($presets->pluck('key')->sort()->values()->all())->toBe(v1PresetKeys())
         ->and($presets->pluck('scope_id')->unique()->all())->toBe([SignalDefinition::PLATFORM_SCOPE])
         // A preset is not itself a clone, so it carries no provenance of one.
         ->and($presets->pluck('preset_key')->filter()->all())->toBe([]);
@@ -143,7 +160,7 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
         $mine = SignalDefinition::withoutGlobalScope('team')->where('team_id', $team->getKey())->get();
 
         expect($mine)->toHaveCount(3)
-            ->and($mine->pluck('preset_key')->sort()->values()->all())->toBe(SignalPresetCatalogue::keysForMarket(Market::Uae))
+            ->and($mine->pluck('preset_key')->sort()->values()->all())->toBe(v1PresetKeys())
             ->and($mine->pluck('preset_version')->unique()->all())->toBe([1])
             // The generated column agrees with the team, which is what makes `unique(scope_id, key)`
             // mean "one key per scope".
@@ -162,7 +179,7 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
     // with raw `DB` and no active team, so an assertion that depended on whichever team happened to
     // be active would be testing the harness rather than the migration. (`createUserWithTeam()`
     // leaves the last team it made active, which is exactly how that goes wrong.)
-    expect(watchedKeys($watchAll))->toBe(SignalPresetCatalogue::keysForMarket(Market::Uae))
+    expect(watchedKeys($watchAll))->toBe(v1PresetKeys())
         // A paused watch is migrated like any other: un-pausing it must put it back the way it was.
         ->and(watchedKeys($watchPaused))->toBe([SignalPresetCatalogue::RELOCATION])
         ->and(watchedKeys($watchB))->toBe([SignalPresetCatalogue::FUNDING_ROUND]);
@@ -282,9 +299,12 @@ it('rolls the UK pack back without touching a team clone of it', function (): vo
 
     ukPresetMigration()->down();
 
+    // The UK pack is gone and nothing else is: asserted by what must still be there rather than
+    // by a total, because the library grows (S9 took it to thirty) and a total is a number that
+    // goes stale without anybody changing the behaviour it was checking.
     expect(platformDefinitions()->where('key', 'like', 'uk_%')->count())->toBe(0)
-        // The three UAE presets are not this migration's to remove.
-        ->and(platformDefinitions()->count())->toBe(3);
+        ->and(platformDefinitions()->whereIn('key', v1PresetKeys())->count())->toBe(3)
+        ->and(platformDefinitions()->where('key', 'like', 'rec_%')->count())->toBeGreaterThan(0);
 
     // And the team's own copy, with its own wording, is still there.
     $kept = SignalDefinition::query()->withoutGlobalScope('team')->find($clone->getKey());

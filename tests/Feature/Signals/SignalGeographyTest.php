@@ -250,7 +250,13 @@ it('produces exactly v1 queries for a watch the S8 backfill touched', function (
         'regions' => [SearchRegion::Ae->value],
     ]));
 
-    $definitions = array_map(geoDefinition(...), SignalPresetCatalogue::keysForMarket(Market::Uae));
+    // v1's three by name. Since S9 the UAE market has twenty-four presets, and this test is
+    // about what the backfilled watch used to run — which is frozen.
+    $definitions = array_map(geoDefinition(...), [
+        SignalPresetCatalogue::ACQUISITION,
+        SignalPresetCatalogue::FUNDING_ROUND,
+        SignalPresetCatalogue::RELOCATION,
+    ]);
 
     $plan = $this->builder->build($watch, $definitions);
 

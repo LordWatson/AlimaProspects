@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Http\Resources;
 
 use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -66,6 +67,14 @@ final class SignalDefinitionResource extends JsonResource
             // from, which is why it is here now rather than later.
             'preset_key' => $definition->preset_key,
             'preset_version' => $definition->preset_version,
+            // Which vertical bundle the library browses this under, and whether the live spike
+            // found it thin (S9). Resolved from the catalogue by key rather than read off the row,
+            // because a pack is how the platform organises its own presets and has no business on a
+            // tenant's columns — see `SignalPresetPack`. A clone keeps its origin's pack, which is
+            // how "you took this from the recruitment pack" stays sayable; a hand-written type has
+            // no pack at all, and that is the honest answer.
+            'pack' => SignalPresetCatalogue::packFor($definition->preset_key ?? $definition->key)?->value,
+            'is_thin' => SignalPresetCatalogue::isThin($definition->preset_key ?? $definition->key),
             'version' => $definition->version,
             // What deleting it would cost, and whether it is doing anything. Only present when the
             // caller asked for the counts — `whenCounted` rather than a lazy count, because this

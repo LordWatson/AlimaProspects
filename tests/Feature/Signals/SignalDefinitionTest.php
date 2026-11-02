@@ -2,17 +2,23 @@
 
 declare(strict_types=1);
 
+use App\Modules\AiPlatform\Contracts\AiClient;
+use App\Modules\AiPlatform\Contracts\AiTransport;
+use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Auth\Support\TeamMembership;
 use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\AuditLog;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\PlatformPresetReader;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
+use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use Database\Seeders\AiPromptTemplateSeeder;
 use Database\Seeders\SignalPresetSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -75,8 +81,13 @@ it('lists the team’s types and the presets they have not taken yet', function 
             ->where('presets.0.is_preset', true)
             ->has('options.categories')
             ->has('options.icons')
-            ->where('defaults.min_confidence', 60)
-            ->where('can.manage', true));
+            // The builder (S9): the packs the library is browsed by, the per-template cost the
+            // form multiplies, and whether this plan includes the AI shortcut.
+            ->has('options.packs')
+            ->has('cost.cost_micros_per_month')
+            ->where('cost.templates', 1)
+            ->where('can.manage', true)
+            ->where('can.compose', true));
 });
 
 it('keeps the presets out of every team-scoped read', function (): void {
@@ -604,4 +615,113 @@ it('refuses a watch whose every signal type belongs to somebody else', function 
         ->assertSessionHas('inertia.flash_data.toast.type', 'error');
 
     expect(SignalWatch::withoutGlobalScopes()->where('team_id', $team->getKey())->count())->toBe(0);
+});
+
+/*
+ * The builder's two screens-worth of behaviour (S9). The draft and the preview arrive as **flashed**
+ * data rather than props, which is exactly their lifetime — they last until the member saves or
+ * walks away.
+ */
+
+it('flashes a composer draft back to the library screen', function (): void {
+    $this->seed(AiPromptTemplateSeeder::class);
+
+    $fake = new FakeAiTransport;
+    app()->instance(AiTransport::class, $fake);
+    app()->forgetInstance(AiClient::class);
+
+    $fake->queueStructured([
+        'is_viable' => true,
+        'reason' => null,
+        'summary' => 'A UK manufacturer changing hands.',
+        'definition' => [
+            'name' => 'Manufacturer sold',
+            'description' => 'A manufacturing business changes hands.',
+            'category' => 'liquidity',
+            'icon' => 'handshake',
+            'query_templates' => ['{location} manufacturer acquired'],
+        ],
+    ]);
+
+    $user = createUserWithTeam();
+
+    $this->actingAs($user)
+        ->post(route('signal-definitions.compose'), [
+            'brief' => 'Tell me when a UK manufacturer changes hands.',
+        ])
+        ->assertRedirect(route('signal-definitions.index'));
+
+    // The brief goes back with it, so the box keeps what they typed — a composer that cleared the
+    // text on a refusal would make its own reason unactionable.
+    expect(session('inertia.flash_data.draft.viable'))->toBeTrue()
+        ->and(session('inertia.flash_data.draft.definition.name'))->toBe('Manufacturer sold')
+        ->and(session('inertia.flash_data.brief'))->toContain('manufacturer changes hands');
+
+    // Still nothing in the library: the AI drafts and the member owns.
+    expect(SignalDefinition::query()->count())->toBe(0);
+});
+
+it('flashes a preview result and nothing that could be mistaken for a draft', function (): void {
+    $this->seed(AiPromptTemplateSeeder::class);
+
+    $news = new FakeNewsSearchClient;
+    app()->instance(NewsSearchClient::class, $news);
+
+    $fake = new FakeAiTransport;
+    app()->instance(AiTransport::class, $fake);
+    app()->forgetInstance(AiClient::class);
+
+    $news->willReturn([$news->item('Acme Engineering sold', 'https://gulfbusiness.com/acme')]);
+    $fake->queueStructured(['events' => [[
+        'item_index' => 0,
+        'is_event' => true,
+        'event_type' => 'manufacturer_sold',
+        'confidence' => 90,
+        'relevance' => 80,
+        'summary' => 'Acme was sold.',
+        'location' => 'London',
+    ]]]);
+
+    $user = createUserWithTeam();
+
+    $this->actingAs($user)
+        ->post(route('signal-definitions.preview'), [
+            'name' => 'Manufacturer sold',
+            'description' => 'A manufacturing business changes hands.',
+            'category' => 'liquidity',
+            'icon' => 'handshake',
+            'query_templates' => ['{location} manufacturer acquired'],
+        ])
+        ->assertRedirect(route('signal-definitions.index'));
+
+    // **Only the result is flashed.** It flashed the submitted draft back as well for one review
+    // cycle, so that the form would survive the redirect — and the client could then not tell a
+    // composer draft from an echo of its own form, so previewing a *saved* type reopened the editor
+    // as a new one: pressing Save created a duplicate, and the reset had cleared the
+    // unsaved-changes guard. The screen keeps its own state across this post instead.
+    expect(session('inertia.flash_data.preview.kept_count'))->toBe(1)
+        ->and(session('inertia.flash_data.draft'))->toBeNull();
+});
+
+it('refuses the composer to a member who may not manage types', function (): void {
+    $user = createUserWithTeam();
+    $team = $user->currentTeam()->firstOrFail();
+
+    $viewer = createUserWithTeam();
+    app(TeamMembership::class)->add($viewer, $team, TeamRole::ReadOnly);
+    $viewer->switchTeam($team);
+
+    $this->actingAs($viewer)
+        ->post(route('signal-definitions.compose'), ['brief' => 'Tell me when a manufacturer changes hands.'])
+        ->assertForbidden();
+
+    $this->actingAs($viewer)
+        ->post(route('signal-definitions.preview'), [
+            'name' => 'Anything',
+            'description' => 'Anything at all.',
+            'category' => 'custom',
+            'icon' => 'satellite',
+            'query_templates' => ['{location} anything'],
+        ])
+        ->assertForbidden();
 });

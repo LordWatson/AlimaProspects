@@ -9,6 +9,7 @@ use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
 use App\Modules\Signals\Data\SignalQuery;
 use App\Modules\Signals\Data\SignalQueryPlan;
+use App\Modules\Signals\Data\SignalQuerySpec;
 use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
@@ -35,10 +36,17 @@ use Illuminate\Support\Str;
  *   well as what will run, the run stores both, and the watch card shows the difference. A silent
  *   trim is a lie about coverage.
  *
+ * **Since S9 the "where" is a {@see SignalQuerySpec} rather than a watch** — the places, the
+ * regions and the skip list, resolved once, with no model behind them. That is what let the preview
+ * exist: it previews a definition somebody is still typing, for a team that may not have created a
+ * watch yet, and a builder that needs a saved row is the reason previews are hard. {@see build()}
+ * is the watch-shaped convenience over {@see buildFromSpec()}, so there is still exactly one code
+ * path.
+ *
  * **The definitions are passed in, not loaded.** That is what keeps this a pure function of its
  * inputs: the caller resolves them through a team-scoped query (which `docs/modules/signals.md`
- * requires of every parent reference, since the FKs are not team-qualified), and S9's "preview this
- * type before you save it" can call the same builder with a definition that has no row yet.
+ * requires of every parent reference, since the FKs are not team-qualified), and the preview calls
+ * it with a definition that has no row at all.
  *
  * An ICP Buying-signal criterion is **appended as an extra query** only when it maps to one of the
  * watched definitions — otherwise it is ignored and the reason logged (IDs/counts only, never
@@ -51,15 +59,33 @@ final class SignalQueryBuilder
     private const int MAX_QUERY = 200;
 
     /**
+     * The queries one run of a watch would ask for.
+     *
      * @param  list<SignalDefinition>  $definitions  The types to build for, in priority order.
      */
     public function build(SignalWatch $watch, array $definitions, ?Icp $icp = null): SignalQueryPlan
     {
-        $regions = $this->resolveRegions($watch);
-        $locations = $this->resolveLocations($watch, $regions);
+        return $this->buildFromSpec(SignalQuerySpec::forWatch($watch), $definitions, $icp);
+    }
+
+    /**
+     * The queries any "where" would ask for — a watch's, or a draft definition's preview.
+     *
+     * @param  list<SignalDefinition>  $definitions  The types to build for, in priority order.
+     * @param  int|null  $resultsPerQuery  Overridden by the preview, which asks for fewer.
+     */
+    public function buildFromSpec(
+        SignalQuerySpec $spec,
+        array $definitions,
+        ?Icp $icp = null,
+        ?int $resultsPerQuery = null,
+        ?int $maxQueries = null,
+    ): SignalQueryPlan {
+        $regions = $spec->regions;
+        $locations = $spec->locations;
         $tbs = (string) config('signals.recency', 'qdr:w');
-        $num = max(1, min((int) config('signals.results_per_query', 20), 100));
-        $ignoreDomains = $this->resolveIgnoreDomains($watch);
+        $num = max(1, min($resultsPerQuery ?? (int) config('signals.results_per_query', 20), 100));
+        $ignoreDomains = $spec->ignoreDomains;
 
         /** @var array<string, SignalQuery> $queries keyed by region|eventKey|q to dedupe */
         $queries = [];
@@ -84,10 +110,10 @@ final class SignalQueryBuilder
         }
 
         if ($icp instanceof Icp) {
-            $this->appendBuyingSignalQueries($watch, $icp, $definitions, $locations, $regions, $tbs, $num, $queries, $ignoreDomains);
+            $this->appendBuyingSignalQueries($spec, $icp, $definitions, $locations, $regions, $tbs, $num, $queries, $ignoreDomains);
         }
 
-        return $this->plan(array_values($queries), $watch);
+        return $this->plan(array_values($queries), $spec, $maxQueries);
     }
 
     /**
@@ -107,96 +133,24 @@ final class SignalQueryBuilder
      *
      * @param  list<SignalQuery>  $queries
      */
-    private function plan(array $queries, SignalWatch $watch): SignalQueryPlan
+    private function plan(array $queries, SignalQuerySpec $spec, ?int $maxQueries = null): SignalQueryPlan
     {
         $requested = count($queries);
-        $max = max(1, (int) config('signals.max_queries_per_run', 40));
+        $max = max(1, $maxQueries ?? (int) config('signals.max_queries_per_run', 40));
 
         if ($requested <= $max) {
             return new SignalQueryPlan($queries, $requested);
         }
 
         Log::channel('signals')->warning('Signal run trimmed to the per-run query ceiling.', [
-            'team_id' => (int) $watch->team_id,
-            'signal_watch_id' => $watch->getKey(),
+            'team_id' => $spec->teamId,
+            // Null for a preview, which is also how this line says which it was.
+            'signal_watch_id' => $spec->watchId,
             'requested' => $requested,
             'ceiling' => $max,
         ]);
 
         return new SignalQueryPlan(array_slice($queries, 0, $max), $requested);
-    }
-
-    /**
-     * The regions this watch searches, bounded and never empty.
-     *
-     * A stored region that is no longer **offered** is dropped rather than honoured: `offered` is a
-     * compliance switch (ADR 0019 §3), so a region switched off because the business has not taken
-     * a position on it must stop being searched — not keep running for the watches that already had
-     * it. Falls back to the region matching the watch's own market, which is what the S8 backfill
-     * gave every v1 watch anyway.
-     *
-     * @return list<SearchRegion>
-     */
-    private function resolveRegions(SignalWatch $watch): array
-    {
-        $max = max(1, (int) config('signals.max_regions_per_watch', 5));
-
-        $regions = [];
-
-        foreach ($watch->regions ?? [] as $value) {
-            $region = SearchRegion::tryFrom($value);
-
-            if ($region === null || ! $region->isOffered()) {
-                continue;
-            }
-
-            if (! in_array($region, $regions, strict: true)) {
-                $regions[] = $region;
-            }
-        }
-
-        if ($regions === []) {
-            $regions[] = SearchRegion::forMarket($watch->market);
-        }
-
-        return array_slice($regions, 0, $max);
-    }
-
-    /**
-     * The places this watch covers, bounded, de-duplicated and never empty.
-     *
-     * Falls back to the regions' own default places when the watch names none — a watch that
-     * searched nowhere would complete successfully having found nothing, which is the most
-     * confusing failure this feature could have.
-     *
-     * @param  list<SearchRegion>  $regions
-     * @return list<string>
-     */
-    private function resolveLocations(SignalWatch $watch, array $regions): array
-    {
-        $max = max(1, (int) config('signals.max_locations_per_watch', 10));
-
-        $locations = [];
-
-        foreach ($watch->locations ?? [] as $place) {
-            $clean = Str::squish($place);
-
-            if ($clean !== '' && ! in_array($clean, $locations, strict: true)) {
-                $locations[] = $clean;
-            }
-        }
-
-        if ($locations === []) {
-            foreach ($regions as $region) {
-                foreach ($region->defaultLocations() as $place) {
-                    if (! in_array($place, $locations, strict: true)) {
-                        $locations[] = $place;
-                    }
-                }
-            }
-        }
-
-        return array_slice($locations, 0, $max);
     }
 
     /**
@@ -238,7 +192,7 @@ final class SignalQueryBuilder
      * @param  list<string>  $ignoreDomains
      */
     private function appendBuyingSignalQueries(
-        SignalWatch $watch,
+        SignalQuerySpec $spec,
         Icp $icp,
         array $definitions,
         array $locations,
@@ -255,7 +209,7 @@ final class SignalQueryBuilder
 
             if (! $definition instanceof SignalDefinition) {
                 Log::channel('signals')->debug('ICP buying signal ignored for query building: no watched signal type matched its keywords.', [
-                    'signal_watch_id' => $watch->getKey(),
+                    'signal_watch_id' => $spec->watchId,
                 ]);
 
                 continue;
@@ -358,50 +312,5 @@ final class SignalQueryBuilder
             num: $num,
             ignoreDomains: $ignoreDomains,
         );
-    }
-
-    /**
-     * The watch's own domains to exclude (S6), normalised to bare lower-case hosts.
-     *
-     * A team types what they see — "www.Competitor.ae", or a whole URL pasted out of the address
-     * bar — so a host is extracted where there is one and `www.` is stripped, which is the form the
-     * client compares against. Blank entries are dropped and duplicates collapsed, so a sloppy
-     * list still works.
-     *
-     * @return list<string>
-     */
-    private function resolveIgnoreDomains(SignalWatch $watch): array
-    {
-        $domains = [];
-
-        foreach ($watch->ignore_domains ?? [] as $entry) {
-            $value = Str::lower(trim($entry));
-
-            if ($value === '') {
-                continue;
-            }
-
-            if (Str::contains($value, '/')) {
-                $host = parse_url(Str::startsWith($value, ['http://', 'https://']) ? $value : 'https://'.$value, PHP_URL_HOST);
-                $value = is_string($host) ? $host : $value;
-            }
-
-            // A team that types a Unicode domain would otherwise never match the punycode host
-            // the provider returns.
-            if (! mb_check_encoding($value, 'ASCII') && function_exists('idn_to_ascii')) {
-                $ascii = idn_to_ascii($value);
-                $value = is_string($ascii) && $ascii !== '' ? $ascii : $value;
-            }
-
-            // The trailing dot matters: `rival.ae.` is a valid absolute FQDN resolving to the same
-            // place, but a different string — and the comparison downstream is a string one.
-            $value = Str::replaceStart('www.', '', rtrim($value, '.'));
-
-            if ($value !== '' && ! in_array($value, $domains, strict: true)) {
-                $domains[] = $value;
-            }
-        }
-
-        return $domains;
     }
 }

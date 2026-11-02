@@ -6,14 +6,20 @@ namespace App\Modules\Signals\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Signals\Actions\CloneSignalPresetsAction;
+use App\Modules\Signals\Actions\ComposeSignalDefinitionAction;
 use App\Modules\Signals\Actions\DeleteSignalDefinitionAction;
 use App\Modules\Signals\Actions\ListSignalDefinitionsAction;
+use App\Modules\Signals\Actions\PreviewSignalDefinitionAction;
 use App\Modules\Signals\Actions\SaveSignalDefinitionAction;
 use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
 use App\Modules\Signals\Http\Requests\CloneSignalPresetsRequest;
+use App\Modules\Signals\Http\Requests\ComposeSignalDefinitionRequest;
+use App\Modules\Signals\Http\Requests\PreviewSignalDefinitionRequest;
 use App\Modules\Signals\Http\Requests\SaveSignalDefinitionRequest;
 use App\Modules\Signals\Http\Resources\SignalDefinitionResource;
+use App\Modules\Signals\Http\Resources\SignalDraftResource;
+use App\Modules\Signals\Http\Resources\SignalPreviewResource;
 use App\Modules\Signals\Policies\SignalDefinitionPolicy;
 use App\Modules\Signals\Services\PlatformPresetReader;
 use Illuminate\Http\JsonResponse;
@@ -33,6 +39,12 @@ use Illuminate\Http\Response;
  *
  * It is filtered to **the team's own market** since S8 (ADR 0019) — a UK team is offered the UK
  * pack, and a preset with no `markets` is offered to everyone.
+ *
+ * **`compose` and `preview` (S9) are the two endpoints here that spend money on a request.** Both
+ * are throttled per member on top of Sanctum's ability check, because a token is easier to loop
+ * than a button; `compose` is additionally behind `Capability::SignalComposer` (plan decision #1),
+ * enforced in its Action so the API and the screen cannot disagree. Both return 200 with a body
+ * rather than 201: neither creates anything, which is the whole point of them.
  */
 final class SignalDefinitionController extends Controller
 {
@@ -127,5 +139,44 @@ final class SignalDefinitionController extends Controller
         return SignalDefinitionResource::collection($cloned)
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
+    }
+
+    /**
+     * Draft a signal definition from a plain-language description (S9).
+     *
+     * 200, not 201: nothing is created. The draft is for a client to show somebody, who then posts
+     * it to `store` if they want it — the AI drafts and the user owns, on the API as much as on the
+     * screen.
+     */
+    public function compose(
+        ComposeSignalDefinitionRequest $request,
+        ComposeSignalDefinitionAction $action,
+    ): SignalDraftResource {
+        $team = $this->team($request);
+
+        $this->authorize('create', $this->transientDefinition($team));
+
+        return new SignalDraftResource(
+            $action->handle($team, $this->user($request), $request->brief()),
+        );
+    }
+
+    /**
+     * Run a definition against live news without saving it (S9).
+     *
+     * Takes a whole definition rather than an id, deliberately: a preview is about the text the
+     * caller has in hand, which is the point when it differs from any stored row.
+     */
+    public function preview(
+        PreviewSignalDefinitionRequest $request,
+        PreviewSignalDefinitionAction $action,
+    ): SignalPreviewResource {
+        $team = $this->team($request);
+
+        $this->authorize('create', $this->transientDefinition($team));
+
+        return new SignalPreviewResource(
+            $action->handle($team, $this->user($request), $request->unsavedDefinition()),
+        );
     }
 }

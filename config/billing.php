@@ -146,6 +146,11 @@ return [
                 Capability::AiInsights->value,
                 // And “Signals — trigger-event prospecting” from here up.
                 Capability::Signals->value,
+                // The AI composer rides with Signals rather than above it (Signals S9, plan
+                // decision #1): the library and the hand-written form are on every plan that has
+                // Signals, and this is the paid shortcut to the same result. Scale and Enterprise
+                // get it automatically, since they declare `Capability::values()`.
+                Capability::SignalComposer->value,
             ],
             'features' => [
                 'Everything in Starter',

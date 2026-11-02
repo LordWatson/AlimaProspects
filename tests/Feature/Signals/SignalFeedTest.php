@@ -66,7 +66,9 @@ function feedDefinitions(Team $team): void
 {
     // The UAE three, which is what these fixtures mean by "the library" — S8 added a UK pack, and
     // counting all nine here would be asserting the catalogue's size rather than the feed's.
-    foreach (SignalPresetCatalogue::keysForMarket(Market::Uae) as $key) {
+    // The starters rather than the whole market: since S9 the library is thirty presets, and this
+    // fixture wants a realistic watch, not every type Alima ships.
+    foreach (SignalPresetCatalogue::starterKeys(Market::Uae) as $key) {
         signalDefinition($team, $key);
     }
 }

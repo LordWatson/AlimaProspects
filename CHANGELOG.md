@@ -5,6 +5,89 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-02 — Signals S9: the builder
+
+**You can describe a signal in a sentence, and see what it finds before you keep it.**
+
+S7 made a signal type a row a team owns. That was the right change, and it left the team holding a
+blank page — because "a good template" is not a matter of taste. The S0 spike exists for one
+reason: **nobody can tell whether a query template works by reading it.** Seven of eight
+hand-written ones returned zero results. That was a developer losing an afternoon before shipping.
+Handing the same problem to customers without the afternoon means a team writes three plausible
+templates, saves them, and finds out in a week — except what they see is an empty feed, which reads
+as _Signals does not work_ rather than _that template is too specific_, and the templates have been
+running daily in the meantime.
+
+So this phase is not a nicer form. It is the two things that make a type written by a customer as
+good as one written by us.
+
+**A draft they did not have to invent.** The composer takes a sentence — "tell me when a UK
+manufacturer changes hands or the owner sells a controlling stake" — and returns a complete draft:
+the searches, the rules that tell a real event from the round-up that reads like one, the thresholds,
+the approach hint. It runs on the **reasoning** tier, because the cheap tier writes templates that
+look right and find nothing. And it **never saves**: the member reads the draft, changes what they
+like, and commits. An AI that wrote directly to the library would be a prompt with write access to a
+standing instruction to spend money every day. "Find me rich people in Dubai" gets a **refusal with
+a reason**, which is a better answer than a plausible search that cannot work.
+
+**An answer before they commit.** Press "show me what this finds" and the draft runs against live
+news — classified by the _real_ extraction prompt, not a stand-in — and every article comes back
+with one of six verdicts: kept, not an event, wrong place, not sure enough, not relevant enough, or
+a skipped source. Six rather than a boolean, because each one is a **different thing to change**, and
+an empty list tells somebody that something is wrong without telling them which thing. A run drops a
+skip-listed source silently; the preview shows it labelled, because "your templates work and every
+result is on your skip list" is a diagnosis nobody reaches from an empty list.
+
+It persists **no signals** — a definition nobody has saved has no business putting rows in a feed —
+and exactly one ledger row, which is the new `signal_previews` table. That table is why the per-team
+daily preview budget can be enforced at all: **a cost with no ledger row is a cost nobody can cap.**
+Three independent caps bound the spend, because each fails differently — four queries per press, ten
+presses per member per hour, and a team-wide daily budget that a rate limiter could never express.
+
+**The library grew into something that reads as a product**: 30 presets in seven groupings —
+general, luxury real estate, recruitment, B2B software, wealth management, construction, M&A — with
+the audience line for each, so the chip says who it is for rather than what it contains. Every one of
+the 66 candidate templates was run against live news first, for about eight cents. Eight returned
+**zero** and were replaced; one preset the plan asked for was **dropped**, because the news for a
+sports contract is transfer gossip rather than signed deals; three ship marked **Rare**, because the
+event is real and the news for it is sparse, and shipping those silently beside the strong ones would
+teach a team the feature is unreliable using our own content. The table is in
+`docs/modules/signals.md`, and the lesson it repeats is the shape of the failures rather than their
+topic: every zero was a four-word noun phrase a press officer would write and a journalist would not.
+That finding is now in the composer's system prompt, with its reason.
+
+The AI shortcut is the one part behind a plan (`Capability::SignalComposer`). The library, the
+hand-written form and the preview stay on every plan that has Signals — gating the builder would
+have made the cheaper plans worse than they were before it existed, and gating the preview would have
+sold them the ability to write templates without the ability to find out whether they work.
+
+**The review pass is worth a paragraph of its own, because of what it says about the shape of the
+work.** Three agents read the finished phase, and every serious finding was in the **accounting**
+rather than in the feature: the ledger row was written at the end, so a provider failure left
+searches paid for and nothing recorded; the budget check was a read-then-write, so everyone pressing
+at once read the same "remaining"; and the AI's failure branches booked a cost of zero while two
+attempts had been billed — which a member could trigger on purpose, because their own exclusion
+rules go into that prompt. The row is reserved before the spend and settled after it now. A spend
+loop is easy to design and easy to under-account for, and under-accounting is invisible to every
+test that only checks the happy path.
+
+Two behavioural defects were caught before anybody met them. Previewing a **saved** signal type
+turned it into a new one — the preview sent the submitted draft back so the form would survive the
+redirect, and the screen could not tell that echo from a composer draft, so Save created a duplicate
+and the unsaved-changes guard had quietly stopped firing. And the preview reported _our_ AI outage as
+"not an event", which tells somebody to rewrite templates that are working; that has its own verdict
+now. The preview panel was also regrouped by verdict, because one card per article carrying its own
+copy of the same advice is wallpaper rather than guidance.
+
+Three smaller things worth knowing. **`SignalQuerySpec`** was extracted so building queries no longer
+needs a saved watch, which is what made the preview possible at all — a builder that needs a
+persisted row is the reason previews are hard. **`IgnoredDomains`** was extracted so the run and the
+preview cannot disagree by a hair of host normalisation about what "skipped" means. And the four list
+boxes in the type editor **could not be typed into**: a two-way computed that filtered blank lines
+and wrote the result back ate the Enter key, so the only way to add a second template was to split a
+line or paste one in. That is the same WCAG 2.1.1 defect S8's review found in the watch form, and the
+note to check wherever else the pattern appeared is what found it here.
+
 ### Added — 2026-11-02 — Signals S8: a watch covers places, plural — and a restriction follows the person
 
 **One watch can now cover Dubai and London.** v1 gave a watch a single `location` and a `market`,

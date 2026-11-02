@@ -182,6 +182,52 @@ final class SignalsException extends DomainException
     }
 
     /**
+     * The composer could not produce a draft: no AI credit, or no schema-valid answer after a retry.
+     *
+     * One failure mode for both, deliberately. A member cannot act differently on "we are out of
+     * credit" and "the model answered badly twice" — both mean *try again later, or write it
+     * yourself* — and the library and the manual form are still there, which is what the message
+     * says. The distinction is in the log, where somebody can do something about it.
+     */
+    public static function composerUnavailable(): self
+    {
+        $e = new self('Alima could not draft that one. Try describing the event in a single sentence, or add a type from the library.');
+        $e->errorCode = 'signals.composer_unavailable';
+        $e->status = 503;
+
+        return $e;
+    }
+
+    /**
+     * A preview was asked for and the team has spent its preview budget for today.
+     *
+     * **A refusal with a number in it**, because the alternative is a member pressing a button that
+     * silently does nothing. The budget is a team-wide ceiling over the `signal_previews` ledger
+     * (S9): per-member rate limiting cannot express it, since twelve members each inside their own
+     * limit can still empty an allowance in an afternoon.
+     */
+    public static function previewBudgetSpent(): self
+    {
+        $e = new self('Your team has used its preview allowance for today. Previews reset tomorrow — you can still save this and try it on a watch.');
+        $e->errorCode = 'signals.preview_budget_spent';
+        $e->status = 429;
+
+        return $e;
+    }
+
+    /**
+     * A preview was asked for on a draft with nothing to search for.
+     */
+    public static function nothingToPreview(): self
+    {
+        $e = new self('Add at least one search template before previewing.');
+        $e->errorCode = 'signals.nothing_to_preview';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
      * A watch was saved naming no signal type that this team actually has.
      *
      * Distinct from a validation error on purpose: ids are dropped rather than rejected when they

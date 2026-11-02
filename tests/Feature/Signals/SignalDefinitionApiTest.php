@@ -2,13 +2,20 @@
 
 declare(strict_types=1);
 
+use App\Modules\AiPlatform\Contracts\AiClient;
+use App\Modules\AiPlatform\Contracts\AiTransport;
+use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Auth\Enums\TokenAbility;
 use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\Signals\Contracts\NewsSearchClient;
+use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\PlatformPresetReader;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
+use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use Database\Seeders\AiPromptTemplateSeeder;
 use Database\Seeders\SignalPresetSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -174,4 +181,128 @@ it('404s on another team’s signal type', function (): void {
 
     $this->deleteJson(route('api.v1.signal-definitions.destroy', ['definition' => $foreign->getKey()]))
         ->assertNotFound();
+});
+
+/*
+ * The builder's two endpoints (S9). Both 200 with a body and **neither creates anything**, which is
+ * the whole point of them: the AI drafts, the caller owns.
+ */
+
+it('drafts a signal type from a brief over the API', function (): void {
+    $this->seed(AiPromptTemplateSeeder::class);
+
+    $fake = new FakeAiTransport;
+    app()->instance(AiTransport::class, $fake);
+    app()->forgetInstance(AiClient::class);
+
+    $fake->queueStructured([
+        'is_viable' => true,
+        'reason' => null,
+        'summary' => 'A UK manufacturer changing hands.',
+        'definition' => [
+            'name' => 'Manufacturer sold',
+            'description' => 'A manufacturing business changes hands.',
+            'category' => 'liquidity',
+            'icon' => 'handshake',
+            'query_templates' => ['{location} manufacturer acquired'],
+            'min_confidence' => 60,
+            'min_relevance' => 40,
+        ],
+    ]);
+
+    Sanctum::actingAs($this->user, ['*']);
+
+    $response = $this->postJson(route('api.v1.signal-definitions.compose'), [
+        'brief' => 'Tell me when a UK manufacturer changes hands.',
+    ])->assertOk();
+
+    expect($response->json('data.viable'))->toBeTrue()
+        // The draft is shaped like the **save payload**, so a client can post it straight back.
+        ->and($response->json('data.definition.name'))->toBe('Manufacturer sold')
+        ->and($response->json('data.definition.query_templates'))->toBe(['{location} manufacturer acquired']);
+
+    // 200 and nothing created.
+    expect(SignalDefinition::query()->count())->toBe(0);
+});
+
+it('returns a refusal with its reason rather than an error', function (): void {
+    $this->seed(AiPromptTemplateSeeder::class);
+
+    $fake = new FakeAiTransport;
+    app()->instance(AiTransport::class, $fake);
+    app()->forgetInstance(AiClient::class);
+
+    $fake->queueStructured([
+        'is_viable' => false,
+        'reason' => 'That describes people rather than an event.',
+        'summary' => null,
+        'definition' => null,
+    ]);
+
+    Sanctum::actingAs($this->user, ['*']);
+
+    // **200, not 422.** The caller asked a reasonable question and got a usable answer: a refusal
+    // with a reason is the composer working, not the request being wrong.
+    $this->postJson(route('api.v1.signal-definitions.compose'), [
+        'brief' => 'find me rich people in Dubai',
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.viable', false)
+        ->assertJsonPath('data.reason', 'That describes people rather than an event.');
+});
+
+it('validates the brief it is given', function (): void {
+    Sanctum::actingAs($this->user, ['*']);
+
+    $this->postJson(route('api.v1.signal-definitions.compose'), ['brief' => 'nope'])
+        ->assertApiValidationErrors(['brief']);
+});
+
+it('previews a definition over the API without persisting a signal', function (): void {
+    $this->seed(AiPromptTemplateSeeder::class);
+
+    $news = new FakeNewsSearchClient;
+    app()->instance(NewsSearchClient::class, $news);
+
+    $fake = new FakeAiTransport;
+    app()->instance(AiTransport::class, $fake);
+    app()->forgetInstance(AiClient::class);
+
+    $news->willReturn([$news->item('Acme Engineering sold', 'https://gulfbusiness.com/acme')]);
+    $fake->queueStructured(['events' => [[
+        'item_index' => 0,
+        'is_event' => true,
+        'event_type' => 'manufacturer_sold',
+        'confidence' => 90,
+        'relevance' => 80,
+        'summary' => 'Acme was sold.',
+        'location' => 'London',
+    ]]]);
+
+    Sanctum::actingAs($this->user, ['*']);
+
+    $response = $this->postJson(route('api.v1.signal-definitions.preview'), [
+        'name' => 'Manufacturer sold',
+        'description' => 'A manufacturing business changes hands.',
+        'category' => 'liquidity',
+        'icon' => 'handshake',
+        'query_templates' => ['{location} manufacturer acquired'],
+    ])->assertOk();
+
+    expect($response->json('data.kept_count'))->toBe(1)
+        ->and($response->json('data.items.0.verdict'))->toBe('kept')
+        // The diagnosis is server-side, because "no news", "no events" and "all rejected" are
+        // three different fixes and a client re-deriving which is a second implementation.
+        ->and($response->json('data.diagnosis'))->toContain('works');
+
+    expect(Signal::query()->count())->toBe(0);
+});
+
+it('validates a preview against the same rules as a save', function (): void {
+    Sanctum::actingAs($this->user, ['*']);
+
+    // No templates, no name: a preview of something that could not be saved would answer a
+    // question nobody asked.
+    $this->postJson(route('api.v1.signal-definitions.preview'), ['query_templates' => []])
+        ->assertApiValidationErrors(['name', 'description', 'category', 'icon', 'query_templates']);
 });

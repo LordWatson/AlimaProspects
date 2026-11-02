@@ -86,6 +86,51 @@ per-watch spend is on the watch settings screen, so you can show it rather than 
 
 ---
 
+## 4a. The builder (S9) — the part of the demo that closes
+
+Everything above shows Alima doing what **we** decided to look for. This is the bit where it starts
+looking for what **they** decided, live, in the meeting. Four minutes, and do it in this order.
+
+1. **Signals → Signal types.** Scroll past your own types to **Alima's library** and press the chip
+   for their trade. Read the audience line out — _"you place people, and you want to know who is
+   about to need them"_. Five types appear. "These are not categories, they are searches we have
+   already run."
+2. **Ask them for a moment, in their words.** Not a keyword. Ask: _"what happens, in the world,
+   just before someone needs you?"_ Type their answer into the box verbatim, typos and all. If they
+   hesitate, press one of the examples — but their own sentence is worth four of ours.
+3. **Press "Draft a signal type".** Read the draft **out loud** while it is on screen: the name, the
+   searches, and especially _"what doesn't count"_. That exclusion list is the thing a keyword alert
+   has never had, and it is where somebody recognises their own problem — "yes, it's always the
+   weekly round-ups".
+4. **Press "Show me what this finds" before you save.** This is the moment. Live news, their
+   sentence, thirty seconds. Then walk the verdicts: the kept ones, and — more persuasively — the
+   rejected ones with the reason beside each. _"This one is a real event in the wrong city. This one
+   your threshold rejected. Nothing here is a black box."_
+5. **Change one threshold and run it again.** Drop "how sure Alima must be" by twenty and watch two
+   rejected cards turn into kept ones. Then say the line this whole feature exists for: **"you can
+   tune this in the room, and you can see what the tuning did."**
+6. **Save it, and add it to the watch.** Thirty seconds. They now own a signal type that did not
+   exist when the meeting started.
+
+**Three things to say while it runs, and nothing else.**
+
+- **"We check it before you pay for it."** Every template in that library was run against live news
+  before it shipped — eight of sixty-six found nothing and were rewritten. Say the number; it is the
+  most credible sentence in the demo.
+- **"The cost is on the screen."** Point at the line under the templates. A signal type is a search
+  that runs every day, and Alima tells you what it costs while you are writing it.
+- **"Three of them say 'Rare'."** Show one. _"That is us telling you a type finds less than the
+  others. We would rather say so than have you discover it in a quiet week."_ Nothing earns trust
+  faster than a product that marks down its own shelf.
+
+**What not to do.** Do not pre-write the brief and paste it — the value is that their sentence
+works. Do not preview the same draft five times; it costs money and the budget is per team per day,
+which they may ask about (the answer: ten presses an hour each, a daily ceiling for the team, and
+the ledger is in cost reporting). Do not promise the composer on the cheaper plans — the library and
+the hand-written form are on every plan, the **AI drafting** is not.
+
+---
+
 ## 5. How to talk about compliance (do not improvise this)
 
 The client is in the UAE, so **PDPL applies**, and the honest answer is a strength rather than an
@@ -128,7 +173,9 @@ per-team export and erase for exactly that (see `docs/modules/compliance-privacy
 
 ## 7. What to promise, and what not to
 
-**Safe to promise (it is built):** watches over **several places at once** and over both the UAE
+**Safe to promise (it is built):** **describing a signal type in a sentence and previewing it
+against live news before saving** (S9) — including the six vertical preset packs, every template of
+which was checked against the provider first; watches over **several places at once** and over both the UAE
 and the UK (S8) — so a client who sells into Dubai and London has one watch, not two — daily or
 weekly; **signal types the client writes themselves** on `/signals/types`, or clones from Alima's
 library and tunes (S7) — including their own confidence and relevance floors per type; a **UK
@@ -137,7 +184,10 @@ before it shipped; the feed with filters; convert-to-lead into the existing pipe
 and scoring; dismiss with reasons; English and Arabic with full RTL; the API for their own tooling;
 retention and the data-subject export.
 
-**Do not promise:** anywhere outside the UAE and the UK (Saudi, the US, India and Singapore are
+**Do not promise:** AI drafting on the cheaper plans (the library and the hand-written form are
+on every plan with Signals; the composer is not), previewing a whole watch rather than a sample from
+one place, unlimited previews (ten an hour each, plus a daily team ceiling),
+anywhere outside the UAE and the UK (Saudi, the US, India and Singapore are
 written and deliberately switched off until the legal position for each is taken — say "not yet",
 and do not offer a date), **Companies House filings** (the UK types read news, so a change of
 control shows up when a journalist writes about it; the registry itself is S13), Arabic-language

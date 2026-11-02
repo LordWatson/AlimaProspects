@@ -19,6 +19,7 @@ use App\Modules\Signals\Policies\SignalWatchPolicy;
 use App\Modules\Signals\Services\SerperNewsClient;
 use App\Modules\Signals\Services\SignalItemNormaliser;
 use App\Modules\Signals\Services\SignalLeadOriginProvider;
+use App\Modules\Signals\Support\IgnoredDomains;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Repository as Cache;
@@ -64,6 +65,20 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         RateLimiter::for('signals-run', fn (Request $request): Limit => Limit::perMinute(
             max(1, (int) config('signals.run_rate_limit', 10)),
         )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        // The builder's two spending buttons (S9). **Per hour, not per minute**, which is the
+        // difference between these and `signals-run`: a run is an occasional deliberate act, while
+        // drafting and previewing are things somebody does repeatedly in one sitting — so the
+        // window has to be long enough to make iterating affordable and short enough to make a
+        // loop pointless. Per member rather than per IP, so a shared office does not throttle
+        // itself.
+        RateLimiter::for('signals-compose', fn (Request $request): Limit => Limit::perHour(
+            max(1, (int) config('signals.composer.rate_limit', 20)),
+        )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        RateLimiter::for('signals-preview', fn (Request $request): Limit => Limit::perHour(
+            max(1, (int) config('signals.preview.rate_limit', 10)),
+        )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
     }
 
     public function register(): void
@@ -79,6 +94,7 @@ final class SignalsServiceProvider extends ModuleServiceProvider
                 prefix: 'signals:cb',
             ),
             $app->make(SignalItemNormaliser::class),
+            $app->make(IgnoredDomains::class),
         ));
 
         // Tell the Leads Workspace how to show a converted signal on the lead detail screen (S4).

@@ -84,6 +84,57 @@ return [
     // it bite harder, since a watch there multiplies templates by locations.
     'max_queries_per_run' => (int) env('SIGNALS_MAX_QUERIES_PER_RUN', 40),
 
+    /*
+     * The builder's two AI paths (S9): drafting a definition, and previewing one before it is saved.
+     *
+     * **Preview is a user-triggered spend loop**, which is the only reason these keys exist. A
+     * member pressing "show me what this finds" pays for Serper searches and an AI pass, and a
+     * button that spends money on every press needs a ceiling that does not depend on the member
+     * being reasonable. Three independent caps, because each one fails differently:
+     *
+     * - `max_queries` bounds **one** preview, so a definition with ten templates cannot become ten
+     *   searches a press. A preview is a sample — the answer to "do these templates return
+     *   anything" does not get truer in five cities.
+     * - `rate_limit` bounds one **member**, per hour, so iterating on wording stays affordable and
+     *   a held-down key does not.
+     * - `daily_budget_micros` bounds the **team**, so twelve members each inside their own limit
+     *   still cannot spend a month's allowance in an afternoon. Measured over the
+     *   `signal_previews` ledger, which is why that table exists: a cost with no row is a cost
+     *   nobody can cap.
+     *
+     * `results_per_query` is deliberately smaller than a run's: a preview shows a handful of
+     * headlines so somebody can judge the templates, not a full page nobody will read.
+     */
+    'preview' => [
+        'max_queries' => (int) env('SIGNALS_PREVIEW_MAX_QUERIES', 4),
+        'results_per_query' => (int) env('SIGNALS_PREVIEW_RESULTS_PER_QUERY', 10),
+        'rate_limit' => (int) env('SIGNALS_PREVIEW_RATE_LIMIT', 10),
+        'daily_budget_micros' => (int) env('SIGNALS_PREVIEW_DAILY_BUDGET_MICROS', 500_000),
+    ],
+
+    /*
+     * The AI composer (S9): a sentence in, a draft definition out.
+     *
+     * Rate-limited per member for the same reason as the preview — it is an AI call behind a button
+     * — and metered through `AiCreditGuard` like every other prompt, so a team's AI allowance is
+     * the real ceiling. `max_brief` is the character bound on the member's own description before
+     * it reaches the prompt, which is ADR 0017's rule rather than a form limit: the input is
+     * untrusted and the budget is spent in characters.
+     *
+     * **It has no daily team budget of its own, unlike the preview, and the S9 security review was
+     * right that this is an asymmetry rather than an oversight.** The AI allowance that bounds it
+     * is *monthly*, and on a metered plan the hard stop is the allowance times the overage
+     * multiplier — so several members looping the composer could consume a month of a team's AI
+     * ceiling in an afternoon and starve insights, drafting and scoring for the rest of it. The
+     * rate limit is 10 rather than 20 for that reason, which narrows it without closing it; a
+     * per-team daily cap over a composer ledger is S16's cost-governance work, where the other
+     * per-team ceilings live.
+     */
+    'composer' => [
+        'rate_limit' => (int) env('SIGNALS_COMPOSER_RATE_LIMIT', 10),
+        'max_brief' => (int) env('SIGNALS_COMPOSER_MAX_BRIEF', 1_000),
+    ],
+
     // AI thresholds applied in S3 (declared here so the whole feature's knobs live together): a kept
     // signal needs is_event && confidence >= min_confidence && relevance >= min_relevance.
     'min_confidence' => (int) env('SIGNALS_MIN_CONFIDENCE', 60),

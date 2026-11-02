@@ -5,19 +5,31 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Core\Contracts\CapabilityGate;
+use App\Modules\Core\Enums\Capability;
 use App\Modules\Signals\Actions\CloneSignalPresetsAction;
+use App\Modules\Signals\Actions\ComposeSignalDefinitionAction;
 use App\Modules\Signals\Actions\DeleteSignalDefinitionAction;
 use App\Modules\Signals\Actions\ListSignalDefinitionsAction;
+use App\Modules\Signals\Actions\PreviewSignalDefinitionAction;
 use App\Modules\Signals\Actions\SaveSignalDefinitionAction;
 use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Enums\SignalCategory;
 use App\Modules\Signals\Enums\SignalIcon;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
 use App\Modules\Signals\Http\Requests\CloneSignalPresetsRequest;
+use App\Modules\Signals\Http\Requests\ComposeSignalDefinitionRequest;
+use App\Modules\Signals\Http\Requests\PreviewSignalDefinitionRequest;
 use App\Modules\Signals\Http\Requests\SaveSignalDefinitionRequest;
 use App\Modules\Signals\Http\Resources\SignalDefinitionResource;
+use App\Modules\Signals\Http\Resources\SignalDraftResource;
+use App\Modules\Signals\Http\Resources\SignalPreviewResource;
 use App\Modules\Signals\Policies\SignalDefinitionPolicy;
 use App\Modules\Signals\Services\PlatformPresetReader;
+use App\Modules\Signals\Support\SignalCostEstimate;
+use App\Modules\Signals\Support\SignalCostEstimator;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
+use App\Modules\Signals\Support\SignalPresetPack;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -30,6 +42,13 @@ use Inertia\Response;
  * One screen, two halves. The team's own types, which they can edit, pause and remove; and the
  * **preset library**, which they cannot — a preset is copied into their own types and tuned from
  * there, so a platform edit never silently changes what they are paying to run (ADR 0018 §3).
+ *
+ * **Since S9 there are three doors into a definition** (the builder): the **library**, which is the
+ * fast path and the one that teaches the format; the **composer**, which drafts one from a sentence
+ * and is the only part behind a paid capability (plan decision #1); and the **advanced form**, which
+ * is S7's raw fields for somebody who knows what they want. All three end at the same review form,
+ * and all three can be previewed before saving — because the S0 spike established that nobody can
+ * tell whether a query template works by reading it.
  *
  * The presets are filtered to **the team's own market** (S8, ADR 0019). Until S8 that was a
  * product-wide constant, because a watch was UAE-only whatever market the team traded in; now a UK
@@ -45,6 +64,8 @@ final class SignalDefinitionController extends Controller
         Request $request,
         ListSignalDefinitionsAction $list,
         PlatformPresetReader $presets,
+        SignalCostEstimator $cost,
+        CapabilityGate $capabilities,
     ): Response {
         $team = $this->team($request);
         $user = $this->user($request);
@@ -72,6 +93,22 @@ final class SignalDefinitionController extends Controller
                     'value' => $icon->value,
                     'label' => $icon->label(),
                 ], SignalIcon::cases()),
+                // The starter set for this team's market: a short, deliberately small subset
+                // (`SignalPreset::$isStarter`). Sent because the screen's "add these for me"
+                // button used to post **every** visible preset key, which was fine when the
+                // library was three and is wrong at thirty — a UK team would be asking for 27
+                // types, past `max_definitions_per_team`, and paying for a search per template
+                // per type on every run of every watch. The ceiling would refuse it; the button
+                // should not have offered it.
+                'starter_keys' => SignalPresetCatalogue::starterKeys(SignalWatchData::marketFor($team->market)),
+                // The vertical packs (S9), so the library reads as a product rather than a list.
+                // Sent with their "who this is for" line, because a pack whose name a member does
+                // not recognise is a filter they will not press.
+                'packs' => array_map(static fn (SignalPresetPack $pack): array => [
+                    'value' => $pack->value,
+                    'label' => $pack->label(),
+                    'audience' => $pack->audience(),
+                ], SignalPresetPack::cases()),
             ],
             // The floors that apply to a type that sets none, so the form's placeholders can say
             // what "leave this empty" actually means rather than showing a bare box.
@@ -80,8 +117,103 @@ final class SignalDefinitionController extends Controller
                 'min_relevance' => (int) config('signals.min_relevance', 40),
                 'max_definitions' => max(1, (int) config('signals.max_definitions_per_team', 25)),
             ],
-            'can' => ['manage' => $user->can('create', $this->transientDefinition($team))],
+            // The cost of **one** template a month, for this team's actual watches. Sent per
+            // template rather than as a total so the form can show the number changing as somebody
+            // adds one — the moment the number is worth seeing (S9 task 4). The client multiplies;
+            // the server owns the arithmetic (ADR 0019 §4).
+            'cost' => $this->costFacts($cost->estimate($team, 1)),
+            'can' => [
+                'manage' => $user->can('create', $this->transientDefinition($team)),
+                // The AI shortcut is the paid half (plan decision #1). The screen asks the gate
+                // rather than reading the plan, so the button and the Action cannot disagree.
+                'compose' => $capabilities->allows($team, Capability::SignalComposer),
+            ],
         ]);
+    }
+
+    /**
+     * The per-template cost facts, named as the client's own type names them.
+     *
+     * Spelled out rather than handed `SignalCostEstimate::toArray()`: a DTO's serialised shape is a
+     * second contract, and one that changes when somebody renames a property. The screen multiplies
+     * these by its template count — the server owns the arithmetic (ADR 0019 §4) and the client owns
+     * only the multiplication.
+     *
+     * @return array<string, int|bool>
+     */
+    private function costFacts(SignalCostEstimate $estimate): array
+    {
+        return [
+            'templates' => $estimate->templates,
+            'queries_per_run' => $estimate->queriesPerRun,
+            'runs_per_month' => $estimate->runsPerMonth,
+            'queries_per_month' => $estimate->queriesPerMonth,
+            'cost_micros_per_month' => $estimate->costMicrosPerMonth,
+            'watch_count' => $estimate->watchCount,
+            'hypothetical' => $estimate->hypothetical,
+            'micros_per_search' => (int) config('signals.cost_micros_per_request', 1_000),
+        ];
+    }
+
+    /**
+     * Draft a signal type from a sentence (S9).
+     *
+     * Flashed back rather than returned as JSON, which is how every other result travels in this
+     * app: the page is server-driven, and a draft is **ephemeral by design** — it lives until the
+     * member saves it or walks away, and a flashed prop has exactly that lifetime.
+     *
+     * The brief is flashed back too, so the box keeps what they typed. A composer that cleared the
+     * text box on a refusal would make the refusal unactionable.
+     */
+    public function compose(
+        ComposeSignalDefinitionRequest $request,
+        ComposeSignalDefinitionAction $action,
+    ): RedirectResponse {
+        $team = $this->team($request);
+
+        $this->authorize('create', $this->transientDefinition($team));
+
+        $draft = $action->handle($team, $this->user($request), $request->brief());
+
+        Inertia::flash('draft', (new SignalDraftResource($draft))->resolve($request));
+        Inertia::flash('brief', $request->brief());
+
+        if (! $draft->viable) {
+            Inertia::flash('toast', [
+                'type' => 'info',
+                // The model's own reason, not ours: it knows why it refused and the member is owed
+                // it. Bounded to 300 characters by the prompt's schema.
+                'message' => $draft->reason ?? __('That does not describe an event Alima could watch the news for.'),
+            ]);
+        }
+
+        return to_route('signal-definitions.index');
+    }
+
+    /**
+     * Run a definition against live news without saving it (S9).
+     *
+     * **Only the result is flashed.** It flashed the submitted draft back as well for one review
+     * cycle, on the reasoning that the redirect re-renders the page and would otherwise empty the
+     * form — and that was true but fixed in the wrong place. The screen posts this with
+     * `preserveState`, so the form, the dirty tracking and *which type is being edited* all survive
+     * on their own. Flashing a draft meant the client could not tell a composer draft from an echo
+     * of its own form, so it re-opened the editor as **new**: previewing a saved type and pressing
+     * Save created a duplicate, and `form.reset()` had silently cleared the unsaved-changes guard.
+     */
+    public function preview(
+        PreviewSignalDefinitionRequest $request,
+        PreviewSignalDefinitionAction $action,
+    ): RedirectResponse {
+        $team = $this->team($request);
+
+        $this->authorize('create', $this->transientDefinition($team));
+
+        $result = $action->handle($team, $this->user($request), $request->unsavedDefinition());
+
+        Inertia::flash('preview', (new SignalPreviewResource($result))->resolve($request));
+
+        return to_route('signal-definitions.index');
     }
 
     public function store(SaveSignalDefinitionRequest $request, SaveSignalDefinitionAction $action): RedirectResponse

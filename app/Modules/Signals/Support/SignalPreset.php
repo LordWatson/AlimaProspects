@@ -57,6 +57,27 @@ final readonly class SignalPreset
          * starter set**, not "everything", and it stays small as the library does not.
          */
         public bool $isStarter = true,
+        /**
+         * The vertical bundle this preset is browsed under (S9).
+         *
+         * **Not stored on the row.** A pack is how the platform organises its own library, not a
+         * property of a signal type — see {@see SignalPresetPack} for why putting it in the
+         * database would have stamped a merchandising label onto every tenant's own rows. It is
+         * resolved by key for the library screen, so a preset the catalogue no longer knows falls
+         * into no pack and keeps working.
+         */
+        public SignalPresetPack $pack = SignalPresetPack::General,
+        /**
+         * Whether the live spike found this one thin.
+         *
+         * Honest shelf-labelling rather than a feature: the S0 discipline says every template is
+         * run against the provider before it ships, and a few of them come back weak rather than
+         * dead — a family office opening is a real event that is simply rare, and a PSC change is a
+         * filing before it is a story. Shipping those silently beside the strong ones would teach a
+         * team that Signals is unreliable. The library says so instead, and S13's registry sources
+         * are what fix them properly.
+         */
+        public bool $isThin = false,
     ) {}
 
     /**

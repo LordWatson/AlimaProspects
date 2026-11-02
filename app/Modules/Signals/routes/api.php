@@ -56,6 +56,19 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('signal-definitions/clone', [SignalDefinitionController::class, 'clone'])
         ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signal-definitions.clone');
+
+    // Both before `{definition}` for the same reason `presets` is: a literal segment that could be
+    // read as an id should not depend on a numeric constraint to disambiguate it.
+    //
+    // `SignalsWrite` rather than a read ability, although neither creates a row: both spend the
+    // team's money, and a scope asks what a *credential* may do (ADR 0013). A read-only token that
+    // could run paid AI drafts is not a read-only token.
+    Route::post('signal-definitions/compose', [SignalDefinitionController::class, 'compose'])
+        ->middleware(['throttle:signals-compose', 'ability:'.TokenAbility::SignalsWrite->value])
+        ->name('signal-definitions.compose');
+    Route::post('signal-definitions/preview', [SignalDefinitionController::class, 'preview'])
+        ->middleware(['throttle:signals-preview', 'ability:'.TokenAbility::SignalsWrite->value])
+        ->name('signal-definitions.preview');
     Route::get('signal-definitions/{definition}', [SignalDefinitionController::class, 'show'])
         ->whereNumber('definition')
         ->middleware('ability:'.TokenAbility::SignalsRead->value)

@@ -97,12 +97,20 @@ it('covers every definition it is given', function (): void {
         'locations' => ['Dubai'],
     ]);
 
-    $definitions = array_map(definitionFor(...), SignalPresetCatalogue::keysForMarket(Market::Uae));
+    // v1's three, named rather than asked for: `keysForMarket` answers a different question
+    // since S9 filled the library out into vertical packs, and the count below is about these.
+    $keys = [
+        SignalPresetCatalogue::ACQUISITION,
+        SignalPresetCatalogue::FUNDING_ROUND,
+        SignalPresetCatalogue::RELOCATION,
+    ];
+
+    $definitions = array_map(definitionFor(...), $keys);
 
     $queries = $this->builder->build($watch, $definitions);
-    $keys = array_values(array_unique(array_map(static fn (SignalQuery $q): string => $q->eventKey, $queries->queries)));
+    $built = array_values(array_unique(array_map(static fn (SignalQuery $q): string => $q->eventKey, $queries->queries)));
 
-    expect($keys)->toEqualCanonicalizing(SignalPresetCatalogue::keysForMarket(Market::Uae))
+    expect($built)->toEqualCanonicalizing($keys)
         ->and($queries->count())->toBe(8); // 3 + 3 + 2 templates
 });
 

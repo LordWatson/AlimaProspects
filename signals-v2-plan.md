@@ -383,7 +383,7 @@ and shows its cost before it runs.
 
 ### Tasks
 
-1. [ ] **Prompt `signals.compose_definition` v1** (new, `AiTier::Reasoning` — this is a
+1. [x] **Prompt `signals.compose_definition` v1** (new, `AiTier::Reasoning` — this is a
        drafting task, not a classification one; the cheap tier writes bad templates). System
        prompt constraints that matter: plain-keyword templates only, with an explicit statement
        of **why** (the S0 finding — exact phrases and `-based` return nothing on `/news` with a
@@ -394,11 +394,11 @@ and shows its cost before it runs.
        people" rather than an event. Wrap the user's text in `UntrustedContent`. Bounded JSON
        schema with `maxItems` / `maxLength` on everything, per the S6 security review's
        standing rule. Seed it and document it in `docs/ai-prompts.md`.
-2. [ ] **`ComposeSignalDefinitionAction`** — prompt → `DraftSignalDefinition` DTO
+2. [x] **`ComposeSignalDefinitionAction`** — prompt → `DraftSignalDefinition` DTO
        (spatie/laravel-data, `rules()` shared with the save path, so a draft can only contain
        what a definition can hold). Metered through `AiCreditGuard`, rate-limited per member,
        and it **never auto-saves**.
-3. [ ] **`PreviewSignalDefinitionAction`** - Builds queries from the draft via `SignalQueryBuilder` with **no watch row**: extract a
+3. [x] **`PreviewSignalDefinitionAction`** - Builds queries from the draft via `SignalQueryBuilder` with **no watch row**: extract a
        `SignalQuerySpec` so the builder stops needing a persisted model. (A builder that needs
        a saved row is why previews are hard. Prefer the extraction over passing an unsaved
        model.) - Caps: `signals.preview.max_queries` (default 4), `num` 10, **one** AI batch,
@@ -410,11 +410,11 @@ and shows its cost before it runs.
        draft hash, query count, cost micros, kept count), because the spend is real and must
        appear in cost reporting and the preview budget — a cost with no ledger row is a cost
        nobody can cap. - Outside any transaction, obviously.
-4. [ ] **Cost estimator, in the form, before anything runs** — "this definition is ~N queries
+4. [x] **Cost estimator, in the form, before anything runs** — "this definition is ~N queries
        per run; at daily cadence across your 2 locations that is ~$X/month", from
        `signals.cost_micros_per_request` × template count × locations. A standing instruction to
        spend money should say how much, where it is created.
-5. [ ] **Vertical preset packs** (platform presets, `team_id = null`), each with a pack label, a
+5. [x] **Vertical preset packs** (platform presets, `team_id = null`), each with a pack label, a
        short "who this is for", and spiked templates. Ship at least six so the library reads as
        a product rather than a placeholder: - **Luxury real estate** (the v1 thesis, promoted to a pack): acquisition, funding
        round, relocation, family-office opening, senior expat appointment. - **Recruitment / staffing**: hiring surge, new office or market entry, funding round
@@ -427,19 +427,19 @@ and shows its cost before it runs.
        Every pack's templates get the S0 treatment: run them, record the counts, drop or
        rephrase anything returning zero, and put the table in `docs/modules/signals.md`.
        **A preset never run against the live provider is a guess with a label on it.**
-6. [ ] **`Capability::SignalComposer`** (decision #1) behind the one `CapabilityGate`
+6. [x] **`Capability::SignalComposer`** (decision #1) behind the one `CapabilityGate`
        (ADR 0015), with the library and the advanced form on **every** plan — a team can always
        clone a preset and hand-write templates; the AI drafting is the paid shortcut. Enforced
        in the Action.
-7. [ ] **The builder UI** (`/signals/types`, rebuilt): the library browser with pack and
+7. [x] **The builder UI** (`/signals/types`, rebuilt): the library browser with pack and
        category filters; the composer box with example prompts in brand voice; the review form
        with per-field "why this" explainers; the preview panel with its verdict chips; the cost
        line; save-as-draft vs activate. Brand tokens, EN/AR parity, RTL, keyboard-complete, and
        the shared `FilterToggle` / `FilterGroup` chips already used by the feed. Run
        `brand-reviewer`.
-8. [ ] **API** — `POST /signal-definitions/compose`, `POST /signal-definitions/preview` (both
+8. [x] **API** — `POST /signal-definitions/compose`, `POST /signal-definitions/preview` (both
        200 with the draft/preview, both metered and throttled), `openapi.json`.
-9. [ ] **Runbook** — extend `docs/runbooks/signals-demo.md` with the builder demo: compose a
+9. [x] **Runbook** — extend `docs/runbooks/signals-demo.md` with the builder demo: compose a
        definition live, preview it, show the verdicts, save it, show it on a watch. That demo is
        the sales motion for this whole plan.
 
@@ -1019,7 +1019,7 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | ----- | ----------------------------------------------- | --------------------- | ------------ |
 | S7    | Signal definitions become data                  | ☑ **Done** 2026-11-02 | —            |
 | S8    | Geography, and the jurisdiction bug             | ☑ **Done** 2026-11-02 | S7           |
-| S9    | The signal builder (library, composer, preview) | ☐ Not started         | S7, S8       |
+| S9    | The signal builder (library, composer, preview) | ☑ **Done** 2026-11-02 | S7, S8       |
 | S10   | Watchlists & account monitoring                 | ☐ Not started         | S7, S8       |
 | S11   | Clustering & redirect-safe dedupe               | ☐ Not started         | S7           |
 | S12   | Ranking, learning & explainability              | ☐ Not started         | S7, S11      |

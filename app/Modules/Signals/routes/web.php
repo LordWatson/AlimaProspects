@@ -43,6 +43,22 @@ Route::middleware(['auth', 'verified', 'capability:signals'])->group(function ()
         ->name('signal-definitions.store');
     Route::post('signals/types/clone', [SignalDefinitionController::class, 'clone'])
         ->name('signal-definitions.clone');
+
+    // The builder's two paid paths (S9). Both throttled per member for the same reason `run` is:
+    // each press spends real money, and nothing but a person can reach either — so the ceiling
+    // belongs in middleware here, while the *team's* ceilings (the AI allowance, the daily preview
+    // budget) stay in the Actions where a request-less caller would also meet them.
+    Route::post('signals/types/compose', [SignalDefinitionController::class, 'compose'])
+        // `capability:signal_composer` as well as the Action's own check, which is the arrangement
+        // every capability uses: the route gives a member a sentence about their plan, the guard
+        // makes the refusal true. `CapabilityEnforcementTest` asserts that a declared capability is
+        // named by a web route — a capability nobody enforces is worse than one that does not
+        // exist, because the pricing page would promise a gate that is not there.
+        ->middleware(['capability:signal_composer', 'throttle:signals-compose'])
+        ->name('signal-definitions.compose');
+    Route::post('signals/types/preview', [SignalDefinitionController::class, 'preview'])
+        ->middleware('throttle:signals-preview')
+        ->name('signal-definitions.preview');
     Route::patch('signals/types/{definition}', [SignalDefinitionController::class, 'update'])
         ->whereNumber('definition')
         ->name('signal-definitions.update');

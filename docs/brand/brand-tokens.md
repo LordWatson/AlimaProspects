@@ -676,3 +676,59 @@ the state, not the tint — but the dialog now shows two checkbox looks, this on
 fifth copy.** The dialog also still hand-rolls `Label` + control + `InputError` rather than using
 `FormField` (§7h); S8 wired the describedby chain and `aria-invalid` on the two fields it touched
 rather than converting the form, which is a bigger change than a geography phase should carry.
+
+### 7j. Added 2026-11-02 (the signal builder, S9)
+
+The builder put three things on one screen that the product had not had together before: an AI
+drafting box, a live cost figure, and a result panel whose job is to explain a rejection. The review
+of it produced one code bug, four accessibility fixes and a wholesale regroup of the panel.
+
+1. **One card per article, each carrying its own copy of the advice, is wallpaper.** Six cards could
+   say "tighten the templates" six times. The panel is now **grouped by verdict** — the problem
+   stated once with its count, the headlines under it as evidence, and no advice at all on the kept
+   group because the badge is the advice. The per-card metadata line went with it: the scores show
+   only on the two verdicts they explain, and the queries sit behind a `<details>`.
+2. **Two numbers, in a sentence.** The stat row had four, of which "events" restated the diagnosis
+   and "searches" restated the member's own template count. A number nobody acts on is decoration.
+3. **`aria-disabled` while busy, not `disabled`.** A focused button that becomes disabled drops focus
+   to `<body>` — and the composer's button then opens a dialog whose return-focus target is nothing
+   (WCAG 2.4.3). The handler guards instead. The busy state is still in the label ("Looking…",
+   "Drafting…"), so it was never colour-only.
+4. **The result takes focus when it arrives** (`tabindex="-1"`, §7h.10's precedent) rather than being
+   announced: a polite live region would read all six groups, and the result is long enough that
+   landing on it beats hearing it. It had no announcement at all before.
+5. **Three example briefs are not a field description.** They were in the textarea's
+   `aria-describedby`, so every focus read 240 characters of examples. The field is labelled by its
+   heading and described by its error only, and choosing an example now **moves focus into the box**
+   — filling a textarea from a button otherwise announces nothing.
+6. **Examples look pressable now.** Muted text with a dotted underline is the convention for an
+   abbreviation. They are bordered rows with a leading icon.
+7. **"About $0.00" reads as free**, which is a different claim from "too small to bill". Under a cent
+   the line says so in words. The formatted figure is also bidi-isolated, because `US$3.20`
+   interpolated into Arabic running text can reorder its symbol and digits.
+8. **"Kept" was wrong for a preview** — nothing has been kept. It is "Would appear". And **"Rare"**
+   on a thin preset read as a prize rather than a markdown; it is "Finds less", in the same direction
+   as the sentence beside it.
+9. **One primary per view.** The composer is the page's primary action since S9, so the hero's "New
+   type" became `hero` — two lime buttons on one screen was two offers of the same weight.
+10. **Verdict advice names fields by the labels the form uses** — "What doesn't", "How sure Alima must
+    be", "How well it must fit you". It said "does not count", "the relevance floor" and "the AI"
+    for one review cycle, which is advice about a form the member is not looking at. The Arabic had
+    drifted further, because it was translated from the jargon rather than from the labels.
+
+**Flagged for brand-owner approval (§7):**
+
+1. **A `brand`-filled badge as a positive result marker**, with one neutral `outline` for every
+   negative verdict. It is a solid fill rather than a tint (Cream on Deep Teal, ~7.5:1), so §7f.3
+   does not apply, and filled-versus-outlined survives forced colours. Confirm — and with it, that
+   the negative verdicts are deliberately **one** treatment rather than five.
+2. **The cost figure is in USD** in a UK and UAE product, because that is what the search provider
+   bills in. Confirm, or it shows in the team's currency with a conversion nobody can audit.
+3. **The Arabic for this phase** — the pack names and audience lines, the verdict labels and advice,
+   the cost sentences and the example briefs — was written in-phase and corrected once by review
+   (seven meaning errors, including "you employ talent" for "you place people"). It needs a native
+   reader, the same flag as §7i, and the money and advice lines first.
+
+**Recorded, not changed:** `text-lg` (18px) headings are not a step on the §3 scale and are now
+product-wide (§7c, §7e.2) — the composer adds one more. The hand-rolled checkbox-row pattern from
+§7i is untouched by this phase and still wants one `ChoiceRow`.
