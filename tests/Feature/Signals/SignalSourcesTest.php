@@ -269,6 +269,89 @@ it('fails the run when a source refuses every query, rather than completing gree
         ->and($run->source_breakdown['news']['queries'])->toBe(0);
 });
 
+// **One fetch per feed per run, whatever the watch is pointed at.** Found while writing the test
+// above rather than by either reviewer: `push()` was handed every source a definition names and
+// emitted a query for each, so a feed got one per template per place per region — the exact "forty
+// fetches of one identical document" its own docblock says the definition-addressed shape exists to
+// prevent. The entity path filtered through `queryBased()`; the topical loop did not. The poll floor
+// hid the requests, so what it actually cost was the per-run query ceiling: junk feed queries
+// trimming real news ones out of the window.
+it('asks a feed once per run, not once per template and place', function (): void {
+    $team = Team::factory()->create();
+    $definition = definitionOn($team, [SignalSourceKind::News, SignalSourceKind::Feed]);
+
+    $feed = new FakeSignalSource(SignalSourceKind::Feed);
+    app(SignalSourceRegistry::class)->register($feed);
+    $feed->willReturn([]);
+
+    $this->news->willReturn([]);
+    $this->fakeAi->queueStructured(['events' => []]);
+
+    // Three places and the watch's region: the news multiplies out, the feed must not.
+    $watch = app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()
+        ->watching([$definition])
+        ->create(['team_id' => $team->getKey(), 'locations' => ['Dubai', 'Abu Dhabi', 'Sharjah']]));
+
+    runWatch($team, $watch);
+
+    expect($feed->queries())->toHaveCount(1)
+        ->and($feed->queries()[0]->q)->toBe('')
+        // ...while the news did multiply out across the places. Not asserted as an exact product:
+        // a template with no `{location}` placeholder composes to the same string in all three and
+        // is deduped by `push()`'s key, which is deliberate.
+        ->and(count($this->news->queries()))->toBeGreaterThan(count($definition->query_templates));
+});
+
+// **The S13b review's finding 2.** A feed gets exactly one query per definition, so for it
+// "refused a query" and "refused every query" are the same event — and the rule above would
+// therefore fail the whole run, news results included and already paid for, every single time a
+// publisher moved a feed. The rule is right for an exhausted Serper account and wrong for a 404
+// that will never change, which is why a missing *address* is its own outcome.
+it('completes a run when a feed address is dead but the news worked', function (): void {
+    $team = Team::factory()->create();
+    $definition = definitionOn($team, [SignalSourceKind::News, SignalSourceKind::Feed]);
+
+    $feed = new FakeSignalSource(SignalSourceKind::Feed);
+    app(SignalSourceRegistry::class)->register($feed);
+    $feed->willFail(SignalsException::sourceAddressNotFound('feed'));
+
+    $this->news->willReturn([$this->news->item('Acme raises', 'https://gulfbusiness.com/a', source: 'Gulf Business')]);
+    $this->fakeAi->queueStructured(['events' => []]);
+
+    $run = runWatch($team, watchOver($team, [$definition]));
+
+    expect($run->status)->toBe(SignalRunStatus::Completed)
+        ->and($run->error)->toBeNull()
+        // Counted under `skipped` rather than `rejected`, because the two carry different advice:
+        // one is a template to rewrite, the other an address with nothing at it.
+        ->and($run->source_breakdown['feed']['skipped'])->toBe(1)
+        ->and($run->source_breakdown['feed']['rejected'])->toBe(0)
+        ->and($run->source_breakdown['news']['queries'])->toBe(count($definition->query_templates));
+});
+
+// The same rule one level up, and the reason a skip is kept out of `sourcesThatAnsweredNothing()`:
+// a watchlist run whose every account is off the register has found nothing and is **not** broken.
+// Reading those skips as refusals is what let one stale `leads.company_number` stop a 250-account
+// watchlist on every run, for ever, with the entity cursor never advancing past the dead one.
+it('completes a run in which every addressed account was missing', function (): void {
+    $team = Team::factory()->create();
+    $definition = definitionOn($team, [SignalSourceKind::News]);
+
+    $this->news->willFail(SignalsException::sourceAddressNotFound('news'));
+    $this->fakeAi->queueStructured(['events' => []]);
+
+    $run = runWatch($team, watchOver($team, [$definition]));
+
+    expect($run->status)->toBe(SignalRunStatus::Completed)
+        ->and($run->error)->toBeNull()
+        ->and($run->signals_created)->toBe(0)
+        ->and($run->source_breakdown['news']['skipped'])->toBe(count($definition->query_templates))
+        ->and($run->source_breakdown['news']['queries'])->toBe(0)
+        // A skipped query **was** made — a request went out and came back 404 — so it counts here
+        // for the same reason a rejected one does.
+        ->and($run->queries_count)->toBe(count($definition->query_templates));
+});
+
 it('keeps the spend of the queries that ran when a later source fails', function (): void {
     $team = Team::factory()->create();
     $definition = definitionOn($team, [SignalSourceKind::News, SignalSourceKind::WebSearch]);
@@ -743,6 +826,45 @@ it('saves a feed URL against a type', function (): void {
     expect($definition->sourceConfig(SignalSourceKind::Feed)['url'])->toBe('https://example.com/feed.xml');
 });
 
+// **A ticked feed with no address is a type that searches nowhere** (brand review, finding 7). It
+// used to save: `source_config.feed.url` was nullable, `FeedSignalSource::supports()` then declined
+// the definition, the builder emitted no query, and the member's screen showed the feed as on while
+// it did nothing. That is the failure this module keeps legislating against, and the form asks for
+// the address the moment the box is ticked — this is what makes that truthful.
+it('refuses a type that names a feed without an address', function (): void {
+    $user = createUserWithTeam();
+
+    $this->actingAs($user)
+        ->post('/signals/types', definitionPayload([
+            'source_keys' => ['news', 'feed'],
+        ]))
+        ->assertSessionHasErrors('source_config.feed.url');
+
+    expect(SignalDefinition::withoutGlobalScopes()->whereNotNull('team_id')->count())->toBe(0);
+});
+
+it('accepts a type that names a feed with one', function (): void {
+    $user = createUserWithTeam();
+
+    $this->actingAs($user)
+        ->post('/signals/types', definitionPayload([
+            'source_keys' => ['news', 'feed'],
+            'source_config' => ['feed' => ['url' => 'https://example.com/feed.xml']],
+        ]))
+        ->assertRedirect();
+
+    expect(SignalDefinition::withoutGlobalScopes()->whereNotNull('team_id')->count())->toBe(1);
+});
+
+// ...and the rule is about the feed only: a type naming no feed is unaffected by it.
+it('does not ask for a feed address from a type that names no feed', function (): void {
+    $user = createUserWithTeam();
+
+    $this->actingAs($user)
+        ->post('/signals/types', definitionPayload(['source_keys' => ['news']]))
+        ->assertRedirect();
+});
+
 it('refuses a feed URL this application may not fetch', function (): void {
     $user = createUserWithTeam();
 
@@ -839,4 +961,48 @@ it('stores only the per-source keys a source actually reads', function (): void 
     // anything not named is dropped rather than stored. Lower-cased and de-duplicated, so the row
     // reads the way the filing map is keyed.
     expect($definition->source_config)->toBe(['companies_house' => ['filings' => ['ap01', 'tm01']]]);
+});
+
+// **A string the server sends for the client to translate is a translation key, and nothing
+// enforces that but this.** The three new source descriptions shipped with keys written against an
+// earlier draft of the enum, so `t()` found no key and an Arabic member read English prose in a
+// form that was otherwise fully translated. It is invisible in English and invisible in review,
+// because the fallback *is* the English text. The guard is module-wide rather than about
+// `SignalSourceKind`, since the next enum to drift will not be this one: it found four older
+// labels (two dismiss reasons, two cadences) already going out untranslated.
+it('keeps every Signals enum label and description in the translation bundles', function (): void {
+    $en = json_decode((string) file_get_contents(lang_path('en.json')), true);
+    $ar = json_decode((string) file_get_contents(lang_path('ar.json')), true);
+    $missing = [];
+
+    foreach (glob(app_path('Modules/Signals/Enums/*.php')) ?: [] as $file) {
+        /** @var class-string $class */
+        $class = 'App\Modules\Signals\Enums\\'.basename($file, '.php');
+
+        if (! enum_exists($class)) {
+            continue;
+        }
+
+        foreach ($class::cases() as $case) {
+            foreach (['label', 'description'] as $method) {
+                if (! method_exists($case, $method)) {
+                    continue;
+                }
+
+                $text = $case->{$method}();
+
+                if (! is_string($text) || $text === '') {
+                    continue;
+                }
+
+                foreach (['en' => $en, 'ar' => $ar] as $locale => $bundle) {
+                    if (! array_key_exists($text, (array) $bundle)) {
+                        $missing[] = $locale.': '.class_basename($class).'::'.$case->name.'->'.$method.'()';
+                    }
+                }
+            }
+        }
+    }
+
+    expect($missing)->toBe([]);
 });

@@ -6,6 +6,7 @@ namespace App\Modules\Signals\Enums;
 
 use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Services\SignalArticleEnricher;
 use App\Modules\Signals\Services\SignalSourceRegistry;
 
 /**
@@ -223,6 +224,33 @@ enum SignalSourceKind: string
     public function isStructured(): bool
     {
         return $this === self::CompaniesHouse;
+    }
+
+    /**
+     * Whether an item from this source points at an **article worth reading in full** (S13b review,
+     * finding 12).
+     *
+     * Asked by {@see SignalArticleEnricher}, which exists because a
+     * search snippet is a truncated article and the rest of it is often where the event actually
+     * is. Two sources are not that:
+     *
+     * - **Companies House** has already parsed the filing. Its link is a registry record page, and
+     *   fetching it to have a language model re-read a fact the registry stated — at confidence
+     *   100, which sorts it to the top of a heat-ordered list — spends money to make a certainty
+     *   less certain, and lets the re-reading overwrite what the registry asserted.
+     * - **The webhook**'s `url` is an address the *caller* supplied. Following one on the strength
+     *   of the heat our own scorer gave the event is an outbound request whose target somebody else
+     *   chose, and neither the SSRF guard nor the robots check is reason enough to go looking.
+     *
+     * A question on the enum rather than a list in the enricher, so the next source is excluded by
+     * what it is rather than by somebody remembering to add it.
+     */
+    public function carriesAFetchableArticle(): bool
+    {
+        return match ($this) {
+            self::News, self::WebSearch, self::Feed => true,
+            self::CompaniesHouse, self::Webhook => false,
+        };
     }
 
     /**

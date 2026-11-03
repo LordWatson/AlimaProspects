@@ -492,6 +492,22 @@ final class SignalQueryBuilder
         }
 
         foreach ($kinds as $kind) {
+            // **Only a source that takes a search string belongs here, and enforcing it in this
+            // method is the S13b follow-up.** The entity path filtered its kinds through
+            // `queryBased()` at both call sites; the topical loop above passed `sourcesFor()`
+            // straight through, so a definition naming a **feed** got one feed query per template
+            // per place per region — the exact "forty fetches of one identical document" that
+            // `pushDefinitionQueries()`'s docblock says this shape exists to prevent. The
+            // poll-interval floor hid the requests (queries 2..N returned nothing immediately), so
+            // the visible damage was the per-run query ceiling: junk feed queries counted against
+            // `max_queries_per_run` and trimmed real news ones out of the window.
+            //
+            // Here rather than at the call sites, because this is where the invariant lives: a
+            // query with a `q` is for a source that reads one.
+            if (! $kind->isQueryBased()) {
+                continue;
+            }
+
             $key = $kind->value.'|'.$region->value.'|'.$eventKey.'|'.$q;
 
             if (isset($queries[$key])) {
@@ -603,17 +619,7 @@ final class SignalQueryBuilder
     ): void {
         $region = $spec->regions[0] ?? SearchRegion::Gb;
 
-        foreach ($definition->sourceKinds() as $kind) {
-            if ($kind->isQueryBased() || $kind->addressesSubject()) {
-                continue;
-            }
-
-            $provider = $this->sources->find($kind);
-
-            if ($provider === null || ! $provider->supports($definition)) {
-                continue;
-            }
-
+        foreach ($this->definitionAddressedKinds($definition) as $kind) {
             $key = $kind->value.'|definition|'.$definition->getKey();
 
             if (isset($queries[$key])) {
@@ -638,6 +644,63 @@ final class SignalQueryBuilder
                 config: $config,
             );
         }
+    }
+
+    /**
+     * The sources that this definition is itself the address for — a feed's URL, the webhook's
+     * stored events (S13b).
+     *
+     * One list, asked by {@see self::pushDefinitionQueries()} to emit them and by
+     * {@see self::definitionQueryCount()} to budget for them, because a watchlist run that budgets
+     * a different number from the one the builder emits is the trim biting an entity nobody meant
+     * to drop (S13b review, finding 7). `supports()` is part of the definition of "addressed": a
+     * definition that names the feed source without a URL is not an address, and the two callers
+     * have to agree about that too.
+     *
+     * @return list<SignalSourceKind>
+     */
+    private function definitionAddressedKinds(SignalDefinition $definition): array
+    {
+        $kinds = [];
+
+        foreach ($definition->sourceKinds() as $kind) {
+            if ($kind->isQueryBased() || $kind->addressesSubject()) {
+                continue;
+            }
+
+            $provider = $this->sources->find($kind);
+
+            if ($provider === null || ! $provider->supports($definition)) {
+                continue;
+            }
+
+            $kinds[] = $kind;
+        }
+
+        return $kinds;
+    }
+
+    /**
+     * How many queries these definitions will contribute **before** any place, region, template or
+     * entity multiplies anything (S13b review, finding 7).
+     *
+     * Asked by `RunSignalWatchAction::planFor()` so the entity window is filled out of what is left
+     * of `max_queries_per_run` rather than out of all of it. These queries are pushed **first**, and
+     * the plan's trim keeps the first N — so a window filled to exactly the budget had its last
+     * entity's queries trimmed away while the cursor still stepped past that entity. Which is the
+     * failure the ring exists to prevent, arriving by the one door the ring did not watch.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     */
+    public function definitionQueryCount(array $definitions): int
+    {
+        $count = 0;
+
+        foreach ($definitions as $definition) {
+            $count += count($this->definitionAddressedKinds($definition));
+        }
+
+        return $count;
     }
 
     /**

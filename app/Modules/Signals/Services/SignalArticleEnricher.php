@@ -12,6 +12,7 @@ use App\Modules\Core\Contracts\WebContentFetcher;
 use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\Core\Support\RobotsPolicy;
 use App\Modules\Signals\Data\ExtractedSignal;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalRun;
 use Illuminate\Support\Facades\Log;
@@ -344,12 +345,43 @@ final class SignalArticleEnricher
     }
 
     /**
+     * The source keys whose items point at an article worth reading — asked of the enum rather
+     * than listed here, so a source added later is included or excluded by what it *is*.
+     *
+     * @return list<string>
+     */
+    private function readableSources(): array
+    {
+        $keys = [];
+
+        foreach (SignalSourceKind::cases() as $kind) {
+            if ($kind->carriesAFetchableArticle()) {
+                $keys[] = $kind->value;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
      * The signals in this run worth reading in full: hottest first, above the floor, not already
      * read, and only the cards the feed will actually show.
      *
      * `representatives()` matters here more than anywhere: paying to read all eight outlets'
      * versions of one acquisition would be the exact waste S11 was built to remove, reintroduced
      * at eight times the price.
+     *
+     * **A signal from a structured source is never a candidate** (S13b review, finding 12). A
+     * Companies House filing arrives from the registry already parsed, with confidence and
+     * relevance at 100 — so it sorts to the top of a heat-ordered list, and this would have paid
+     * to fetch a registry company page and ask a language model to re-read the fact the registry
+     * had already stated. `apply()` can then overwrite registry-asserted fields with that reading.
+     * Spending money to make a certainty less certain, on the hottest cards first.
+     *
+     * The **webhook** is excluded too, and for the opposite reason: its `url` is a customer-supplied
+     * address, and following one on the strength of the heat *our own* scorer gave the event is an
+     * outbound request whose target the caller chose. The feed and the two search sources are what
+     * this exists for — a snippet that is genuinely a truncated article.
      *
      * @return list<Signal>
      */
@@ -365,6 +397,7 @@ final class SignalArticleEnricher
             ->representatives()
             ->whereNull('article_fetched_at')
             ->where('heat', '>=', $minHeat)
+            ->whereIn('source_kind', $this->readableSources())
             // `cluster` as well as `definition`: the re-score after a successful read needs both,
             // and `preventLazyLoading` would otherwise turn a forgotten one into an exception on
             // the one path that is not allowed to throw.

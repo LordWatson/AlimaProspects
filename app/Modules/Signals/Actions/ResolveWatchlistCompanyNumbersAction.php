@@ -51,7 +51,11 @@ final class ResolveWatchlistCompanyNumbersAction
      *
      * Must run inside the watch's `TeamContext`, like everything else in a run.
      *
-     * @param  list<SignalWatchlistEntry>  $entries  The window this run is about to search.
+     * @param  list<SignalWatchlistEntry>  $entries  The ring slice this run is about to search, in
+     *                                               the order it will read them (S13b review,
+     *                                               finding 6) — so the per-run search ceiling is
+     *                                               spent on the accounts about to be searched
+     *                                               rather than on the head of the list every run.
      * @return int how many entries gained a number
      */
     public function handle(int $teamId, array $entries): int
@@ -63,8 +67,42 @@ final class ResolveWatchlistCompanyNumbersAction
                 && ! $entry->companyNumberResolved(),
         ));
 
+        // **The negative cache is re-read against the team's own data, for free** (S13b review,
+        // finding 13). An entry checked and not found is never asked again, which is the whole
+        // point — but "not found" was recorded against the registry *and* against
+        // `leads.company_number` as it stood that day, and the second half of that goes stale. A
+        // pipeline entry checked in week one and enriched with a company number in week two would
+        // have been skipped for ever, because the filter above excludes anything stamped. So a
+        // stamped entry that has a lead is reconsidered on the **free** path only: no search, no
+        // ceiling, one query that was happening anyway.
+        $recheck = array_values(array_filter(
+            $entries,
+            static fn (SignalWatchlistEntry $entry): bool => $entry->isRegistryAddressable()
+                && $entry->company_number === null
+                && $entry->companyNumberResolved()
+                && $entry->lead_id !== null,
+        ));
+
+        $fromLeads = 0;
+
+        foreach ($recheck as $entry) {
+            $number = $this->fromLead($teamId, $entry);
+
+            if ($number !== null) {
+                $this->remember($entry, $number);
+                $fromLeads++;
+            }
+        }
+
         if ($pending === []) {
-            return 0;
+            if ($fromLeads > 0) {
+                Log::channel('signals')->info('Re-read watchlist company numbers from the team\'s own leads.', [
+                    'team_id' => $teamId,
+                    'resolved' => $fromLeads,
+                ]);
+            }
+
+            return $fromLeads;
         }
 
         // Bounded per run, because each unresolved entry past the free path is one registry search
@@ -112,10 +150,11 @@ final class ResolveWatchlistCompanyNumbersAction
             'team_id' => $teamId,
             'pending' => count($pending),
             'searched' => $searched,
+            'rechecked_free' => $fromLeads,
             'resolved' => $resolved,
         ]);
 
-        return $resolved;
+        return $resolved + $fromLeads;
     }
 
     /**

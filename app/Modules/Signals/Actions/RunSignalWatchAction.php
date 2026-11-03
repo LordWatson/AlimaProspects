@@ -35,6 +35,7 @@ use App\Modules\Signals\Events\AccountSignalsDetected;
 use App\Modules\Signals\Events\SignalRunProgressed;
 use App\Modules\Signals\Events\SignalsDetected;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Exceptions\SourceAddressNotFound;
 use App\Modules\Signals\Exceptions\SourceQueryRejected;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalCluster;
@@ -382,6 +383,15 @@ final class RunSignalWatchAction
 
                 try {
                     $items = $provider->fetch($query);
+                } catch (SourceAddressNotFound) {
+                    // **The addressee is not there** (S13b review, findings 1 and 2): a company
+                    // number not on the register, a feed a publisher has deleted. Counted under
+                    // `skipped`, which `sourcesThatAnsweredNothing()` deliberately ignores — so one
+                    // struck-off account on a watchlist cannot take the rest of the run with it,
+                    // and a dead feed cannot fail a run whose news queries all worked.
+                    $breakdown->recordSkip($query->kind);
+
+                    continue;
                 } catch (SourceQueryRejected) {
                     // A verdict about this query. A **typed** catch rather than a comparison
                     // against an error-code string: this is the one place in the run that decides
@@ -967,24 +977,34 @@ final class RunSignalWatchAction
             return [new SignalQueryPlan([], 0), null];
         }
 
-        // **Registry numbers first, and before the window is costed** (S13b). A Companies House
-        // query is addressed by company number, so an entity without one contributes no query and
-        // costs nothing — which means the window has to be filled *after* the numbers are known or
-        // its arithmetic would reserve budget for requests that will never be made.
-        //
-        // Here rather than in the builder, which does no I/O (that is what lets the cost estimator
-        // and S9's preview build a real plan for nothing), and not in the provider, which must not
-        // write to a tenant's tables. Only runs when a Companies House definition is in play, so a
-        // team that watches news alone never touches the registry.
-        if ($this->watchesTheRegistry($definitions)) {
-            $this->companyNumbers->handle((int) $watch->team_id, $all);
-        }
-
         $cursor = max(0, (int) $watch->entity_cursor) % count($all);
 
         // Wraps, so the list is a ring rather than a queue that empties: the 249th account is
         // searched on day six and the first again on day seven.
         $slice = array_merge(array_slice($all, $cursor), array_slice($all, 0, $cursor));
+
+        // **Registry numbers first, and before the window is costed** (S13b). A Companies House
+        // query is addressed by company number, so an entity without one contributes no query and
+        // costs nothing — which means the window has to be filled *after* the numbers are known or
+        // its arithmetic would reserve budget for requests that will never be made.
+        //
+        // **Handed the ring slice rather than the whole list** (S13b review, finding 6). Its own
+        // ceiling is ten searches a run, and over `$all` it spent them on the first ten unresolved
+        // entries of the list every time — which, from run two onwards, are entries this run is not
+        // going to search, while the accounts in today's window went without a number and so
+        // contributed no registry query at all. In ring order the searches land on the accounts
+        // about to be searched, and the list resolves itself a window at a time as the cursor
+        // travels. The chicken-and-egg (the window's cost depends on who has a number, and who has
+        // a number depends on what we resolve) is settled the same way: resolve in the order the
+        // ring will read, then cost.
+        //
+        // Here rather than in the builder, which does no I/O (that is what lets the cost estimator
+        // and S9's preview build a real plan for nothing), and not in the provider, which must not
+        // write to a tenant's tables. Only runs when a subject-addressed definition is in play, so
+        // a team that watches news alone never touches the registry.
+        if ($this->addressesASubject($definitions)) {
+            $this->companyNumbers->handle((int) $watch->team_id, $slice);
+        }
 
         // **Taken by cost, not by count** — a review finding, and the exact failure the ring exists
         // to prevent. One entity is one query *per region* (and, for a person, per definition), so
@@ -996,7 +1016,16 @@ final class RunSignalWatchAction
         // a member who wants a cheaper watch should be able to say so.
         $entities = [];
         $window = max(1, (int) config('signals.watchlist.window', 40));
-        $budget = max(1, (int) config('signals.max_queries_per_run', 40));
+
+        // **What is left after the definition-addressed queries, not the whole ceiling** (S13b
+        // review, finding 7). A feed and the webhook contribute one query each per definition,
+        // `pushDefinitionQueries()` emits them **first**, and the plan's trim keeps the first N —
+        // so a window filled to exactly `max_queries_per_run` had the last entity's queries trimmed
+        // off the end while the cursor stepped past that entity anyway. Silently, on every lap:
+        // precisely the failure the ring exists to prevent, arriving through the one door it did
+        // not watch. Floored at 1 so a pathological number of feeds cannot stop the ring entirely.
+        $budget = max(1, (int) config('signals.max_queries_per_run', 40)
+            - $this->queries->definitionQueryCount($definitions));
         $regions = max(1, count(SignalQuerySpec::forEntities($watch, [])->regions));
         $spent = 0;
 
@@ -1012,7 +1041,7 @@ final class RunSignalWatchAction
             // addressed by (S13b). One per entity whatever the names and regions, because the
             // registry holds one record per company — so it is a `+1` and not a multiplier, and
             // leaving it out of the budget would let the ring over-fill and the trim bite.
-            if ($entity->hasCompanyNumber() && $this->watchesTheRegistry($definitions)) {
+            if ($entity->hasCompanyNumber() && $this->addressesASubject($definitions)) {
                 $cost++;
             }
 
@@ -1033,19 +1062,26 @@ final class RunSignalWatchAction
     }
 
     /**
-     * Whether any of this run's types asks for a source that addresses a subject rather than
+     * Whether any of this run's types asks for a source that addresses a **subject** rather than
      * running a search (S13b) — today, Companies House.
      *
      * Asked before the registry is touched at all, so a team watching news alone never makes a
      * Companies House request and never pays a number-resolution search.
      *
+     * **Asks `addressesSubject()` and not `! isQueryBased()`**, which is what it asked first and
+     * was wrong: a feed and the webhook are neither query-based nor subject-addressed, so a
+     * watchlist whose types named a feed added a `+1` per entity to the window's cost for a
+     * registry query that was never emitted — paying for the registry out of the entity budget
+     * without using it. The same conflation put a feed query behind every template; see
+     * `SignalQueryBuilder::push()`.
+     *
      * @param  list<SignalDefinition>  $definitions
      */
-    private function watchesTheRegistry(array $definitions): bool
+    private function addressesASubject(array $definitions): bool
     {
         foreach ($definitions as $definition) {
             foreach ($definition->sourceKinds() as $kind) {
-                if (! $kind->isQueryBased() && $this->sources->has($kind)) {
+                if ($kind->addressesSubject() && $this->sources->has($kind)) {
                     return true;
                 }
             }
