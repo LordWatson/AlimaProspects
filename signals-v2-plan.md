@@ -819,35 +819,35 @@ doc, not an omission someone later "fixes".
 
 ### Tasks
 
-1. [ ] **Migration `signal_playbooks`** — team-scoped: name, `is_active`, `conditions` (json:
+1. [x] **Migration `signal_playbooks`** — team-scoped: name, `is_active`, `conditions` (json:
        definitions, sources, jurisdictions, min heat, amount band, watchlist membership,
        matched-lead-or-not), `actions` (json, ordered), `stop_after_first_match` (bool),
        priority. Plus `signal_playbook_runs` (which playbook fired on which signal, what it did,
        when, and what it **refused** to do and why) — an automation with no audit trail is an
        automation nobody trusts.
-2. [ ] **`SignalPlaybookEvaluator`** — deterministic, no AI, pure, fully unit-tested against a
+2. [x] **`SignalPlaybookEvaluator`** — deterministic, no AI, pure, fully unit-tested against a
        table of condition fixtures. Evaluated on the existing `SignalsDetected` /
        `SignalConverted` events via a listener, **after commit**.
-3. [ ] **Actions, each its own class, each calling the owning module's Action — never
+3. [x] **Actions, each its own class, each calling the owning module's Action — never
        reimplementing it:** - `AssignToMember` (round-robin or named, via LeadsWorkspace's assignment Action). - `ConvertToLead` / `AttachToMatchedLead` (the S4 / S10 Actions). - `MoveToPipelineStage` (LeadsWorkspace's Action; a team-scoped stage id or nothing). - `AddTag`. - `Notify` (`NotificationDispatcher` only, aggregated, never a bare `notify()`). - `DraftOutreach` — a draft through Outreach's existing drafting path, **queued for
        review**, and **refused outright** when `OutreachGuard` / `LeadRestrictionResolver`
        says this prospect may not be approached. The refusal is recorded on the playbook run
        with its reason and shown in the UI. Signals reaches this through Outreach's
        **contract**, never by importing `App\Modules\Outreach` — the three-contracts rule in
        `CLAUDE.md` §3 cuts both ways. - `CreateTask`.
-4. [ ] **Idempotency and blast radius** — a playbook fires **once** per signal (unique
+4. [x] **Idempotency and blast radius** — a playbook fires **once** per signal (unique
        `(signal_id, playbook_id)`), caps actions per run, and has a **dry-run mode** that
        records what it _would_ have done for a week before anyone switches it on. A rule that can
        convert every signal into a lead and draft a message for each is a rule that needs a
        rehearsal.
-5. [ ] **UI** — a rule builder in the same visual language as the definition builder; a
+5. [x] **UI** — a rule builder in the same visual language as the definition builder; a
        playbook-run log with the refusals visible; and a "what this would have done to last
        week's signals" preview, which is the S9 preview idea applied to automation and is what
        makes someone brave enough to switch it on.
-6. [ ] **Mobile** — the playbook _inbox_ (what fired, what needs review) lands in `/mobile` per
+6. [x] **Mobile** — the playbook _inbox_ (what fired, what needs review) lands in `/mobile` per
        decision #5; building playbooks stays on the web. Read `docs/modules/mobile-app.md` and
        share types via `@shared`, **never by copy**.
-7. [ ] **API + docs** — playbook CRUD + run log, `openapi.json`, and `docs/compliance.md`
+7. [x] **API + docs** — playbook CRUD + run log, `openapi.json`, and `docs/compliance.md`
        updated with the drafts-never-sends rule.
 
 **Data model:** `signal_playbooks`, `signal_playbook_runs`.
@@ -1028,7 +1028,7 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | S12   | Ranking, learning & explainability              | ☑ **Done** 2026-11-03 | S7, S11      |
 | S13a  | Pluggable sources: registry, web search         | ☑ **Done** 2026-11-03 | S7, S8       |
 | S13b  | Companies House, RSS feeds, inbound webhook     | ☑ **Done** 2026-11-03 | S13a         |
-| S14   | Playbooks                                       | ☐ Not started         | S7, S10, S12 |
+| S14   | Playbooks                                       | ☑ **Done** 2026-11-03 | S7, S10, S12 |
 | S15   | Delivery, ROI & curated library                 | ☐ Not started         | S9, S12      |
 | S16   | Cost governance, limits, retention & close-out  | ☐ Not started         | S7–S15       |
 
@@ -1036,6 +1036,90 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 **Recommended first release:** S7–S11 + S16 — definitions, geography, the builder, account
 monitoring and clustering, which together change what the feature _is_. S12–S15 then compound
 on it.
+
+## S14, as shipped — one addition the plan did not ask for, four decisions it left open, and a
+
+review that found three product bugs
+
+**Read `docs/modules/signals.md` → "What the S14 reviews changed" first.** The reviews found three
+things that were wrong rather than merely rough, and all three were in the parts the plan was most
+confident about:
+
+- A rule **converted a signal a member had dismissed**, and drafted an approach for it. The plan's
+  four brakes were all about volume; none of them was about a human having already said no.
+- A per-job spend cap **claimed the signal and refused it permanently**, so with the plan's own
+  numbers 175 of every 200 signals were refused for ever by design — and the batch cap the plan
+  asked for by name dropped its tail entirely. Both are now deferrals.
+- An exception in the listener **failed the watch run that raised the event**, and the retry
+  re-billed its Serper search. The plan said to evaluate on the existing events and did not say that
+  a listener on an after-commit event is inside the caller's job.
+
+The ADR gained §§4a–4c for the three. Everything below was written against the phase as first
+built and still holds.
+
+## S14, as shipped — one addition the plan did not ask for, and four decisions it left open
+
+Every task landed as written. What follows is what the plan did not say.
+
+### The addition: ADR 0024
+
+The plan said the drafts-never-sends rule was "a decision recorded in the module doc, not an
+omission someone later 'fixes'", and it is — `docs/modules/signals.md` and `docs/compliance.md`
+§3.12 both carry it. It is **also** ADR 0024, which the plan's ADR table did not anticipate.
+
+The reason for the extra file: the rule crosses two modules and introduces a contract seam, which is
+exactly the shape of thing `CLAUDE.md` §5's list exists to make findable. Somebody asking "why can't
+a playbook send?" six months from now will look in `docs/decisions/` before they look in a module
+doc, and the answer needs to be where they look. The ADR carries the four brakes and the
+handler-calls-the-Action rule with it, for the same reason.
+
+### Four decisions the plan left to the implementation
+
+**1. The run row is claimed before any step executes, not written after.** The plan asked for a
+unique on `(signal_id, playbook_id)` and a log of what happened; it did not say which came first,
+and the order is the whole guarantee. Executing and then inserting would have the loser of a race
+discover its duplicate _after_ creating a second task and spending a second draft. So the insert is
+the lock, a caught `UniqueConstraintViolationException` is the guarantee working rather than an
+error, and the row is filled in afterwards. The cost is that a crash in between leaves a claimed row
+with no steps — which the log shows as "started and did not finish" rather than hiding, because a
+silent gap in an audit trail is worse than a visible one.
+
+**2. An unattended rule acts as the member who built it.** The plan did not say whose authority a
+playbook acts under, and every module Action it calls wants a `User`: the assignment writes who
+assigned, the stage move writes who moved it, the audit log writes an actor. A synthetic system user
+was considered and rejected — every entry it wrote would be unattributable, which is the opposite of
+what an audit trail is for, and it would need a row in `users` that can sign in to nothing. So
+`PlaybookActor` resolves the creator while they are still on the team, then the team's owner, then
+**records a refusal on every step** rather than running as nobody.
+
+**3. Rehearsal is the default mode, and it is the only safety default in the phase.** The plan asked
+for a dry-run mode and a UI that encourages a week of it; it did not say what a rule created without
+one should be. `SignalPlaybookData` defaults to `DryRun`, which matters mostly for the API: a caller
+who did not think about `mode` should get a rule that watches. The factory defaults to **live**, for
+the opposite reason — a test that built a rule and asserted nothing happened would otherwise pass
+for the wrong reason.
+
+**4. The preview takes conditions, not a saved playbook, and has no budget.** S9's preview needed a
+ledger row and three caps because it spent money on a provider. This one evaluates rows the team has
+already paid for and executes nothing, so it has a **window** (`preview_days`) instead of a budget,
+no ledger, no throttle, and a policy that lets a **read-only member** run it — reviewing a
+colleague's rule is exactly the question the most cautious person on the team wants answered.
+Taking conditions rather than an id is what lets somebody preview a rule before it exists, which is
+when they actually want the answer.
+
+### Two things worth knowing that are not in either doc
+
+**The per-job spend counters live on `PlaybookBudget`, not on the handlers**, and that is not
+cosmetic: the handlers are container singletons that outlive one job, so a counter on one would
+carry last job's total into this one and the second batch of the morning would be refused
+immediately. The budget is constructed per job precisely so it cannot. A rehearsal keeps its own
+pair of counters for the same reason it does not consume the live ones — it has to be able to say
+"this is where a live rule would have stopped" without stopping there itself.
+
+**A notify step sends nothing at the moment it runs.** It records an intent and the job dispatches
+once everything is through, which is `CLAUDE.md` §3's aggregation rule applied at the only point it
+could be: a rule matching twelve of a morning's signals is twelve step executions and must be one
+message. Doing it in the handler would have made the rule unusable within a week.
 
 ## S13b, as shipped — three deviations and a design the plan did not ask for
 
@@ -1318,9 +1402,12 @@ by writing the row you expect.
 | 0021 | Account monitoring: a watch can be pointed at companies instead of places              | S10    |
 | 0022 | A ranked feed that can explain itself, and a product that proposes rather than retunes | S12    |
 | 0023 | Signal sources are a registry, and an inbound event is untrusted                       | S13a/b |
+| 0024 | A playbook prepares an approach; it never sends one                                    | S14    |
 
 S11 introduced no ADR: clustering changed what a row _means_ but took no decision the module doc
-does not record. The numbers above are the ones actually written — the planned numbering for S9 and
+does not record. S14's was **not** planned — the phase said its one rule belonged in the module doc,
+and it does, but the rule crosses two modules and opens a contract seam, so it is where somebody
+would look for it as well (see "S14, as shipped"). The numbers above are the ones actually written — the planned numbering for S9 and
 S10 ("none") and for S13 (0020) was overtaken as those phases shipped.
 
 ## Deliberately out of scope

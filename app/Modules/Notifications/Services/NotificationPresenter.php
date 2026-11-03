@@ -41,6 +41,7 @@ final class NotificationPresenter
             NotificationType::LeadAssigned => $this->leadAssigned($payload),
             NotificationType::SignalsDetected => $this->signalsDetected($payload),
             NotificationType::SignalOnAccount => $this->signalOnAccount($payload),
+            NotificationType::PlaybookFired => $this->playbookFired($payload),
             NotificationType::InsightsReady => $this->insightsReady($payload),
             NotificationType::CreditLow => $this->creditLow($payload),
             NotificationType::PaymentFailed => $this->paymentFailed($payload),
@@ -176,6 +177,34 @@ final class NotificationPresenter
             params: ['count' => $count, 'company' => $company, 'events' => $events],
             url: $count === 1 && $leadId !== null ? '/leads/'.$leadId : '/signals?status=new&scope=accounts',
             actionLabel: $count === 1 ? 'Open the lead' : 'See what happened',
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function playbookFired(array $payload): NotificationContent
+    {
+        $count = $this->count($payload, 'count');
+        $playbook = $this->text($payload, 'playbook');
+        $leadId = $this->id($payload, 'lead_id');
+
+        // **The rule's name leads**, because that is the only thing that tells a member which of
+        // their rules to go and look at — "a playbook ran" is a sentence they would have to open
+        // the log to make use of. The count is signals, not steps: a member thinks in events.
+        //
+        // One signal with a lead goes straight to the lead, which is where the work is. Anything
+        // else goes to the run log, because that is the screen that shows what was refused, and
+        // the refusals are the rows worth reading.
+        return new NotificationContent(
+            type: NotificationType::PlaybookFired,
+            title: $playbook === '' ? 'One of your rules ran' : '“:playbook” ran',
+            body: $count === 1
+                ? 'Alima handled a signal for you. Here is what it did.'
+                : 'Alima handled :count signals for you. Here is what it did.',
+            params: ['count' => $count, 'playbook' => $playbook],
+            url: $count === 1 && $leadId !== null ? '/leads/'.$leadId : '/signals/playbooks/activity',
+            actionLabel: $count === 1 && $leadId !== null ? 'Open the lead' : 'See what it did',
         );
     }
 

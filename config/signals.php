@@ -731,6 +731,55 @@ return [
         ],
     ],
 
+    // Playbooks (S14) — a signal arriving becomes an event the team can automate against.
+    //
+    // Every number here is a brake, and the reason there are several is that the ways this feature
+    // can go wrong are not the same shape. A rule that converts every signal into a lead is a
+    // billing problem; a rule that drafts a message for each is an AI-spend problem; a rule that
+    // fires on a thousand-signal backfill is both. So the caps are per *thing being spent*, not one
+    // global number, and the ones that cost money are deliberately the tightest.
+    //
+    // **A playbook can prepare an approach. It cannot send one** (docs/compliance.md §3.12). That
+    // is not configurable and has no key here on purpose.
+    'playbooks' => [
+        // How many rules a team may keep. Each one is evaluated against every signal, so this is a
+        // ceiling on work as well as on confusion.
+        'max_per_team' => (int) env('SIGNALS_MAX_PLAYBOOKS_PER_TEAM', 10),
+
+        // How many actions one rule may carry. A chain long enough to be unreadable is a chain
+        // nobody can predict, and predictability is the whole proposition of an unattended rule.
+        'max_actions' => (int) env('SIGNALS_PLAYBOOK_MAX_ACTIONS', 8),
+
+        // How many signals one job will put through the rules. A backfill or a very large run must
+        // not become an unbounded fan-out of leads, tasks and drafts; the remainder is left
+        // unhandled and counted rather than queued, because "we did some of it" is recoverable and
+        // "we did all of it twice" is not.
+        'max_signals_per_run' => (int) env('SIGNALS_PLAYBOOK_MAX_SIGNALS_PER_RUN', 200),
+
+        // The two caps on the actions that *spend*, counted across every playbook in one job.
+        // Conversions cost a lead against the plan's allowance and an enrichment job each; drafts
+        // cost AI credit. Both are far below `max_signals_per_run` deliberately: a rule that wants
+        // to convert two hundred companies in one morning is a rule somebody should press by hand.
+        'max_conversions_per_run' => (int) env('SIGNALS_PLAYBOOK_MAX_CONVERSIONS_PER_RUN', 25),
+        'max_drafts_per_run' => (int) env('SIGNALS_PLAYBOOK_MAX_DRAFTS_PER_RUN', 10),
+
+        // How far back the "what would this have done?" preview looks, and how many examples it
+        // shows. The preview evaluates and executes **nothing**, so it costs a query and no money
+        // — which is why it has a window rather than a budget.
+        'preview_days' => (int) env('SIGNALS_PLAYBOOK_PREVIEW_DAYS', 7),
+        'preview_samples' => (int) env('SIGNALS_PLAYBOOK_PREVIEW_SAMPLES', 10),
+
+        // How long a deferred batch waits before the next pass. The spend ceilings above are per
+        // job, so a signal a rule could not afford has to come back in a *later* job — and far
+        // enough later that the ceiling means something. Floored at 60 seconds by the job itself.
+        'defer_seconds' => (int) env('SIGNALS_PLAYBOOK_DEFER_SECONDS', 900),
+
+        // How long the screen suggests rehearsing for before switching a rule on. Copy, not a
+        // rule: nothing enforces it, because a team that has read the dry-run log is entitled to
+        // decide they have seen enough.
+        'suggested_dry_run_days' => (int) env('SIGNALS_PLAYBOOK_DRY_RUN_DAYS', 7),
+    ],
+
     // Retention sweep (implemented in S6): hard-delete dismissed signals after N days and
     // unactioned (still New) signals after N days. Converted signals stay as long as their lead.
     'retention' => [

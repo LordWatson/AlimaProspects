@@ -16,7 +16,9 @@ use App\Modules\Outreach\Policies\OutreachSuppressionPolicy;
 use App\Modules\Outreach\Policies\OutreachTemplatePolicy;
 use App\Modules\Outreach\Services\AlwaysAllowTeamSending;
 use App\Modules\Outreach\Services\OutreachGuard;
+use App\Modules\Outreach\Services\PlaybookOutreachDrafter;
 use App\Modules\Outreach\Services\RecordedLeadRestriction;
+use App\Modules\Signals\Contracts\SignalOutreachDrafter;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -66,5 +68,18 @@ final class OutreachServiceProvider extends ModuleServiceProvider
         // Permissive by default, like Auth's seat stub: a default that refused would block outreach
         // for a suspension nobody applied. Admin (Phase 19a) binds a suspension-aware gate over it.
         $this->app->bind(TeamSendingGate::class, AlwaysAllowTeamSending::class);
+
+        // How a Signals playbook prepares an approach (S14, docs/compliance.md §3.12).
+        //
+        // **The contract is Signals' and the implementation is ours**, which is the arrangement
+        // Compliance's three seams use and the direction the dependency has to point: Signals
+        // declares what it needs and ships a refusing default, and this provider — registered after
+        // it in `bootstrap/providers.php` — binds the real thing over the top. Nothing in Signals
+        // imports this module.
+        //
+        // It **drafts and never sends**, and there is no `send` on the interface to tempt anybody.
+        // `OutreachGuard` answers whether a prospect may be approached; an unattended rule that
+        // transmitted would be the platform settling that question on a team's behalf overnight.
+        $this->app->bind(SignalOutreachDrafter::class, PlaybookOutreachDrafter::class);
     }
 }

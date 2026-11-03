@@ -812,3 +812,247 @@ export type SignalConvertedPayload = {
     /** True when the signal was linked to a lead the team already had, rather than making one. */
     attached: boolean;
 };
+
+// --- Playbooks (S14) -----------------------------------------------------------------------------
+
+/**
+ * Whether a rule does what it says, or only records what it would have done.
+ *
+ * Paused is a **different** statement and lives on `is_active`: paused means "do not evaluate me",
+ * rehearsing means "evaluate me and tell me what you would have done".
+ */
+export type PlaybookMode = 'dry_run' | 'live';
+
+/** One kind of step a rule may carry. One server-side handler exists per value. */
+export type PlaybookActionKind =
+    | 'convert_to_lead'
+    | 'attach_to_matched_lead'
+    | 'assign_to_member'
+    | 'move_to_pipeline_stage'
+    | 'add_tag'
+    | 'notify'
+    | 'draft_outreach'
+    | 'create_task';
+
+/**
+ * What became of one step.
+ *
+ * `refused` and `failed` are the two the log draws attention to — the first is a rule saying no
+ * (the outreach guard, a spend ceiling), the second is something somebody should look at.
+ */
+export type PlaybookActionStatus =
+    | 'applied'
+    | 'simulated'
+    | 'refused'
+    | 'skipped'
+    | 'failed';
+
+/** Whether a rule cares that the event is about a company the team already has. */
+export type PlaybookWatchlistCondition = 'any' | 'matched' | 'unmatched';
+
+/** How a rule picks who gets the lead. Round-robin is keyed on the signal, not on a counter. */
+export type PlaybookAssignStrategy = 'named' | 'round_robin';
+
+/** Who a notify step tells. `lead_owners` falls back to the team when nobody owns the lead. */
+export type PlaybookNotifyAudience =
+    | 'team'
+    | 'admins'
+    | 'lead_owners'
+    | 'named';
+
+/**
+ * One step, in exactly the shape the save endpoint takes it.
+ *
+ * `params` is a union of every kind's needs rather than a discriminated type, which mirrors the
+ * server: the shape is validated as a union, and the semantics — a stage move needs a stage — are
+ * checked in one place and reported against these fields.
+ */
+export type SignalPlaybookStep = {
+    kind: PlaybookActionKind;
+    params: {
+        strategy?: PlaybookAssignStrategy;
+        audience?: PlaybookNotifyAudience;
+        user_ids?: number[];
+        stage_id?: number | null;
+        tags?: string[];
+        channel?: string | null;
+        tone?: string | null;
+        title?: string | null;
+        due_in_days?: number | null;
+        assign_to_lead_owner?: boolean;
+    };
+};
+
+/**
+ * What a signal has to look like for a rule to fire.
+ *
+ * Every list means "any of these", and an **empty list means the rule does not care**. Amounts are
+ * in minor units, as everywhere; the builder divides for display.
+ */
+export type SignalPlaybookConditions = {
+    definitions: number[];
+    sources: SignalSourceKind[];
+    jurisdictions: string[];
+    min_heat: number | null;
+    min_amount_minor: number | null;
+    max_amount_minor: number | null;
+    watchlist: PlaybookWatchlistCondition;
+    watchlist_ids: number[];
+};
+
+/** A rule a team owns. */
+export type SignalPlaybook = {
+    id: number;
+    name: string;
+    is_active: boolean;
+    mode: PlaybookMode;
+    /** Translation keys, not finished strings. */
+    mode_label: string;
+    mode_description: string;
+    /** Sent rather than derived from `mode`: whether a rule acts is the server's rule. */
+    is_rehearsing: boolean;
+    stop_after_first_match: boolean;
+    priority: number;
+    conditions: SignalPlaybookConditions;
+    actions: SignalPlaybookStep[];
+    actions_count: number;
+    /** Whether this build dropped a step it did not recognise, so the screen can say so. */
+    has_unknown_steps: boolean;
+    runs_count?: number;
+    created_at: string | null;
+    updated_at: string | null;
+};
+
+/** The form state the rule builder binds to, mirroring `SignalPlaybookData::rules()`. */
+export type SignalPlaybookForm = {
+    name: string;
+    mode: PlaybookMode;
+    is_active: boolean;
+    stop_after_first_match: boolean;
+    priority: number;
+    conditions: SignalPlaybookConditions;
+    actions: SignalPlaybookStep[];
+};
+
+/** One step's outcome, as the run log reads it. */
+export type PlaybookStepOutcome = {
+    kind: PlaybookActionKind;
+    /** Translation keys, not finished strings. */
+    kind_label: string;
+    status: PlaybookActionStatus;
+    status_label: string;
+    needs_attention: boolean;
+    /** Alima's own stable reason key, or null when the step simply happened. */
+    reason: string | null;
+    reason_label: string | null;
+    reason_guidance: string | null;
+    /**
+     * The values the sentence is composed from. For a refused draft these are the **outreach
+     * guard's own** keys — `block_reason`, `block_label`, `block_guidance`, `is_compliance` —
+     * passed through rather than restated by Signals.
+     */
+    params: Record<string, unknown>;
+};
+
+/** One row of the run log: what a rule did to a signal, and what it refused to do. */
+export type SignalPlaybookRun = {
+    id: number;
+    /** Null when the rule has since been deleted; the name is kept either way. */
+    playbook_id: number | null;
+    playbook_name: string;
+    mode: PlaybookMode;
+    is_rehearsal: boolean;
+    signal_id: number;
+    signal_headline: string | null;
+    signal_event_label: string | null;
+    lead_id: number | null;
+    lead_company: string | null;
+    /** Whose authority the chain acted under — what explains the actor on the lead's timeline. */
+    actor_name: string | null;
+    applied_count: number;
+    refused_count: number;
+    failed_count: number;
+    needs_attention: boolean;
+    /**
+     * False means the chain was interrupted between claiming the signal and writing what it did.
+     * Sent rather than inferred from an empty `steps`, because "matched and did nothing" and "was
+     * cut off" are different things and only the server can tell them apart.
+     */
+    is_complete: boolean;
+    steps: PlaybookStepOutcome[];
+    created_at: string | null;
+};
+
+/** One of the signals a preview matched. Deliberately thin: no summary, no person's name. */
+export type PlaybookPreviewedSignal = {
+    id: number;
+    headline: string;
+    event_label: string;
+    heat: number | null;
+    about_existing_lead: boolean;
+    published_at: string | null;
+};
+
+/**
+ * What a rule **would have done** to the signals the team already has.
+ *
+ * The ratio is the point: "4 of 120" is a rule somebody can switch on, "118 of 120" is the one that
+ * would convert the whole feed.
+ */
+export type SignalPlaybookPreview = {
+    considered: number;
+    matched: number;
+    days: number;
+    matches_everything: boolean;
+    would_exceed_conversions: boolean;
+    would_exceed_drafts: boolean;
+    samples: PlaybookPreviewedSignal[];
+};
+
+/** A value with its label, which is how every picker on the builder is fed. */
+export type PlaybookOption<T extends string> = {
+    value: T;
+    /** Translation key, not a finished string. */
+    label: string;
+};
+
+/** A step kind as the builder offers it, with the three things it has to say about itself. */
+export type PlaybookActionKindOption = PlaybookOption<PlaybookActionKind> & {
+    /** Translation key, not a finished string. */
+    description: string;
+    /** Whether the step needs a lead, so the builder can advise putting a conversion first. */
+    needs_lead: boolean;
+    /** Whether performing it costs money, so the builder can say which steps have a ceiling. */
+    spends: boolean;
+    repeatable: boolean;
+};
+
+/** A drafting channel, from the outreach seam rather than from a Signals enum. */
+export type PlaybookChannelOption = PlaybookOption<string> & {
+    description: string;
+};
+
+/** Everything the rule builder offers. An empty `channels` means drafting is unavailable here. */
+export type SignalPlaybookOptions = {
+    action_kinds: PlaybookActionKindOption[];
+    modes: (PlaybookOption<PlaybookMode> & { description: string })[];
+    assign_strategies: PlaybookOption<PlaybookAssignStrategy>[];
+    notify_audiences: PlaybookOption<PlaybookNotifyAudience>[];
+    watchlist_conditions: PlaybookOption<PlaybookWatchlistCondition>[];
+    sources: PlaybookOption<SignalSourceKind>[];
+    definitions: { id: number; name: string }[];
+    watchlists: { id: number; name: string }[];
+    stages: { id: number; name: string }[];
+    members: { id: number; name: string }[];
+    jurisdictions: PlaybookOption<string>[];
+    channels: PlaybookChannelOption[];
+    tones: PlaybookOption<string>[];
+    limits: {
+        max_playbooks: number;
+        max_actions: number;
+        max_conversions_per_run: number;
+        max_drafts_per_run: number;
+        preview_days: number;
+        suggested_dry_run_days: number;
+    };
+};

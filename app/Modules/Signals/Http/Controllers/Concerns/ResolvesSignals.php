@@ -9,6 +9,7 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Models\SignalPlaybook;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
@@ -116,6 +117,31 @@ trait ResolvesSignals
             ->where('team_id', $team->getKey())
             ->where('signal_watchlist_id', $watchlist->getKey())
             ->findOrFail($entryId));
+    }
+
+    /**
+     * @param  list<string>  $with  Extra relations the response needs loaded.
+     */
+    protected function playbook(Request $request, int $playbookId, array $with = []): SignalPlaybook
+    {
+        $team = $this->team($request);
+
+        return app(TeamContext::class)->run($team, fn (): SignalPlaybook => SignalPlaybook::query()
+            ->where('team_id', $team->getKey())
+            ->with(['team', ...$with])
+            ->findOrFail($playbookId));
+    }
+
+    /**
+     * A transient, team-scoped playbook for authorising list, create and preview.
+     */
+    protected function transientPlaybook(Team $team): SignalPlaybook
+    {
+        $playbook = new SignalPlaybook;
+        $playbook->forceFill(['team_id' => $team->getKey()]);
+        $playbook->setRelation('team', $team);
+
+        return $playbook;
     }
 
     /**

@@ -6264,6 +6264,584 @@
                 }
             }
         },
+        "/signal-playbooks": {
+            "get": {
+                "operationId": "v1.signal-playbooks.index",
+                "tags": [
+                    "SignalPlaybook"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `SignalPlaybookResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SignalPlaybookResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "v1.signal-playbooks.store",
+                "tags": [
+                    "SignalPlaybook"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SaveSignalPlaybookRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "`SignalPlaybookResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalPlaybookResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-playbooks/runs": {
+            "get": {
+                "operationId": "v1.signal-playbooks.runs",
+                "summary": "The run log, newest first",
+                "tags": [
+                    "SignalPlaybook"
+                ],
+                "parameters": [
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "minimum": 1,
+                            "maximum": 100
+                        }
+                    },
+                    {
+                        "name": "attention",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `SignalPlaybookRunResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SignalPlaybookRunResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-playbooks/preview": {
+            "post": {
+                "operationId": "v1.signal-playbooks.preview",
+                "summary": "What a rule would have done to the signals the team already has",
+                "tags": [
+                    "SignalPlaybook"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PreviewSignalPlaybookRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "considered": {
+                                                    "type": "integer"
+                                                },
+                                                "matched": {
+                                                    "type": "integer"
+                                                },
+                                                "days": {
+                                                    "type": "integer"
+                                                },
+                                                "matches_everything": {
+                                                    "type": "boolean"
+                                                },
+                                                "would_exceed_conversions": {
+                                                    "type": "boolean"
+                                                },
+                                                "would_exceed_drafts": {
+                                                    "type": "boolean"
+                                                },
+                                                "samples": {
+                                                    "type": "array",
+                                                    "items": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "considered",
+                                                "matched",
+                                                "days",
+                                                "matches_everything",
+                                                "would_exceed_conversions",
+                                                "would_exceed_drafts",
+                                                "samples"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-playbooks/{playbook}": {
+            "get": {
+                "operationId": "v1.signal-playbooks.show",
+                "tags": [
+                    "SignalPlaybook"
+                ],
+                "parameters": [
+                    {
+                        "name": "playbook",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`SignalPlaybookResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalPlaybookResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "v1.signal-playbooks.update",
+                "tags": [
+                    "SignalPlaybook"
+                ],
+                "parameters": [
+                    {
+                        "name": "playbook",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SaveSignalPlaybookRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`SignalPlaybookResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalPlaybookResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "v1.signal-playbooks.destroy",
+                "tags": [
+                    "SignalPlaybook"
+                ],
+                "parameters": [
+                    {
+                        "name": "playbook",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/signal-watches": {
             "get": {
                 "operationId": "v1.signal-watches.index",
@@ -10235,6 +10813,7 @@
                             "lead_assigned",
                             "signals_detected",
                             "signal_on_account",
+                            "playbook_fired",
                             "insights_ready",
                             "credit_low",
                             "payment_failed",
@@ -10897,6 +11476,129 @@
                 ],
                 "title": "PreviewSignalDefinitionRequest"
             },
+            "PreviewSignalPlaybookRequest": {
+                "type": "object",
+                "description": "Validates a playbook preview (S14).\n\n**Conditions only, and the steps as bare kinds.** The preview evaluates and executes nothing, so\nit has no use for a step's parameters \u2014 and asking for them would mean a member could not preview\na rule until they had finished filling in every stage and title, which is the wrong way round:\nthe first question is whether the conditions match the right stories at all.\n\nThe kinds are still wanted, because they decide whether the preview warns about a per-job spend\nceiling. A rule that matches ninety signals is fine until it converts them.",
+                "properties": {
+                    "conditions": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "properties": {
+                            "definitions": {
+                                "type": [
+                                    "array",
+                                    "null"
+                                ],
+                                "items": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                },
+                                "maxItems": 25
+                            },
+                            "sources": {
+                                "type": [
+                                    "array",
+                                    "null"
+                                ],
+                                "description": "Only the sources this build actually runs. A declared-but-unavailable source would\nmake a rule that can never fire, which is worse than refusing it (ADR 0023 \u00a73).",
+                                "items": {
+                                    "type": "string",
+                                    "enum": [
+                                        "news",
+                                        "web_search",
+                                        "companies_house",
+                                        "feed",
+                                        "webhook"
+                                    ]
+                                },
+                                "maxItems": 25
+                            },
+                            "jurisdictions": {
+                                "type": [
+                                    "array",
+                                    "null"
+                                ],
+                                "items": {
+                                    "type": "string",
+                                    "minLength": 2,
+                                    "maxLength": 2
+                                },
+                                "maxItems": 25
+                            },
+                            "min_heat": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
+                                "minimum": 0,
+                                "maximum": 100
+                            },
+                            "min_amount_minor": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
+                                "minimum": 0,
+                                "maximum": 100000000000000
+                            },
+                            "max_amount_minor": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
+                                "minimum": 0,
+                                "maximum": 100000000000000
+                            },
+                            "watchlist": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "enum": [
+                                    "any",
+                                    "matched",
+                                    "unmatched",
+                                    null
+                                ]
+                            },
+                            "watchlist_ids": {
+                                "type": [
+                                    "array",
+                                    "null"
+                                ],
+                                "items": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                },
+                                "maxItems": 25
+                            }
+                        }
+                    },
+                    "kinds": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "convert_to_lead",
+                                "attach_to_matched_lead",
+                                "assign_to_member",
+                                "move_to_pipeline_stage",
+                                "add_tag",
+                                "notify",
+                                "draft_outreach",
+                                "create_task"
+                            ]
+                        },
+                        "maxItems": 8
+                    }
+                },
+                "title": "PreviewSignalPlaybookRequest"
+            },
             "PushDeviceResource": {
                 "type": "object",
                 "properties": {
@@ -11394,6 +12096,264 @@
                     "query_templates"
                 ],
                 "title": "SaveSignalDefinitionRequest"
+            },
+            "SaveSignalPlaybookRequest": {
+                "type": "object",
+                "description": "Validates a playbook on create and update (S14).\n\nThe rules come from {@see SignalPlaybookData::rules()} so the web and API endpoints cannot drift\non what a rule may be. Authorisation lives in the controller via `SignalPlaybookPolicy`.\n\nThe `after` hook is where this request earns its keep. What makes a step valid depends on its own\nkind \u2014 a stage move needs a stage, a draft needs a channel this deployment offers \u2014 and expressing\nthat in rule strings over an array of objects would be unreadable and wrong the first time\nsomebody reordered the steps. So {@see SignalPlaybookData::problems()} answers it in PHP and the\nmessages are merged in **against their own fields**, which is what lets the builder's error\nsummary move focus to the control that is wrong rather than to the top of a long form.\n\nThe stage and member ids are deliberately **not** checked against the team's own rows here, the\nsame treatment a watch's ICP and a watchlist's stages get: an id from another team can only arrive\nfrom a tampered form, and the handlers resolve through the team's own scope so it matches nothing.\nA rule that stopped saving because somebody deleted a stage last week would be the worse failure.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": [
+                            "dry_run",
+                            "live"
+                        ]
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "stop_after_first_match": {
+                        "type": "boolean"
+                    },
+                    "priority": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "Bounded both ways so the board's order stays a small integer somebody can reason\nabout, rather than a 32-bit number two rules happen to share.",
+                        "minimum": 0,
+                        "maximum": 1000
+                    },
+                    "conditions": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "properties": {
+                            "definitions": {
+                                "type": [
+                                    "array",
+                                    "null"
+                                ],
+                                "items": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                },
+                                "maxItems": 25
+                            },
+                            "sources": {
+                                "type": [
+                                    "array",
+                                    "null"
+                                ],
+                                "description": "Only the sources this build actually runs. A declared-but-unavailable source would\nmake a rule that can never fire, which is worse than refusing it (ADR 0023 \u00a73).",
+                                "items": {
+                                    "type": "string",
+                                    "enum": [
+                                        "news",
+                                        "web_search",
+                                        "companies_house",
+                                        "feed",
+                                        "webhook"
+                                    ]
+                                },
+                                "maxItems": 25
+                            },
+                            "jurisdictions": {
+                                "type": [
+                                    "array",
+                                    "null"
+                                ],
+                                "items": {
+                                    "type": "string",
+                                    "minLength": 2,
+                                    "maxLength": 2
+                                },
+                                "maxItems": 25
+                            },
+                            "min_heat": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
+                                "minimum": 0,
+                                "maximum": 100
+                            },
+                            "min_amount_minor": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
+                                "minimum": 0,
+                                "maximum": 100000000000000
+                            },
+                            "max_amount_minor": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
+                                "minimum": 0,
+                                "maximum": 100000000000000
+                            },
+                            "watchlist": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "enum": [
+                                    "any",
+                                    "matched",
+                                    "unmatched",
+                                    null
+                                ]
+                            },
+                            "watchlist_ids": {
+                                "type": [
+                                    "array",
+                                    "null"
+                                ],
+                                "items": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                },
+                                "maxItems": 25
+                            }
+                        }
+                    },
+                    "actions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                        "convert_to_lead",
+                                        "attach_to_matched_lead",
+                                        "assign_to_member",
+                                        "move_to_pipeline_stage",
+                                        "add_tag",
+                                        "notify",
+                                        "draft_outreach",
+                                        "create_task"
+                                    ]
+                                },
+                                "params": {
+                                    "type": [
+                                        "object",
+                                        "null"
+                                    ],
+                                    "properties": {
+                                        "strategy": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "enum": [
+                                                "named",
+                                                "round_robin",
+                                                null
+                                            ]
+                                        },
+                                        "audience": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "enum": [
+                                                "team",
+                                                "admins",
+                                                "lead_owners",
+                                                "named",
+                                                null
+                                            ]
+                                        },
+                                        "user_ids": {
+                                            "type": [
+                                                "array",
+                                                "null"
+                                            ],
+                                            "items": {
+                                                "type": "integer",
+                                                "minimum": 1
+                                            },
+                                            "maxItems": 20
+                                        },
+                                        "stage_id": {
+                                            "type": [
+                                                "integer",
+                                                "null"
+                                            ],
+                                            "minimum": 1
+                                        },
+                                        "tags": {
+                                            "type": [
+                                                "array",
+                                                "null"
+                                            ],
+                                            "items": {
+                                                "type": "string",
+                                                "maxLength": 40
+                                            },
+                                            "maxItems": 3
+                                        },
+                                        "channel": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "description": "The channel and tone are checked against the drafting contract's own vocabulary in\n`problems()`, not here: Signals does not know Outreach's enums, and hard-coding their\nvalues in a rule would be a copy that drifts.",
+                                            "maxLength": 40
+                                        },
+                                        "tone": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "maxLength": 40
+                                        },
+                                        "title": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "maxLength": 160
+                                        },
+                                        "due_in_days": {
+                                            "type": [
+                                                "integer",
+                                                "null"
+                                            ],
+                                            "description": "`min:1`, not `min:0`: \"due in no days\" and \"no due date\" would be the same posted\nvalue, and a task due the instant it is created is overdue by the time anyone reads\nthe notification. Tomorrow is the soonest a rule may ask for.",
+                                            "minimum": 1,
+                                            "maximum": 365
+                                        },
+                                        "assign_to_lead_owner": {
+                                            "type": [
+                                                "boolean",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            },
+                            "required": [
+                                "kind"
+                            ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 8
+                    }
+                },
+                "required": [
+                    "name",
+                    "mode",
+                    "actions"
+                ],
+                "title": "SaveSignalPlaybookRequest"
             },
             "SaveSignalWatchRequest": {
                 "type": "object",
@@ -11931,6 +12891,269 @@
                     "definition"
                 ],
                 "title": "SignalDraftResource"
+            },
+            "SignalPlaybookResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": [
+                            "dry_run",
+                            "live"
+                        ]
+                    },
+                    "mode_label": {
+                        "type": "string",
+                        "description": "Translation keys, not finished strings: the client passes them through `t()`.",
+                        "enum": [
+                            "Rehearsal",
+                            "Live"
+                        ]
+                    },
+                    "mode_description": {
+                        "type": "string",
+                        "enum": [
+                            "Records what it would have done. Nothing is changed and nobody is told.",
+                            "Does it. Every decision is still written to the log."
+                        ]
+                    },
+                    "is_rehearsing": {
+                        "type": "boolean"
+                    },
+                    "stop_after_first_match": {
+                        "type": "boolean"
+                    },
+                    "priority": {
+                        "type": "integer"
+                    },
+                    "conditions": {
+                        "type": "object",
+                        "properties": {
+                            "definitions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "integer"
+                                }
+                            },
+                            "sources": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "jurisdictions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "min_heat": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "min_amount_minor": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "max_amount_minor": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "watchlist": {
+                                "type": "string",
+                                "enum": [
+                                    "any",
+                                    "matched",
+                                    "unmatched"
+                                ]
+                            },
+                            "watchlist_ids": {
+                                "type": "array",
+                                "items": {
+                                    "type": "integer"
+                                }
+                            }
+                        },
+                        "required": [
+                            "definitions",
+                            "sources",
+                            "jurisdictions",
+                            "min_heat",
+                            "min_amount_minor",
+                            "max_amount_minor",
+                            "watchlist",
+                            "watchlist_ids"
+                        ]
+                    },
+                    "actions": {
+                        "type": "array",
+                        "description": "Read back through the DTO rather than echoed from the column, so a value stored by an\nolder release reaches the screen narrowed to the same shape a new one would write.",
+                        "items": {}
+                    },
+                    "actions_count": {
+                        "type": "integer"
+                    },
+                    "has_unknown_steps": {
+                        "type": "boolean"
+                    },
+                    "runs_count": {
+                        "type": "integer",
+                        "description": "How many times it has fired, when the caller asked for the count \u2014 the number that\ntells somebody whether a rehearsal has had a chance to show them anything."
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "updated_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "is_active",
+                    "mode",
+                    "mode_label",
+                    "mode_description",
+                    "is_rehearsing",
+                    "stop_after_first_match",
+                    "priority",
+                    "conditions",
+                    "actions",
+                    "actions_count",
+                    "has_unknown_steps",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "SignalPlaybookResource"
+            },
+            "SignalPlaybookRunResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "playbook_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "playbook_name": {
+                        "type": "string"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": [
+                            "dry_run",
+                            "live"
+                        ]
+                    },
+                    "is_rehearsal": {
+                        "type": "boolean"
+                    },
+                    "signal_id": {
+                        "type": "integer"
+                    },
+                    "signal_headline": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "signal_event_label": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "lead_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "lead_company": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "actor_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "Whose authority the chain acted under, which is what explains the actor on every\ntimeline entry the steps wrote."
+                    },
+                    "applied_count": {
+                        "type": "integer"
+                    },
+                    "refused_count": {
+                        "type": "integer"
+                    },
+                    "failed_count": {
+                        "type": "integer"
+                    },
+                    "needs_attention": {
+                        "type": "boolean"
+                    },
+                    "is_complete": {
+                        "type": "boolean",
+                        "description": "False means the chain was interrupted between claiming the signal and writing what\nit did. The screen says so rather than rendering an empty run as \"matched nothing\"."
+                    },
+                    "steps": {
+                        "type": "array",
+                        "items": {}
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "playbook_id",
+                    "playbook_name",
+                    "mode",
+                    "is_rehearsal",
+                    "signal_id",
+                    "signal_headline",
+                    "signal_event_label",
+                    "lead_id",
+                    "lead_company",
+                    "actor_name",
+                    "applied_count",
+                    "refused_count",
+                    "failed_count",
+                    "needs_attention",
+                    "is_complete",
+                    "steps",
+                    "created_at"
+                ],
+                "title": "SignalPlaybookRunResource"
             },
             "SignalPreviewResource": {
                 "type": "object",

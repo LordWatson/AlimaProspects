@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Signals\Http\Controllers\Web\SignalController;
 use App\Modules\Signals\Http\Controllers\Web\SignalDefinitionController;
+use App\Modules\Signals\Http\Controllers\Web\SignalPlaybookController;
 use App\Modules\Signals\Http\Controllers\Web\SignalTuningController;
 use App\Modules\Signals\Http\Controllers\Web\SignalWatchController;
 use App\Modules\Signals\Http\Controllers\Web\SignalWatchlistController;
@@ -122,6 +123,33 @@ Route::middleware(['auth', 'verified', 'capability:signals'])->group(function ()
         ->whereNumber('watch')
         ->middleware('throttle:signals-run')
         ->name('signal-watches.run');
+
+    // Playbooks (S14) — the rule builder and the run log. Nested under `signals/` for the same
+    // sidebar reason as the other settings screens.
+    //
+    // **Two screens, deliberately.** `activity` paginates and is visited to find out what happened;
+    // the builder is a form visited to change something. Together, the log would reload the whole
+    // builder on every page of history.
+    //
+    // `activity` is placed **before** `{playbook}` so a literal segment is never read as an id —
+    // the same ordering rule `signal-definitions/presets` follows, and for the same reason: relying
+    // on `whereNumber` to disambiguate a literal breaks the day somebody loosens the constraint.
+    Route::get('signals/playbooks', [SignalPlaybookController::class, 'index'])
+        ->name('signal-playbooks.index');
+    Route::get('signals/playbooks/activity', [SignalPlaybookController::class, 'activity'])
+        ->name('signal-playbooks.activity');
+    Route::post('signals/playbooks', [SignalPlaybookController::class, 'store'])
+        ->name('signal-playbooks.store');
+    // No throttle. Unlike the type builder's preview, this one calls no provider and spends no
+    // credit — it evaluates signals the team has already paid for, and its ceiling is the window.
+    Route::post('signals/playbooks/preview', [SignalPlaybookController::class, 'preview'])
+        ->name('signal-playbooks.preview');
+    Route::patch('signals/playbooks/{playbook}', [SignalPlaybookController::class, 'update'])
+        ->whereNumber('playbook')
+        ->name('signal-playbooks.update');
+    Route::delete('signals/playbooks/{playbook}', [SignalPlaybookController::class, 'destroy'])
+        ->whereNumber('playbook')
+        ->name('signal-playbooks.destroy');
 
     // Answering a tuning suggestion (S12). **Two routes and no index**: the suggestions arrive with
     // the watch settings screen rather than from a fetch of their own, because a panel that loaded

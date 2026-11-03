@@ -161,12 +161,18 @@ and enforced per route by `EnsureTokenAbility`:
 
 `leads:*` · `discovery:*` · `icp:*` · `scoring:*` · `outreach:*` · `signals:*` · `insights:*` ·
 
-> **`signals:*` covers signal definitions too** (S7, ADR 0018). A signal type is part of
+> **`signals:*` covers signal definitions, watchlists and playbooks too** (S7/S10/S14 — ADR 0018,
+> 0021, 0024). A signal type is part of
 > Signals, so `/signal-definitions` reuses `signals:read`/`signals:write` rather than getting
 > a scope of its own: a token that could read the feed but not the types it is grouped by is a
 > credential nobody would mean to issue. `GET /signal-definitions/presets` is the read-only
 > platform library and is **not paginated** — it is a curated set measured in tens, and making a
-> client page through it to render a picker would be work for nothing.
+> client page through it to render a picker would be work for nothing. `POST
+> /signal-playbooks/preview` takes **`signals:write`** although it spends nothing and changes
+> nothing: a scope asks what a _credential_ may do (ADR 0013), and previewing means posting a rule,
+> so there is nothing here for a read-only token to preview. The policy is the other half — a
+> read-only _member_ may preview, because reviewing a colleague's rule is exactly the question the
+> most cautious person on the team wants answered.
 > `notifications:*` · `reports:read` · `team:*`
 
 A token without the ability gets `403 insufficient_token_ability`, with what would have been enough

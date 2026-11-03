@@ -70,6 +70,21 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/LeadLogView.vue'),
     },
 
+    /*
+     * The playbook inbox (S14, plan decision #5): what the team's rules did, and what needs a
+     * person. **Reading only** — building rules stays on the web, like settings and discovery.
+     *
+     * The path mirrors the web app's exactly, which is the convention the comment at the top of
+     * this file describes and which earns its keep here: the `playbook_fired` notification carries
+     * `/signals/playbooks/activity` as its `url`, so a tapped push lands on this screen rather than
+     * on the catch-all.
+     */
+    {
+        path: '/signals/playbooks/activity',
+        name: 'playbook-inbox',
+        component: () => import('@/views/PlaybookInboxView.vue'),
+    },
+
     // Anything else — including a push payload pointing at a web-only screen — lands on the bell
     // rather than on a blank page.
     { path: '/:pathMatch(.*)*', redirect: '/tabs/notifications' },

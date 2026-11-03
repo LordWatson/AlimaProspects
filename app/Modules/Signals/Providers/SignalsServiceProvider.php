@@ -15,6 +15,7 @@ use App\Modules\Signals\Console\ClusterSignalsBackfillCommand;
 use App\Modules\Signals\Console\DispatchDueSignalWatchesCommand;
 use App\Modules\Signals\Console\PruneSignalsCommand;
 use App\Modules\Signals\Console\RescoreSignalsCommand;
+use App\Modules\Signals\Contracts\SignalOutreachDrafter;
 use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Events\SignalConverted;
@@ -23,12 +24,15 @@ use App\Modules\Signals\Events\SignalRestored;
 use App\Modules\Signals\Events\SignalsDetected;
 use App\Modules\Signals\Jobs\SyncPipelineWatchlistsJob;
 use App\Modules\Signals\Listeners\RecordSignalOutcome;
+use App\Modules\Signals\Listeners\RunPlaybooks;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Models\SignalPlaybook;
 use App\Modules\Signals\Models\SignalTuningSuggestion;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Policies\SignalDefinitionPolicy;
+use App\Modules\Signals\Policies\SignalPlaybookPolicy;
 use App\Modules\Signals\Policies\SignalPolicy;
 use App\Modules\Signals\Policies\SignalTuningSuggestionPolicy;
 use App\Modules\Signals\Policies\SignalWatchlistPolicy;
@@ -37,6 +41,8 @@ use App\Modules\Signals\Services\CompaniesHouseNumberLookup;
 use App\Modules\Signals\Services\CompaniesHouseSignalSource;
 use App\Modules\Signals\Services\FeedSignalSource;
 use App\Modules\Signals\Services\NewsSignalSource;
+use App\Modules\Signals\Services\NoOutreachDrafting;
+use App\Modules\Signals\Services\PlaybookStepRegistry;
 use App\Modules\Signals\Services\SignalArticleEnricher;
 use App\Modules\Signals\Services\SignalItemNormaliser;
 use App\Modules\Signals\Services\SignalLeadOriginProvider;
@@ -45,6 +51,14 @@ use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Services\WebhookSignalSource;
 use App\Modules\Signals\Services\WebSearchSignalSource;
 use App\Modules\Signals\Support\IgnoredDomains;
+use App\Modules\Signals\Support\Playbook\AddTagHandler;
+use App\Modules\Signals\Support\Playbook\AssignToMemberHandler;
+use App\Modules\Signals\Support\Playbook\AttachToMatchedLeadHandler;
+use App\Modules\Signals\Support\Playbook\ConvertToLeadHandler;
+use App\Modules\Signals\Support\Playbook\CreateTaskHandler;
+use App\Modules\Signals\Support\Playbook\DraftOutreachHandler;
+use App\Modules\Signals\Support\Playbook\MoveToPipelineStageHandler;
+use App\Modules\Signals\Support\Playbook\NotifyHandler;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Repository as Cache;
@@ -65,6 +79,7 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         SignalDefinition::class => SignalDefinitionPolicy::class,
         SignalWatchlist::class => SignalWatchlistPolicy::class,
         SignalTuningSuggestion::class => SignalTuningSuggestionPolicy::class,
+        SignalPlaybook::class => SignalPlaybookPolicy::class,
     ];
 
     public function boot(): void
@@ -146,6 +161,7 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         )->by((string) ($request->user()?->currentTeam?->getKey() ?? $request->ip())));
 
         $this->recordOutcomes();
+        $this->runPlaybooks();
     }
 
     /**
@@ -163,6 +179,24 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         Event::listen(SignalDismissed::class, [RecordSignalOutcome::class, 'dismiss']);
         Event::listen(SignalRestored::class, [RecordSignalOutcome::class, 'restore']);
         Event::listen(SignalConverted::class, [RecordSignalOutcome::class, 'convert']);
+    }
+
+    /**
+     * Playbooks (S14): the two events a signal's life already raises become a rule run.
+     *
+     * Both existing events, and no third one. A rule should fire on a signal arriving, and on one
+     * becoming a lead by somebody's own hand — a team whose rule says "when it becomes a lead,
+     * assign it and draft an intro" means that whether the click came from a rule or from a person.
+     *
+     * Registered here rather than in Notifications, like the outcome recorder above, because this is
+     * the module whose own behaviour the rules describe. Nothing stops a playbook's own conversion
+     * step raising `SignalConverted` and arriving back here: the `(signal_id, playbook_id)` unique
+     * has already claimed that pair, so the second pass finds the claim and returns.
+     */
+    private function runPlaybooks(): void
+    {
+        Event::listen(SignalsDetected::class, [RunPlaybooks::class, 'detected']);
+        Event::listen(SignalConverted::class, [RunPlaybooks::class, 'converted']);
     }
 
     public function register(): void
@@ -268,6 +302,44 @@ final class SignalsServiceProvider extends ModuleServiceProvider
             $app->make(WebContentFetcher::class),
             $app->make(Cache::class),
         ));
+
+        // **The playbook step handlers** (S14) — the same factory seam the source registry is, and
+        // for the same reason: a new kind of step slots in by registering a handler here, not by
+        // growing a `match` inside the executor. A `match` there would be the place a step added to
+        // the enum but not to the executor silently did nothing.
+        //
+        // A singleton, so the registry is built once and a test can register a fake into the same
+        // instance the executor resolves. The handlers themselves are stateless — the per-job spend
+        // counters live on `PlaybookBudget`, which is built fresh per job, precisely because a
+        // counter on a container singleton would carry last job's total into this one.
+        //
+        // Only the kinds that are actually implemented are registered, and the builder reads the
+        // registry rather than the enum: a case declared and not wired up is never offered, the
+        // same separation `SignalSourceKind::isAvailable()` draws one level up (ADR 0023 §3).
+        $this->app->singleton(PlaybookStepRegistry::class, function ($app): PlaybookStepRegistry {
+            $registry = new PlaybookStepRegistry;
+
+            $registry->register($app->make(ConvertToLeadHandler::class));
+            $registry->register($app->make(AttachToMatchedLeadHandler::class));
+            $registry->register($app->make(AssignToMemberHandler::class));
+            $registry->register($app->make(MoveToPipelineStageHandler::class));
+            $registry->register($app->make(AddTagHandler::class));
+            $registry->register($app->make(NotifyHandler::class));
+            $registry->register($app->make(DraftOutreachHandler::class));
+            $registry->register($app->make(CreateTaskHandler::class));
+
+            return $registry;
+        });
+
+        // How a playbook prepares an approach (S14, docs/compliance.md §3.12). **Signals' own
+        // contract, with a refusing default** — Outreach's provider, which registers after this
+        // one, binds the real implementation over it. Nothing in this module imports
+        // `App\Modules\Outreach`.
+        //
+        // The default is conservative rather than permissive, unlike the seams Compliance and Admin
+        // decorate: the question is "may this prospect be approached", and a default that answered
+        // yes would be Signals settling a compliance question Outreach exists to settle.
+        $this->app->bind(SignalOutreachDrafter::class, NoOutreachDrafting::class);
 
         // Tell the Leads Workspace how to show a converted signal on the lead detail screen (S4).
         // The dependency points this way on purpose: Signals already knows about leads because it

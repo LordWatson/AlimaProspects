@@ -7,6 +7,7 @@ use App\Modules\Core\Enums\Capability;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalDefinitionController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalEventController;
+use App\Modules\Signals\Http\Controllers\Api\V1\SignalPlaybookController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalWatchController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalWatchlistController;
 use Illuminate\Support\Facades\Route;
@@ -105,6 +106,42 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->whereNumber('definition')
         ->middleware('ability:'.TokenAbility::SignalsWrite->value)
         ->name('signal-definitions.destroy');
+
+    /*
+     * Playbooks (S14). `SignalsRead`/`SignalsWrite` rather than a scope of their own, for the same
+     * reason the definition and watchlist routes share them: a playbook is part of Signals, and a
+     * token that could read the feed but not the rules acting on it is a credential nobody would
+     * mean to issue.
+     *
+     * `runs` and `preview` are both before `{playbook}`, so a literal segment is never read as an
+     * id. `preview` takes a **write** ability although it spends nothing and changes nothing: a
+     * scope asks what a credential may do (ADR 0013), and previewing means posting a rule — there
+     * is nothing here for a read-only token to preview.
+     */
+    Route::get('signal-playbooks', [SignalPlaybookController::class, 'index'])
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-playbooks.index');
+    Route::get('signal-playbooks/runs', [SignalPlaybookController::class, 'runs'])
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-playbooks.runs');
+    Route::post('signal-playbooks/preview', [SignalPlaybookController::class, 'preview'])
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-playbooks.preview');
+    Route::post('signal-playbooks', [SignalPlaybookController::class, 'store'])
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-playbooks.store');
+    Route::get('signal-playbooks/{playbook}', [SignalPlaybookController::class, 'show'])
+        ->whereNumber('playbook')
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-playbooks.show');
+    Route::patch('signal-playbooks/{playbook}', [SignalPlaybookController::class, 'update'])
+        ->whereNumber('playbook')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-playbooks.update');
+    Route::delete('signal-playbooks/{playbook}', [SignalPlaybookController::class, 'destroy'])
+        ->whereNumber('playbook')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-playbooks.destroy');
 
     // Watchlists (S10). `SignalsRead`/`SignalsWrite` rather than a scope of their own: a
     // watchlist is where a watch looks, and a token that could read the feed but not the accounts

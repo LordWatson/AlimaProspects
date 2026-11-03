@@ -5,6 +5,64 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-11-03 — Signals: rules, hardened
+
+Review of the rules feature below found three things worth knowing about, and all of them are fixed.
+
+**A rule could act on a signal you had already dismissed** — making the lead and writing a draft for
+something you had said no to. It now leaves a dismissed signal completely alone. Your decision
+stands.
+
+**A busy morning quietly lost its tail.** There is a limit on how many leads one check may create
+and how many drafts it may write, and signals past that limit were being refused permanently rather
+than waiting their turn. The same went for a very large check: anything past its ceiling was dropped
+and never handled. Both now come back on the next pass, so a long run finishes the job over a few
+passes instead of doing part of it once.
+
+**A problem with a rule could cost you a search.** If anything went wrong while queuing a rule, the
+signal check that had just finished was marked failed — and retried, re-running the paid search it
+had already done. A rule's problems are now its own.
+
+Also: the activity log now says when a rule started on a signal and did not finish, rather than
+showing it as having done nothing; a rule that is only rehearsing can no longer change what your
+live rules do; a rule stops acting as somebody whose access has since been reduced; and the log no
+longer reports a label as added when your lead was already at its limit.
+
+On the screens: the "something needs fixing" links at the top of the rule builder now take you to
+the field that is wrong, reordering a step keeps your place on the keyboard, a rehearsed step is no
+longer shown with the same tick as one that really happened, and the Arabic reads properly in the
+summary rows. You can now also narrow a rule to particular account lists, which was previously
+possible only through the API.
+
+### Added — 2026-11-03 — Signals: rules that handle the morning for you
+
+A signal arriving can now become work Alima does for you. A **rule** says _when a signal looks like
+this, do these things_ — make the lead, hand it to someone, move it to a stage, label it, put a task
+on somebody's list, tell the right person, and write an approach for you to read.
+
+**It never sends anything.** A rule can write a message and keep it as a draft for a person to read,
+and it will refuse even that where the prospect may not be approached — a UAE prospect who has not
+given consent, or anybody on your do-not-contact list. When it refuses, the log says so, says which
+rule said no, and says what to do instead. That is a decision about how the product works rather
+than a limitation we will lift later.
+
+**A new rule rehearses.** It watches for a week, records what it _would_ have done, and changes
+nothing. Reading that log is how you decide whether to switch it on, and switching it on is one
+button. Before you even save it, "check the last few days" tells you how many of the signals you
+already have it would have picked — "4 of 120" is a rule you can switch on; "118 of 120" is one to
+narrow first.
+
+**Everything a rule does is written down**, including the things it declined to do and the ones that
+did not apply. Removing a rule keeps its history: the explanation for why a lead is where it is does
+not disappear with the rule that put it there.
+
+Four limits keep it safe without anybody configuring them: a rule handles any one signal once and
+only once; there is a ceiling on how many leads one check may create and how many drafts it may
+write; and a rehearsal spends nothing.
+
+On the phone you get the half that matters in the field: **what fired, and what needs you** — the
+refusals first. Rules are built on the web.
+
 ### Fixed — 2026-11-03 — Signals: the three new sources, hardened
 
 Review found a set of problems in the three sources added above, and all of them are fixed. The ones

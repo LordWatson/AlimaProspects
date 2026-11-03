@@ -315,6 +315,39 @@ class SignalsException extends DomainException
     }
 
     /**
+     * The team already has as many playbooks as they are allowed (S14).
+     *
+     * The same reasoning as every other ceiling in this module, with one addition: a rule is
+     * evaluated against **every** signal, so each one is a standing cost on every run as well as a
+     * standing instruction to act. Pausing is the way out, which is why the message says so.
+     */
+    public static function tooManyPlaybooks(int $max): self
+    {
+        $e = new self("You can have up to {$max} rules. Pause or remove one to add another.");
+        $e->errorCode = 'signals.too_many_playbooks';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * A playbook was saved with a step that cannot do anything — a stage move with no stage, a
+     * draft with no channel this deployment offers (S14).
+     *
+     * The web form reports these field by field through its own error bag; this is the answer for
+     * the API and for any future caller with no form, so an invalid rule cannot be stored by the
+     * path that happened not to validate it.
+     */
+    public static function playbookIncomplete(string $problem): self
+    {
+        $e = new self($problem);
+        $e->errorCode = 'signals.playbook_incomplete';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
      * A signal type is still attached to one or more watches, so removing it would quietly change
      * what those watches look for.
      *

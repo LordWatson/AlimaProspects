@@ -61,6 +61,21 @@ enum NotificationType: string
      */
     case SignalOnAccount = 'signal_on_account';
 
+    /**
+     * A playbook fired, and something was done — or refused — without anybody asking (S14).
+     *
+     * Its own case rather than a variant of {@see self::SignalOnAccount}, because the thing that
+     * happened is different in kind: not "news about your account" but "Alima acted on your behalf,
+     * here is what it did". That is also why it is the one Signals notification somebody should be
+     * able to switch off separately — a team happy with the feed may not want telling every time
+     * their own rule works.
+     *
+     * **Aggregated per rule and per recipient**, by `PlaybookNotices`: a rule that fired on twelve
+     * of a morning's signals sends one message saying twelve. A watch runs daily, so the
+     * alternative is a feature somebody switches off inside a week.
+     */
+    case PlaybookFired = 'playbook_fired';
+
     // --- AI Insights (Phase 14) ---
     /**
      * The day's insights are ready: what has gone cold, who is worth a call, and what Alima made
@@ -128,6 +143,7 @@ enum NotificationType: string
             self::LeadAssigned => 'A lead is assigned to me',
             self::SignalsDetected => 'New signals arrive',
             self::SignalOnAccount => 'Something happens to an account I am working',
+            self::PlaybookFired => 'One of my rules does something',
             self::InsightsReady => 'The daily insights are ready',
             self::CreditLow => 'An allowance is running low',
             self::PaymentFailed => 'A payment fails',
@@ -146,6 +162,7 @@ enum NotificationType: string
             self::LeadAssigned => 'When a colleague gives you a lead to work.',
             self::SignalsDetected => 'When a watch finds a new trigger event.',
             self::SignalOnAccount => 'When Alima finds news about a company already in your pipeline. Sent to whoever is working it.',
+            self::PlaybookFired => 'When a playbook acts on a signal, or declines to. One message per rule per check.',
             self::InsightsReady => 'Each morning: who is going cold, and who is worth a call today.',
             self::CreditLow => 'Owners and admins only — work stops when a plan allowance runs out.',
             self::PaymentFailed => 'Owners and admins only — a card was declined and the subscription is at risk.',
@@ -167,7 +184,9 @@ enum NotificationType: string
             // belongs beside "a lead is assigned to me" rather than beside "new signals arrive".
             // A member who switched off discovery noise has not asked to stop hearing about their
             // own pipeline.
-            self::SignalOnAccount, self::TaskDue, self::LeadAssigned => NotificationGroup::MyWork,
+            // My work, because the whole point of a rule is that it handed somebody something:
+            // a lead to pick up, a task to do, a draft to read.
+            self::SignalOnAccount, self::PlaybookFired, self::TaskDue, self::LeadAssigned => NotificationGroup::MyWork,
             self::CreditLow, self::PaymentFailed, self::AssessmentReviewDue, self::Announcement => NotificationGroup::Account,
             // With the digest rather than with Finding: both are a round-up a member reads once a
             // day, and both are the kind of thing somebody switches off together.
@@ -215,6 +234,15 @@ enum NotificationType: string
                 NotificationChannel::InApp,
                 NotificationChannel::Push,
             ],
+            // In-app and a buzz, but **no email by default**, and the asymmetry with
+            // `SignalOnAccount` above is deliberate. An event at an account somebody is working is
+            // news they would be cross to have missed; a rule they wrote doing what they told it to
+            // is confirmation. Emailing confirmations daily is how we teach people to filter us —
+            // and then they miss the refusals, which are the rows that matter.
+            self::PlaybookFired => [
+                NotificationChannel::InApp,
+                NotificationChannel::Push,
+            ],
             // A daily email nobody asked for is the fastest way to be filtered — and then the
             // task reminder above goes to the same folder. So the insights arrive in the app and
             // on the phone, and a member who wants them in their inbox turns email on.
@@ -241,8 +269,11 @@ enum NotificationType: string
             // likely to produce a phone call, which is the point of the feature.
             self::TaskDue, self::LeadAssigned, self::CreditLow, self::Digest,
             self::PaymentFailed, self::AssessmentReviewDue, self::SignalOnAccount => false,
+            // Digestible: a rule doing what it was told is confirmation, and tomorrow's round-up
+            // is soon enough for a member who asked for one. The draft it prepared is waiting
+            // either way, and the refusals are in the run log rather than in the notification.
             self::DiscoveryComplete, self::TopLeads, self::SignalsDetected, self::InsightsReady,
-            self::Announcement => true,
+            self::Announcement, self::PlaybookFired => true,
         };
     }
 
