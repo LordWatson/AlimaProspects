@@ -59,6 +59,19 @@ that returned eight copies of one event was wrong, and a client cannot have been
 duplication. A client that wants every article has `cluster.sources`, which carries each one's id,
 outlet, link and date.
 
+**A second one (Signals S13a, 2026-11-03).** A signal now records **which source found it**, and a
+signal definition records which sources it runs on. Both changes are additive: `GET /api/v1/signals`
+gained `source_kind`, `source_kind_label` and `matched_template` (the last nullable, for a source
+that does not search by keyword), and `/api/v1/signal-definitions` gained `source_keys`.
+
+The write side is where the compatibility rule mattered. `source_keys` on a definition is
+**`nullable`**, and a payload that omits it stores `["news"]` — which is what every definition
+created before this release does, so an existing client that has never heard of sources keeps
+behaving exactly as it did. An **explicitly empty** array is a `422`: omitting the field means "the
+default" and sending `[]` means "search nowhere", and only one of those is a request anybody meant.
+A key for a source with no implementation behind it (`companies_house`, `feed`, `webhook` today) is
+also a `422` rather than a stored value that would quietly contribute no searches.
+
 ## 3. Authentication and token scopes
 
 ```http

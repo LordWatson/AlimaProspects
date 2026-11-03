@@ -5,6 +5,42 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-03 — Signals: a signal type can watch more than the news
+
+A signal type meant one thing — a news search — and three of the events teams most want to hear
+about never reach a news desk. A planning decision appears in a council's register, an award in the
+organiser's own press release, a new office on the company's blog. So **where to look** is now part
+of a signal type, and the type form offers it with each source's trade-off written down rather than
+sold: web search finds events the press missed, and finds more noise with them.
+
+Behind it, a source is a registry entry rather than a hard-wired client, mirroring how lead
+providers already work. Each source gets its own circuit breaker, so a team running both does not
+lose their news when web search is unwell; each is priced separately, and the cost line on the type
+form moves as a source is ticked, because one template on two sources is two paid searches on every
+run. A card names its source when that is not the news — most cards are news, and badging all of
+them would distinguish nothing — and the "why you're seeing this" panel now also names **the query
+that found it**, which it could not do before because no row stored it.
+
+Operations gained the matching half: `/admin/signal-runs` shows what each source cost, found and had
+refused, with each source's breaker beside it.
+
+**Two things the live spike changed.** Serper refuses `site:` and quoted-phrase queries outright on
+this account tier, and the old client treated that as the provider being unreachable — and
+_retryable_. So one template a member had typed with a quotation mark in it failed their whole
+watch, was retried three times (re-paying for every other search each time), and told them the news
+service was down. A refused query is now skipped and recorded, the run finishes, and the breaker
+stays shut: a provider's health and a query's validity are different questions.
+
+And the planned job-postings source was **dropped on the evidence**, not built. A job advert is not a
+trigger event — the events it was meant to find (a hiring surge, a new office, a new function) are
+patterns _over_ postings, which need counting per company over time, and the hiring-surge signal has
+been shipping on news since the vertical packs landed. The spike table and the reasoning are in the
+module doc so nobody pays to learn it twice.
+
+Companies House filings, RSS feeds and an inbound events API are the next step; the decision record
+covers all three, including why a pushed event is never trusted to set its own score or its own
+jurisdiction.
+
 ### Added — 2026-11-03 — Signals: a ranked feed that can explain itself
 
 The feed was in date order, which answered "what is newest" and never "what is worth my morning".

@@ -1026,7 +1026,8 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | S10   | Watchlists & account monitoring                 | ☑ **Done** 2026-11-02 | S7, S8       |
 | S11   | Clustering & redirect-safe dedupe               | ☑ **Done** 2026-11-03 | S7           |
 | S12   | Ranking, learning & explainability              | ☑ **Done** 2026-11-03 | S7, S11      |
-| S13   | Pluggable signal sources                        | ☐ Not started         | S7, S8       |
+| S13a  | Pluggable sources: registry, web search         | ☑ **Done** 2026-11-03 | S7, S8       |
+| S13b  | Companies House, RSS feeds, inbound webhook     | ☐ Not started         | S13a         |
 | S14   | Playbooks                                       | ☐ Not started         | S7, S10, S12 |
 | S15   | Delivery, ROI & curated library                 | ☐ Not started         | S9, S12      |
 | S16   | Cost governance, limits, retention & close-out  | ☐ Not started         | S7–S15       |
@@ -1035,6 +1036,62 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 **Recommended first release:** S7–S11 + S16 — definitions, geography, the builder, account
 monitoring and clustering, which together change what the feature _is_. S12–S15 then compound
 on it.
+
+## S13a, as shipped — the phase was split, and four deviations
+
+**The phase was split, with the plan's own blessing.** S13 asked for nine tasks: a registry, five
+sources, an inbound webhook, per-source cost and health, and the UI for all of it. Its risk note
+offered the split — _"ship **S13a** (registry + web-search + job postings) and **S13b** (Companies
+House + RSS + webhook) — the registry is the part everything else depends on"_ — and that is what
+happened. **ADR 0023 was written whole**, including the trust model for inbound events and the
+AI-skipping shape change a registry filing needs, so S13b implements decisions rather than taking
+them.
+
+**1. `JobPostingSignalSource` was dropped, which the task authorised and the spike required.** Task 4
+said to spike it first and _"if the result is poor, say so in the doc and drop it rather than
+shipping a pack that finds nothing"_. It is poor for three structural reasons, and the third is not
+about this week: `site:` queries are refused outright on this account tier so no board can be
+targeted; half the results are board **index pages** ("11 Operations manager jobs in London"); and a
+job advert **is not a trigger event** — the events the plan wanted (a hiring surge, a new office, a
+new function) are _patterns over_ postings, which require counting postings per company over time and
+which a search-and-classify source cannot compute. The signal it wanted is already shipping as
+`rec_hiring_surge` on `/news`. The table and the reasoning are in `docs/modules/signals.md` so
+nobody spikes it a second time.
+
+**2. The spike found a defect the plan did not know about, and fixing it is ADR 0023 §4.** Serper
+answers a `site:` or quoted-phrase query with `HTTP 400 "Query pattern not allowed for free
+accounts."`. That is a 4xx, so it correctly never tripped the breaker — but the old client raised
+`newsProviderFailed()` for _any_ failed response and **that exception is retryable**. So one template
+a member had typed with a quotation mark in it failed their whole watch, was retried three times
+(re-paying for every other query in the plan each time), and reported "We couldn't reach the news
+service": untrue, and unfixable by them. A refused _pattern_ is now a non-retryable
+`sourceQueryRejected()` caught **per query**, counted under `rejected` on
+`signal_runs.source_breakdown`, with the rest of the plan proceeding and the breaker untouched. A run
+whose every query was refused **completes having found nothing**, because nothing is broken.
+
+This also reframes S10's finding. Its table recorded "every quoted query returned zero, twelve of
+twelve" and concluded Google serves quoted queries badly with a recency window. The conclusion — an
+entity query is a bare name — survives; the stated reason was wrong, and the real one is that the
+account tier never accepted the pattern.
+
+**3. Two DTOs were renamed, and a Core-adjacent contract was deleted rather than deprecated.** The
+plan named only `NewsItem`; `SignalQuery` had become equally untrue, and the plan's own
+`fetch(SignalSourceQuery)` signature named its replacement. `NewsSearchClient` and `SerperNewsClient`
+are gone rather than kept as aliases: they are internal to the module, 23 files referenced them, and
+a deprecated spelling kept "for safety" is how two names for one concept survive into the next
+phase. `NewsSignalSource`'s behaviour is unchanged and `SerperNewsClientTest`'s cases moved with it.
+
+**4. `signals.matched_template` was added, closing an S12 deviation a phase early.** S12 recorded
+that its explanation panel could not name the query that found a signal, because no row stored it,
+and said the column was "worth doing in S13, where a signal will also have to record which _source_
+found it". Both columns land in the same migration, and the panel now names the template.
+
+**What this leaves for S13b.** `SignalSourceKind` declares `companies_house`, `feed` and `webhook`
+and `isAvailable()` returns false for all three, so the form does not offer them and a definition
+cannot be saved against one. `SourceItem::$classification` and `isClassified()` exist with every
+source returning null, which is the seam a registry filing uses to skip the AI batch (ADR 0023 §6) —
+so S13b adds a source rather than reshaping a run. `signal_definitions.source_config` is the column a
+feed URL and a SIC-code list go in, and a provider is already handed only its own slice of it.
 
 ## S7, as shipped — two deviations from the plan above
 
@@ -1173,7 +1230,7 @@ by writing the row you expect.
 | 0020 | The signal builder: an AI that writes configuration is drafted, bounded, previewed     | S9    |
 | 0021 | Account monitoring: a watch can be pointed at companies instead of places              | S10   |
 | 0022 | A ranked feed that can explain itself, and a product that proposes rather than retunes | S12   |
-| 0023 | Signal sources are a registry, and an inbound event is untrusted                       | S13   |
+| 0023 | Signal sources are a registry, and an inbound event is untrusted                       | S13a  |
 
 S11 introduced no ADR: clustering changed what a row _means_ but took no decision the module doc
 does not record. The numbers above are the ones actually written — the planned numbering for S9 and

@@ -106,7 +106,7 @@ flowchart TD
 | 8   | Enrichment & Data Quality     | MVP                         | `modules/enrichment-data-quality.md`     |
 | 9   | Scoring & Matching            | MVP                         | `modules/scoring-matching.md`            |
 | 10  | Leads Workspace               | MVP                         | `modules/leads-workspace.md`             |
-| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S12      | `modules/signals.md`                     |
+| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S13a     | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (built, Phase 11)       | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (built, Phase 13)       | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | MVP (built, Phase 14)       | `modules/ai-insights.md`                 |
@@ -201,6 +201,24 @@ flowchart TD
   asked again, change nothing and nobody pays twice. The counters on a cluster are a **record over
   its rows** rather than a tally the app increments, the same shape `usage_meters` has over the
   ledgers (ADR 0012).
+- **A provider's health and a query's validity are different questions (Signals, S13a, ADR 0023):**
+  a signal source sits behind `Signals\Contracts\SignalSourceProvider` and a
+  `SignalSourceRegistry`, mirroring Lead Sourcing's pair (ADR 0008) deliberately — same shape, same
+  hardening, a breaker **keyed per source** so a team running news and web search does not lose
+  their news when `/search` is unwell. Two things about it generalise. First, **the enum/row test
+  cuts the other way here than it did at S7.** A signal _type_ is a row because nothing branches on
+  it; a signal _source_ is an enum because a class exists per case — `fetch()` for a registry filing
+  is not a different configuration of the news one, it is different code with a different
+  credential — so a team cannot invent one and a case with nothing behind it is a bug, which is what
+  `SignalSourceKind::isAvailable()` says out loud. Second, and more widely useful: a 4xx from a
+  provider has **two meanings** and conflating them is expensive. Serper answers a `site:` or quoted
+  template with a 400, and treating that as a provider failure made one team's bad template fail
+  their whole run — three times over, re-paying for every other query in it — and report an outage
+  that was not happening. So a breaker answers _is this provider up?_ and
+  `SignalsException::sourceQueryRejected()` answers _was that a sensible thing to ask it?_: not
+  retryable, breaker untouched, caught per query, counted on the run, and the rest of the plan
+  proceeds. Any later integration that lets a customer compose part of a request has the same split
+  to make.
 - **A ranking nobody can interrogate is worse than date order (Signals, S12):** the feed is ordered
   by a `heat` a member can open and read the working of, and three parts of how that was built
   generalise. **Unknown is not zero.** `SignalScorer` weighs eight components and leaves one it
