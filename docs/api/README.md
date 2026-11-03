@@ -59,6 +59,43 @@ that returned eight copies of one event was wrong, and a client cannot have been
 duplication. A client that wants every article has `cluster.sources`, which carries each one's id,
 outlet, link and date.
 
+**A new endpoint, and the only one that is not a resource (Signals S13b, 2026-11-03).**
+`POST /api/v1/signal-events` accepts an event a customer's own system pushes. It is unlike every
+other route in this contract in three ways, each of them deliberate:
+
+- **It answers 202, not 201**, and a replay answers 202 as well. The event has been _accepted_, not
+  acted upon: it is classified, scored and clustered by the next run of a watch that uses its signal
+  type. There is no resource to go and read, because a pushed event is not a signal until Alima has
+  decided it is one. A retrying client asked for the event to exist, and it does — `data.created`
+  distinguishes the call that stored it.
+- **It is signed as well as authenticated.** The token says which team; an HMAC-SHA256 over
+  `{timestamp}.{raw body}`, in the `X-Signal-Signature` header with the timestamp in
+  `X-Signal-Timestamp`, says the payload is intact and is not a replay. The secret is per **signal
+  type**, created on the type's own screen and shown exactly once. The signature covers the _raw_
+  bytes, so a proxy that re-encodes the JSON will invalidate it.
+- **It has its own rate limit**, separate from the shared `api` bucket, because a webhook's caller is
+  a machine that will retry in a loop — and a loop against the shared bucket would lock a customer
+  out of every endpoint they would need to diagnose it with.
+
+Fields the body may carry: `event_type` (a signal type's **key**, resolved within the authenticated
+team), `idempotency_key`, `title`, `summary`, `url`, `source_name`, `occurred_at`, `company_name`,
+`person_name`. Fields it may **not**, which are stripped rather than rejected: `heat`,
+`score_breakdown`, `confidence`, `relevance`, `jurisdiction`, `resolved_market`, `lead_id`,
+`matched_lead_id`, `team_id`, `signal_definition_id`, `status`. Each is a conclusion the product
+reaches rather than an input, and the jurisdiction pair is not a matter of taste — it decides which
+outreach restriction a converted lead carries.
+
+Every refusal answers the same way. A bad signature, an unknown `event_type`, a key belonging to
+another team and a stale timestamp are all `403` with one message, because the differences are an
+oracle: "that key exists but the signature is wrong" is how somebody enumerates another tenant's
+signal types.
+
+Also additive on the existing endpoints: `/signal-definitions` gained `source_config` (a feed's
+address, the registry filings a type claims) and, **where the server loaded it**,
+`webhook_secret_hint` and `webhook_secret_used_at` — the tail of the secret and when it was last
+used, never the secret. Those two keys are absent rather than null when not loaded, which is the
+same `whenLoaded` contract `watches_count` follows.
+
 **A second one (Signals S13a, 2026-11-03).** A signal now records **which source found it**, and a
 signal definition records which sources it runs on. Both changes are additive: `GET /api/v1/signals`
 gained `source_kind`, `source_kind_label` and `matched_template` (the last nullable, for a source

@@ -1027,7 +1027,7 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | S11   | Clustering & redirect-safe dedupe               | ☑ **Done** 2026-11-03 | S7           |
 | S12   | Ranking, learning & explainability              | ☑ **Done** 2026-11-03 | S7, S11      |
 | S13a  | Pluggable sources: registry, web search         | ☑ **Done** 2026-11-03 | S7, S8       |
-| S13b  | Companies House, RSS feeds, inbound webhook     | ☐ Not started         | S13a         |
+| S13b  | Companies House, RSS feeds, inbound webhook     | ☑ **Done** 2026-11-03 | S13a         |
 | S14   | Playbooks                                       | ☐ Not started         | S7, S10, S12 |
 | S15   | Delivery, ROI & curated library                 | ☐ Not started         | S9, S12      |
 | S16   | Cost governance, limits, retention & close-out  | ☐ Not started         | S7–S15       |
@@ -1036,6 +1036,69 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 **Recommended first release:** S7–S11 + S16 — definitions, geography, the builder, account
 monitoring and clustering, which together change what the feature _is_. S12–S15 then compound
 on it.
+
+## S13b, as shipped — three deviations and a design the plan did not ask for
+
+**1. The topical half of task 5 does not exist, and the spike is why.** The task asked for filings
+polled "for a watchlist (S10) **or by SIC code + region for a topical watch**". There is no
+cross-company filings endpoint — `/filing-history` and `/search/filings` both 404 — so filings can
+only be polled per company, by number. `/advanced-search/companies` _can_ answer incorporations and
+dissolutions, and measured **2,422 new London software companies in one month for one SIC code**,
+which is a list rather than a trigger event about a prospect; its default ordering is by company
+number, so a capped version would have the cap rather than the relevance decide what a team saw. So
+Companies House is **entity-scoped**, enforced by the builder having nothing to address rather than
+by a flag, and a topical watch gets no registry queries. The table is in `docs/modules/signals.md`.
+
+**2. The webhook stores rather than processes, which is not how task 7 reads.** The task describes an
+endpoint whose "payload becomes a signal … classified and scored like any other". It does — but not
+synchronously. `POST /api/v1/signal-events` accepts and stores a `signal_inbound_events` row, and
+`WebhookSignalSource` reads it back on the next run of a watch like any other source. Two reasons,
+and the first is the one that matters: ADR 0023 §7's promise that "the customer supplies an
+observation; Alima still decides what it means" is only _true_ if the deciding happens in the code
+that decides for every other source, and a separate ingestion path would have been a second place
+for thresholds, clustering, scoring and jurisdiction to drift — in the one place a caller's
+assertions are most tempting to believe. The second is cost: a customer's integration retries in a
+loop, and classifying at acceptance would make a retry storm an AI bill. The price is latency and
+one silent state — an event pushed to a type nobody watches is stored, swept, and never classified —
+both recorded under Known limitations.
+
+It also meant the phase did **not** need `RunSignalWatchAction` opened up to share its clustering and
+scoring, which was the riskiest thing on the plan.
+
+**3. The secret is encrypted, not hashed — a correction made mid-build.** The first design hashed it,
+which cannot work: a signature is an HMAC over the raw body, so verifying one means _recomputing_ it,
+which needs the secret itself. A hash can check a secret somebody presents; it cannot check a
+signature they derived from one. The alternatives were both worse — ask the caller to send the secret
+on every request (throwing away the body integrity and replay binding the HMAC exists for) or not
+verify at all. It is stored under Laravel's `encrypted` cast and the docblock says plainly that this
+is the protection available for a shared secret the verifier must use, rather than implying a one-way
+hash it is not.
+
+**4. The builder grew a third addressing shape, which the plan did not anticipate.** A query-based
+source takes a string and multiplies out by place, region and template. The registry takes a company
+number — one query per account, no multiplication. A feed and the webhook take what is on the
+definition — one query each. `SignalSourceKind::addressesSubject()` is the discriminator, and
+building the third shape is what actually made the **feed** reachable: it was registered and tested
+in isolation at the previous commit and never asked for a query, because the entity path required a
+company number and the topical path only emitted query-based kinds.
+
+**What the tests found, and it is the S12 lesson repeating.** Three bugs, all in code shared beyond
+this phase, each surfaced by a test written for a _new_ behaviour rather than by review:
+
+- `SafeUrl::normalise()` prepended `https://` to anything without an http prefix, so
+  `file:///etc/passwd` became `https://file:///etc/passwd` — scheme `https`, host `file`,
+  unresolvable, allowed through. Inherited from `HttpWebContentFetcher`, where only website fields
+  reached it; a customer-supplied feed URL walked straight past the guard.
+- `retryWhen()` was typed `Throwable`, but Laravel gates that callback on `Response::successful()`
+  rather than `failed()` and hands it `$response->toException()` — which is `null` for a 3xx. A
+  latent `TypeError` that no source could reach until one used HTTP caching properly and got a 304.
+- The registry resolver cached a transport failure as "not on the register", permanently. Its
+  outcome is now three-valued, like `WebContentFetcher::fetchLines()` and for the same reason: a
+  caller enforcing a rule has to tell "there is no such thing" from "we could not find out".
+
+**S13 is now complete, and `SignalSourceKind` has no declared-but-unoffered case left** — all five
+have a provider. `isAvailable()` stays, because it is the mechanism that lets the next source be
+declared before it is wired.
 
 ## S13a, as shipped — the phase was split, and four deviations
 
@@ -1223,14 +1286,14 @@ by writing the row you expect.
 
 ## New ADRs this plan introduces
 
-| ADR  | Title                                                                                  | Phase |
-| ---- | -------------------------------------------------------------------------------------- | ----- |
-| 0018 | Signal definitions are data, not an enum (and the preset library is platform data)     | S7    |
-| 0019 | Search geography is not the compliance market; the restriction follows the subject     | S8    |
-| 0020 | The signal builder: an AI that writes configuration is drafted, bounded, previewed     | S9    |
-| 0021 | Account monitoring: a watch can be pointed at companies instead of places              | S10   |
-| 0022 | A ranked feed that can explain itself, and a product that proposes rather than retunes | S12   |
-| 0023 | Signal sources are a registry, and an inbound event is untrusted                       | S13a  |
+| ADR  | Title                                                                                  | Phase  |
+| ---- | -------------------------------------------------------------------------------------- | ------ |
+| 0018 | Signal definitions are data, not an enum (and the preset library is platform data)     | S7     |
+| 0019 | Search geography is not the compliance market; the restriction follows the subject     | S8     |
+| 0020 | The signal builder: an AI that writes configuration is drafted, bounded, previewed     | S9     |
+| 0021 | Account monitoring: a watch can be pointed at companies instead of places              | S10    |
+| 0022 | A ranked feed that can explain itself, and a product that proposes rather than retunes | S12    |
+| 0023 | Signal sources are a registry, and an inbound event is untrusted                       | S13a/b |
 
 S11 introduced no ADR: clustering changed what a row _means_ but took no decision the module doc
 does not record. The numbers above are the ones actually written — the planned numbering for S9 and

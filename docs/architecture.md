@@ -106,7 +106,7 @@ flowchart TD
 | 8   | Enrichment & Data Quality     | MVP                         | `modules/enrichment-data-quality.md`     |
 | 9   | Scoring & Matching            | MVP                         | `modules/scoring-matching.md`            |
 | 10  | Leads Workspace               | MVP                         | `modules/leads-workspace.md`             |
-| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S13a     | `modules/signals.md`                     |
+| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S13      | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (built, Phase 11)       | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (built, Phase 13)       | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | MVP (built, Phase 14)       | `modules/ai-insights.md`                 |
@@ -201,6 +201,26 @@ flowchart TD
   asked again, change nothing and nobody pays twice. The counters on a cluster are a **record over
   its rows** rather than a tally the app increments, the same shape `usage_meters` has over the
   ledgers (ADR 0012).
+- **Some data arrives already true (Signals, S13b, ADR 0023 §6):** a Companies House filing is
+  not a sentence to be interpreted — the registry has parsed the form, so `description_values`
+  carries the officer's name and the date and `transaction_id` is a stable identity. `SourceItem`
+  therefore carries an optional `classification`, and a source that populates it skips the AI batch
+  entirely: classifying a registry fact with a language model would spend money to make a certainty
+  less certain. Two rules keep that from becoming "trust me". Only code **we** wrote against an
+  authoritative provider may populate it — never the inbound webhook, whose events are classified
+  by the same prompt as a news snippet _precisely because_ a customer supplied them. And a skipped
+  classification still passes the type's own thresholds, because a source asserts a confidence and
+  does not assert that the team wants the event. The general shape is worth keeping: **a trust
+  boundary is a property of where data came from, not of what it looks like** — and the two
+  sources that look most alike on arrival, a parsed filing and a pushed event, sit on opposite sides
+  of it.
+- **Accepting is not processing (Signals, S13b, ADR 0023 §7):** the inbound webhook stores the
+  event and the next watch run reads it back through an ordinary source. That keeps one pipeline for
+  thresholds, clustering, scoring and jurisdiction — a second ingestion path would be a second
+  place for all four to drift, in the one place a caller's own assertions are most tempting to
+  believe — and it stops a customer's retry loop from being able to trigger an AI call. The cost
+  is latency measured in one watch cadence, which is the right trade whenever the expensive half of
+  a pipeline is already written and the cheap half is the part exposed to the outside.
 - **A provider's health and a query's validity are different questions (Signals, S13a, ADR 0023):**
   a signal source sits behind `Signals\Contracts\SignalSourceProvider` and a
   `SignalSourceRegistry`, mirroring Lead Sourcing's pair (ADR 0008) deliberately — same shape, same

@@ -5,6 +5,35 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-03 — Signals: the registry, a feed, and your own events
+
+Three more places a signal type can watch, and each one answers a different complaint.
+
+**Companies House.** For the companies on a watchlist, Alima now reads what they file: a director
+appointed or resigned, a change of ownership, a charge registered, an insolvency notice. This is the
+cheapest and most certain thing in the product — the registry has already parsed the form, so there
+is nothing to guess and no AI to pay for, and the event arrives with the officer's name and the date
+attached. It is free.
+
+What it does **not** do is watch a whole sector: filings can only be read one company at a time, so
+this follows the accounts you have told us you care about. We looked at the alternative — every new
+company registered in a sector and a city — and it came to 2,422 in a month. That is a list, not a
+reason to pick up the phone.
+
+**A feed you choose.** Paste the address of an industry newsletter, a regulator's notices or a trade
+portal's press releases, and everything it publishes is read. For a niche sector that often beats
+any search, because the publication nobody else reads is the one your competitors are not watching.
+
+**Your own events.** `POST /api/v1/signal-events` lets your systems push events to Alima — a renewal
+closed, a usage threshold crossed, whatever your business treats as a moment worth acting on. Each
+signal type gets its own signing secret, shown once, and every request is signed, time-limited and
+safe to retry. Pushed events are read and judged exactly like news: you tell us what happened, and
+Alima still decides whether it is worth your morning. That is deliberate — an event that could set
+its own score could put itself at the top of somebody's day.
+
+Together these finish what a signal type can be: the press, the wider web, the public record, a
+publication you trust, and your own data.
+
 ### Added — 2026-11-03 — Signals: a signal type can watch more than the news
 
 A signal type meant one thing — a news search — and three of the events teams most want to hear
