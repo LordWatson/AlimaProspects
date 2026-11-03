@@ -226,11 +226,28 @@ abstract class AbstractHttpSignalSourceProvider implements SignalSourceProvider
      *
      * A 4xx is our fault; retrying it wastes time and can double-bill a paid provider.
      *
-     * @return Closure(Throwable): bool
+     * **The parameter is nullable, and that is a bug fix rather than defensiveness** (S13b).
+     * Laravel gates this callback on `Response::successful()` — 200–299 — rather than on
+     * `failed()`, so a **3xx** response reaches it too, and hands it `$response->toException()`,
+     * which is `null` for a status that is unsuccessful without having failed. Typed `Throwable`,
+     * that was a `TypeError` escaping the retry helper, surfacing in `guarded()`'s catch-all as a
+     * generic source failure.
+     *
+     * No source could reach it before: Serper POSTs return 200, 4xx or 5xx. The RSS source can,
+     * because a conditional GET's whole purpose is to answer **304 Not Modified** — so the one
+     * source that uses HTTP caching properly was the one that found this.
+     *
+     * Null means "the response did not fail", which is nothing to retry.
+     *
+     * @return Closure(Throwable|null): bool
      */
     protected function retryWhen(): Closure
     {
-        return static function (Throwable $e): bool {
+        return static function (?Throwable $e): bool {
+            if ($e === null) {
+                return false;
+            }
+
             if ($e instanceof ConnectionException) {
                 return true;
             }

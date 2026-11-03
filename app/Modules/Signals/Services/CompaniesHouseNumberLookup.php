@@ -195,11 +195,20 @@ final class CompaniesHouseNumberLookup
     }
 
     /**
-     * @return Closure(Throwable): bool
+     * Retry only on a connection error, a 5xx or a 429.
+     *
+     * Nullable for the reason `AbstractHttpSignalSourceProvider::retryWhen()` documents: Laravel
+     * gates this on `successful()` rather than `failed()`, so a 3xx arrives with a null exception.
+     *
+     * @return Closure(Throwable|null): bool
      */
     private function retryWhen(): Closure
     {
-        return static function (Throwable $e): bool {
+        return static function (?Throwable $e): bool {
+            if ($e === null) {
+                return false;
+            }
+
             if ($e instanceof ConnectionException) {
                 return true;
             }

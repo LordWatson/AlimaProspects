@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Core\Services;
 
 use App\Modules\Core\Contracts\WebContentFetcher;
+use App\Modules\Core\Support\Security\SafeUrl;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Psr\Http\Message\UriInterface;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -136,100 +136,29 @@ final class HttpWebContentFetcher implements WebContentFetcher
     /**
      * Accept a bare domain or a full URL; reject anything that isn't http(s).
      */
+    /**
+     * Normalise a user-supplied address, or null when it cannot be one.
+     *
+     * Delegated to {@see SafeUrl} since Signals S13b, when a second caller needed the same rule.
+     */
     private function normaliseUrl(?string $url): ?string
     {
-        $url = trim((string) $url);
-
-        if ($url === '') {
-            return null;
-        }
-
-        if (! Str::startsWith($url, ['http://', 'https://'])) {
-            $url = 'https://'.$url;
-        }
-
-        $scheme = parse_url($url, PHP_URL_SCHEME);
-
-        if (! in_array($scheme, ['http', 'https'], strict: true)) {
-            return null;
-        }
-
-        return $url;
+        return SafeUrl::normalise($url);
     }
 
     /**
      * Reject non-http(s) schemes, non-standard ports, and hosts that resolve to a non-public address
      * (loopback, private, link-local or reserved) — the core SSRF guard.
+     *
+     * **One copy, in {@see SafeUrl}.** It lived here as three private methods while this class was
+     * the only thing fetching a customer-supplied address; Signals' RSS source is the second, and it
+     * needs response headers and a conditional GET that this class's contract does not express. A
+     * second copy of an SSRF guard that is 1% more permissive is a hole nobody notices, because the
+     * permissive copy passes every test the strict one does.
      */
     private function assertSafeUrl(string $url): void
     {
-        $parts = parse_url($url);
-        $scheme = $parts['scheme'] ?? null;
-        $host = $parts['host'] ?? null;
-        $port = $parts['port'] ?? null;
-
-        if (! in_array($scheme, ['http', 'https'], strict: true) || ! is_string($host) || $host === '') {
-            throw new RuntimeException('Disallowed URL scheme or host.');
-        }
-
-        // parse_url keeps the brackets on an IPv6 literal host (e.g. "[::1]"); strip them so the
-        // address validates and can't slip past the private-range check as an unresolvable "host".
-        $host = trim($host, '[]');
-
-        if ($port !== null && ! in_array((int) $port, [80, 443], strict: true)) {
-            throw new RuntimeException('Disallowed port.');
-        }
-
-        foreach ($this->resolveIps($host) as $ip) {
-            if ($this->isBlockedIp($ip)) {
-                throw new RuntimeException('URL resolves to a non-public address.');
-            }
-        }
-    }
-
-    /**
-     * Resolve a host to the IPs it points at. A host given as an IP literal resolves to itself. A
-     * host that can't be resolved yields no IPs — treated as safe to attempt (the request then just
-     * fails on connect), so we never block a legitimate site on a flaky DNS lookup.
-     *
-     * @return list<string>
-     */
-    private function resolveIps(string $host): array
-    {
-        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
-            return [$host];
-        }
-
-        $ips = [];
-
-        $v4 = gethostbynamel($host);
-        if (is_array($v4)) {
-            $ips = $v4;
-        }
-
-        // IPv6, when present.
-        $records = @dns_get_record($host, DNS_AAAA);
-        if (is_array($records)) {
-            foreach ($records as $record) {
-                if (isset($record['ipv6']) && is_string($record['ipv6'])) {
-                    $ips[] = $record['ipv6'];
-                }
-            }
-        }
-
-        return array_values(array_unique($ips));
-    }
-
-    /**
-     * True for any address outside the public internet (loopback, private, link-local, reserved).
-     */
-    private function isBlockedIp(string $ip): bool
-    {
-        return filter_var(
-            $ip,
-            FILTER_VALIDATE_IP,
-            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE,
-        ) === false;
+        SafeUrl::assert($url);
     }
 
     /**

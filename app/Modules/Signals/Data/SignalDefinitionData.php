@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Data;
 
 use App\Modules\Core\Enums\Market;
+use App\Modules\Core\Support\Security\SafeUrl;
 use App\Modules\Signals\Enums\SignalCategory;
 use App\Modules\Signals\Enums\SignalIcon;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Http\Requests\SaveSignalDefinitionRequest;
 use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Rules\SafeFeedUrl;
 use Illuminate\Support\Str;
 use Spatie\LaravelData\Data;
 
@@ -54,6 +56,12 @@ final class SignalDefinitionData extends Data
 
     public const int MAX_HINT = 255;
 
+    /** `signals.source_url` is `string(2048)`, and a feed URL is stored in json beside it. */
+    public const int MAX_FEED_URL = 2048;
+
+    /** Filing codes or categories one type may claim. More than this is a type doing two jobs. */
+    public const int MAX_FILINGS = 25;
+
     /**
      * @param  list<string>  $queryTemplates
      * @param  list<string>  $matchKeywords
@@ -87,6 +95,14 @@ final class SignalDefinitionData extends Data
         public readonly ?array $markets = null,
         public readonly bool $isActive = true,
         public readonly ?array $sourceKinds = null,
+        /**
+         * Per-source settings, keyed by source (S13b) — a feed's URL today, a filing map for the
+         * registry. Null means "not mentioned", exactly as `$sourceKinds` does and for the same
+         * compatibility reason: an update that omits it leaves the stored configuration alone.
+         *
+         * @var array<string, array<string, mixed>>|null
+         */
+        public readonly ?array $sourceConfig = null,
     ) {}
 
     /**
@@ -119,6 +135,9 @@ final class SignalDefinitionData extends Data
             // the key's presence can tell them apart.
             sourceKinds: array_key_exists('source_keys', $validated)
                 ? self::sources($validated['source_keys'])
+                : null,
+            sourceConfig: array_key_exists('source_config', $validated)
+                ? self::sourceConfig($validated['source_config'])
                 : null,
         );
     }
@@ -170,6 +189,13 @@ final class SignalDefinitionData extends Data
             );
         }
 
+        // Same rule, same reason: absent means "leave the stored configuration alone", and an empty
+        // array means "clear it" — which is a real request, because unticking a feed should not
+        // leave its URL behind on the row.
+        if ($this->sourceConfig !== null) {
+            $attributes['source_config'] = $this->sourceConfig === [] ? null : $this->sourceConfig;
+        }
+
         return $attributes;
     }
 
@@ -207,6 +233,19 @@ final class SignalDefinitionData extends Data
             // same reason `SearchRegion`'s unoffered regions are not accepted either (ADR 0019 §2a).
             'source_keys' => ['nullable', 'array', 'min:1', 'max:'.count(SignalSourceKind::available())],
             'source_keys.*' => ['string', 'distinct', 'in:'.implode(',', SignalSourceKind::availableValues())],
+            // Per-source settings (S13b). Only the shapes a source actually reads are validated;
+            // anything else is dropped by `sourceConfig()` rather than rejected, so a client sending
+            // a key for a source it does not know about is not an error.
+            'source_config' => ['nullable', 'array'],
+            'source_config.feed' => ['nullable', 'array'],
+            // **`ActiveUrl` is deliberately not used.** The question is not "does this resolve" but
+            // "may this application fetch it", which is `SafeUrl`'s — scheme, port and whether the
+            // host lands on the public internet. A member deserves that answer beside the field
+            // rather than from a worker three hours later.
+            'source_config.feed.url' => ['nullable', 'string', 'max:'.self::MAX_FEED_URL, new SafeFeedUrl],
+            'source_config.companies_house' => ['nullable', 'array'],
+            'source_config.companies_house.filings' => ['nullable', 'array', 'max:'.self::MAX_FILINGS],
+            'source_config.companies_house.filings.*' => ['string', 'distinct', 'max:64'],
         ];
     }
 
@@ -254,6 +293,63 @@ final class SignalDefinitionData extends Data
         }
 
         return array_slice($out, 0, $maxItems);
+    }
+
+    /**
+     * Per-source settings, reduced to the shapes a source actually reads (S13b).
+     *
+     * **An allowlist, not a pass-through.** This column is json written from a request body, and a
+     * provider is handed its own slice of it — so anything not named here is dropped rather than
+     * stored. A caller cannot use it as free storage, and a future source cannot be configured by
+     * accident before its code exists.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function sourceConfig(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+
+        $feedUrl = self::text(
+            is_array($value['feed'] ?? null) ? ($value['feed']['url'] ?? null) : null,
+            self::MAX_FEED_URL,
+        );
+
+        if ($feedUrl !== null) {
+            // Stored normalised, so the poll-interval floor and the conditional-GET cache — both
+            // keyed on the URL — agree about what "the same feed" is whether somebody typed the
+            // scheme or not.
+            $out['feed'] = ['url' => SafeUrl::normalise($feedUrl) ?? $feedUrl];
+        }
+
+        $filings = is_array($value['companies_house'] ?? null)
+            ? ($value['companies_house']['filings'] ?? null)
+            : null;
+
+        $codes = [];
+
+        foreach (is_array($filings) ? $filings : [] as $code) {
+            if (! is_string($code)) {
+                continue;
+            }
+
+            // Lower-cased here as well as at lookup time, so the stored row reads the way the map
+            // is keyed and a member who typed `AP01` sees why it matched.
+            $clean = Str::lower(Str::squish($code));
+
+            if ($clean !== '' && ! in_array($clean, $codes, strict: true)) {
+                $codes[] = $clean;
+            }
+        }
+
+        if ($codes !== []) {
+            $out['companies_house'] = ['filings' => array_slice($codes, 0, self::MAX_FILINGS)];
+        }
+
+        return $out;
     }
 
     /**

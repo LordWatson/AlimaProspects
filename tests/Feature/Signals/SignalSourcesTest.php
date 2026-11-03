@@ -430,11 +430,11 @@ it('refuses a source with no implementation behind it', function (): void {
     // The same rule `SearchRegion`'s unoffered regions follow (ADR 0019 §2a): a declared case with
     // nothing behind it would be a type that contributes no queries and says nothing about why.
     //
-    // `feed` rather than `companies_house`, which was the example until S13b gave it an
-    // implementation — the assertion is about availability, so it has to name a case that still
-    // genuinely has none.
+    // `webhook` rather than `companies_house` or `feed`, both of which S13b gave implementations —
+    // the assertion is about availability, so it has to name the case that still genuinely has
+    // none. When S13b's webhook ships, this names whatever is declared and not offered then.
     $this->actingAs($user)
-        ->post('/signals/types', definitionPayload(['source_keys' => ['feed']]))
+        ->post('/signals/types', definitionPayload(['source_keys' => ['webhook']]))
         ->assertSessionHasErrors('source_keys.0');
 });
 
@@ -706,4 +706,122 @@ it('leaves every seeded platform preset running on the news', function (): void 
         expect($preset->sourceKinds())->toBe([SignalSourceKind::News])
             ->and($preset->usesSource(SignalSourceKind::WebSearch))->toBeFalse();
     }
+});
+
+// --- A feed is configuration, and configuration is bounded (S13b) -----------------------------
+
+it('saves a feed URL against a type', function (): void {
+    $user = createUserWithTeam();
+    $team = $user->currentTeam;
+
+    $this->actingAs($user)
+        ->post('/signals/types', definitionPayload([
+            'source_keys' => ['feed'],
+            'source_config' => ['feed' => ['url' => 'example.com/feed.xml']],
+        ]))
+        ->assertRedirect();
+
+    $definition = SignalDefinition::withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
+
+    // Stored **normalised**, so the poll-interval floor and the conditional-GET cache — both keyed
+    // on the URL — agree about what "the same feed" is whether somebody typed the scheme or not.
+    expect($definition->sourceConfig(SignalSourceKind::Feed)['url'])->toBe('https://example.com/feed.xml');
+});
+
+it('refuses a feed URL this application may not fetch', function (): void {
+    $user = createUserWithTeam();
+
+    // Validated at the earliest useful moment: a member deserves this beside the field, not a
+    // source that silently finds nothing and a warning in a log nobody reads. The source still
+    // re-checks before every request, because DNS can change under a name that passed here.
+    foreach (['http://127.0.0.1/feed.xml', 'http://169.254.169.254/latest/meta-data/', 'file:///etc/passwd'] as $url) {
+        $this->actingAs($user)
+            ->post('/signals/types', definitionPayload([
+                'source_keys' => ['feed'],
+                'source_config' => ['feed' => ['url' => $url]],
+            ]))
+            ->assertSessionHasErrors('source_config.feed.url');
+    }
+});
+
+it('refuses more feeds than the team is allowed', function (): void {
+    config()->set('signals.sources.feed.max_per_team', 1);
+
+    $user = createUserWithTeam();
+
+    $this->actingAs($user)
+        ->post('/signals/types', definitionPayload([
+            'name' => 'First feed',
+            'source_keys' => ['feed'],
+            'source_config' => ['feed' => ['url' => 'https://one.example.com/feed.xml']],
+        ]))
+        ->assertRedirect();
+
+    // Each feed is a standing outbound request from our infrastructure to an address a customer
+    // chose, which is the same reason watches and types have ceilings. The poll floor bounds how
+    // *often* one is fetched; this bounds how many exist.
+    //
+    // A domain refusal rather than a validation error, so it lands as an error toast — the same way
+    // the type ceiling and `definition_in_use` do on this screen.
+    $this->actingAs($user)
+        ->from(route('signal-definitions.index'))
+        ->post('/signals/types', definitionPayload([
+            'name' => 'Second feed',
+            'source_keys' => ['feed'],
+            'source_config' => ['feed' => ['url' => 'https://two.example.com/feed.xml']],
+        ]))
+        ->assertRedirect(route('signal-definitions.index'))
+        ->assertSessionHas('inertia.flash_data.toast.type', 'error');
+});
+
+it('lets a team edit the type that already holds their only allowed feed', function (): void {
+    config()->set('signals.sources.feed.max_per_team', 1);
+
+    $user = createUserWithTeam();
+    $team = $user->currentTeam;
+
+    $this->actingAs($user)
+        ->post('/signals/types', definitionPayload([
+            'source_keys' => ['feed'],
+            'source_config' => ['feed' => ['url' => 'https://one.example.com/feed.xml']],
+        ]))
+        ->assertRedirect();
+
+    $definition = SignalDefinition::withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
+
+    // Counted over the team's **other** types, so editing a type that already has a feed does not
+    // fail because of its own.
+    $this->actingAs($user)
+        ->patch('/signals/types/'.$definition->getKey(), definitionPayload([
+            'name' => 'Renamed',
+            'source_keys' => ['feed'],
+            'source_config' => ['feed' => ['url' => 'https://one.example.com/other.xml']],
+        ]))
+        ->assertRedirect();
+
+    expect($definition->refresh()->sourceConfig(SignalSourceKind::Feed)['url'])
+        ->toBe('https://one.example.com/other.xml');
+});
+
+it('stores only the per-source keys a source actually reads', function (): void {
+    $user = createUserWithTeam();
+    $team = $user->currentTeam;
+
+    $this->actingAs($user)
+        ->post('/signals/types', definitionPayload([
+            'source_keys' => ['companies_house'],
+            'source_config' => [
+                'companies_house' => ['filings' => ['AP01', 'ap01', ' TM01 ']],
+                // Not a source this build knows, and not storage for a caller's own data.
+                'pigeon_post' => ['secret' => 'hunter2'],
+            ],
+        ]))
+        ->assertRedirect();
+
+    $definition = SignalDefinition::withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
+
+    // An allowlist, not a pass-through: this column is json written from a request body, so
+    // anything not named is dropped rather than stored. Lower-cased and de-duplicated, so the row
+    // reads the way the filing map is keyed.
+    expect($definition->source_config)->toBe(['companies_house' => ['filings' => ['ap01', 'tm01']]]);
 });

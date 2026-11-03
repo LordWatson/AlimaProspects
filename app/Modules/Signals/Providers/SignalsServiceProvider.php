@@ -35,6 +35,7 @@ use App\Modules\Signals\Policies\SignalWatchlistPolicy;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
 use App\Modules\Signals\Services\CompaniesHouseNumberLookup;
 use App\Modules\Signals\Services\CompaniesHouseSignalSource;
+use App\Modules\Signals\Services\FeedSignalSource;
 use App\Modules\Signals\Services\NewsSignalSource;
 use App\Modules\Signals\Services\SignalArticleEnricher;
 use App\Modules\Signals\Services\SignalItemNormaliser;
@@ -192,6 +193,17 @@ final class SignalsServiceProvider extends ModuleServiceProvider
                 $app->make(HttpFactory::class),
                 $this->leadSourcingBreaker($app),
                 $app->make(SignalItemNormaliser::class),
+            ));
+
+            // RSS/Atom (S13b). Its own `signals:cb` key like the Serper sources — a feed is a
+            // different host per team, so the breaker here guards *our* client rather than one
+            // provider's health, and tripping it should not touch anybody's news.
+            $registry->register(new FeedSignalSource(
+                $app->make(HttpFactory::class),
+                $this->sourceBreaker($app),
+                $app->make(SignalItemNormaliser::class),
+                $app->make(IgnoredDomains::class),
+                $app->make(Cache::class),
             ));
 
             return $registry;

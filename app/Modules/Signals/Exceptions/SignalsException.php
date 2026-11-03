@@ -134,6 +134,22 @@ class SignalsException extends DomainException
     }
 
     /**
+     * The team already has as many feeds as their plan allows (S13b).
+     *
+     * A ceiling on **creating** them, like the watch and type ceilings and for the same reason: each
+     * feed is a standing outbound request from our infrastructure to an address a customer chose,
+     * and polite rate limiting bounds how often one is fetched rather than how many exist.
+     */
+    public static function tooManyFeeds(int $max): self
+    {
+        $e = new self('You can watch up to '.$max.' feeds. Remove one from another signal type first.');
+        $e->errorCode = 'signals.too_many_feeds';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
      * No provider is registered for a source key (S13) — the registry's refusal.
      *
      * Raised where a *member* named the source, so it is worth telling them. A **run** meeting a

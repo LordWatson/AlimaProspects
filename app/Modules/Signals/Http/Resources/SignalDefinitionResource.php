@@ -59,6 +59,18 @@ final class SignalDefinitionResource extends JsonResource
                 static fn (SignalSourceKind $kind): string => $kind->value,
                 $definition->sourceKinds(),
             ),
+            // Per-source settings (S13b) — a feed's URL today. Only the sources that need
+            // configuring appear, so the form shows a field for a feed and nothing for the news.
+            // Never the stored column: the keys a source reads are an allowlist, and echoing the
+            // raw json back would make this endpoint a mirror for whatever a caller put in it.
+            'source_config' => array_filter([
+                'feed' => $definition->sourceConfig(SignalSourceKind::Feed) === []
+                    ? null
+                    : ['url' => $definition->sourceConfig(SignalSourceKind::Feed)['url'] ?? null],
+                'companies_house' => $definition->sourceConfig(SignalSourceKind::CompaniesHouse) === []
+                    ? null
+                    : ['filings' => $definition->sourceConfig(SignalSourceKind::CompaniesHouse)['filings'] ?? []],
+            ], static fn (mixed $value): bool => $value !== null),
             'match_keywords' => $definition->match_keywords ?? [],
             'includes' => $definition->includes(),
             'excludes' => $definition->excludes(),

@@ -9,6 +9,7 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Data\SignalDefinitionData;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Policies\SignalDefinitionPolicy;
@@ -57,6 +58,11 @@ final class SaveSignalDefinitionAction
         return $this->teamContext->run($team, fn (): SignalDefinition => DB::transaction(function () use ($team, $actor, $data, $definition): SignalDefinition {
             $attributes = $data->toAttributes();
 
+            // Per-team feed ceiling (S13b). Checked here rather than in the FormRequest because it
+            // is a question about the team's other rows, which only an Action can ask — and on both
+            // create and update, because adding a feed to an existing type adds a feed.
+            $this->assertRoomForFeed($team, $data, $definition);
+
             if ($definition instanceof SignalDefinition) {
                 $definition->forceFill([
                     ...$attributes,
@@ -83,6 +89,45 @@ final class SaveSignalDefinitionAction
 
             return $created;
         }));
+    }
+
+    /**
+     * Refuse a feed once the team already has as many as they are allowed (S13b).
+     *
+     * Counted over the team's **other** types, so editing a type that already has a feed does not
+     * fail because of its own. A type that is not gaining one is not checked at all, which keeps the
+     * query off the common path.
+     *
+     * The ceiling is on existing feeds rather than on how often they are polled, because the two
+     * bound different things: the poll floor protects a publisher from us, and this protects us from
+     * a team configuring four hundred outbound requests.
+     *
+     * @throws SignalsException
+     */
+    private function assertRoomForFeed(Team $team, SignalDefinitionData $data, ?SignalDefinition $definition): void
+    {
+        $config = $data->sourceConfig;
+
+        // Null means the caller did not mention sources at all, so nothing is being added.
+        if ($config === null || ($config['feed']['url'] ?? null) === null) {
+            return;
+        }
+
+        $max = max(0, (int) config('signals.sources.feed.max_per_team', 10));
+
+        $others = SignalDefinition::query()
+            ->where('team_id', $team->getKey())
+            ->when(
+                $definition instanceof SignalDefinition,
+                fn ($query) => $query->whereKeyNot($definition->getKey()),
+            )
+            ->get()
+            ->filter(static fn (SignalDefinition $other): bool => ($other->sourceConfig(SignalSourceKind::Feed)['url'] ?? null) !== null)
+            ->count();
+
+        if ($others >= $max) {
+            throw SignalsException::tooManyFeeds($max);
+        }
     }
 
     /**

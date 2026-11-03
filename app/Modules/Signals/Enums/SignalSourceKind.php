@@ -67,9 +67,18 @@ enum SignalSourceKind: string
     /**
      * An RSS/Atom feed a team pastes in (S13b).
      *
-     * **Declared, not offered.** Needs SSRF-safe URL validation, conditional GET, a size cap, a
-     * poll-interval floor and a per-team feed count — none of which are shipped yet, and a case
-     * offered without them is an outbound request to wherever somebody types.
+     * **The opposite of a search source.** The two Serper sources look for what Google indexed; a
+     * feed is a publication a team already trusts, read in full. For a niche sector that is often
+     * better than any search, because the newsletter nobody else reads is the one a competitor is
+     * not watching.
+     *
+     * Its entries are **not** structured: a feed entry is prose somebody wrote, so it is classified
+     * by the same prompt as a news article. Only an authoritative, already-parsed source may assert
+     * its own event (ADR 0023 §6).
+     *
+     * It is the one source whose **address a customer supplies**, so it is the one with an SSRF
+     * surface: `Core\Support\Security\SafeUrl`, no redirects followed, a conditional GET, a byte
+     * cap, a poll-interval floor per feed URL, and a per-team feed count on the save path.
      */
     case Feed = 'feed';
 
@@ -113,7 +122,7 @@ enum SignalSourceKind: string
             self::News => 'Press coverage. The most reliable source, and the one every signal type starts with.',
             self::WebSearch => 'The wider web — planning decisions, award announcements, a company’s own blog. Finds events the press missed, and finds more noise with them.',
             self::CompaniesHouse => 'UK filings for the accounts on a watchlist: officer and ownership changes, insolvency, charges. Structured and certain, so nothing is guessed — and free.',
-            self::Feed => 'An industry newsletter, a regulator’s filings feed, a portal’s press releases.',
+            self::Feed => 'An industry newsletter, a regulator’s filings feed, a portal’s press releases. Everything it publishes is read, so a focused feed beats a broad one.',
             self::Webhook => 'Events your own systems push to Alima.',
         };
     }
@@ -129,8 +138,8 @@ enum SignalSourceKind: string
     public function isAvailable(): bool
     {
         return match ($this) {
-            self::News, self::WebSearch, self::CompaniesHouse => true,
-            self::Feed, self::Webhook => false,
+            self::News, self::WebSearch, self::CompaniesHouse, self::Feed => true,
+            self::Webhook => false,
         };
     }
 
@@ -146,6 +155,18 @@ enum SignalSourceKind: string
             self::News, self::WebSearch => true,
             self::CompaniesHouse, self::Feed, self::Webhook => false,
         };
+    }
+
+    /**
+     * Whether a definition has to configure this source before it does anything (S13b).
+     *
+     * A feed needs a URL; news and web search need only the templates the type already has. The
+     * form asks for the extra field when this is true, rather than letting somebody tick a source
+     * that will quietly contribute nothing.
+     */
+    public function needsConfiguration(): bool
+    {
+        return $this === self::Feed;
     }
 
     /**

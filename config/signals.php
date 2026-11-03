@@ -583,9 +583,60 @@ return [
             'resolve_per_run' => (int) env('SIGNALS_CH_RESOLVE_PER_RUN', 10),
         ],
 
+        /*
+         * An RSS/Atom feed a team chose (S13b).
+         *
+         * **The one source whose address a customer supplies**, so every value here is a bound on
+         * an outbound request from our infrastructure to wherever somebody typed. The SSRF guard
+         * itself is not configurable — `Core\Support\Security\SafeUrl`, shared with
+         * `HttpWebContentFetcher` rather than copied, and redirects are never followed.
+         *
+         * Free to fetch; what a feed costs is the AI that classifies what comes out of it.
+         */
         'feed' => [
             'cost_micros_per_request' => 0,
+
+            // A feed syndicating a competitor's blog is exactly what a team's own skip list is for,
+            // so there is nothing source-specific to add here — the global list and the team's both
+            // apply, and a feed is chosen deliberately rather than found by a search.
             'ignore_domains' => [],
+
+            'timeout' => (int) env('SIGNALS_FEED_TIMEOUT', 10),
+            'connect_timeout' => (int) env('SIGNALS_FEED_CONNECT_TIMEOUT', 5),
+
+            // One retry, not two. A feed is somebody else's server and the next run is an hour
+            // away; hammering a small publisher is how we get blocked.
+            'retry_times' => (int) env('SIGNALS_FEED_RETRY_TIMES', 1),
+            'retry_sleep_ms' => (int) env('SIGNALS_FEED_RETRY_SLEEP_MS', 250),
+
+            // Read off a **streamed** body, so a feed that is secretly a 2GB file cannot exhaust a
+            // queue worker. Two megabytes is a very large feed; the biggest legitimate ones are
+            // a few hundred kilobytes.
+            'max_bytes' => (int) env('SIGNALS_FEED_MAX_BYTES', 2_000_000),
+
+            // Entries taken from one poll. A feed that publishes a hundred items a day is a wire
+            // service, and reading all of it would make the AI bill the feature's main cost.
+            'max_items' => (int) env('SIGNALS_FEED_MAX_ITEMS', 40),
+
+            // **The politeness floor, per feed URL rather than per watch.** A watch may run hourly
+            // and three watches may point at the same newsletter; without this that is three
+            // requests an hour to a publisher who will reasonably block us. One fetch, read by
+            // whoever is watching.
+            'min_poll_minutes' => (int) env('SIGNALS_FEED_MIN_POLL_MINUTES', 60),
+
+            // How long an `ETag`/`Last-Modified` pair is kept for the conditional GET. In the cache
+            // rather than on a row: these are a courtesy to the publisher, and losing them costs
+            // one full fetch.
+            'validator_ttl_days' => (int) env('SIGNALS_FEED_VALIDATOR_TTL_DAYS', 30),
+
+            // How many feeds one team may configure across all their signal types. Each one is a
+            // standing outbound request to an address we did not choose, which is the same reason
+            // watches and types have ceilings.
+            'max_per_team' => (int) env('SIGNALS_FEED_MAX_PER_TEAM', 10),
+
+            // Identifies us to publishers, so one that wants to block or rate-limit us can, and so
+            // a webmaster reading their logs can tell who we are.
+            'user_agent' => env('SIGNALS_FEED_USER_AGENT', 'AlimaProspects/1.0 (+signals)'),
         ],
 
         'webhook' => [
