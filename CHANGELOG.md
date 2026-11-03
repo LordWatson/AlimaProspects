@@ -71,6 +71,22 @@ still turn a feature off for one tenant or for everybody, and the AI credit allo
 
 Both default to on, so a deployment that does not ask for them sees no change.
 
+### Fixed — 2026-11-03 — the test suite stopped depending on your `.env`
+
+Turning Stripe or plan enforcement off in your own `.env` — which is what those switches are for —
+used to make about forty tests fail, in Billing, Admin, AI Platform, Notifications and Signals. The
+switches are deployment settings read from the environment, and the suite was quietly inheriting
+them, so it stopped asserting the behaviour it exists to assert and blamed whatever you were working
+on. The test environment pins them on now, and the one file that deliberately turns them off puts
+them back properly afterwards.
+
+Two more of the same shape, found while fixing it. A running `npm run dev` suppresses the content
+security policy on purpose, which made two tests _about_ the policy fail on any machine with a dev
+server up; they now describe the built environment they are about, and a new test proves the dev
+server skip still happens. And the AI response cache made a couple of new Signals tests pass for
+the wrong reason — a second run over the same article was a cache hit, which looks exactly like the
+de-duplication having worked — so the tests that count AI calls now turn it off.
+
 ### Changed — 2026-11-02 — the operations panel got a front page, a way to navigate it, and the brand
 
 The verdict was "every page is boring, navigation is terrible, there are no graphs, there's no

@@ -118,6 +118,8 @@ Nine times in ten this is the CSP, and the browser console says so in as many wo
 Two things the policy does **not** cover, so you are not surprised:
 
 - **It is not emitted while `npm run dev` is running.** Vue injects component styles from JavaScript with no nonce, so a policy that held locally would hold by breaking the page. Test the policy against a built environment, or against `npm run build` locally.
+    - **The rule has a test now, and the policy's own tests no longer depend on your machine.** `SecurityHeadersTest` points Vite's hot file at a path that cannot exist, so the assertions about the policy describe the built environment they are about — before that, a running dev server (or a stale `public/hot` left by one that was killed) turned two of them red for a reason nowhere near the change in front of you, and CI never saw it because CI has no dev server. One test deliberately puts a hot file back to prove the skip still happens, which is what stops somebody tidying the check away.
+    - If you are **deleting a stale hot file** to get the policy back locally, `public/hot` is the file; it is gitignored, and `npm run build` does not remove it.
 - **`/pulse` and `/horizon` are exempt** (`security.csp.except`). Both inject inline Livewire and Alpine bootstrapping we cannot nonce. They are behind four access controls instead.
 
 ### HSTS is missing

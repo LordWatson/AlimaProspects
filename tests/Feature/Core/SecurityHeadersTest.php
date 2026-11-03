@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Core\Support\Security\ContentSecurityPolicy;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Vite;
 
 /*
  * The response security headers (Phase 20, ADR 0017).
@@ -14,6 +15,43 @@ use Illuminate\Support\Facades\Route;
  * the route that turned out not to be in the group. `SecurityHeaders` is global middleware, and
  * these assertions are what hold it there.
  */
+
+/*
+ * **The dev server is switched off for this file**, and that is the second environment leak this
+ * suite had. `SecurityHeaders` deliberately omits the policy while Vite is serving (ADR 0017: a
+ * nonce policy and a hot-reload client cannot both be right), and it decides that by looking for
+ * `public/hot`. So a developer with `npm run dev` running — or merely a stale hot file left by one
+ * that was killed — got no policy and two failures in a file about the policy, for a reason
+ * nowhere near their change. CI has no dev server, so it never saw it.
+ *
+ * Pointing the hot file at a path that cannot exist makes these assertions describe the built
+ * environment they are about, which is also the environment they run in everywhere else.
+ */
+beforeEach(function (): void {
+    Vite::useHotFile(storage_path('framework/testing/vite-hot-absent'));
+});
+
+it('sends no policy while the vite dev server is running', function (): void {
+    // The rule the rest of this file switches off, asserted once. It is in ADR 0017's list of five
+    // things about the security posture that are easy to get wrong, and until now nothing held it:
+    // somebody tidying the middleware could have dropped the check and every test here would still
+    // have been green (on a machine with no dev server) or still red (on one with).
+    $hot = storage_path('framework/testing/vite-hot-present');
+
+    @mkdir(dirname($hot), recursive: true);
+    file_put_contents($hot, 'http://localhost:5173');
+    Vite::useHotFile($hot);
+
+    try {
+        $response = $this->get('/');
+
+        expect($response->headers->has('Content-Security-Policy'))->toBeFalse()
+            // The headers that do not depend on a nonce still apply.
+            ->and($response->headers->get('X-Content-Type-Options'))->toBe('nosniff');
+    } finally {
+        @unlink($hot);
+    }
+});
 
 it('sends the base headers on a web response', function (): void {
     $response = $this->get('/');

@@ -62,16 +62,49 @@ function reboot(array $env): void
     Artisan::call('migrate');
 }
 
+/** The switches this file moves, and therefore the ones it has to put back. */
+const SWITCHES = ['BILLING_ENFORCE_PLANS', 'BILLING_STRIPE_ENABLED'];
+
 /**
- * Put the environment back.
+ * What the suite's environment says before this test touched anything.
+ *
+ * `phpunit.xml` pins both switches on, which is what makes the rest of the suite exercise the
+ * enforced behaviour. Captured rather than assumed.
+ */
+beforeEach(function (): void {
+    $this->switchesBefore = [];
+
+    foreach (SWITCHES as $key) {
+        $value = getenv($key);
+        $this->switchesBefore[$key] = $value === false ? null : $value;
+    }
+});
+
+/**
+ * Put the environment back **as it was**, not as empty.
  *
  * Without this the next *file* in the same process inherits the switch, which would turn plan
- * enforcement off for a suite that is asserting it.
+ * enforcement off for a suite that is asserting it. An earlier version *unset* the variables
+ * instead, which looked equivalent and was not: with nothing in the environment the next boot
+ * falls through to the developer's own `.env`, so a machine with `BILLING_ENFORCE_PLANS=false` in
+ * it leaked the switch into every file that ran after this one — thirty-odd failures in Billing,
+ * Admin, AI Platform and Notifications, none of them about the change in front of you.
  */
 afterEach(function (): void {
-    foreach (['BILLING_ENFORCE_PLANS', 'BILLING_STRIPE_ENABLED'] as $key) {
-        putenv($key);
-        unset($_ENV[$key], $_SERVER[$key]);
+    /** @var array<string, string|null> $before */
+    $before = $this->switchesBefore ?? [];
+
+    foreach ($before as $key => $value) {
+        if ($value === null) {
+            putenv($key);
+            unset($_ENV[$key], $_SERVER[$key]);
+
+            continue;
+        }
+
+        putenv("{$key}={$value}");
+        $_ENV[$key] = $value;
+        $_SERVER[$key] = $value;
     }
 });
 

@@ -42,6 +42,26 @@
         <env name="STRIPE_KEY" value=""/>
         <env name="STRIPE_SECRET" value=""/>
         <env name="STRIPE_WEBHOOK_SECRET" value=""/>
+        <!-- The two switches that turn billing off are pinned **on** here, because the suite is
+             what says they work. Both are deployment switches read from the environment, so a
+             developer who sets either in their own `.env` — a perfectly reasonable thing to do
+             while nobody is being charged — was turning off the behaviour thirty-odd tests exist
+             to assert, and watching them fail for a reason that had nothing to do with their
+             change. A test environment declares its own baseline rather than inheriting one.
+
+             A variable already exported in the **shell** still wins, as it does for every other pin
+             in this block — that is PHPUnit's behaviour without `force`, and leaving it that way is
+             deliberate: passing an env var on the command line is how CI and tooling override a
+             setting on purpose. `force="true"` was tried and is worse than it looks, which is
+             worth knowing before somebody tries it again: PHPUnit applies it to `putenv` and
+             `$_ENV` but not to `$_SERVER`, which Laravel's env repository also reads, so it takes
+             effect for some files in a run and not others depending on what else has written to
+             the environment first. Half a mechanism is worse than none.
+
+             `PlanEnforcementSwitchTest` is the file that turns them off, deliberately and one test
+             at a time, and puts these values back afterwards. -->
+        <env name="BILLING_STRIPE_ENABLED" value="true"/>
+        <env name="BILLING_ENFORCE_PLANS" value="true"/>
         <!-- The metered overage prices have no config default (a placeholder would be attached to
              every real checkout), so the suite supplies its own — otherwise the overage tests would
              be exercising the unconfigured no-op path and quietly asserting nothing. -->
