@@ -47,7 +47,7 @@ final class ReportTables
             ReportKey::SignalTypes => $this->breakdown($key, $report->signal_types, 'Event type'),
             // The tabular reports are returned by the loop above. Reaching here would mean the
             // builder stopped producing one of them, which is a bug, not an empty download.
-            ReportKey::IcpPerformance, ReportKey::Outreach,
+            ReportKey::IcpPerformance, ReportKey::SignalPerformance, ReportKey::Outreach,
             ReportKey::TeamActivity, ReportKey::AiUsage => ReportTable::of($key, [], []),
         };
     }

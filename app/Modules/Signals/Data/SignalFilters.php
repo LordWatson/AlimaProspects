@@ -6,6 +6,7 @@ namespace App\Modules\Signals\Data;
 
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Enums\SignalScope;
+use App\Modules\Signals\Enums\SignalSortOrder;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\SignalDefinition;
 use DateTimeImmutable;
@@ -61,6 +62,12 @@ final class SignalFilters extends Data
          * questions crossed.
          */
         public readonly SignalScope $scope = SignalScope::All,
+        /**
+         * How the feed is ordered (S12). Defaults to heat — what the event is worth to this team
+         * — with "most recent" kept, because a ranking nobody has learned to trust yet needs the
+         * order they already understand to fall back to.
+         */
+        public readonly SignalSortOrder $sort = SignalSortOrder::Heat,
     ) {}
 
     /**
@@ -89,6 +96,7 @@ final class SignalFilters extends Data
             // An unrecognised scope lands on everything, like an unrecognised status lands on New:
             // a stale bookmark shows a feed rather than a 404.
             scope: SignalScope::tryFrom((string) ($input['scope'] ?? '')) ?? SignalScope::All,
+            sort: SignalSortOrder::fromRequest($input['sort'] ?? null),
         );
     }
 
@@ -96,15 +104,17 @@ final class SignalFilters extends Data
      * The shape the Vue filter bar binds to — every key always present, so the form never has to
      * guess whether a filter is absent or merely empty.
      *
-     * @return array{status: string, event_keys: list<string>, from: string|null, to: string|null, min_relevance: int|null}
+     * @return array{status: string, scope: string, sort: string, event_keys: list<string>, from: string|null, to: string|null, min_relevance: int|null}
      */
     public function toFormState(): array
     {
         return [
             'status' => $this->status->value,
             // The scope travels with the filters so the URL reproduces what is on screen and a
-            // shared link opens the same feed — the standing rule for this screen since S5.
+            // shared link opens the same feed — the standing rule for this screen since S5. The
+            // sort does too, for the same reason.
             'scope' => $this->scope->value,
+            'sort' => $this->sort->value,
             'event_keys' => $this->eventKeys,
             // Date inputs speak `Y-m-d`, not ISO-8601 with a timezone.
             'from' => $this->from?->format('Y-m-d'),

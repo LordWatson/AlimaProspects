@@ -18,6 +18,7 @@ use App\Modules\Signals\Data\ConvertSignalData;
 use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalScope;
+use App\Modules\Signals\Enums\SignalSortOrder;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
@@ -94,6 +95,14 @@ final class SignalController extends Controller
                     'label' => $scope->label(),
                     'empty_message' => $scope->emptyMessage(),
                 ], SignalScope::cases()),
+                // How the feed may be ordered (S12). Sent from the enum, with each order's own
+                // one-line description, so the control can say what "Best for you" means rather
+                // than asking a member to trust a label.
+                'sorts' => array_map(static fn (SignalSortOrder $sort): array => [
+                    'value' => $sort->value,
+                    'label' => $sort->label(),
+                    'description' => $sort->description(),
+                ], SignalSortOrder::cases()),
             ],
             'watchCount' => $watchCount,
             // What a first watch would cover, so the empty state can name the place rather than

@@ -72,7 +72,7 @@ it('renders the dashboard for a member of a team', function (): void {
             ->component('Dashboard')
             ->has('report.kpis', 4)
             ->has('report.funnel', 4)
-            ->has('report.tables', 4)
+            ->has('report.tables', 5)
             ->where('report.has_data', false));
 });
 
@@ -255,21 +255,25 @@ it('offers every range and every report to the filter controls', function (): vo
             ->has('options.reports', count(ReportKey::cases())));
 });
 
-it('builds the four performance tables in tab order', function (): void {
+it('builds the performance tables in tab order', function (): void {
     $user = createUserWithTeam();
 
+    // The count and the order are both pinned on purpose: `ReportKey::tabular()` is what the tabs
+    // and the export menu are both built from, so a table added without a tab — or added in the
+    // wrong place — is the failure this asserts away. Signals S12 added the fifth.
     $this->actingAs($user)
         ->get(route('dashboard'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->has('report.tables', 4)
+            ->has('report.tables', 5)
             ->where('report.tables.0.key', 'icp_performance')
-            ->where('report.tables.1.key', 'outreach')
-            ->where('report.tables.2.key', 'team_activity')
-            ->where('report.tables.3.key', 'ai_usage')
+            ->where('report.tables.1.key', 'signal_performance')
+            ->where('report.tables.2.key', 'outreach')
+            ->where('report.tables.3.key', 'team_activity')
+            ->where('report.tables.4.key', 'ai_usage')
             // Every member gets a row, including one who did nothing: a member at zero is the most
             // actionable line in the table.
-            ->has('report.tables.2.rows', 1));
+            ->has('report.tables.3.rows', 1));
 });
 
 it('buckets the trend by week and keeps qualified inside sourced', function (): void {

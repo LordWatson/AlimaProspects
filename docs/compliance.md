@@ -171,10 +171,28 @@ the two deviations from the original design noted inline.
       Names shorter than 3 characters are refused outright.
     - Identity verification for non-users remains an open legal question (§5).
 - **Acquisition ethics.** Signals uses the **Serper News API** (ADR 0010/0011), not
-  scraping, and is **snippet-only** (no full-page fetch in v1). The AI treats article
-  text as **data, never instructions** (§4, AI Platform prompt-injection safety).
-  Property portals and aggregators are excluded globally, and each team can exclude
-  its own list of sources (`signal_watches.ignore_domains`).
+  scraping. The AI treats article text as **data, never instructions** (§4, AI Platform
+  prompt-injection safety). Property portals and aggregators are excluded globally, and
+  each team can exclude its own list of sources (`signal_watches.ignore_domains`).
+    - **Snippet-only was the v1 position; since S12 it is the default rather than the
+      rule.** `SIGNALS_ARTICLE_FETCH_ENABLED` (off) lets the module read the **whole
+      article** for the few signals at the top of a team's feed, to correct an amount, a
+      role or a company name that a search snippet could only guess at. Five things bound
+      it: the flag, a heat floor, a per-run count, a per-team monthly cost ceiling, and
+      **`robots.txt`** (`Core\Support\RobotsPolicy` — fetched per host, cached, and
+      failing **toward** refusal when it cannot be read). The fetch itself goes through
+      `Core\Contracts\WebContentFetcher`, the same SSRF-safe seam Enrichment uses.
+    - **Data minimisation survives it, because the body is not stored.** The article is
+      read, used to re-extract the same five fields the snippet produced, and dropped:
+      `signals.article_fetched_at` records _that_ a page was read and nothing of what it
+      said. A signal still holds a name, a role, a company and a URL (ADR 0011), which is
+      what the retention sweep deletes and what the DSAR exporter exports. Keeping prose
+      would make both harder and is the one thing this feature deliberately does not do.
+    - Reading a published page a team was already shown the headline of does not change the
+      lawful basis, the LIA or the UAE prior-consent flag — the subject, the purpose and
+      the source are the same. ⚖️ Worth confirming with counsel before the flag is turned
+      on for a customer, because "we read the article" is a sentence a regulator may read
+      differently from "we read the search result".
 - **Audit trail.** Watch create/update/delete, convert, dismiss and restore all write
   audit entries carrying **ids, enum values and counts only** — never a headline, a
   person's name, or a team's competitor list. A watch deletion records how many signals
@@ -187,4 +205,4 @@ DSAR identity-verification process for named individuals who are not our users.
 
 ## 6. Mapping to modules
 
-Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, snippet-only, own retention sweep + DSAR exporter, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID — **all built in Phase 11**, including the Signals UAE flag, which it honours at draft time as well as send time), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).
+Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, no article body stored even behind S12's full-article fetch, own retention sweep + DSAR exporter, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID — **all built in Phase 11**, including the Signals UAE flag, which it honours at draft time as well as send time), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).

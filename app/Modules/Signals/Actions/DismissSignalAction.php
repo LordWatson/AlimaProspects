@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalStatus;
+use App\Modules\Signals\Events\SignalDismissed;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Services\SignalClusterer;
@@ -74,6 +75,16 @@ final class DismissSignalAction
                 'reason' => $reason?->value,
                 'cluster_members_dismissed' => $alsoDismissed,
             ], $actor);
+
+            // After commit, so the learning never holds up the member's own click (S12). The
+            // reason travels on the event because the ledger needs to know whether this dismissal
+            // says the classifier was wrong or only that the team was not interested.
+            $teamId = (int) $locked->team_id;
+            $signalId = (int) $locked->getKey();
+
+            DB::afterCommit(static function () use ($teamId, $signalId, $reason): void {
+                event(new SignalDismissed($teamId, $signalId, $reason));
+            });
 
             return $locked;
         });

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { Building2, ChevronDown, ExternalLink, Undo2 } from '@lucide/vue';
+import { Building2, ChevronDown, ExternalLink, Info, Undo2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,7 +25,9 @@ import type { Signal } from '@/types';
  *
  * - **No Converted/Dismissed badge.** The tab the member is on already says it. A dismiss reason
  *   is still shown, as plain muted text, because that is something the tab doesn't carry.
- * - **No "found by" row.** Which watch produced a signal is plumbing; it belongs on the watch.
+ * - **No "found by" row on the face of the card.** Which watch produced a signal is plumbing. It
+ *   moved *inside* S12's "why you're seeing this" disclosure, where somebody debugging a feed
+ *   wants it first and nobody else has to look at it.
  * - **No tinted panel or icon circle** around the suggested approach — an eyebrow, a line of text
  *   and a thin brand rule to anchor it.
  * - **Relevance sits in the header**, beside the chip and the date, because it is the number the
@@ -43,6 +45,23 @@ import type { Signal } from '@/types';
  *  - The weaker match says it is weaker, in text, not in a colour.
  *  - **Convert anyway** stays on the card as a real button, because the member is the one who
  *    knows whether two companies with the same name are the same company.
+ *
+ * **The score, and the panel behind it (S12).** The header carries the **heat** — what this event
+ * is worth to this team — in place of the raw relevance it used to show, because heat is now the
+ * number the feed is ordered by and relevance is one of the eight things that make it up. Three
+ * decisions there:
+ *
+ *  - **A neutral scale, never a status colour** (§2a). Heat is a magnitude, not a state: the meter
+ *    is a `bg-muted` track with a `bg-foreground/70` fill, so it carries no hue at all. Signal
+ *    Orange appears nowhere, and a `status.*` token would have been wrong even in the right
+ *    colour — nothing here is reporting that something is fine or broken.
+ *  - **An unscored signal shows relevance instead**, labelled as relevance. A signal found before
+ *    the scorer existed has `heat: null`, and showing that as zero would read as "we judged this
+ *    and it is worthless" rather than "we have not judged it".
+ *  - **"Why you're seeing this" is a disclosure**, closed by default, carrying the whole breakdown
+ *    including the components the scorer could **not** judge. A ranking a member cannot interrogate
+ *    is worse than date order, and the unjudged rows are half the explanation: "no amount given"
+ *    tells somebody the article was thin, not that the deal was small.
  *
  * **Clustered cards (S11).** One card is one *event*, however many outlets reported it, so the card
  * says "Reported by 6 sources" and opens to the list. Three decisions in that one line:
@@ -115,6 +134,31 @@ const cluster = computed(() => props.signal.cluster);
 /** Closed by default: the coverage is reassurance, not something to read. */
 const showSources = ref(false);
 
+/**
+ * The score's working (S12), or null on a signal that has never been scored.
+ *
+ * Read off the server's stored breakdown rather than recomputed here, which is what lets the panel
+ * explain the score the feed was actually ranked by.
+ */
+const explanation = computed(() => props.signal.explanation);
+
+/** Closed by default too: most cards are never questioned, and the ones that are, are. */
+const showExplanation = ref(false);
+
+const explanationId = computed(() => `signal-why-${props.signal.id}`);
+
+/**
+ * The number in the header: heat where there is one, relevance where there is not.
+ *
+ * The label changes with it, because telling a member "Score 70" when the 70 is a relevance would
+ * be a quiet lie about what the feed did with this card.
+ */
+const headline = computed(() =>
+    props.signal.heat === null
+        ? { label: 'Relevance to you', value: props.signal.relevance }
+        : { label: 'Score', value: props.signal.heat },
+);
+
 const sourcesId = computed(() => `signal-sources-${props.signal.id}`);
 
 const cardTestId = computed(() => `signal-${props.signal.id}`);
@@ -165,13 +209,34 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
 
                 <div class="flex flex-wrap items-center gap-3">
                     <span
-                        class="font-mono text-xs text-muted-foreground tabular-nums"
-                        dir="ltr"
+                        class="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
                     >
-                        <span class="sr-only"
-                            >{{ t('Relevance to you') }}:
+                        <!-- **Visible, not `sr-only`.** The label is the whole reason an unscored
+                             card is honest: it shows relevance and says "relevance", where a bare
+                             "70/100" would be indistinguishable from a score. Outside the
+                             `dir="ltr"` span, so an Arabic label is not isolated as LTR. -->
+                        <span dir="auto">{{ t(headline.label) }}</span>
+                        <span
+                            class="inline-flex items-center gap-2 font-mono tabular-nums"
+                            dir="ltr"
+                        >
+                            {{ headline.value }}/100
+                            <!-- A neutral magnitude bar: no hue, no status token, no Orange (§2a).
+                                 `aria-hidden` because the number beside it already says this, and
+                                 a screen reader reading it twice is worse than not drawing it.
+                                 `bg-border` rather than `bg-muted` for the track: in dark mode
+                                 `--muted` equals `--card`, and a track you cannot see is not a
+                                 scale. -->
+                            <span
+                                class="h-1 w-10 overflow-hidden rounded-full bg-border"
+                                aria-hidden="true"
+                            >
+                                <span
+                                    class="block h-full rounded-full bg-foreground/70"
+                                    :style="{ width: `${headline.value}%` }"
+                                />
+                            </span>
                         </span>
-                        {{ signal.relevance }}/100
                     </span>
                     <time
                         v-if="signal.published_at"
@@ -290,11 +355,137 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                 </p>
             </div>
 
+            <!-- Why this card is here, and why it is this far up the feed. A disclosure, because
+                 most cards are never questioned and the ones that are, are. -->
+            <div v-if="explanation" :data-test="`why-${signal.id}`">
+                <!-- `py-1` and `rounded-sm`: a 20px-tall target is under WCAG 2.5.8's 24px
+                     minimum, and bare `rounded` is Tailwind's 4px rather than a brand radius. -->
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-sm py-1 text-sm text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    :aria-expanded="showExplanation"
+                    :aria-controls="explanationId"
+                    @click="showExplanation = !showExplanation"
+                >
+                    <Info class="size-4" aria-hidden="true" />
+                    {{ t('Why you’re seeing this') }}
+                    <ChevronDown
+                        class="duration-fast size-4 transition-transform ease-brand motion-reduce:transition-none"
+                        :class="showExplanation ? 'rotate-180' : ''"
+                        aria-hidden="true"
+                    />
+                </button>
+
+                <div
+                    v-show="showExplanation"
+                    :id="explanationId"
+                    class="mt-2 space-y-3 border-s border-border ps-3"
+                >
+                    <!-- The breakdown. Every component, including the ones Alima could not judge:
+                         "no amount given" tells a member the article was thin, not that the deal
+                         was small, and dropping those rows would turn half the explanation into a
+                         shorter list. -->
+                    <dl class="space-y-2">
+                        <div
+                            v-for="component in explanation.components"
+                            :key="component.key"
+                            class="space-y-0.5 text-sm"
+                        >
+                            <div
+                                class="flex flex-wrap items-baseline justify-between gap-x-3"
+                            >
+                                <dt class="text-muted-foreground">
+                                    {{ t(component.label) }}
+                                </dt>
+                                <!-- A flex row with its own gap, rather than a margin on the
+                                     evidence: `ms-2` inside a `dir="ltr"` parent becomes
+                                     margin-right once `dir="auto"` flips an Arabic value, which
+                                     puts the gap on the wrong side and collapses it. -->
+                                <dd
+                                    class="flex flex-wrap items-baseline gap-2 text-xs"
+                                    :class="
+                                        component.assessed
+                                            ? 'text-foreground'
+                                            : 'text-muted-foreground'
+                                    "
+                                >
+                                    <span
+                                        v-if="component.assessed"
+                                        class="font-mono tabular-nums"
+                                        dir="ltr"
+                                        >{{ component.value }}/100</span
+                                    >
+                                    <!-- Never an empty cell: an unjudged component with no reason
+                                         still has to say that it was not judged. -->
+                                    <span v-else>{{ t('Not judged') }}</span>
+                                    <!-- Translated only where the backend says the sentence is
+                                         **ours**. A figure out of the row ("$40m, higher than 80%
+                                         of the deals you have seen") is rendered as given; a
+                                         reason a component could not be judged ("No amount
+                                         given.") is a key, because the breakdown is *stored* and
+                                         an English sentence written into it today would reach an
+                                         Arabic card untranslated for as long as that signal
+                                         lives. -->
+                                    <span
+                                        v-if="component.evidence"
+                                        class="text-muted-foreground"
+                                        dir="auto"
+                                        >{{
+                                            component.evidence_translatable
+                                                ? t(component.evidence)
+                                                : component.evidence
+                                        }}</span
+                                    >
+                                </dd>
+                            </div>
+                            <!-- Visible rather than a `title`. These sentences *are* the "why",
+                                 and a tooltip is unreachable by keyboard and by touch — so the
+                                 disclosure would have hidden its best content from everybody not
+                                 using a mouse. -->
+                            <p class="text-xs text-muted-foreground">
+                                {{ t(component.explanation) }}
+                            </p>
+                        </div>
+                    </dl>
+
+                    <!-- Where it came from and what the law says about approaching it. The
+                         restriction belongs next to the reasoning: somebody reading why this card
+                         is here should also be reading how they may act on it (ADR 0019). -->
+                    <p class="text-xs text-muted-foreground" dir="auto">
+                        {{ t('Found by') }}:
+                        <span v-if="explanation.watch">{{
+                            explanation.watch.name
+                        }}</span>
+                        <span v-else>{{
+                            t('a watch you have since removed')
+                        }}</span>
+                        ·
+                        {{
+                            explanation.definition.name_translatable
+                                ? t(explanation.definition.name)
+                                : explanation.definition.name
+                        }}
+                        <span v-if="explanation.definition.version"
+                            >(v{{ explanation.definition.version }})</span
+                        >
+                        <template v-if="explanation.jurisdiction">
+                            · {{ explanation.jurisdiction }}
+                        </template>
+                        <template v-if="explanation.read_full_article">
+                            · {{ t('read in full') }}
+                        </template>
+                        <template v-else>
+                            · {{ t('from the headline and snippet') }}
+                        </template>
+                    </p>
+                </div>
+            </div>
+
             <!-- Who else reported it. A disclosure, so it costs one line until somebody asks. -->
             <div v-if="cluster" :data-test="`sources-${signal.id}`">
                 <button
                     type="button"
-                    class="inline-flex items-center gap-1 rounded text-sm text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    class="inline-flex items-center gap-1 rounded-sm py-1 text-sm text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                     :aria-expanded="showSources"
                     :aria-controls="sourcesId"
                     @click="showSources = !showSources"

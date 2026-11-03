@@ -9,6 +9,7 @@ use App\Modules\Core\Concerns\BelongsToTeam;
 use App\Modules\Core\Enums\Market;
 use App\Modules\Signals\Enums\SignalCategory;
 use App\Modules\Signals\Enums\SignalIcon;
+use App\Modules\Signals\Enums\SignalScoreComponent;
 use App\Modules\Signals\Services\PlatformPresetReader;
 use Database\Factories\SignalDefinitionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -46,6 +47,7 @@ use Illuminate\Support\Carbon;
  * @property list<string>|null $match_keywords
  * @property array{includes?: list<string>, excludes?: list<string>}|null $classification_rules
  * @property array{min_confidence?: int|null, min_relevance?: int|null}|null $thresholds
+ * @property array<string, mixed>|null $score_weights per-type scoring weights (S12), or null for the defaults
  * @property string|null $suggested_approach_hint
  * @property list<string>|null $markets
  * @property string|null $preset_key
@@ -103,6 +105,7 @@ class SignalDefinition extends Model
         'match_keywords',
         'classification_rules',
         'thresholds',
+        'score_weights',
         'suggested_approach_hint',
         'markets',
         'preset_key',
@@ -232,6 +235,23 @@ class SignalDefinition extends Model
     }
 
     /**
+     * This type's own scoring weights, or null to use the configured defaults (S12).
+     *
+     * Returned as a plain map rather than narrowed to known components, because
+     * {@see SignalScoreComponent::weight()} is the one place that decides what a weight means —
+     * including ignoring a key for a component that no longer exists, which is the same
+     * forgiveness a stored score breakdown gets.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function scoreWeights(): ?array
+    {
+        $weights = $this->score_weights;
+
+        return is_array($weights) && $weights !== [] ? $weights : null;
+    }
+
+    /**
      * The confidence and relevance floors a signal of this type has to clear, falling back to the
      * global `signals.*` config where the definition sets none.
      *
@@ -293,6 +313,7 @@ class SignalDefinition extends Model
             'match_keywords' => 'array',
             'classification_rules' => 'array',
             'thresholds' => 'array',
+            'score_weights' => 'array',
             'markets' => 'array',
             'preset_version' => 'integer',
             'version' => 'integer',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Signals\Http\Controllers\Web\SignalController;
 use App\Modules\Signals\Http\Controllers\Web\SignalDefinitionController;
+use App\Modules\Signals\Http\Controllers\Web\SignalTuningController;
 use App\Modules\Signals\Http\Controllers\Web\SignalWatchController;
 use App\Modules\Signals\Http\Controllers\Web\SignalWatchlistController;
 use Illuminate\Support\Facades\Route;
@@ -116,4 +117,17 @@ Route::middleware(['auth', 'verified', 'capability:signals'])->group(function ()
         ->whereNumber('watch')
         ->middleware('throttle:signals-run')
         ->name('signal-watches.run');
+
+    // Answering a tuning suggestion (S12). **Two routes and no index**: the suggestions arrive with
+    // the watch settings screen rather than from a fetch of their own, because a panel that loaded
+    // separately would flash empty on every visit for the one in ten that has something in it.
+    //
+    // No throttle. Both are one indexed write by a member who had to read an argument first — the
+    // opposite of the paid buttons above, which are throttled because a held-down key spends money.
+    Route::post('signals/tuning/{suggestion}/accept', [SignalTuningController::class, 'accept'])
+        ->whereNumber('suggestion')
+        ->name('signal-tuning.accept');
+    Route::post('signals/tuning/{suggestion}/decline', [SignalTuningController::class, 'decline'])
+        ->whereNumber('suggestion')
+        ->name('signal-tuning.decline');
 });

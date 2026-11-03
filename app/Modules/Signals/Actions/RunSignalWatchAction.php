@@ -41,15 +41,18 @@ use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
+use App\Modules\Signals\Services\SignalArticleEnricher;
 use App\Modules\Signals\Services\SignalClusterer;
 use App\Modules\Signals\Services\SignalJurisdictionResolver;
 use App\Modules\Signals\Services\SignalLeadMatcher;
 use App\Modules\Signals\Services\SignalQueryBuilder;
 use App\Modules\Signals\Services\SignalRejectionLedger;
+use App\Modules\Signals\Services\SignalScorer;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Runs one signal watch end to end (ADR 0011, S3). Must run inside the watch's {@see TeamContext}
@@ -103,6 +106,13 @@ use Illuminate\Support\Str;
  *    *and* the set of types that were offered — because a team that adds a type has asked a
  *    different question and is owed a fresh answer.
  *
+ * **Since S12 every kept signal carries a heat** ({@see SignalScorer}), scored inside the same
+ * transaction as the insert and **after** the clusters are reconciled — breadth is one of the eight
+ * components, so a cluster has to know how many outlets it holds first. A run that only adds
+ * coverage to an existing event re-scores that event's primary for the same reason: its breadth
+ * changed, and a feed ordered by heat would otherwise keep ranking a six-outlet story as the
+ * one-outlet story it was yesterday.
+ *
  * It also compares `dedupe_hash` rather than `url_hash` when deciding what it has already seen,
  * which is the fix for the redirect defect: behind `google.com/goto?url=<token>` a varying token
  * made the same article a new signal on every run.
@@ -124,6 +134,8 @@ final class RunSignalWatchAction
         private readonly RecordLeadActivityAction $activity,
         private readonly SignalClusterer $clusterer,
         private readonly SignalRejectionLedger $rejections,
+        private readonly SignalScorer $scorer,
+        private readonly SignalArticleEnricher $articles,
     ) {}
 
     public function handle(SignalWatch $watch): SignalRun
@@ -872,6 +884,15 @@ final class RunSignalWatchAction
                 $this->clusterer->reconcile($cluster);
             }
 
+            // The heat, scored once the clusters are reconciled (S12) — because breadth is one of
+            // the eight components and a cluster does not know how many outlets it holds until
+            // then. In the same transaction as the insert, so a signal is never visible unscored:
+            // the feed's default order is heat, and a row that appeared at the bottom of it for a
+            // moment and then jumped would read as a bug.
+            if ($created > 0) {
+                $this->scoreRun($run, $watch, $clusters);
+            }
+
             // The timeline entries for signals matched to a lead, written **inside** the same
             // transaction as the signals themselves: a lead whose timeline says an event happened
             // and a feed with no such signal in it would be a worse state than neither.
@@ -936,9 +957,109 @@ final class RunSignalWatchAction
             return $events;
         });
 
+        // --- External work again: the full-article read (outside the transaction) ---
+        //
+        // **After the commit, deliberately**, and the ordering is the whole reason this is not in
+        // `complete()`'s transaction: it makes HTTP calls to publishers and an AI call per article.
+        // The signals are already saved and already scored, so everything here failing leaves the
+        // product behaving exactly as it did in S11 — snippet-only, which is what every signal was
+        // until this phase.
+        //
+        // Off by default (`signals.article_fetch.enabled`); the enricher returns zero without
+        // touching anything when it is.
+        // Wrapped, and not because the enricher is careless: this call sits **after** the run has
+        // been committed as Completed, so anything escaping it fails an already-finished job —
+        // which retries, re-pays for the Serper search and alerts somebody about a run that
+        // actually succeeded. The enricher guards each article itself; this guards the guard.
+        try {
+            $fetchCost = $this->articles->enrich($run, (int) $watch->team_id);
+        } catch (Throwable $e) {
+            Log::channel('signals')->warning('Article enrichment failed after the run completed.', [
+                'team_id' => (int) $watch->team_id,
+                'signal_run_id' => (int) $run->getKey(),
+                'error' => $e::class,
+            ]);
+
+            $fetchCost = 0;
+        }
+
+        if ($fetchCost > 0) {
+            // Metered onto the run like every other spend this module makes, so one number still
+            // answers "what did this run cost".
+            $run->forceFill(['cost_micros' => (int) $run->cost_micros + $fetchCost])->save();
+        }
+
         $this->broadcast($run, SignalRunStatus::Completed, 100, 'Done', $created);
 
         return $run->refresh();
+    }
+
+    /**
+     * Score this run's new signals, and re-score the primaries of the clusters it touched (S12).
+     *
+     * **Two sets, and the second one is the easy thing to miss.** The new rows obviously need a
+     * heat. But a run that only added coverage of an event the team already has has changed that
+     * event's *breadth*, which is one of the scorer's components — so the existing primary's heat
+     * is now stale, and a feed ordered by heat would keep ranking a six-outlet story as the
+     * one-outlet story it was yesterday. Re-scoring the touched clusters' primaries is what keeps
+     * the order honest.
+     *
+     * The definitions are looked up once and passed in: the scorer wants the per-type weight
+     * overrides, and reading them off each signal's relation would be a query per card with
+     * `preventLazyLoading` on to catch it.
+     *
+     * @param  list<SignalCluster>  $clusters
+     */
+    private function scoreRun(SignalRun $run, SignalWatch $watch, array $clusters): void
+    {
+        $teamId = (int) $watch->team_id;
+
+        /** @var array<int, SignalCluster> $byId */
+        $byId = [];
+        foreach ($clusters as $cluster) {
+            $byId[(int) $cluster->getKey()] = $cluster;
+        }
+
+        /** @var array<int, SignalDefinition> $definitions */
+        $definitions = [];
+        foreach ($this->definitions($watch) as $definition) {
+            $definitions[(int) $definition->getKey()] = $definition;
+        }
+
+        $primaries = array_values(array_filter(array_map(
+            static fn (SignalCluster $cluster): ?int => $cluster->primary_signal_id === null
+                ? null
+                : (int) $cluster->primary_signal_id,
+            $clusters,
+        )));
+
+        Signal::query()
+            ->where('team_id', $teamId)
+            ->where(static function ($query) use ($run, $primaries): void {
+                $query->where('signal_run_id', $run->getKey());
+
+                if ($primaries !== []) {
+                    $query->orWhereIn('id', $primaries);
+                }
+            })
+            ->chunkById(200, function ($signals) use ($byId, $definitions): void {
+                foreach ($signals as $signal) {
+                    $definition = $signal->signal_definition_id === null
+                        ? null
+                        : ($definitions[(int) $signal->signal_definition_id] ?? null);
+
+                    $cluster = $signal->signal_cluster_id === null
+                        ? null
+                        : ($byId[(int) $signal->signal_cluster_id] ?? null);
+
+                    $score = $this->scorer->score($signal, $definition, $cluster);
+
+                    $signal->forceFill([
+                        'heat' => $score->heat,
+                        'score_breakdown' => $score->toBreakdown(),
+                    ])->save();
+                }
+            });
     }
 
     /**

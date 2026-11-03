@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Http\Requests;
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Data\SignalFilters;
 use App\Modules\Signals\Enums\SignalScope;
+use App\Modules\Signals\Enums\SignalSortOrder;
 use App\Modules\Signals\Enums\SignalStatus;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -37,6 +38,9 @@ final class ListSignalsRequest extends FormRequest
             // below, because there are exactly two and neither can go stale — but `nullable`, so
             // the plain `/signals` URL the app has always had still means "everything".
             'scope' => ['nullable', 'string', 'in:'.implode(',', SignalScope::values())],
+            // How it is ordered (S12). Same shape and same reasoning as the scope: a closed pair
+            // that cannot go stale, nullable so the plain URL keeps meaning the default.
+            'sort' => ['nullable', 'string', 'in:'.implode(',', SignalSortOrder::values())],
             // Signal definition keys since S7 (ADR 0018). The bound is a team's library ceiling
             // rather than a fixed set of cases, and membership is not checked here for the reason
             // `SignalFilters` gives: an unknown key narrows to nothing, which is what a stale

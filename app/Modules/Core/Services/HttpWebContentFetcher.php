@@ -38,22 +38,7 @@ final class HttpWebContentFetcher implements WebContentFetcher
         try {
             $this->assertSafeUrl($url);
 
-            $response = $this->http
-                ->timeout((int) config('web-fetch.timeout', 10))
-                ->connectTimeout((int) config('web-fetch.connect_timeout', 5))
-                ->withHeaders(['User-Agent' => (string) config('web-fetch.user_agent', 'AlimaProspectsBot/1.0')])
-                ->withOptions([
-                    'stream' => true,
-                    // Re-validate the target of every redirect so a public site can't bounce to an
-                    // internal address; cap the hop count.
-                    'allow_redirects' => [
-                        'max' => 3,
-                        'on_redirect' => function ($request, $response, UriInterface $uri): void {
-                            $this->assertSafeUrl((string) $uri);
-                        },
-                    ],
-                ])
-                ->get($url);
+            $response = $this->request($url);
 
             if ($response->failed()) {
                 return '';
@@ -74,6 +59,78 @@ final class HttpWebContentFetcher implements WebContentFetcher
 
             return '';
         }
+    }
+
+    /**
+     * Fetch a line-oriented text file, line breaks intact (S12).
+     *
+     * Shares every guard {@see self::fetch()} applies — the same `assertSafeUrl`, the same
+     * redirect re-validation, the same byte cap — and differs in exactly one way: it does **not**
+     * run {@see self::toText()}, because collapsing whitespace destroys the only structure a file
+     * like `robots.txt` has.
+     *
+     * Returns null for "could not read" and '' for "the host says there is no such file", which is
+     * the distinction a caller enforcing a rule needs; see the contract for why.
+     */
+    public function fetchLines(?string $url): ?string
+    {
+        $url = $this->normaliseUrl($url);
+
+        if ($url === null) {
+            return null;
+        }
+
+        try {
+            $this->assertSafeUrl($url);
+
+            $response = $this->request($url);
+
+            // A 404 is an answer: there is no such file. Anything else that failed is a failure to
+            // read, which is a different thing and must not be mistaken for permission.
+            if ($response->status() === 404) {
+                return '';
+            }
+
+            if ($response->failed()) {
+                return null;
+            }
+
+            return $this->readCapped($response);
+        } catch (Throwable $e) {
+            Log::channel('ai')->warning('Line-oriented fetch failed.', [
+                'url' => $url,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * The one guarded request both reads share.
+     *
+     * Extracted when S12 added {@see self::fetchLines()} — two copies of the timeouts, the user
+     * agent and above all the redirect re-validation would have been two places for the SSRF guard
+     * to be subtly different, which is the one thing this class exists to prevent.
+     */
+    private function request(string $url): Response
+    {
+        return $this->http
+            ->timeout((int) config('web-fetch.timeout', 10))
+            ->connectTimeout((int) config('web-fetch.connect_timeout', 5))
+            ->withHeaders(['User-Agent' => (string) config('web-fetch.user_agent', 'AlimaProspectsBot/1.0')])
+            ->withOptions([
+                'stream' => true,
+                // Re-validate the target of every redirect so a public site can't bounce to an
+                // internal address; cap the hop count.
+                'allow_redirects' => [
+                    'max' => 3,
+                    'on_redirect' => function ($request, $response, UriInterface $uri): void {
+                        $this->assertSafeUrl((string) $uri);
+                    },
+                ],
+            ])
+            ->get($url);
     }
 
     /**

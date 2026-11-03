@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Actions;
 use App\Models\User;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Signals\Enums\SignalStatus;
+use App\Modules\Signals\Events\SignalRestored;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Services\SignalClusterer;
@@ -56,6 +57,11 @@ final class RestoreSignalAction
                 return $locked;
             }
 
+            // Captured **before** the update clears it. Restoring drops `dismiss_reason` (S4), so
+            // by the time a listener reads the row the evidence of what is being taken back is
+            // gone — and the ledger has to know which counter to decrement.
+            $reason = $locked->dismiss_reason;
+
             $locked->forceFill([
                 'status' => SignalStatus::New,
                 'dismiss_reason' => null,
@@ -71,6 +77,13 @@ final class RestoreSignalAction
                 'event_type' => $locked->event_key,
                 'cluster_members_restored' => $alsoRestored,
             ], $actor);
+
+            $teamId = (int) $locked->team_id;
+            $signalId = (int) $locked->getKey();
+
+            DB::afterCommit(static function () use ($teamId, $signalId, $reason): void {
+                event(new SignalRestored($teamId, $signalId, $reason));
+            });
 
             return $locked;
         });

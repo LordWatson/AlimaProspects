@@ -106,7 +106,7 @@ flowchart TD
 | 8   | Enrichment & Data Quality     | MVP                         | `modules/enrichment-data-quality.md`     |
 | 9   | Scoring & Matching            | MVP                         | `modules/scoring-matching.md`            |
 | 10  | Leads Workspace               | MVP                         | `modules/leads-workspace.md`             |
-| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S10      | `modules/signals.md`                     |
+| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S12      | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (built, Phase 11)       | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (built, Phase 13)       | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | MVP (built, Phase 14)       | `modules/ai-insights.md`                 |
@@ -201,6 +201,25 @@ flowchart TD
   asked again, change nothing and nobody pays twice. The counters on a cluster are a **record over
   its rows** rather than a tally the app increments, the same shape `usage_meters` has over the
   ledgers (ADR 0012).
+- **A ranking nobody can interrogate is worse than date order (Signals, S12):** the feed is ordered
+  by a `heat` a member can open and read the working of, and three parts of how that was built
+  generalise. **Unknown is not zero.** `SignalScorer` weighs eight components and leaves one it
+  cannot judge — no amount in the article, no history for the outlet, no active ICP — out of _both_
+  sides of the average, because scoring it zero would make the number measure how much Alima knows
+  about an event rather than how much the event is worth; the same reasoning
+  `Scoring\Services\DeterministicScorer` documents, and the reason `signals.heat` itself is
+  nullable rather than defaulting to 0. **An explanation is of the decision that was taken, not of
+  the decision that would be taken now**, so `signals.score_breakdown` is stored with the row and
+  the card reads it back rather than recomputing: a member retuning their weights must not change
+  what yesterday's feed says about why it was ordered that way, and the figures in it are literal
+  while only Alima's own sentences carry a translation flag. **A system that learns proposes and
+  never applies.** `signal_source_stats` is a tally of what a team does with each outlet and
+  `SignalTuningAdvisor` turns a one-sided tally into a suggestion a member accepts or declines —
+  accepting is an ordinary audited edit to the same columns they could have typed — because a
+  feature that silently retunes itself is a feature nobody can debug, and a declined suggestion is
+  kept precisely so it is never raised twice. The one place it reaches outside the module is
+  `Core\Support\RobotsPolicy`, which is Core's and not Signals' because the next module that
+  fetches a page will want it.
 - **Where we search is not which law applies (Signals, S8, ADR 0019):** `Signals\Enums\SearchRegion`
   answers "where do we look" — a Serper country code and a language — and `Core\Enums\Market`
   answers "which rules apply". One column was doing both jobs, which was harmless only while every

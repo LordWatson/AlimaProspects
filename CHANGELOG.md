@@ -5,6 +5,47 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-03 — Signals: a ranked feed that can explain itself
+
+The feed was in date order, which answered "what is newest" and never "what is worth my morning".
+Every signal now carries a **heat** out of 100, the feed is sorted by it, and **every card can show
+its working** — eight components, what each one was worth, and the evidence behind it. A ranking
+nobody can interrogate is worse than date order, so the breakdown is stored with the signal and the
+panel reads it back: it explains the score the feed was actually ordered by, not what today's
+weights would say about yesterday's order.
+
+The eight are the AI's relevance and confidence, how recent the event is, the amount **banded
+against the team's own history** (a £2m exit matters to one team and not another), how much Alima has
+learned to trust the outlet, the subject's seniority, how many outlets carried the story, and fit
+against the active ICP — reusing Scoring's criteria rather than inventing a second fit score. The
+scorer is deterministic and has no AI in it. **A component with nothing to judge is left out of the
+average rather than scored zero**, because otherwise the number would measure how much we know about
+an event instead of how much the event is worth; a signal nothing could be judged about says so
+rather than showing a cold score.
+
+**The product now learns from dismissals, and proposes rather than acts.** `signal_source_stats`
+records what each team does with each outlet's stories, per signal type. When the evidence is
+one-sided a weekly job raises a suggestion — silence this outlet, raise this type's confidence floor,
+retire this query — each with its numbers, each accepted or declined on the watch settings screen.
+Nothing auto-applies: a feature that silently retunes itself is a feature nobody can debug.
+Accepting one is an ordinary audited edit to the columns a member could have typed themselves, and a
+declined suggestion is kept so it is never raised again.
+
+**Behind a flag that is off**, Alima can read the whole article for the few signals at the top of a
+feed and correct the amount, the role and the company name a search snippet could only guess at —
+the oldest limitation in the module. Five things bound it: the flag, a heat floor, five pages a run,
+a per-team monthly ceiling, and `robots.txt`. The article is read, used, and **dropped**: nothing of
+the body is stored, because retention and subject-access requests both get harder the moment a
+product keeps prose.
+
+**And a report that says which trigger events are worth paying for** — signals, kept, became leads,
+picked up and worked, per type and per outlet, over the window, exportable like every other table.
+
+Operators: `signals:rescore` applies a retune to history, `signals:advise` is the weekly suggestion
+job, and `SIGNALS_SCORING_*`, `SIGNALS_TUNING_*` and `SIGNALS_ARTICLE_FETCH_*` are in
+`.env.example`. The full-article fetch is off by default and has a compliance note in
+`docs/compliance.md` §5a worth reading before it is turned on for a customer.
+
 ### Added — 2026-11-03 — Signals: one event, one card
 
 A Dubai acquisition reported by Gulf News, Khaleej Times, Zawya, Arabian Business and three

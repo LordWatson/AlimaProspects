@@ -18,9 +18,12 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  * so the screen never holds more than a page of signals and a shared URL reproduces exactly what
  * the sender saw.
  *
- * Ordering is `published_at` descending — the feed is about *when the event happened*, not when
- * Alima happened to find it — with the id as a tie-break so paging is stable when a run writes a
- * dozen signals sharing a fallback timestamp.
+ * **Ordering is the member's, and defaults to heat** (S12, {@see SignalSortOrder}): what the event
+ * is worth to this team, from the deterministic `SignalScorer`, with an unscored signal sorting
+ * last rather than first. "Most recent" is kept as a real choice — v1's `published_at` order, which
+ * is about *when the event happened* rather than when Alima found it — because a ranking nobody has
+ * learned to trust yet needs the order they already understand to fall back to. Both tie-break on
+ * the id so paging is stable when a run writes a dozen signals sharing a timestamp or a score.
  *
  * **Since S11 a row is a card only if it represents an event** ({@see self::onlyRepresentatives()}).
  * Eight outlets covering one acquisition are eight signals and one cluster, and the feed lists the
@@ -97,11 +100,12 @@ final class ListSignalsAction
                 $query->where('relevance', '>=', $filters->minRelevance);
             }
 
-            return $query
-                ->orderByDesc('published_at')
-                ->orderByDesc('id')
-                ->paginate($perPage)
-                ->withQueryString();
+            // The order the member asked for, defaulting to heat (S12). The enum owns the
+            // `ORDER BY` — including the null handling, which differs by database and is the one
+            // part of this somebody would get wrong twice.
+            $filters->sort->apply($query);
+
+            return $query->paginate($perPage)->withQueryString();
         });
     }
 

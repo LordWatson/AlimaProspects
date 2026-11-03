@@ -212,6 +212,125 @@ return [
     ],
 
     /*
+     * Ranking: how much is this event worth to **this** team (S12)?
+     *
+     * `SignalScorer` is a weighted average of components that are each **stored** beside the
+     * total, because the plan's own risk note is the thing to be afraid of here: *a scorer nobody
+     * understands is worse than date order*. Every card can show its own breakdown, so a weight
+     * can be argued about with evidence rather than taste.
+     *
+     * Two rules the arithmetic follows, both borrowed from `Scoring\DeterministicScorer` so the
+     * two scores in this product behave the same way:
+     *
+     * - **Weights are normalised, not summed.** The heat is `contributed / assessed`, so changing
+     *   one weight cannot inflate every signal, and adding a component later does not re-scale the
+     *   whole feed.
+     * - **Missing data is not a failure.** A component with nothing to judge — no amount, no
+     *   history for the outlet, no ICP — is *unknown*, and its weight leaves **both** sides of the
+     *   ratio. Scoring a signal low for being thinly reported would make the heat measure how much
+     *   Alima knows rather than how much the event is worth.
+     *
+     * A definition may override any weight (`signal_definitions.score_weights`); these are the
+     * defaults every untuned type uses.
+     */
+    'scoring' => [
+        'weights' => [
+            // What the AI thought, which is where v1's whole judgement lived. Still the largest
+            // single voice, deliberately: everything else here is a prior about the *event*, and
+            // relevance is the only component that read the article.
+            'relevance' => (int) env('SIGNALS_WEIGHT_RELEVANCE', 30),
+            'confidence' => (int) env('SIGNALS_WEIGHT_CONFIDENCE', 15),
+            // The feed already ordered by `published_at` for exactly this reason; this makes it
+            // explicit and lets it be traded off against the rest rather than dominating.
+            'recency' => (int) env('SIGNALS_WEIGHT_RECENCY', 20),
+            'amount' => (int) env('SIGNALS_WEIGHT_AMOUNT', 10),
+            'source_authority' => (int) env('SIGNALS_WEIGHT_SOURCE_AUTHORITY', 10),
+            'seniority' => (int) env('SIGNALS_WEIGHT_SENIORITY', 5),
+            // A story six outlets carried is likelier to be real than one a single aggregator ran.
+            'cluster_breadth' => (int) env('SIGNALS_WEIGHT_CLUSTER_BREADTH', 5),
+            // Reuses `Scoring`'s criteria match rather than inventing a second fit score.
+            'icp_fit' => (int) env('SIGNALS_WEIGHT_ICP_FIT', 15),
+        ],
+
+        // An event's value halves every this-many days. Seven is a week: a funding round from
+        // last Tuesday is still worth a call and one from last quarter is history, which is the
+        // same judgement `signals.recency` (`qdr:w`) already makes about what to search for.
+        'recency_half_life_days' => (int) env('SIGNALS_RECENCY_HALF_LIFE_DAYS', 7),
+
+        // Below this many amounts in a team's own history, the amount component abstains rather
+        // than ranking against a sample too small to mean anything. Banding against the team's own
+        // distribution is the point — a £2m exit matters to one team and not another — and four
+        // data points are not a distribution.
+        'amount_history_minimum' => (int) env('SIGNALS_AMOUNT_HISTORY_MINIMUM', 5),
+
+        // Below this many outcomes for a `(source, type)` pair, source authority abstains. Same
+        // reasoning: a source the team has seen twice has not earned a reputation either way.
+        'source_history_minimum' => (int) env('SIGNALS_SOURCE_HISTORY_MINIMUM', 5),
+
+        // How many outlets count as "widely reported" for the breadth component. Beyond this the
+        // component is simply full: the difference between six outlets and sixteen says more about
+        // syndication than about the event.
+        'breadth_saturation' => (int) env('SIGNALS_BREADTH_SATURATION', 6),
+    ],
+
+    /*
+     * Tuning suggestions (S12): proposed, never applied.
+     *
+     * The advisor reads `signal_source_stats`, `signal_rejections` and the dismiss reasons and
+     * writes `signal_tuning_suggestions` rows a member accepts or declines. **Nothing
+     * auto-applies** — a feature that silently retunes itself is a feature nobody can debug, and
+     * the dismiss reason has been documented since S4 as being kept "for tuning, not for display".
+     *
+     * The thresholds are what stop it being a nag: `min_observations` is how much evidence a
+     * proposal needs before it is worth a member's attention, and `min_rate` is how one-sided that
+     * evidence has to be.
+     */
+    'tuning' => [
+        'min_observations' => (int) env('SIGNALS_TUNING_MIN_OBSERVATIONS', 8),
+        'min_rate' => (float) env('SIGNALS_TUNING_MIN_RATE', 0.7),
+        // Never show a member more than this many at once. A panel of thirty suggestions is a
+        // backlog, and a backlog is ignored.
+        'max_open' => (int) env('SIGNALS_TUNING_MAX_OPEN', 5),
+    ],
+
+    /*
+     * Full-article fetch for the top of the feed (S12, and the oldest item in the v1 backlog).
+     *
+     * Snippet-only extraction is why amounts and names are best-effort. For a signal the scorer
+     * already rates highly it is worth reading the article properly — through the **shared**
+     * `Core\Contracts\WebContentFetcher` (the SSRF-safe seam Enrichment and Business Intelligence
+     * already use; do not add an HTTP client) and re-extracting the amount, the names and the role
+     * from the full text.
+     *
+     * **Off by default**, and four things bound it when it is on: the heat threshold (only the top
+     * of the feed is worth the money), a per-team monthly ceiling in micro-units, the circuit
+     * breaker, and `robots.txt`. It stores the extracted **fields** and a timestamp and **never the
+     * article body** — retention and DSAR both get harder the moment we keep prose.
+     */
+    'article_fetch' => [
+        'enabled' => (bool) env('SIGNALS_ARTICLE_FETCH_ENABLED', false),
+        // Only the signals a member is actually going to read.
+        'min_heat' => (int) env('SIGNALS_ARTICLE_FETCH_MIN_HEAT', 70),
+        // Articles per run, so one busy news day cannot become a hundred page fetches.
+        'max_per_run' => (int) env('SIGNALS_ARTICLE_FETCH_MAX_PER_RUN', 5),
+        // Decision #4 of this plan: yes, a cost cap per team per month, default off (zero means
+        // uncapped **only** because the feature itself is off by default; turning the feature on
+        // without setting this is the mistake, and `security:posture` is where that check belongs).
+        'monthly_cap_micros' => (int) env('SIGNALS_ARTICLE_FETCH_MONTHLY_CAP_MICROS', 0),
+        // Indicative cost of one fetch plus its re-extraction, in micro-units. Metered onto the
+        // run's `cost_micros` like every other spend this module makes.
+        'cost_micros_per_fetch' => (int) env('SIGNALS_ARTICLE_FETCH_COST_MICROS', 2_000),
+        // How long a host's `robots.txt` is trusted for. A day: long enough that one news day is
+        // one fetch per publisher, short enough that a publisher who changes their mind is
+        // honoured within one.
+        'robots_ttl' => (int) env('SIGNALS_ARTICLE_FETCH_ROBOTS_TTL', 86_400),
+        // How long a host whose `robots.txt` could **not be read** stays denied. Minutes, not a
+        // day: RFC 9309 says to treat a server error as disallow-all, and a publisher having a bad
+        // hour should not cost us a day's reading once they recover.
+        'robots_error_ttl' => (int) env('SIGNALS_ARTICLE_FETCH_ROBOTS_ERROR_TTL', 300),
+    ],
+
+    /*
      * Remembering what was rejected (S11), which closes the S3 trade-off (b).
      *
      * Non-event and below-threshold items were forgotten, so every run re-paid to classify the same

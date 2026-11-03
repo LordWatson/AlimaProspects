@@ -299,4 +299,49 @@ final class SignalsException extends DomainException
 
         return $e;
     }
+
+    /**
+     * Somebody already accepted or declined this suggestion (S12).
+     *
+     * Refused rather than ignored, because the two ways this happens both deserve to be told
+     * about: two tabs, and a second click on a slow one. Applying a ten-point threshold nudge
+     * twice is a twenty-point change nobody asked for.
+     */
+    public static function tuningSuggestionSettled(): self
+    {
+        $e = new self('Someone has already answered this suggestion. Reload to see where it stands.');
+        $e->errorCode = 'signals.tuning_settled';
+
+        return $e;
+    }
+
+    /**
+     * The suggestion is about something that has since changed (S12) — a type that was deleted, a
+     * template that was already removed, a threshold the member has edited by hand.
+     *
+     * The honest answer is to refuse and let the advisor propose again from what is true now,
+     * rather than apply a change built on evidence about a thing that no longer exists.
+     */
+    public static function tuningSuggestionStale(): self
+    {
+        $e = new self('This suggestion is out of date — what it was about has changed since. Alima will suggest again if it still applies.');
+        $e->errorCode = 'signals.tuning_stale';
+
+        return $e;
+    }
+
+    /**
+     * This team has spent its monthly allowance for reading full articles (S12).
+     *
+     * A cost ceiling rather than a failure: the run carries on and the signals it found are kept,
+     * snippet-only, which is exactly what every signal was before S12. So this is raised only
+     * where a caller asked for a fetch explicitly, never from inside a run.
+     */
+    public static function articleFetchBudgetSpent(): self
+    {
+        $e = new self('You have used this month’s allowance for reading full articles. Signals keep arriving with the summary from the headline and snippet.');
+        $e->errorCode = 'signals.article_budget_spent';
+
+        return $e;
+    }
 }

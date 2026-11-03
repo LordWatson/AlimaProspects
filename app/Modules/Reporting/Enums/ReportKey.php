@@ -24,6 +24,7 @@ enum ReportKey: string
     case Stages = 'stages';
     case Sources = 'sources';
     case SignalTypes = 'signal_types';
+    case SignalPerformance = 'signal_performance';
     case IcpPerformance = 'icp_performance';
     case TeamActivity = 'team_activity';
     case AiUsage = 'ai_usage';
@@ -40,6 +41,7 @@ enum ReportKey: string
             self::Stages => 'Pipeline stages',
             self::Sources => 'Lead sources',
             self::SignalTypes => 'Signal event types',
+            self::SignalPerformance => 'Signal type performance',
             self::IcpPerformance => 'Ideal customer performance',
             self::TeamActivity => 'Team activity',
             self::AiUsage => 'AI and data usage',
@@ -58,6 +60,7 @@ enum ReportKey: string
             self::Stages => 'Where the prospects sourced in this period sit on your board now.',
             self::Sources => 'Which provider found the prospects sourced in this period.',
             self::SignalTypes => 'The kinds of trigger event your watches found in this period.',
+            self::SignalPerformance => 'Of the trigger events each of your signal types found in this period, how far they got.',
             self::IcpPerformance => 'How each ideal customer profile graded the prospects sourced in this period.',
             self::TeamActivity => 'What each member did in this period.',
             self::AiUsage => 'What Alima spent on your behalf in this period, by the work it did.',
@@ -79,6 +82,6 @@ enum ReportKey: string
      */
     public static function tabular(): array
     {
-        return [self::IcpPerformance, self::Outreach, self::TeamActivity, self::AiUsage];
+        return [self::IcpPerformance, self::SignalPerformance, self::Outreach, self::TeamActivity, self::AiUsage];
     }
 }

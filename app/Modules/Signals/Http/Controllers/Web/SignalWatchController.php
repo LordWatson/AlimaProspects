@@ -21,10 +21,12 @@ use App\Modules\Signals\Enums\SignalWatchCadence;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
 use App\Modules\Signals\Http\Requests\SaveSignalWatchRequest;
 use App\Modules\Signals\Http\Resources\SignalDefinitionResource;
+use App\Modules\Signals\Http\Resources\SignalTuningSuggestionResource;
 use App\Modules\Signals\Http\Resources\SignalWatchResource;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
+use App\Modules\Signals\Services\SignalTuningAdvisor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -47,6 +49,7 @@ final class SignalWatchController extends Controller
         ListSignalWatchesAction $list,
         ListSignalDefinitionsAction $listDefinitions,
         GetIcpsAction $getIcps,
+        SignalTuningAdvisor $advisor,
     ): Response {
         $team = $this->team($request);
         $user = $this->user($request);
@@ -95,6 +98,17 @@ final class SignalWatchController extends Controller
             // What the one-click "set up my first watch" button creates, so the empty state can
             // name the market and the events rather than promising something vague.
             'defaults' => $this->defaults($team),
+            // What the product thinks the team should change, with the evidence (S12). Sent with
+            // the screen rather than fetched by it: a panel that loaded separately would flash
+            // empty on every visit for the one in ten that has something in it.
+            //
+            // **Read, never generated here.** The advisor runs weekly from `signals:advise`;
+            // calling it on a page load would make a member's first visit of the week slower for a
+            // reason they could not see, and would mean the proposals a team is looking at changed
+            // under them while they read.
+            'suggestions' => SignalTuningSuggestionResource::collection(
+                app(TeamContext::class)->run($team, static fn (): array => $advisor->open($team)),
+            )->resolve($request),
             'can' => ['manage' => $user->can('create', $this->transientWatch($team))],
         ]);
     }

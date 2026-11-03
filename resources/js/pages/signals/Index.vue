@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useI18n } from '@/composables/useI18n';
 import { useNavigating } from '@/composables/useNavigating';
 import type {
@@ -30,6 +31,8 @@ import type {
     SignalFilterState,
     SignalScope,
     SignalScopeOption,
+    SignalSortOption,
+    SignalSortOrder,
     SignalsDetectedPayload,
     SignalStatus,
 } from '@/types';
@@ -60,6 +63,8 @@ const props = defineProps<{
         dismiss_reasons: SignalDismissReasonOption[];
         /** The two halves of the feed (S10), each with the sentence its empty state shows. */
         scopes: SignalScopeOption[];
+        /** How it may be ordered (S12), each with its own description. */
+        sorts: SignalSortOption[];
     };
     stages: PipelineStage[];
     watchCount: number;
@@ -101,6 +106,17 @@ const tabs: { value: SignalStatus; label: string }[] = [
  */
 const scope = computed<SignalScope>(() => props.filters.scope ?? 'all');
 
+/**
+ * How the feed is ordered (S12). Heat by default — what each event is worth to this team — with
+ * "most recent" kept as a real choice, because a ranking nobody has learned to trust yet needs the
+ * order they already understand to fall back to.
+ */
+const sort = computed<SignalSortOrder>(() => props.filters.sort ?? 'heat');
+
+const currentSort = computed<SignalSortOption | undefined>(() =>
+    props.options.sorts.find((option) => option.value === sort.value),
+);
+
 const currentScope = computed<SignalScopeOption | undefined>(() =>
     props.options.scopes.find((option) => option.value === scope.value),
 );
@@ -127,6 +143,8 @@ type SignalQueryParams = {
     status: SignalStatus;
     /** Omitted when it is "everything", so the plain feed keeps the URL it always had. */
     scope?: SignalScope;
+    /** Omitted when it is the default, for the same reason. */
+    sort?: SignalSortOrder;
     event_keys: SignalEventKey[];
     from?: string;
     to?: string;
@@ -140,6 +158,7 @@ function queryFor(changes: Partial<SignalFilterState>): SignalQueryParams {
     return {
         status: next.status,
         scope: next.scope === 'accounts' ? 'accounts' : undefined,
+        sort: next.sort === 'published' ? 'published' : undefined,
         event_keys: next.event_keys,
         from: next.from ?? undefined,
         to: next.to ?? undefined,
@@ -154,6 +173,7 @@ function tabHref(changes: Partial<SignalFilterState>): string {
 
     params.set('status', query.status);
     if (query.scope) params.set('scope', query.scope);
+    if (query.sort) params.set('sort', query.sort);
     query.event_keys.forEach((key) => params.append('event_keys[]', key));
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
@@ -513,18 +533,67 @@ onBeforeUnmount(() => {
                         </Link>
                     </nav>
 
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        class="ms-auto mb-1"
-                        :aria-expanded="showFilters"
-                        aria-controls="signal-filters"
-                        @click="showFilters = !showFilters"
-                    >
-                        <SlidersHorizontal class="size-4" aria-hidden="true" />
-                        {{ t('Filters') }}
-                    </Button>
+                    <div class="ms-auto mb-1 flex flex-wrap items-center gap-2">
+                        <!-- The sort (S12). A real `<select>` through the shared base component,
+                             not a menu: two options, one of which is almost always right, and a
+                             native control is the one every assistive technology already knows.
+                             The label is visible rather than a placeholder, because "Best for you"
+                             on its own does not say what it is describing. -->
+                        <Label
+                            for="signal-sort"
+                            class="text-xs text-muted-foreground"
+                        >
+                            {{ t('Order') }}
+                        </Label>
+                        <NativeSelect
+                            id="signal-sort"
+                            class="h-9 w-auto text-sm"
+                            :model-value="sort"
+                            :aria-describedby="
+                                currentSort ? 'signal-sort-help' : undefined
+                            "
+                            @change="
+                                navigate({
+                                    sort: ($event.target as HTMLSelectElement)
+                                        .value as SignalSortOrder,
+                                })
+                            "
+                        >
+                            <option
+                                v-for="option in options.sorts"
+                                :key="option.value"
+                                :value="option.value"
+                            >
+                                {{ t(option.label) }}
+                            </option>
+                        </NativeSelect>
+
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            :aria-expanded="showFilters"
+                            aria-controls="signal-filters"
+                            @click="showFilters = !showFilters"
+                        >
+                            <SlidersHorizontal
+                                class="size-4"
+                                aria-hidden="true"
+                            />
+                            {{ t('Filters') }}
+                        </Button>
+                    </div>
                 </div>
+
+                <!-- What the chosen order means. One line, and it earns its place: "Best for you"
+                     is a claim, and a member deciding whether to trust it needs to know the claim
+                     is checkable on every card. -->
+                <p
+                    v-if="currentSort"
+                    id="signal-sort-help"
+                    class="text-xs text-muted-foreground"
+                >
+                    {{ t(currentSort.description) }}
+                </p>
 
                 <!-- What the numbers on those tabs count, said once and only where it applies:
                      one event, however many outlets ran it (S11). -->

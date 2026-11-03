@@ -647,7 +647,7 @@ let the team's own dismiss behaviour tune the thing without anyone editing a tem
 
 ### Tasks
 
-1. [ ] **`SignalScorer`** — a composite 0–100 `heat` from components that are each **stored**,
+1. [x] **`SignalScorer`** — a composite 0–100 `heat` from components that are each **stored**,
        not just the total: AI `relevance`; AI `confidence`; **recency decay** (an event's value
        halves on a configurable half-life — the feed already orders by `published_at` for
        exactly this reason, so make it explicit); **amount**, banded against the team's own
@@ -657,14 +657,14 @@ let the team's own dismiss behaviour tune the thing without anyone editing a tem
        six outlets carried is likelier to be real); and **ICP fit**, reusing `Scoring`'s existing
        criteria match rather than inventing a second fit score. Weights in `config/signals.php`,
        per-definition overrides allowed. **Deterministic and unit-tested**; no AI in the scorer.
-2. [ ] **Migration** — `signals.heat` (int) + `signals.score_breakdown` (json). Index
+2. [x] **Migration** — `signals.heat` (int) + `signals.score_breakdown` (json). Index
        `(team_id, status, heat)` for the new default sort. Keep the `published_at` sort
        available; the feed gets a sort control, defaulting to heat.
-3. [ ] **`signal_source_stats`** — team, `source_name`, `signal_definition_id`, `kept_count`,
+3. [x] **`signal_source_stats`** — team, `source_name`, `signal_definition_id`, `kept_count`,
        `dismissed_count`, `converted_count`, `not_an_event_count`, `last_seen_at`. Updated on
        dismiss/convert/attach via a listener on the existing events. This is the v1 backlog's
        "learning from dismiss reasons", made concrete and bounded.
-4. [ ] **Tuning suggestions, not silent tuning.** A `SignalTuningAdvisor` reads
+4. [x] **Tuning suggestions, not silent tuning.** A `SignalTuningAdvisor` reads
        `signal_source_stats`, `signal_rejections` and
        `SignalDismissReason::indicatesMisclassification()` and **proposes**: domains to add to
        the ignore list (a source dismissed N times at ≥X%), a threshold nudge per definition
@@ -674,11 +674,11 @@ let the team's own dismiss behaviour tune the thing without anyone editing a tem
        retunes itself is a feature nobody can debug, and the dismiss reason is already documented
        as being "kept for tuning, not for display". Accepting a suggestion is an audited
        definition edit like any other.
-5. [ ] **"Why you're seeing this"** on every card: the definition and its version, the query
+5. [x] **"Why you're seeing this"** on every card: the definition and its version, the query
        that found it, the ICP criterion that lifted it, the score breakdown as a short list, the
        jurisdiction and what that means for the approach. Trust is a feature — and this is also
        the fastest debugging tool the people supporting this will ever get.
-6. [ ] **Full-article fetch for the top of the feed** (v1 backlog) — for a signal above a heat
+6. [x] **Full-article fetch for the top of the feed** (v1 backlog) — for a signal above a heat
        threshold, fetch the article through the existing `Core\Contracts\WebContentFetcher`
        (already used by Enrichment and Business Intelligence — reuse it, do not add an HTTP
        client) and re-extract amount, names and roles from the full text. Behind
@@ -686,13 +686,13 @@ let the team's own dismiss behaviour tune the thing without anyone editing a tem
        timeout, the circuit breaker, and `robots.txt` respect. Metered onto the run's cost.
        Store nothing but the extracted fields and a fetch flag — **not the article body**;
        retention and DSAR both get harder the moment we keep prose.
-7. [ ] **Per-definition performance in Reporting** — signals → kept → converted → **pipeline
+7. [x] **Per-definition performance in Reporting** — signals → kept → converted → **pipeline
        stage reached**, per definition, over the window, with the **cohort rule written down**
        the way every other Reporting figure is (`docs/modules/reporting-analytics.md`) and its
        bounds reaching the query in **UTC** (`DateRange::constrain()`). This is the number that
        tells a team which signals are worth paying for, and it is what makes S15's retirement
        suggestion credible rather than opinionated.
-8. [ ] **UI** — the sort control; the heat indicator (a **status** token or a neutral scale,
+8. [x] **UI** — the sort control; the heat indicator (a **status** token or a neutral scale,
        **never Signal Orange** — §2a); the explanation disclosure; the tuning-suggestions panel
        on the settings screen. `brand-reviewer`.
 
@@ -1025,7 +1025,7 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | S9    | The signal builder (library, composer, preview) | ☑ **Done** 2026-11-02 | S7, S8       |
 | S10   | Watchlists & account monitoring                 | ☑ **Done** 2026-11-02 | S7, S8       |
 | S11   | Clustering & redirect-safe dedupe               | ☑ **Done** 2026-11-03 | S7           |
-| S12   | Ranking, learning & explainability              | ☐ Not started         | S7, S11      |
+| S12   | Ranking, learning & explainability              | ☑ **Done** 2026-11-03 | S7, S11      |
 | S13   | Pluggable signal sources                        | ☐ Not started         | S7, S8       |
 | S14   | Playbooks                                       | ☐ Not started         | S7, S10, S12 |
 | S15   | Delivery, ROI & curated library                 | ☐ Not started         | S9, S12      |
@@ -1115,13 +1115,69 @@ so the AI saving — the phase's headline number — is visible only in the AI l
 between `results_count` and `signals_created` as the hint. It belongs with S16's cost governance,
 where the other spend figures live.
 
+## S12, as shipped — four deviations from the plan above
+
+**1. `signals.heat` is nullable, and the sort has to cope.** The plan said `int`. A plain integer
+cannot tell "we judged this and it is cold" from "this was found before the scorer existed", and the
+feed's default sort is heat — so every pre-S12 signal would have been pushed to the bottom as though
+it had been assessed and found worthless. `heat` is nullable, `SignalSortOrder::apply()` orders nulls
+last explicitly (`case when signals.heat is null then 1 else 0 end`, because MySQL and SQLite
+disagree about where a null sorts), the card falls back to showing relevance **labelled as
+relevance**, and `SignalScore::isMeaningful()` is what a caller asks before presenting a heat as a
+judgement. The same distinction, one level down, is why a component's `value` is nullable: a
+component with nothing to judge is left out of **both** sides of the average rather than scored zero,
+or the heat would measure how much Alima knows about an event instead of how much the event is worth.
+
+**2. The explanation panel does not name the query that found the signal.** The plan asked for "the
+definition and its version, the query that found it, the ICP criterion that lifted it, …". The first,
+the version, the watch, the breakdown and the jurisdiction are all there. The **query template is
+not**, because no signal row records which of a definition's templates matched it — adding that
+column was outside this phase and is worth doing in S13, where a signal will also have to record
+which _source_ found it. The ICP criterion arrives as the ICP component's evidence rather than as a
+field of its own.
+
+**3. "Pipeline stage reached" became "picked up and worked".** The plan's per-definition report asks
+for the pipeline stage a converted lead reached. Stages are team-defined rows, so there is no stage
+every team has and no ordering that means the same thing across two teams — a column headed
+"Qualified" would be empty for half of them. `BuildSignalPerformanceAction` reports leads that have
+moved **off the default stage** (`pipeline_stages.is_default = 0`), which is the one comparable
+question available: did anybody do anything with it. The cohort rule is written down in
+`docs/modules/reporting-analytics.md` like every other figure, and the window reaches the query
+through `DateRange::constrain()` in UTC.
+
+**4. The full-article fetch changed a Core contract.** `robots.txt` respect was one clause of task 6
+and it needed `Core\Contracts\WebContentFetcher::fetchLines()` — a new method on a seam three
+modules share. The reason is in "What the S12 review changed": the existing `fetch()` collapses all
+whitespace, which is right for an article and destroys a line-oriented format, so the first
+implementation of `RobotsPolicy` parsed every policy as a single record and allowed everything. The
+policy itself lives in `Core\Support`, not in Signals, because the next module that fetches a page
+will want it and a second copy is a second answer.
+
+**What the review caught, and what to carry into S13.** Nine findings, four of which would have
+shipped something broken: a `robots.txt` parser that could not fail a test, a learning ledger whose
+arithmetic made its own consumer unreachable, an "accept this suggestion" path that could lower a
+floor a member had raised, and an enricher that could fail an already-committed run. Every one was a
+**test that passed for the wrong reason** — a double that preserved newlines where the product does
+not, fixtures seeded directly into states the ledger cannot produce, an AI response cache that made a
+call-counting test pass without the call, and a `catch` on two leaf exception classes. The lesson for
+S13, which adds sources that each fetch and parse something: **assert against the real collaborator
+wherever the double is the thing being trusted**, and seed state by driving the product rather than
+by writing the row you expect.
+
 ## New ADRs this plan introduces
 
-| ADR  | Title                                                                              | Phase |
-| ---- | ---------------------------------------------------------------------------------- | ----- |
-| 0018 | Signal definitions are data, not an enum (and the preset library is platform data) | S7    |
-| 0019 | Search geography is not the compliance market; the restriction follows the subject | S8    |
-| 0020 | Signal sources are a registry, and an inbound event is untrusted                   | S13   |
+| ADR  | Title                                                                                  | Phase |
+| ---- | -------------------------------------------------------------------------------------- | ----- |
+| 0018 | Signal definitions are data, not an enum (and the preset library is platform data)     | S7    |
+| 0019 | Search geography is not the compliance market; the restriction follows the subject     | S8    |
+| 0020 | The signal builder: an AI that writes configuration is drafted, bounded, previewed     | S9    |
+| 0021 | Account monitoring: a watch can be pointed at companies instead of places              | S10   |
+| 0022 | A ranked feed that can explain itself, and a product that proposes rather than retunes | S12   |
+| 0023 | Signal sources are a registry, and an inbound event is untrusted                       | S13   |
+
+S11 introduced no ADR: clustering changed what a row _means_ but took no decision the module doc
+does not record. The numbers above are the ones actually written — the planned numbering for S9 and
+S10 ("none") and for S13 (0020) was overtaken as those phases shipped.
 
 ## Deliberately out of scope
 

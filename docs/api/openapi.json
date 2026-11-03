@@ -4846,6 +4846,22 @@
                         }
                     },
                     {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "How it is ordered (S12). Same shape and same reasoning as the scope: a closed pair\nthat cannot go stale, nullable so the plain URL keeps meaning the default.",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "enum": [
+                                "heat",
+                                "published",
+                                null
+                            ]
+                        }
+                    },
+                    {
                         "name": "event_keys[]",
                         "in": "query",
                         "schema": {
@@ -11886,6 +11902,109 @@
                             "needs_confirmation"
                         ]
                     },
+                    "heat": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "How much this event is worth to this team, 0-100 (S12), or null on a signal found\nbefore the scorer existed and not yet re-scored. Null rather than zero, because the\nfeed's heat sort has to be able to tell \"not judged\" from \"judged and cold\"."
+                    },
+                    "explanation": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "description": "**Why you're seeing this**: the score's own working, the type that classified it, the\nplace and what that means for the approach. The phase's actual deliverable \u2014 a\nranking nobody can interrogate is worse than date order \u2014 and, not incidentally, the\nfastest debugging tool the people supporting this will ever get.",
+                        "properties": {
+                            "heat": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "components": {
+                                "type": "array",
+                                "description": "The rows, in the order the scorer weighed them, with the unjudged ones **kept**: a\npanel that silently dropped them would read as a shorter list rather than as\n\"Alima could not tell, and here is why\".",
+                                "items": {}
+                            },
+                            "definition": {
+                                "type": "object",
+                                "description": "Which type decided this was an event, and which version of it \u2014 so a member who\nretuned a type yesterday can tell whether this card predates the change. The key is\nthe fallback for a type that has since been deleted (ADR 0018 \u00a74).",
+                                "properties": {
+                                    "id": {
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ]
+                                    },
+                                    "key": {
+                                        "type": "string"
+                                    },
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "name_translatable": {
+                                        "type": "boolean"
+                                    },
+                                    "version": {
+                                        "type": "null"
+                                    }
+                                },
+                                "required": [
+                                    "id",
+                                    "key",
+                                    "name",
+                                    "name_translatable",
+                                    "version"
+                                ]
+                            },
+                            "watch": {
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "description": "Which watch found it. Plumbing on the card itself (the S5 brand review took the\n\"found by\" row off), but exactly what somebody debugging a feed wants first.",
+                                "properties": {
+                                    "id": {
+                                        "type": "integer"
+                                    },
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "id",
+                                    "name"
+                                ]
+                            },
+                            "jurisdiction": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "description": "Where the subject is and what follows from it. The restriction is the part that\nmatters: a member reading why this card is here should also be reading how they are\nallowed to approach it (S8, ADR 0019)."
+                            },
+                            "resolved_market": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "read_full_article": {
+                                "type": "boolean",
+                                "description": "Whether the full article was read, or only the headline and snippet (S12). A member\njudging an amount deserves to know which."
+                            }
+                        },
+                        "required": [
+                            "heat",
+                            "components",
+                            "definition",
+                            "watch",
+                            "jurisdiction",
+                            "resolved_market",
+                            "read_full_article"
+                        ]
+                    },
                     "cluster": {
                         "type": [
                             "object",
@@ -11957,6 +12076,8 @@
                     "actioned_at",
                     "deletes_in_days",
                     "matched_lead",
+                    "heat",
+                    "explanation",
                     "cluster",
                     "created_at"
                 ],

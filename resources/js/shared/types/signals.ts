@@ -202,6 +202,105 @@ export type Signal = {
      * event, which is this card.
      */
     cluster: SignalClusterSummary | null;
+    /**
+     * How much this event is worth to this team, 0–100 (S12).
+     *
+     * **Null means "not scored yet"**, not "worthless" — a signal found before the scorer existed
+     * and not yet re-scored. The feed's heat sort puts nulls last for that reason, and the card
+     * falls back to showing relevance.
+     */
+    heat: number | null;
+    /** The score's own working, and everything else the card needs to explain itself (S12). */
+    explanation: SignalExplanation | null;
+    created_at: string | null;
+};
+
+/** One row of a signal's score breakdown (S12). */
+export type SignalScoreComponent = {
+    key: string;
+    /** Translation keys, not finished strings. */
+    label: string;
+    explanation: string;
+    /** 0–100, or null when there was nothing to judge. */
+    value: number | null;
+    weight: number;
+    /** This component's share of the final heat, 0–100. Zero for an unjudged one. */
+    contribution: number;
+    /**
+     * Grounded in the row — "4 outlets", "$40m, higher than 80% of the deals you have seen" — and
+     * never model-written prose.
+     */
+    evidence: string | null;
+    /**
+     * Whether `evidence` is Alima's own wording, and so a translation key, or a figure from the row
+     * to be rendered as given. The same flag, and the same reason, as `event_label_translatable`.
+     */
+    evidence_translatable: boolean;
+    /** False when the scorer had nothing to judge. The row is still shown, with its reason. */
+    assessed: boolean;
+};
+
+/**
+ * "Why you're seeing this" (S12).
+ *
+ * Read from the **stored** breakdown, so it explains the score the feed was actually ranked by
+ * rather than what today's weights would say about yesterday's order. Null on a signal that has
+ * never been scored, which the card reads as "no panel" rather than as an empty one.
+ */
+export type SignalExplanation = {
+    heat: number | null;
+    /** Every component, judged or not, in the order the scorer weighed them. */
+    components: SignalScoreComponent[];
+    definition: {
+        id: number | null;
+        key: string;
+        name: string;
+        /** Whether `name` is Alima's wording (pass through `t()`) or the team's own. */
+        name_translatable: boolean;
+        /** Which version of the type classified it, or null once the type is gone. */
+        version: number | null;
+    };
+    /** Which watch found it. Plumbing on the card, and the first thing a debugger wants. */
+    watch: { id: number; name: string } | null;
+    jurisdiction: string | null;
+    resolved_market: string | null;
+    /** Whether the full article was read, or only the headline and snippet. */
+    read_full_article: boolean;
+};
+
+/** How the feed is ordered (S12). */
+export type SignalSortOrder = 'heat' | 'published';
+
+export type SignalSortOption = {
+    value: SignalSortOrder;
+    /** Translation keys, not finished strings. */
+    label: string;
+    description: string;
+};
+
+/** What the product suggests the team change, and the evidence for it (S12). */
+export type SignalTuningSuggestion = {
+    id: number;
+    kind:
+        | 'ignore_source'
+        | 'raise_confidence'
+        | 'raise_relevance'
+        | 'retire_template';
+    /** Translation keys, not finished strings. */
+    kind_label: string;
+    kind_explanation: string;
+    status: 'proposed' | 'accepted' | 'declined';
+    status_label: string;
+    /** The change as values — the panel renders them rather than parsing a sentence. */
+    payload: Record<string, unknown>;
+    /** The counts the advisor reached its opinion from, so a member can check it. */
+    evidence: Record<string, unknown>;
+    definition: {
+        id: number;
+        name: string;
+        name_translatable: boolean;
+        deleted: boolean;
+    } | null;
     created_at: string | null;
 };
 
@@ -225,6 +324,8 @@ export type SignalFilterState = {
     status: SignalStatus;
     /** Which half of the feed: everything, or only events about the team's own accounts (S10). */
     scope: SignalScope;
+    /** How it is ordered (S12). Defaults to heat, with "most recent" kept as a real choice. */
+    sort: SignalSortOrder;
     /** Signal definition keys. Any the team no longer has is dropped by the server. */
     event_keys: SignalEventKey[];
     /** `Y-m-d`, as a date input speaks it. */

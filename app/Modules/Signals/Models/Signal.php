@@ -60,6 +60,9 @@ use Illuminate\Support\Str;
  * @property string|null $resolved_market A `Market` value, or null where the code maps to none
  * @property int $confidence
  * @property int $relevance
+ * @property int|null $heat 0-100, composite and deterministic (S12); null until scored
+ * @property list<array<string, mixed>>|null $score_breakdown every component's value and share
+ * @property Carbon|null $article_fetched_at when the full article was read; never the body (S12)
  * @property string|null $suggested_approach
  * @property string $source_url
  * @property string|null $source_name
@@ -109,6 +112,9 @@ class Signal extends Model
         'resolved_market',
         'confidence',
         'relevance',
+        'heat',
+        'score_breakdown',
+        'article_fetched_at',
         'suggested_approach',
         'source_url',
         'source_name',
@@ -323,6 +329,9 @@ class Signal extends Model
             'currency' => Currency::class,
             'confidence' => 'integer',
             'relevance' => 'integer',
+            'heat' => 'integer',
+            'score_breakdown' => 'array',
+            'article_fetched_at' => 'datetime',
             'published_at' => 'datetime',
             'raw' => 'array',
             'actioned_at' => 'datetime',

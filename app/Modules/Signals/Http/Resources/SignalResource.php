@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Http\Resources;
 
 use App\Modules\Signals\Actions\ListSignalsAction;
+use App\Modules\Signals\Data\SignalScore;
+use App\Modules\Signals\Data\SignalScoreComponentValue;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalCluster;
 use App\Modules\Signals\Models\SignalDefinition;
@@ -19,6 +21,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * useful for debugging and no business of a client. And there is **no contact field of any kind**,
  * because there is none on the row: a signal holds a person's name and public role and nothing
  * else (ADR 0011, data minimisation).
+ *
+ * **`explanation` is the one addition that is not a field** (S12): it is the card's "why you're
+ * seeing this" panel — the stored score breakdown, the type and version that classified it, the
+ * watch that found it, and the jurisdiction that decides how it may be approached. Built from the
+ * **stored** breakdown rather than recomputed, so the panel explains the score the feed was ranked
+ * by and not what today's weights would say about yesterday's order.
  *
  * Labels are sent alongside values so a screen never maps an enum itself, and are **translation
  * keys** passed through `t()` on the client — the feed is EN/AR (ADR 0007), so no finished English
@@ -113,6 +121,15 @@ final class SignalResource extends JsonResource
                 'confidence_explanation' => $signal->match_confidence?->explanation(),
                 'needs_confirmation' => $signal->match_confidence?->warrantsConfirmation() ?? false,
             ],
+            // How much this event is worth to this team, 0-100 (S12), or null on a signal found
+            // before the scorer existed and not yet re-scored. Null rather than zero, because the
+            // feed's heat sort has to be able to tell "not judged" from "judged and cold".
+            'heat' => $signal->heat,
+            // **Why you're seeing this**: the score's own working, the type that classified it, the
+            // place and what that means for the approach. The phase's actual deliverable — a
+            // ranking nobody can interrogate is worse than date order — and, not incidentally, the
+            // fastest debugging tool the people supporting this will ever get.
+            'explanation' => $this->explanation($signal),
             // The other outlets that reported the same event (S11), or null when this card stands
             // alone — which is both an unclustered signal and a cluster of one. Shape:
             // `{id: int, sources_count: int (always 2+), first_published_at, last_published_at,
@@ -121,6 +138,80 @@ final class SignalResource extends JsonResource
             // the free Scramble cannot infer a mapped collection (see docs/api/README.md §8).
             'cluster' => $this->clusterPayload($signal),
             'created_at' => $signal->created_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Everything a member needs to decide whether to trust this card's place in the feed (S12).
+     *
+     * **Read from the stored breakdown, not recomputed.** That is the difference between an
+     * explanation and a guess: the panel has to explain the score the feed was actually *ranked*
+     * by, and re-scoring on render would describe today's weights against a row ordered by
+     * yesterday's. It is also why `signals.score_breakdown` is a column rather than a derivation.
+     *
+     * Null when the signal has never been scored, which the card reads as "no panel" rather than
+     * as an empty one — an explanation with nothing in it is worse than the honest absence of one.
+     *
+     * Every string here is either a translation key or **evidence taken from the row**: a count, a
+     * percentile, the outlet's own name. Nothing in it is model-written prose, which is the same
+     * rule `Scoring\Data\CriterionScore::$evidence` follows and the reason either can be trusted.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function explanation(Signal $signal): ?array
+    {
+        $components = SignalScore::forSignal($signal);
+
+        if ($signal->heat === null && $components === []) {
+            return null;
+        }
+
+        $definition = $signal->relationLoaded('definition') ? $signal->definition : null;
+        $watch = $signal->relationLoaded('watch') ? $signal->watch : null;
+
+        return [
+            'heat' => $signal->heat,
+            // The rows, in the order the scorer weighed them, with the unjudged ones **kept**: a
+            // panel that silently dropped them would read as a shorter list rather than as
+            // "Alima could not tell, and here is why".
+            'components' => array_map(
+                static fn (SignalScoreComponentValue $component): array => [
+                    'key' => $component->component->value,
+                    'label' => $component->component->label(),
+                    'explanation' => $component->component->explanation(),
+                    'value' => $component->value,
+                    'weight' => $component->weight,
+                    'contribution' => $component->contribution,
+                    'evidence' => $component->evidence,
+                    // Whether the card may pass `evidence` through `t()`. Figures are rendered as
+                    // given; Alima's own wording is translated. Same flag, same reason, as a
+                    // signal type's name (S7).
+                    'evidence_translatable' => $component->translatable,
+                    'assessed' => $component->isAssessed(),
+                ],
+                $components,
+            ),
+            // Which type decided this was an event, and which version of it — so a member who
+            // retuned a type yesterday can tell whether this card predates the change. The key is
+            // the fallback for a type that has since been deleted (ADR 0018 §4).
+            'definition' => [
+                'id' => $signal->signal_definition_id,
+                'key' => $signal->event_key,
+                'name' => $signal->eventLabel(),
+                'name_translatable' => $this->labelIsOurs($signal),
+                'version' => $definition instanceof SignalDefinition ? $definition->version : null,
+            ],
+            // Which watch found it. Plumbing on the card itself (the S5 brand review took the
+            // "found by" row off), but exactly what somebody debugging a feed wants first.
+            'watch' => $watch === null ? null : ['id' => $watch->id, 'name' => $watch->name],
+            // Where the subject is and what follows from it. The restriction is the part that
+            // matters: a member reading why this card is here should also be reading how they are
+            // allowed to approach it (S8, ADR 0019).
+            'jurisdiction' => $signal->jurisdiction,
+            'resolved_market' => $signal->resolved_market,
+            // Whether the full article was read, or only the headline and snippet (S12). A member
+            // judging an amount deserves to know which.
+            'read_full_article' => $signal->article_fetched_at !== null,
         ];
     }
 

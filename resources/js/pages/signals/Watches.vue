@@ -11,6 +11,7 @@ import {
 import InputError from '@/components/InputError.vue';
 import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
+import TuningSuggestions from '@/components/signals/TuningSuggestions.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -40,6 +41,7 @@ import type {
     SignalWatchDefaults,
     SignalWatchForm,
     SignalWatchlistOption,
+    SignalTuningSuggestion,
 } from '@/types';
 
 defineOptions({
@@ -69,6 +71,13 @@ const props = defineProps<{
         watchlists: SignalWatchlistOption[];
     };
     defaults: SignalWatchDefaults;
+    /**
+     * What the product suggests the team change, with the evidence (S12).
+     *
+     * Open proposals only, capped by `signals.tuning.max_open` — a panel of thirty suggestions is
+     * a backlog, and a backlog is ignored.
+     */
+    suggestions: SignalTuningSuggestion[];
     can: { manage: boolean };
 }>();
 
@@ -553,6 +562,14 @@ onBeforeUnmount(() => {
         <p class="sr-only" role="status" aria-live="polite">
             {{ announcement }}
         </p>
+
+        <!-- What the team could tune, from what they have kept and dismissed (S12).
+             Above the watches, because it is the thing they have not seen before — and it renders
+             nothing at all when there is nothing to say, which is most weeks. -->
+        <TuningSuggestions
+            :suggestions="suggestions"
+            :can-manage="can.manage"
+        />
 
         <!-- First run: one click to the broadest useful watch. -->
         <EmptyState
