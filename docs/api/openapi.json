@@ -10860,7 +10860,7 @@
                                             "string",
                                             "null"
                                         ],
-                                        "description": "**`ActiveUrl` is deliberately not used.** The question is not \"does this resolve\" but\n\"may this application fetch it\", which is `SafeUrl`'s \u2014 scheme, port and whether the\nhost lands on the public internet. A member deserves that answer beside the field\nrather than from a worker three hours later.",
+                                        "description": "An RSS or Atom address Alima can reach. Required when `source_keys` includes `feed`.",
                                         "maxLength": 2048
                                     }
                                 }
@@ -11358,7 +11358,7 @@
                                             "string",
                                             "null"
                                         ],
-                                        "description": "**`ActiveUrl` is deliberately not used.** The question is not \"does this resolve\" but\n\"may this application fetch it\", which is `SafeUrl`'s \u2014 scheme, port and whether the\nhost lands on the public internet. A member deserves that answer beside the field\nrather than from a worker three hours later.",
+                                        "description": "An RSS or Atom address Alima can reach. Required when `source_keys` includes `feed`.",
                                         "maxLength": 2048
                                     }
                                 }

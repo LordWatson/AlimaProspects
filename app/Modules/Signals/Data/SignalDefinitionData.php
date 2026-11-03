@@ -12,7 +12,9 @@ use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Http\Requests\SaveSignalDefinitionRequest;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Rules\SafeFeedUrl;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Spatie\LaravelData\Data;
 
 /**
@@ -56,7 +58,26 @@ final class SignalDefinitionData extends Data
 
     public const int MAX_HINT = 255;
 
-    /** `signals.source_url` is `string(2048)`, and a feed URL is stored in json beside it. */
+    /**
+     * `signals.source_url` is `string(2048)`, and a feed URL is stored in json beside it.
+     *
+     * **Two notes on the feed URL live here rather than in `rules()`**, because `composer api:docs`
+     * publishes the comment above a rule as that field's public description — and the comment
+     * above `source_config` as that object's. Neither of these is addressed to a caller.
+     *
+     * **`ActiveUrl` is deliberately not used.** The question is not "does this resolve" but "may
+     * this application fetch it", which is {@see SafeUrl}'s:
+     * scheme, port, and whether the host lands on the public internet. A member deserves that
+     * answer beside the field rather than from a worker three hours later.
+     *
+     * **It is required when the feed source is ticked** (S13b brand review, finding 7). It was
+     * nullable, so a type could be saved naming the feed with no address — at which point
+     * `FeedSignalSource::supports()` declines the definition, the builder emits no query, and the
+     * type runs on whatever else it names while the member's screen shows the feed as on. That is
+     * the "searched nowhere and completed successfully" state this module keeps legislating
+     * against, and the one answer worse than a validation message. The form asks for the address
+     * the moment the box is ticked; the rule is what makes that truthful.
+     */
     public const int MAX_FEED_URL = 2048;
 
     /** Filing codes or categories one type may claim. More than this is a type doing two jobs. */
@@ -238,11 +259,15 @@ final class SignalDefinitionData extends Data
             // a key for a source it does not know about is not an error.
             'source_config' => ['nullable', 'array'],
             'source_config.feed' => ['nullable', 'array'],
-            // **`ActiveUrl` is deliberately not used.** The question is not "does this resolve" but
-            // "may this application fetch it", which is `SafeUrl`'s — scheme, port and whether the
-            // host lands on the public internet. A member deserves that answer beside the field
-            // rather than from a worker three hours later.
-            'source_config.feed.url' => ['nullable', 'string', 'max:'.self::MAX_FEED_URL, new SafeFeedUrl],
+            // An RSS or Atom address Alima can reach. Required when `source_keys` includes `feed`.
+            'source_config.feed.url' => [
+                Rule::requiredIf(static fn (): bool => in_array(
+                    SignalSourceKind::Feed->value,
+                    Arr::wrap(request()->input('source_keys', [])),
+                    strict: true,
+                )),
+                'nullable', 'string', 'max:'.self::MAX_FEED_URL, new SafeFeedUrl,
+            ],
             'source_config.companies_house' => ['nullable', 'array'],
             'source_config.companies_house.filings' => ['nullable', 'array', 'max:'.self::MAX_FILINGS],
             'source_config.companies_house.filings.*' => ['string', 'distinct', 'max:64'],

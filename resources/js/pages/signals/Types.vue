@@ -411,6 +411,33 @@ const fieldLabels = computed<Record<string, string>>(() => ({
     min_relevance: t('How well it must fit you'),
     // Without this the error summary would show the raw `source_keys` (brand review).
     source_keys: t('Where to look'),
+    'source_config.feed.url': t('Feed address'),
+}));
+
+/**
+ * Where each failure's link should land — the element's **id**, which is not the field name.
+ *
+ * **Without this every link in the summary was dead**, which the brand review found from the feed
+ * field and which turned out to be true of all of them: `FormErrorSummary` falls back to
+ * `key.replaceAll('_', '-')`, so `name` looked for `#name` while the field is `#type-name`, and
+ * `focusField()` returns early when it finds nothing. The summary announced itself, listed the
+ * right failures, and then did nothing when you clicked one. A dead link is worse than no link:
+ * it is a keyboard user's only route to the field, and it looked like it worked.
+ */
+const fieldAnchors = computed<Record<string, string>>(() => ({
+    name: 'type-name',
+    description: 'type-description',
+    category: 'type-category',
+    icon: 'type-icon',
+    query_templates: 'type-templates',
+    includes: 'type-includes',
+    excludes: 'type-excludes',
+    match_keywords: 'type-keywords',
+    min_confidence: 'type-confidence',
+    min_relevance: 'type-relevance',
+    source_keys: 'type-sources',
+    // The field, not the group: this one has a control to focus.
+    'source_config.feed.url': 'type-feed-url',
 }));
 
 /**
@@ -586,17 +613,94 @@ const needsSaveFirst = computed(
 );
 
 /**
+ * Everything that describes the source group, in reading order.
+ *
+ * **The group was described by nothing** (brand review, finding 6). The cost hint had an id that no
+ * `aria-describedby` named, and the two conditional notes had none at all — so up to three
+ * same-styled lines sat under the checkboxes, visually obviously about the group and announced as
+ * part of nothing. A `<fieldset>` can be described as well as named, which is the native fix.
+ *
+ * The two notes are instructions rather than hints ("add this type to a watch that follows a list
+ * of companies"), so they are `text-sm` rather than `text-xs` now: they tell a member the next
+ * thing to do, which is not the same register as "this costs a search per template".
+ */
+const sourcesDescribedBy = computed(() =>
+    [
+        'type-sources-hint',
+        needsWatchlist.value ? 'type-sources-watchlist-note' : null,
+        needsSaveFirst.value ? 'type-sources-save-note' : null,
+    ]
+        .filter((id): id is string => id !== null)
+        .join(' '),
+);
+
+/**
  * The server's message about the feed URL, if any.
  *
  * Read here rather than in the template because Laravel's error bag keys a nested field with a
  * **dotted** path (`source_config.feed.url`), which is not a key of the form object — so indexing
  * `form.errors` with it belongs in one typed place rather than inline in the markup.
  */
-const feedUrlError = computed<string | undefined>(
+const feedUrlError = computed<string | null>(
     () =>
         (form.errors as Record<string, string | undefined>)[
             'source_config.feed.url'
-        ],
+        ] ?? null,
+);
+
+/**
+ * The type whose secret we are about to **replace**, if we are asking first.
+ *
+ * **Replacing needs a confirmation and creating does not** (brand review, finding 4). It is the
+ * only destructive thing on this card: the moment a new secret exists the old one stops verifying,
+ * so a running integration starts getting 403s with nothing about the member's own systems having
+ * changed. It was one click on an outline button. Creating a first secret breaks nothing, so it
+ * stays one click — which is why this is a nullable ref rather than a flag on the button.
+ */
+const replacingSecretFor = ref<SignalDefinition | null>(null);
+const replacingSecretName = ref('');
+
+/** Which type's secret has just been copied, so the button can say so. */
+const copiedSecretFor = ref<number | null>(null);
+
+function askReplaceSecret(definition: SignalDefinition): void {
+    replacingSecretFor.value = definition;
+    replacingSecretName.value = label(definition);
+}
+
+/**
+ * Copy a revealed secret to the clipboard.
+ *
+ * **"Copy this now" over sixty-four characters deserves a button** (brand review, finding 5): the
+ * value is shown exactly once, it is `break-all` across three lines, and a mis-selected partial
+ * copy is indistinguishable from a wrong secret until an integration fails. Failure is silent by
+ * design — `navigator.clipboard` rejects without a gesture or over plain http — so the member
+ * keeps the visible value and can select it by hand.
+ */
+async function copySecret(definition: SignalDefinition): Promise<void> {
+    const secret = revealedSecretFor(definition);
+
+    if (!secret) return;
+
+    try {
+        await navigator.clipboard.writeText(secret);
+        copiedSecretFor.value = definition.id;
+    } catch {
+        copiedSecretFor.value = null;
+    }
+}
+
+/**
+ * The hint and, when there is one, the error — in reading order.
+ *
+ * What `FormField` computes for every other field on this form. Named rather than inlined because
+ * the error is read out of a dotted error-bag key, and because getting this wrong is invisible:
+ * the field announces itself as invalid and says nothing about why.
+ */
+const feedUrlDescribedBy = computed(() =>
+    ['type-feed-url-hint', feedUrlError.value ? 'type-feed-url-error' : null]
+        .filter((id): id is string => id !== null)
+        .join(' '),
 );
 
 /**
@@ -606,6 +710,9 @@ const feedUrlError = computed<string | undefined>(
  * exist yet would have nothing to belong to. The secret comes back flashed and is shown once.
  */
 function rotateWebhookSecret(definition: SignalDefinition): void {
+    replacingSecretFor.value = null;
+    copiedSecretFor.value = null;
+
     router.post(
         `/signals/types/${definition.id}/webhook-secret`,
         {},
@@ -1322,8 +1429,16 @@ function confirmRemove(): void {
                                 {{ t('Signing secret') }}
                             </p>
 
+                            <!-- **`role="status"`, which is finding 5.** The block appears after
+                                 a POST with no navigation and no focus move, so without it a
+                                 keyboard or screen-reader user got no sign that the one-time value
+                                 they asked for was now on screen. `overflow-x-auto` is gone:
+                                 `break-all` wins over it anyway, and wrapping is the right choice
+                                 for something read character by character. `select-all`, so one
+                                 click takes the whole value for anyone not using the button. -->
                             <div
                                 v-if="revealedSecretFor(definition)"
+                                role="status"
                                 class="space-y-2 rounded-xl border border-border bg-muted p-3"
                             >
                                 <p class="text-sm font-medium text-foreground">
@@ -1334,31 +1449,55 @@ function confirmRemove(): void {
                                     }}
                                 </p>
                                 <code
-                                    class="block overflow-x-auto font-mono text-xs break-all text-foreground"
+                                    class="block font-mono text-xs break-all text-foreground select-all"
                                     dir="ltr"
                                     :data-test="`webhook-secret-${definition.id}`"
                                 >
                                     {{ revealedSecretFor(definition) }}
                                 </code>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    :data-test="`copy-webhook-secret-${definition.id}`"
+                                    @click="copySecret(definition)"
+                                >
+                                    {{
+                                        copiedSecretFor === definition.id
+                                            ? t('Copied')
+                                            : t('Copy secret')
+                                    }}
+                                </Button>
                             </div>
 
+                            <!-- **Every Latin run isolated in `<bdi>`** (brand review,
+                                 finding 8). The line mixes a translated label, a hex tail, a
+                                 neutral separator and a date: in Arabic the sentence runs
+                                 right-to-left while the tail and the date run left-to-right, and a
+                                 neutral character sitting between two opposite-direction runs is
+                                 reordered by the bidi algorithm — which is how
+                                 "ينتهي بـ abc12345 · أخير استخدام 2026-11-03" comes out with the
+                                 separator in the wrong place. `<bdi>` is the element that exists
+                                 for exactly this, and `dir="auto"` on the paragraph then takes its
+                                 direction from the label in either language. -->
                             <p
                                 v-else-if="definition.webhook_secret_hint"
                                 class="text-sm text-muted-foreground"
                                 dir="auto"
                             >
                                 {{ t('Ends in') }}
-                                <code class="font-mono" dir="ltr">{{
-                                    definition.webhook_secret_hint
-                                }}</code>
+                                <bdi
+                                    ><code class="font-mono">{{
+                                        definition.webhook_secret_hint
+                                    }}</code></bdi
+                                >
                                 ·
                                 <template
                                     v-if="definition.webhook_secret_used_at"
                                 >
                                     {{ t('last used') }}
-                                    {{
+                                    <bdi>{{
                                         date(definition.webhook_secret_used_at)
-                                    }}
+                                    }}</bdi>
                                 </template>
                                 <template v-else>
                                     {{ t('never used yet') }}
@@ -1377,12 +1516,19 @@ function confirmRemove(): void {
                                 }}
                             </p>
 
+                            <!-- Replacing asks; creating does not. The handler differs rather
+                                 than the label alone, so the confirmation cannot fire on a first
+                                 secret and cannot be skipped on a replacement. -->
                             <Button
                                 v-if="can.manage"
                                 variant="outline"
                                 size="sm"
                                 :data-test="`rotate-webhook-${definition.id}`"
-                                @click="rotateWebhookSecret(definition)"
+                                @click="
+                                    definition.webhook_secret_hint
+                                        ? askReplaceSecret(definition)
+                                        : rotateWebhookSecret(definition)
+                                "
                             >
                                 {{
                                     definition.webhook_secret_hint
@@ -1600,6 +1746,7 @@ function confirmRemove(): void {
                     <FormErrorSummary
                         :errors="form.errors"
                         :labels="fieldLabels"
+                        :anchors="fieldAnchors"
                     />
 
                     <div class="space-y-4">
@@ -1760,6 +1907,7 @@ function confirmRemove(): void {
                         <fieldset
                             id="type-sources"
                             tabindex="-1"
+                            :aria-describedby="sourcesDescribedBy"
                             class="space-y-2 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                         >
                             <legend class="text-sm leading-none font-medium">
@@ -1820,9 +1968,37 @@ function confirmRemove(): void {
                                  nested in the feed row would look like one of several. Driven by
                                  what is ticked rather than by the row, which also keeps the markup
                                  out of the loop's scope. -->
+                            <!-- **The error is named, which is the brand review's second
+                                 finding.** This had `aria-invalid` set and `aria-describedby`
+                                 hard-wired to the hint alone, so a screen reader announced the
+                                 field as invalid and read nothing about why: the error had no id
+                                 and nothing pointed at it. Now both ids are named, in reading
+                                 order, and `dir="auto"` on the error means a server message in
+                                 Arabic sits at the right edge.
+
+                                 **Not a `FormField`, which it should be.** `FormField` solves
+                                 exactly this and is used for every other field on this form """ + EM + """ but
+                                 its scoped slot does not type-check in this part of this file:
+                                 `vue-tsc` reports `TS2304: Cannot find name 'id'` for the slot
+                                 parameters wherever the component is placed in this subtree, under
+                                 any parameter name, inside the fieldset or after it. The same
+                                 tool-level quirk cost S13b an afternoon over `source` in the
+                                 checkbox loop above. What it renders is spelled out here instead,
+                                 matching `FormField`'s markup line for line, which is the
+                                 alternative the review named; the id is `type-feed-url` either
+                                 way, so the error summary's link lands in the same place.
+
+                                 `(required)` in words rather than an asterisk, as `FormField`
+                                 does: the server now refuses a ticked feed with no address rather
+                                 than saving a type that searches nowhere. -->
                             <div v-if="needsFeedUrl" class="space-y-2 pt-1">
-                                <Label for="type-feed-url">
+                                <Label for="type-feed-url" class="flex-wrap">
                                     {{ t('Feed address') }}
+                                    <span
+                                        class="text-xs font-normal text-muted-foreground"
+                                    >
+                                        {{ t('(required)') }}
+                                    </span>
                                 </Label>
                                 <Input
                                     id="type-feed-url"
@@ -1834,12 +2010,13 @@ function confirmRemove(): void {
                                     :aria-invalid="
                                         feedUrlError ? true : undefined
                                     "
-                                    aria-describedby="type-feed-url-note"
+                                    :aria-describedby="feedUrlDescribedBy"
                                     data-test="feed-url"
                                 />
                                 <p
-                                    id="type-feed-url-note"
+                                    id="type-feed-url-hint"
                                     class="text-xs text-muted-foreground"
+                                    dir="auto"
                                 >
                                     {{
                                         t(
@@ -1847,9 +2024,14 @@ function confirmRemove(): void {
                                         )
                                     }}
                                 </p>
+                                <!-- No `role="alert"`: the error is named by `aria-describedby`
+                                     and the summary at the top is the one thing that announces
+                                     itself, which is the rule `FormField` follows. -->
                                 <p
                                     v-if="feedUrlError"
+                                    id="type-feed-url-error"
                                     class="text-sm text-destructive"
+                                    dir="auto"
                                 >
                                     {{ feedUrlError }}
                                 </p>
@@ -1860,7 +2042,8 @@ function confirmRemove(): void {
                                  type, so this form cannot ask for it and says so instead. -->
                             <p
                                 v-if="needsWatchlist"
-                                class="text-xs text-muted-foreground"
+                                id="type-sources-watchlist-note"
+                                class="text-sm text-muted-foreground"
                                 dir="auto"
                             >
                                 {{
@@ -1873,7 +2056,8 @@ function confirmRemove(): void {
                             <!-- A signing secret needs a saved type to belong to. -->
                             <p
                                 v-if="needsSaveFirst"
-                                class="text-xs text-muted-foreground"
+                                id="type-sources-save-note"
+                                class="text-sm text-muted-foreground"
                                 dir="auto"
                             >
                                 {{
@@ -2299,6 +2483,50 @@ function confirmRemove(): void {
         />
 
         <!-- Removal -->
+        <!-- Replacing a signing secret (brand review, finding 4). Said in plain words, because
+             the consequence is not on this screen: it is somebody else's integration stopping. -->
+        <Dialog
+            :open="replacingSecretFor !== null"
+            @update:open="replacingSecretFor = null"
+        >
+            <DialogContent data-test="replace-secret-dialog">
+                <DialogHeader>
+                    <DialogTitle>
+                        {{
+                            t('Replace the signing secret for :name?', {
+                                name: replacingSecretName,
+                            })
+                        }}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {{
+                            t(
+                                'Anything signing with the old one stops working straight away. The new secret is shown once.',
+                            )
+                        }}
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button
+                        variant="outline"
+                        @click="replacingSecretFor = null"
+                    >
+                        {{ t('Keep the current one') }}
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        data-test="confirm-replace-secret"
+                        @click="
+                            replacingSecretFor &&
+                            rotateWebhookSecret(replacingSecretFor)
+                        "
+                    >
+                        {{ t('Replace secret') }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
         <Dialog :open="removing !== null" @update:open="removing = null">
             <DialogContent data-test="remove-type-dialog">
                 <DialogHeader>
