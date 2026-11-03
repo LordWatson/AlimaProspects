@@ -33,6 +33,8 @@ use App\Modules\Signals\Policies\SignalPolicy;
 use App\Modules\Signals\Policies\SignalTuningSuggestionPolicy;
 use App\Modules\Signals\Policies\SignalWatchlistPolicy;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
+use App\Modules\Signals\Services\CompaniesHouseNumberLookup;
+use App\Modules\Signals\Services\CompaniesHouseSignalSource;
 use App\Modules\Signals\Services\NewsSignalSource;
 use App\Modules\Signals\Services\SignalArticleEnricher;
 use App\Modules\Signals\Services\SignalItemNormaliser;
@@ -180,8 +182,27 @@ final class SignalsServiceProvider extends ModuleServiceProvider
                 $app->make(IgnoredDomains::class),
             ));
 
+            // Companies House (S13b) takes **Lead Sourcing's** breaker, not a Signals one, and it
+            // is the one exception to the per-source rule above. The registry rate-limits per API
+            // key, so discovery and Signals share one 600-per-five-minutes quota: a trip earned by
+            // one should shed load from the other, and two circuits over one quota would let each
+            // spend the other's budget while reporting itself healthy. The credential is shared for
+            // the same reason — ADR 0023's "do not open a second integration".
+            $registry->register(new CompaniesHouseSignalSource(
+                $app->make(HttpFactory::class),
+                $this->leadSourcingBreaker($app),
+                $app->make(SignalItemNormaliser::class),
+            ));
+
             return $registry;
         });
+
+        // The name-to-number lookup the watchlist resolver uses (S13b). Lead Sourcing's breaker
+        // again, for the same shared-quota reason.
+        $this->app->bind(CompaniesHouseNumberLookup::class, fn ($app): CompaniesHouseNumberLookup => new CompaniesHouseNumberLookup(
+            $app->make(HttpFactory::class),
+            $this->leadSourcingBreaker($app),
+        ));
 
         // The news source on its own, for the few callers that mean "the news" rather than "whatever
         // this definition runs on" — the preview's default and the cost estimator's baseline.
@@ -232,6 +253,16 @@ final class SignalsServiceProvider extends ModuleServiceProvider
      * make it look as though they shared state. One per source makes the independence legible, and
      * it is the same construction the article enricher makes for its own key.
      */
+    private function leadSourcingBreaker(Container $app): CircuitBreaker
+    {
+        return new CircuitBreaker(
+            $app->make(Cache::class),
+            (int) config('lead-sourcing.circuit_breaker.threshold', 5),
+            (int) config('lead-sourcing.circuit_breaker.cooldown', 60),
+            prefix: 'lead_sourcing:cb',
+        );
+    }
+
     private function sourceBreaker(Container $app): CircuitBreaker
     {
         return new CircuitBreaker(

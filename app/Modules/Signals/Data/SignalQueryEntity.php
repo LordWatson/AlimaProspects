@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Signals\Data;
 
+use App\Modules\Signals\Actions\ResolveWatchlistCompanyNumbersAction;
 use App\Modules\Signals\Enums\WatchlistEntityType;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
 
@@ -25,6 +26,18 @@ final readonly class SignalQueryEntity
         public array $names,
         /** The entry this came from, so a signal can say which account matched. Null in a preview. */
         public ?int $entryId = null,
+        /**
+         * This account's Companies House number, where one has been established (S13b).
+         *
+         * Carried on the entity rather than looked up by the source, because the registry is
+         * addressed by **number** and resolving a name to one is an HTTP call: it happens once,
+         * before the plan, and is remembered on the entry
+         * ({@see ResolveWatchlistCompanyNumbersAction}). Null for a
+         * person, for an account that is not on the UK register, and for every entity the resolver
+         * has not reached — in all three cases the Companies House source has nothing to ask and
+         * contributes no queries.
+         */
+        public ?string $companyNumber = null,
     ) {}
 
     public static function fromEntry(SignalWatchlistEntry $entry): self
@@ -33,6 +46,7 @@ final readonly class SignalQueryEntity
             type: $entry->entity_type,
             names: $entry->searchNames(),
             entryId: (int) $entry->getKey(),
+            companyNumber: $entry->company_number,
         );
     }
 
@@ -44,5 +58,17 @@ final readonly class SignalQueryEntity
     public function searchableAlone(): bool
     {
         return $this->type->isSearchableAlone();
+    }
+
+    /** Whether this account can be addressed in the UK registry (S13b). */
+    public function hasCompanyNumber(): bool
+    {
+        return $this->companyNumber !== null && $this->companyNumber !== '';
+    }
+
+    /** The member's own spelling, which is what a headline and a log line should use. */
+    public function primaryName(): string
+    {
+        return $this->names[0] ?? '';
     }
 }

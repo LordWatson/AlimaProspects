@@ -540,13 +540,47 @@ return [
         ],
 
         /*
-         * Declared, not offered (S13b). Present so the shape of the config is the shape of the
-         * enum and the next phase adds values rather than a section.
+         * Companies House filings (S13b, ADR 0023 §6).
+         *
+         * **Free, and the only source with no AI cost either** — the registry has already parsed
+         * the form, so a filing carries its own classification and skips the extraction batch.
+         * The credential and the circuit breaker are **Lead Sourcing's** (ADR 0008): the registry
+         * rate-limits per API key, so discovery and Signals share one 600-per-five-minutes quota
+         * and one circuit. There is deliberately no `api_key` here — a second one would be a
+         * second integration against the same account.
+         *
+         * **Watchlist-only.** There is no cross-company filings endpoint, so filings are polled
+         * per company by number; a topical watch has no entities and gets no queries. The S13b
+         * spike table in `docs/modules/signals.md` is why.
          */
         'companies_house' => [
-            // Free: the credential is reused from Lead Sourcing (ADR 0008) and the API is not metered.
             'cost_micros_per_request' => 0,
             'ignore_domains' => [],
+
+            // How much filing history to read per account, per run. The API caps it at 100; 25 is
+            // several years of a quiet company and a few months of a busy one, which is more than
+            // any recency window needs.
+            'filings_per_entity' => (int) env('SIGNALS_CH_FILINGS_PER_ENTITY', 25),
+
+            // How far back a filing may be and still become a signal.
+            //
+            // **Its own window, not Serper's `tbs`.** A filing reaches the registry days or weeks
+            // after the thing it records — a director appointed on the 1st can be filed on the
+            // 20th — so a seven-day news window would miss most of them. Thirty days is the
+            // trade-off: long enough to catch the filing lag, short enough that switching the
+            // source on does not mint a signal for every appointment since the company was
+            // founded. The first run of a watch is the one this number protects.
+            'recency_days' => (int) env('SIGNALS_CH_RECENCY_DAYS', 30),
+
+            // How many watchlist entries may be looked up by name in one run.
+            //
+            // Most entries never reach this: a `pipeline` list mirrors the team's own leads, and a
+            // lead discovered through Companies House already carries its number, so it resolves
+            // from the database for nothing. This bounds the rest — a freshly pasted list of 250
+            // names would otherwise make 250 registry searches in one go. The remainder resolve on
+            // later runs, and `signal_watchlist_entries.company_number_checked_at` means nothing is
+            // asked twice.
+            'resolve_per_run' => (int) env('SIGNALS_CH_RESOLVE_PER_RUN', 10),
         ],
 
         'feed' => [

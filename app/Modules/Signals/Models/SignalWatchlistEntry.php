@@ -34,6 +34,8 @@ use Illuminate\Support\Str;
  * @property string $normalised_name
  * @property list<string>|null $aliases
  * @property string|null $domain
+ * @property string|null $company_number The registry's identity, or null where none is established (S13b).
+ * @property Carbon|null $company_number_checked_at When we last **tried** — the negative cache.
  * @property int|null $lead_id
  * @property bool $is_active
  * @property Carbon|null $created_at
@@ -63,6 +65,8 @@ class SignalWatchlistEntry extends Model
         'normalised_name',
         'aliases',
         'domain',
+        'company_number',
+        'company_number_checked_at',
         'lead_id',
         'is_active',
     ];
@@ -157,7 +161,32 @@ class SignalWatchlistEntry extends Model
             'entity_type' => WatchlistEntityType::class,
             'aliases' => 'array',
             'is_active' => 'boolean',
+            'company_number_checked_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Whether the registry has been asked about this entry yet (S13b).
+     *
+     * The timestamp rather than the number, because "asked and not found" is a real and common
+     * answer — a trading name, a person, an overseas business — and re-asking it on every run for
+     * ever is the cost this column exists to avoid.
+     */
+    public function companyNumberResolved(): bool
+    {
+        return $this->company_number_checked_at !== null;
+    }
+
+    /**
+     * Whether this entry can be looked up in the UK registry at all.
+     *
+     * A **person** cannot: Companies House indexes companies, and an officer appears only inside a
+     * company's own record. So a person entry is never searched, which also keeps the resolver from
+     * spending a request to learn that each time.
+     */
+    public function isRegistryAddressable(): bool
+    {
+        return $this->entity_type === WatchlistEntityType::Company;
     }
 
     protected static function newFactory(): SignalWatchlistEntryFactory

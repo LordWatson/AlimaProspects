@@ -140,6 +140,7 @@ final class RunSignalWatchAction
         private readonly SignalRejectionLedger $rejections,
         private readonly SignalScorer $scorer,
         private readonly SignalArticleEnricher $articles,
+        private readonly ResolveWatchlistCompanyNumbersAction $companyNumbers,
     ) {}
 
     public function handle(SignalWatch $watch): SignalRun
@@ -569,17 +570,30 @@ final class RunSignalWatchAction
             $offered[$definition->key] = $definition;
         }
 
+        // **The structured partition** (S13b, ADR 0023 §6). An item from a source that already knows
+        // what it is — a Companies House filing, where the registry has parsed the form and handed
+        // over the officer's name and the date — skips the extraction batch entirely. Classifying a
+        // registry fact with a language model would spend money to make a certainty less certain.
+        //
+        // Partitioned **before** the clustering, deliberately: `SignalClusterer::group()` exists to
+        // pick one representative per story so the AI is paid once for eight outlets, and a
+        // pre-classified item has no AI call to save. Grouping them would mean one filing's verdict
+        // being applied to another filing that merely has a similar headline — two different
+        // appointments at the same company read almost identically.
+        [$classified, $unclassified] = $this->partitionByClassification($items);
+
+        $kept = $this->keepClassified($watch, $offered, $classified);
+
         /** @var array<string, list<SourceItem>> $stories  every member, keyed by its representative */
         $stories = [];
         /** @var list<SourceItem> $representatives */
         $representatives = [];
 
-        foreach ($this->clusterer->group($items) as $story) {
+        foreach ($this->clusterer->group($unclassified) as $story) {
             $representatives[] = $story[0];
             $stories[$story[0]->dedupeKey()] = $story;
         }
 
-        $kept = [];
         $costMicros = 0;
         /** @var list<string> $notEvent */
         $notEvent = [];
@@ -713,6 +727,100 @@ final class RunSignalWatchAction
         );
 
         return [$kept, $costMicros, false];
+    }
+
+    /**
+     * Split the run's items into the ones that arrive classified and the ones that need the AI
+     * (S13b, ADR 0023 §6).
+     *
+     * @param  list<SourceItem>  $items
+     * @return array{0: list<SourceItem>, 1: list<SourceItem>}
+     */
+    private function partitionByClassification(array $items): array
+    {
+        $classified = [];
+        $unclassified = [];
+
+        foreach ($items as $item) {
+            if ($item->isClassified()) {
+                $classified[] = $item;
+
+                continue;
+            }
+
+            $unclassified[] = $item;
+        }
+
+        return [$classified, $unclassified];
+    }
+
+    /**
+     * Keep the pre-classified items that clear their own type's floors.
+     *
+     * **The two guards the AI path applies are applied here too, and that is the point of ADR 0023
+     * §6's second rule.** A structured source asserts a confidence; it does not assert that the team
+     * wants the event:
+     *
+     * - `resolveDefinition()` still refuses a key the run did not offer, so a source cannot file an
+     *   event under a type this watch is not watching — the same guard that replaced the AI schema's
+     *   enum at S7, applied to a source instead of a model.
+     * - `meetsThreshold()` still runs against `SignalDefinition::effectiveThresholds()`, so a team
+     *   that raised a type's floor is obeyed. A registry filing's asserted 100s clear any floor,
+     *   which is correct and worth knowing: a floor raised because the *news* for a type was noisy
+     *   will not filter that type's filings.
+     *
+     * Nothing is remembered in the rejection ledger for these. That ledger exists to avoid paying
+     * for the same AI verdict twice, and there was no verdict to pay for — a filing that fails a
+     * threshold today and passes it after the floor is lowered should appear, not be suppressed for
+     * thirty days by a memory of a judgement nobody made.
+     *
+     * @param  array<string, SignalDefinition>  $offered
+     * @param  list<SourceItem>  $items
+     * @return list<array{0: ExtractedSignal, 1: SourceItem, 2: SignalDefinition}>
+     */
+    private function keepClassified(SignalWatch $watch, array $offered, array $items): array
+    {
+        $kept = [];
+        $dropped = 0;
+
+        foreach ($items as $item) {
+            $extracted = $item->classification;
+
+            if (! $extracted instanceof ExtractedSignal) {
+                continue;
+            }
+
+            $definition = $this->resolveDefinition($watch, $offered, $extracted->eventKey);
+
+            if (! $definition instanceof SignalDefinition) {
+                continue;
+            }
+
+            $thresholds = $definition->effectiveThresholds();
+
+            if (! $extracted->meetsThreshold($thresholds['min_confidence'], $thresholds['min_relevance'])) {
+                $dropped++;
+
+                continue;
+            }
+
+            // One item, one signal. There is no story to fan out across: a filing is not reported by
+            // eight outlets, and `complete()` will still cluster these rows by subject and week like
+            // any other — two appointments at one company in one week are one card.
+            $kept[] = [$extracted, $item, $definition];
+        }
+
+        if ($items !== []) {
+            Log::channel('signals')->info('Signal run kept pre-classified items without an AI call.', [
+                'team_id' => (int) $watch->team_id,
+                'signal_watch_id' => (int) $watch->getKey(),
+                'offered' => count($items),
+                'kept' => count($kept),
+                'below_threshold' => $dropped,
+            ]);
+        }
+
+        return $kept;
     }
 
     /**
@@ -859,6 +967,19 @@ final class RunSignalWatchAction
             return [new SignalQueryPlan([], 0), null];
         }
 
+        // **Registry numbers first, and before the window is costed** (S13b). A Companies House
+        // query is addressed by company number, so an entity without one contributes no query and
+        // costs nothing — which means the window has to be filled *after* the numbers are known or
+        // its arithmetic would reserve budget for requests that will never be made.
+        //
+        // Here rather than in the builder, which does no I/O (that is what lets the cost estimator
+        // and S9's preview build a real plan for nothing), and not in the provider, which must not
+        // write to a tenant's tables. Only runs when a Companies House definition is in play, so a
+        // team that watches news alone never touches the registry.
+        if ($this->watchesTheRegistry($definitions)) {
+            $this->companyNumbers->handle((int) $watch->team_id, $all);
+        }
+
         $cursor = max(0, (int) $watch->entity_cursor) % count($all);
 
         // Wraps, so the list is a ring rather than a queue that empties: the 249th account is
@@ -887,6 +1008,14 @@ final class RunSignalWatchAction
             $entity = SignalQueryEntity::fromEntry($entry);
             $cost = count($entity->names) * $regions * ($entity->searchableAlone() ? 1 : max(1, count($definitions)));
 
+            // Plus the one subject-addressed query this entity earns, where it has a number to be
+            // addressed by (S13b). One per entity whatever the names and regions, because the
+            // registry holds one record per company — so it is a `+1` and not a multiplier, and
+            // leaving it out of the budget would let the ring over-fill and the trim bite.
+            if ($entity->hasCompanyNumber() && $this->watchesTheRegistry($definitions)) {
+                $cost++;
+            }
+
             // Always take the first one, however expensive: an entity nobody can afford would
             // otherwise block the ring forever and the list would go quiet with no explanation.
             if ($entities !== [] && $spent + $cost > $budget) {
@@ -901,6 +1030,28 @@ final class RunSignalWatchAction
             $this->queries->buildFromSpec(SignalQuerySpec::forEntities($watch, $entities), $definitions),
             ($cursor + count($entities)) % count($all),
         ];
+    }
+
+    /**
+     * Whether any of this run's types asks for a source that addresses a subject rather than
+     * running a search (S13b) — today, Companies House.
+     *
+     * Asked before the registry is touched at all, so a team watching news alone never makes a
+     * Companies House request and never pays a number-resolution search.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     */
+    private function watchesTheRegistry(array $definitions): bool
+    {
+        foreach ($definitions as $definition) {
+            foreach ($definition->sourceKinds() as $kind) {
+                if (! $kind->isQueryBased() && $this->sources->has($kind)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

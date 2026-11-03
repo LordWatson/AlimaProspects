@@ -70,5 +70,27 @@ final class SignalSourceQuery extends Data
         public array $ignoreDomains = [],
         public SignalSourceKind $kind = SignalSourceKind::News,
         public array $config = [],
+        /**
+         * The account this query is **about**, for a source that addresses a subject rather than
+         * running a search string (S13b).
+         *
+         * Companies House is the first: `q` is still the account's name, because a log line and an
+         * attribution need something readable, but what the request is actually built from is
+         * `entity->companyNumber`. Null for every query-based source
+         * ({@see SignalSourceKind::isQueryBased()}), which is the discriminator.
+         */
+        public ?SignalQueryEntity $entity = null,
     ) {}
+
+    /**
+     * The account this query addresses, or null when it addresses a search string instead.
+     *
+     * Asked rather than read, so a source that needs a subject states that it does: a provider
+     * handed a query with no entity has nothing to look up and should return nothing rather than
+     * invent a search.
+     */
+    public function subject(): ?SignalQueryEntity
+    {
+        return $this->entity;
+    }
 }

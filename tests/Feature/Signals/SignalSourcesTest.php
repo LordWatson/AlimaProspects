@@ -429,8 +429,12 @@ it('refuses a source with no implementation behind it', function (): void {
 
     // The same rule `SearchRegion`'s unoffered regions follow (ADR 0019 §2a): a declared case with
     // nothing behind it would be a type that contributes no queries and says nothing about why.
+    //
+    // `feed` rather than `companies_house`, which was the example until S13b gave it an
+    // implementation — the assertion is about availability, so it has to name a case that still
+    // genuinely has none.
     $this->actingAs($user)
-        ->post('/signals/types', definitionPayload(['source_keys' => ['companies_house']]))
+        ->post('/signals/types', definitionPayload(['source_keys' => ['feed']]))
         ->assertSessionHasErrors('source_keys.0');
 });
 

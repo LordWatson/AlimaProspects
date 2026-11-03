@@ -48,12 +48,19 @@ enum SignalSourceKind: string
     case WebSearch = 'web_search';
 
     /**
-     * Companies House filings (S13b) — PSC changes, appointments, overdue accounts, insolvency.
+     * Companies House filings (S13b) — officer appointments and resignations, PSC changes,
+     * insolvency, charges, share capital.
      *
-     * **Declared, not offered.** This is the one source whose items need no AI at all (ADR 0023 §6):
-     * a filing arrives structured, attributed and true, so it carries its own confidence and skips
-     * the extraction batch. That partition exists in the run from S13a with every source returning
-     * null, so S13b adds a source rather than reshaping a run.
+     * **The one source whose items need no AI at all** (ADR 0023 §6): the registry has already
+     * parsed the form, so `description_values` hands over the officer's name and the date and
+     * `transaction_id` is a stable identity to dedupe on. Every item carries its own
+     * `ExtractedSignal` and skips the extraction batch. Free, and the highest-confidence source in
+     * the product.
+     *
+     * **It only runs on a watchlist watch**, and that is a spike finding rather than a limitation
+     * somebody chose: there is no cross-company filings endpoint, so filings can only be polled per
+     * company, by number. A topical watch has no entities and therefore gets no Companies House
+     * queries — see `CompaniesHouseSignalSource` and the spike table in `docs/modules/signals.md`.
      */
     case CompaniesHouse = 'companies_house';
 
@@ -105,7 +112,7 @@ enum SignalSourceKind: string
         return match ($this) {
             self::News => 'Press coverage. The most reliable source, and the one every signal type starts with.',
             self::WebSearch => 'The wider web — planning decisions, award announcements, a company’s own blog. Finds events the press missed, and finds more noise with them.',
-            self::CompaniesHouse => 'UK filings: ownership and officer changes, overdue accounts, insolvency. Structured and certain, so nothing is guessed.',
+            self::CompaniesHouse => 'UK filings for the accounts on a watchlist: officer and ownership changes, insolvency, charges. Structured and certain, so nothing is guessed — and free.',
             self::Feed => 'An industry newsletter, a regulator’s filings feed, a portal’s press releases.',
             self::Webhook => 'Events your own systems push to Alima.',
         };
@@ -122,8 +129,8 @@ enum SignalSourceKind: string
     public function isAvailable(): bool
     {
         return match ($this) {
-            self::News, self::WebSearch => true,
-            self::CompaniesHouse, self::Feed, self::Webhook => false,
+            self::News, self::WebSearch, self::CompaniesHouse => true,
+            self::Feed, self::Webhook => false,
         };
     }
 

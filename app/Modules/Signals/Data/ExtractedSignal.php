@@ -99,6 +99,59 @@ final class ExtractedSignal extends Data
     }
 
     /**
+     * One event a **structured** source already knows (S13b, ADR 0023 §6).
+     *
+     * The counterpart to {@see self::fromAiItem()}, for a source whose provider has already parsed
+     * the event — a Companies House filing, where the registry hands over the officer's name and the
+     * date and there is nothing left to infer. Such an item skips the extraction batch entirely:
+     * classifying a registry fact with a language model would spend money to make a certainty less
+     * certain.
+     *
+     * **It asserts, and the assertion is bounded by who may call it.** ADR 0023 §6 allows this only
+     * for a source *we* wrote against an authoritative provider — never one whose content came from
+     * free text, and never the inbound webhook, whose events are classified by the same prompt as a
+     * news snippet precisely because the customer supplied them.
+     *
+     * Every field still goes through the same clamps and the same outreach guard as an AI item, so a
+     * structured source cannot store an over-long name or a suggested approach naming a contact
+     * channel. `itemIndex` is -1: there is no batch position to map back to, because there was no
+     * batch.
+     */
+    public static function structured(
+        string $eventKey,
+        ?string $subjectCompanyName,
+        string $summary,
+        ?string $subjectPersonName = null,
+        ?string $subjectPersonRole = null,
+        ?string $location = null,
+        ?string $counterpartyName = null,
+        ?int $amountMinor = null,
+        ?Currency $currency = null,
+        int $confidence = 100,
+        int $relevance = 100,
+        ?string $suggestedApproach = null,
+    ): self {
+        return new self(
+            itemIndex: -1,
+            isEvent: true,
+            eventKey: Str::limit(trim($eventKey), self::MAX_KEY, ''),
+            subjectPersonName: self::text($subjectPersonName),
+            subjectPersonRole: self::text($subjectPersonRole),
+            subjectCompanyName: self::text($subjectCompanyName),
+            counterpartyName: self::text($counterpartyName),
+            amountMinor: $amountMinor,
+            currency: $currency,
+            location: self::text($location),
+            confidence: self::clampScore($confidence),
+            relevance: self::clampScore($relevance),
+            summary: Str::limit(trim($summary), self::MAX_SUMMARY, ''),
+            // Through the same guard, which also supplies the compliant default: a structured source
+            // has no opinion about how to approach somebody and must not invent one.
+            suggestedApproach: self::approach($suggestedApproach),
+        );
+    }
+
+    /**
      * Whether this result should become a signal: a genuine event of a named type (the `event_key`
      * column is not nullable) that clears both AI floors.
      *

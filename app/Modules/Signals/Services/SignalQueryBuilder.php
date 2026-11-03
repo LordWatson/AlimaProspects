@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Services;
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
+use App\Modules\Signals\Data\SignalQueryEntity;
 use App\Modules\Signals\Data\SignalQueryPlan;
 use App\Modules\Signals\Data\SignalQuerySpec;
 use App\Modules\Signals\Data\SignalSourceQuery;
@@ -186,6 +187,18 @@ final class SignalQueryBuilder
         // type runs on — see `unionSourcesFor()` for why the union rather than the first.
         $unionKinds = $this->unionSourcesFor($definitions);
 
+        // **Searching and addressing are two different things** (S13b). A query-based source is
+        // given a string and multiplies out by name and region; a source that addresses a *subject*
+        // — Companies House, which is given a company number — wants exactly one query per account,
+        // with no name and no region multiplication, because the registry has one record per
+        // company and `gl` means nothing to it. So the kinds are split here and the two shapes are
+        // built separately, rather than one being bent into the other.
+        $searchKinds = $this->queryBased($unionKinds);
+
+        foreach ($spec->entities as $entity) {
+            $this->pushSubjectQueries($queries, $spec, $entity, $definitions, $tbs, $num);
+        }
+
         // **Entity, then region, then (for a person) type.** Entity outermost, because the trim
         // keeps the first N and an account half-searched is worse than an account not searched this
         // run — the cursor brings it round tomorrow either way.
@@ -204,7 +217,7 @@ final class SignalQueryBuilder
                             $tbs,
                             $num,
                             $spec->ignoreDomains,
-                            $unionKinds,
+                            $searchKinds,
                         );
 
                         continue;
@@ -227,7 +240,7 @@ final class SignalQueryBuilder
                             $tbs,
                             $num,
                             $spec->ignoreDomains,
-                            $kinds,
+                            $this->queryBased($kinds),
                             $config,
                         );
                     }
@@ -486,6 +499,121 @@ final class SignalQueryBuilder
                 config: $config[$kind->value] ?? [],
             );
         }
+    }
+
+    /**
+     * One query per account for every source that addresses a **subject** rather than a search
+     * string (S13b) — today, Companies House.
+     *
+     * Exactly one per entity, however many names and regions the spec carries, because the registry
+     * holds one record per company: the member's spelling is the `q` so a log line reads, but the
+     * request is built from `entity->companyNumber`. An entity with no number contributes nothing,
+     * which is the ordinary state for a person, for an account not on the UK register, and for one
+     * the resolver has not reached.
+     *
+     * The config is the **union** of the offered definitions' filing maps rather than one
+     * definition's slice, and that is the documented exception to `SignalSourceQuery::$config`: a
+     * single filing-history request answers for every registry type the watch cares about, so asking
+     * per definition would multiply one HTTP call per account by the number of those types, for
+     * identical responses. The run still refuses any event key it did not offer.
+     *
+     * @param  array<string, SignalSourceQuery>  $queries
+     * @param  list<SignalDefinition>  $definitions
+     */
+    private function pushSubjectQueries(
+        array &$queries,
+        SignalQuerySpec $spec,
+        SignalQueryEntity $entity,
+        array $definitions,
+        string $tbs,
+        int $num,
+    ): void {
+        if (! $entity->hasCompanyNumber()) {
+            return;
+        }
+
+        $region = $spec->regions[0] ?? SearchRegion::Gb;
+
+        foreach ($this->unionSourcesFor($definitions) as $kind) {
+            if ($kind->isQueryBased()) {
+                continue;
+            }
+
+            $config = $this->subjectConfigFor($kind, $definitions);
+
+            if ($config === []) {
+                continue;
+            }
+
+            $key = $kind->value.'|subject|'.$entity->companyNumber;
+
+            if (isset($queries[$key])) {
+                continue;
+            }
+
+            $queries[$key] = new SignalSourceQuery(
+                eventKey: self::ENTITY_KEY,
+                q: $entity->primaryName(),
+                region: $region,
+                gl: $region->gl(),
+                hl: $region->hl(),
+                tbs: $tbs,
+                num: $num,
+                ignoreDomains: $spec->ignoreDomains,
+                kind: $kind,
+                config: $config,
+                entity: $entity,
+            );
+        }
+    }
+
+    /**
+     * The union of the offered definitions' settings for one subject-addressed source.
+     *
+     * For Companies House this is the filing to signal-type map, built from each definition's
+     * `source_config.companies_house.filings` list of form codes and categories. Later keys do not
+     * overwrite earlier ones, so where two definitions claim the same filing the first in pivot
+     * order wins — the same first-match-wins rule the ICP buying-signal mapping uses, and
+     * deterministic for the same reason.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     * @return array<string, mixed>
+     */
+    private function subjectConfigFor(SignalSourceKind $kind, array $definitions): array
+    {
+        $filings = [];
+
+        foreach ($definitions as $definition) {
+            $declared = $definition->sourceConfig($kind)['filings'] ?? [];
+
+            if (! is_array($declared)) {
+                continue;
+            }
+
+            foreach ($declared as $filingKey) {
+                if (! is_string($filingKey) || trim($filingKey) === '') {
+                    continue;
+                }
+
+                $filings[mb_strtolower(trim($filingKey))] ??= $definition->key;
+            }
+        }
+
+        return $filings === [] ? [] : ['filings' => $filings];
+    }
+
+    /**
+     * Only the sources that run a search string.
+     *
+     * @param  list<SignalSourceKind>  $kinds
+     * @return list<SignalSourceKind>
+     */
+    private function queryBased(array $kinds): array
+    {
+        return array_values(array_filter(
+            $kinds,
+            static fn (SignalSourceKind $kind): bool => $kind->isQueryBased(),
+        ));
     }
 
     /**

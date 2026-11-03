@@ -221,10 +221,13 @@ final class SignalRunOversight
         return match ($kind) {
             SignalSourceKind::News => PlatformProvider::SerperNews,
             SignalSourceKind::WebSearch => PlatformProvider::SignalsWebSearch,
-            // S13b's sources. Companies House has a breaker, but it is Lead Sourcing's — a signal
-            // source reusing that credential (ADR 0023) will share it, and claiming it here before
-            // the source exists would report a light for something that cannot be lit.
-            SignalSourceKind::CompaniesHouse, SignalSourceKind::Feed, SignalSourceKind::Webhook => null,
+            // **Lead Sourcing's row, deliberately** (S13b). The signals source shares that
+            // credential and that breaker, because the registry rate-limits per API key and one
+            // quota deserves one circuit — so the honest light to show here is the one that is
+            // actually wired, rather than a second row claiming to watch the same thing.
+            SignalSourceKind::CompaniesHouse => PlatformProvider::CompaniesHouse,
+            // Still declared and not offered.
+            SignalSourceKind::Feed, SignalSourceKind::Webhook => null,
         };
     }
 }
