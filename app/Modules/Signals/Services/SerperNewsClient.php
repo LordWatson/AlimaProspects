@@ -120,15 +120,20 @@ final class SerperNewsClient implements NewsSearchClient
             // rather than tested here, because S9's preview has to label what this drops and the
             // two must not disagree by a hair of normalisation. An unreadable host counts as
             // blocked: a link whose authority cannot be parsed is not one we can vouch for.
-            if ($this->ignored->blocksUrl($item->link, $query->ignoreDomains)) {
+            //
+            // **By link or by outlet name since S11.** A redirected item's host is `google.com`,
+            // so a host-only list could not express "not this publisher" about the very items most
+            // in need of it.
+            if ($this->ignored->blocksItem($item->link, $item->source, $query->ignoreDomains)) {
                 continue;
             }
 
-            // Collapse duplicate articles (same canonical URL) within one response.
-            if (isset($seenHashes[$item->urlHash])) {
+            // Collapse duplicate articles within one response — by the dedupe identity, so a
+            // redirector that hands back the same article under two tokens is still one item.
+            if (isset($seenHashes[$item->dedupeKey()])) {
                 continue;
             }
-            $seenHashes[$item->urlHash] = true;
+            $seenHashes[$item->dedupeKey()] = true;
 
             $items[] = $item;
         }
@@ -191,6 +196,11 @@ final class SerperNewsClient implements NewsSearchClient
                 'source' => $source,
                 'date' => $date,
             ],
+            // S11: the content identity, and the identity this item actually dedupes on. Computed
+            // from the **clamped** title and source, so the hash is derived from what gets stored
+            // rather than from a payload that was truncated on its way to the row.
+            contentHash: $this->normaliser->contentHash($title, $source),
+            dedupeHash: $this->normaliser->dedupeHash($link, $title, $source),
         );
     }
 

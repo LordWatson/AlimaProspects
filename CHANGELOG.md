@@ -5,6 +5,72 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-03 — Signals: one event, one card
+
+A Dubai acquisition reported by Gulf News, Khaleej Times, Zawya, Arabian Business and three
+aggregators was five to eight cards in the feed, each one costing an AI classification and each one
+needing its own dismiss. The feed's perceived quality was dominated by it.
+
+**It is now one card that says "Reported by 8 sources"**, opening to the list. Every article is
+still a real article with a real link worth reading; what changed is that the feed lists _events_
+and the tab counts count them the same way. Dismissing clears the event rather than one of its
+seven duplicates.
+
+**The run also stopped paying per article.** It groups the coverage of a story before it asks the
+model anything, classifies one representative, and applies the verdict to the rest — so a story that
+travels well costs one classification instead of eight. `SIGNALS_CLUSTER_BEFORE_AI=false` restores
+the old behaviour exactly, and the cards stay consolidated either way, because that half is done
+after classification by the event's own subject rather than by comparing headlines.
+
+**The counts agree now, everywhere.** The daily digest, the dashboard's "signals waiting" figure
+and the per-type breakdown all count events rather than articles, as the feed does — a dashboard
+saying eight over a screen showing one was the thing the clustering was supposed to fix, and
+teaching only the feed about it would have moved the problem rather than removed it. The watch
+card's "signals created" counts events too; the number of articles is still beside it. A lead the
+event is about gets one timeline entry, not one per outlet.
+
+**And it remembers being told no.** A "ten biggest deals of the year" round-up sitting inside the
+week-long recency window used to cost an AI batch every single day it stayed there. A rejection is
+now remembered for 30 days, keyed by the article _and_ the set of signal types that were offered —
+so adding a signal type asks about every article again, and changing nothing costs nothing twice. It
+stores hashes, a verdict and a count: no headline, no URL, no name.
+
+### Fixed — 2026-11-03 — Signals: the same article stopped arriving as a new one every day
+
+Our news provider sometimes hands back a Google redirect instead of the publisher's link, with the
+publisher's name alongside it. The redirect carries an opaque token that cannot be unwrapped, and
+when it changed between requests the article's identity changed with it — so the same story
+re-entered the feed on every run, at the cost of a fresh search and a fresh AI classification each
+time.
+
+A redirected article is now identified by its outlet and its headline rather than by the token, and
+that identity is what the database enforces. The team's own "never show me this source" list learned
+to match the **outlet's name** as well as the domain for the same reason: behind a redirect every
+item's domain is `google.com`, so a domain-only list could not express "not Khaleej Times" about
+precisely the items that needed it.
+
+`signals:cluster-backfill` groups the last 90 days of an existing feed so it reads the same on the
+day this ships as it will the day after. It leaves a converted signal alone: that row is the record
+of where a real lead came from.
+
+### Added — 2026-11-02 — two switches that turn billing off
+
+"Not charging anybody yet" is a state the product should support, so it is two lines of
+configuration rather than code to remove and put back later.
+
+**`BILLING_STRIPE_ENABLED=false`** stops every Stripe call: checkout, the customer portal, plan
+swaps, cancellation, resumption and metered overage all refuse, and the webhook is rejected. It
+deliberately changes nobody's entitlement — a team on Scale stays on Scale — because "we will not
+take a card today" and "you may not use this feature" are different statements.
+
+**`BILLING_ENFORCE_PLANS=false`** is the second one: nothing is gated on a plan any more. Every
+feature is available to every team, lead discovery is unquotaed and seats are unlimited. It is not
+"everybody is on Free"; it is "a plan decides nothing". Suspension still works, an operator can
+still turn a feature off for one tenant or for everybody, and the AI credit allowance still applies
+— that one is a cost guard every tenant has had since the AI platform shipped, not a plan feature.
+
+Both default to on, so a deployment that does not ask for them sees no change.
+
 ### Changed — 2026-11-02 — the operations panel got a front page, a way to navigate it, and the brand
 
 The verdict was "every page is boring, navigation is terrible, there are no graphs, there's no

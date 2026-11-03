@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Providers;
 use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\ModuleServiceProvider;
+use App\Modules\Signals\Console\ClusterSignalsBackfillCommand;
 use App\Modules\Signals\Console\DispatchDueSignalWatchesCommand;
 use App\Modules\Signals\Console\PruneSignalsCommand;
 use App\Modules\Signals\Contracts\NewsSearchClient;
@@ -47,7 +48,14 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         parent::boot(); // routes + policies
 
         if ($this->app->runningInConsole()) {
-            $this->commands([DispatchDueSignalWatchesCommand::class, PruneSignalsCommand::class]);
+            $this->commands([
+                DispatchDueSignalWatchesCommand::class,
+                PruneSignalsCommand::class,
+                // S11, and deliberately **not** scheduled: a backfill is a one-off an operator
+                // runs when the phase ships, and a nightly re-clustering of a stable archive
+                // would be work nobody asked for.
+                ClusterSignalsBackfillCommand::class,
+            ]);
         }
 
         $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {

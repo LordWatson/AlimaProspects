@@ -24,6 +24,34 @@ use App\Modules\Core\Enums\Capability;
 return [
 
     /*
+    | Two switches, and they answer **different questions**. Getting that distinction wrong is the
+    | mistake `StripeSwitch` was built to prevent, so it is spelled out here as well.
+    |
+    | `stripe.enabled` — *will we talk to Stripe at all?* Off means checkout, the portal, plan
+    | swaps, cancellation, resumption and metered overage all refuse, and the webhook is rejected.
+    | It says **nothing** about entitlement: a team on Scale stays on Scale and goes on working,
+    | because `PlanResolver` reads a grant and then a subscription row, neither of which cares
+    | whether we are currently willing to talk to a payment provider. The operator's own kill
+    | switch (`billing.stripe_enabled`, Phase 19b) is ANDed with this, so either one turns it off.
+    |
+    | `enforce_plans` — *does a plan decide what a team may do?* Off means Billing does not install
+    | its plan-backed capability gate or its three allowance sources at all, so the permissive
+    | defaults the owning modules ship stand: every capability is allowed, lead discovery is
+    | unquotaed, seats are unlimited. Off is **not** "everybody is on Free"; it is "nothing is
+    | gated on a plan". Suspension still bites — that is an operator's deliberate act, not a plan
+    | limit — and the AI credit allowance still applies, because that one is a cost guard every
+    | tenant has had since Phase 6 rather than a plan feature (`ai-platform.credits.*`).
+    |
+    | Neither implies the other. Stripe off with enforcement on is the invoiced-customer case the
+    | module was designed for; both off is "we are not charging anybody yet".
+    */
+    'stripe' => [
+        'enabled' => (bool) env('BILLING_STRIPE_ENABLED', true),
+    ],
+
+    'enforce_plans' => (bool) env('BILLING_ENFORCE_PLANS', true),
+
+    /*
     | The currency plans are priced in. Cashier's own `CASHIER_CURRENCY` drives Stripe; this is what
     | the UI formats with, and the two must agree.
     */

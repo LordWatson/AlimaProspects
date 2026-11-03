@@ -58,6 +58,15 @@ class SignalFactory extends Factory
             'source_name' => 'Gulf Business',
             'published_at' => now()->subDays(2),
             'url_hash' => sha1($url),
+            // S11: the identity the unique index is on. For an ordinary publisher link it **is**
+            // the URL hash, which is what every pre-S11 row carries after the migration — so a
+            // fixture that said anything else would be testing against a row a run cannot produce.
+            'dedupe_hash' => sha1($url),
+            // Null, which is what every row carries until `signals:cluster-backfill` derives it:
+            // the migration deliberately does not compute it, because a migration that calls
+            // application code is a migration that breaks the day that code changes. A fixture
+            // that needs one sets it from `SignalItemNormaliser` rather than typing a hash.
+            'content_hash' => null,
             'raw' => [
                 'title' => 'Dubai startup closes a Series A funding round',
                 'snippet' => 'A Dubai-based startup has raised a Series A round led by regional investors.',

@@ -65,9 +65,14 @@ final readonly class BuildHeadlineKpisAction
 
             // A queue, scoped by when the signal was found: "trigger events from this period that
             // nobody has acted on".
+            //
+            // Counted as **events, not articles** (Signals S11): `representatives()` is the same
+            // predicate the feed and its tab counts use, so the dashboard figure and the queue a
+            // member opens are the same number.
             $waitingSignals = $range->constrain(
                 Signal::query()
                     ->where('signals.team_id', $team->getKey())
+                    ->representatives()
                     ->where('status', SignalStatus::New),
                 'signals.created_at',
             )->count();

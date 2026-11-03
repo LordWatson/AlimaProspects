@@ -158,3 +158,103 @@ it('still applies the global list when a watch adds none', function (): void {
 
     expect($items)->toBe([]);
 });
+
+// --- Matching the outlet's name (S11) -----------------------------------------------------------
+
+it('drops a result by the outlet’s name, not only by its host', function (): void {
+    config()->set('signals.ignore_domains', []);
+
+    Http::fake([
+        'google.serper.dev/*' => Http::response([
+            'news' => [
+                [
+                    'title' => 'A genuine Dubai funding round',
+                    'link' => 'https://gulfbusiness.com/real-event',
+                    'snippet' => 'A Dubai company raised a round.',
+                    'source' => 'Gulf Business',
+                ],
+                [
+                    // Behind a Google redirect, the host is `google.com` for **every** item, so a
+                    // host-only list cannot express "not this publisher" about the items most in
+                    // need of it - and adding `google.com` would silently drop a large share of
+                    // everything. The outlet's name is the only handle there is.
+                    'title' => 'Another Dubai round',
+                    'link' => 'https://google.com/goto?url=OPAQUE-TOKEN',
+                    'snippet' => 'Also a round.',
+                    'source' => 'Khaleej Times',
+                ],
+            ],
+        ]),
+    ]);
+
+    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
+        q: 'Dubai startup raises funding',
+        gl: 'ae',
+        hl: 'en',
+        tbs: 'qdr:w',
+        num: 20,
+        // What a team actually types when they mean an outlet rather than a domain.
+        ignoreDomains: ['Khaleej Times'],
+    ));
+
+    expect($items)->toHaveCount(1)
+        ->and($items[0]->source)->toBe('Gulf Business');
+});
+
+it('compares an outlet name as a slug, so spacing and case do not matter', function (): void {
+    config()->set('signals.ignore_domains', ['  KHALEEJ   times ']);
+
+    Http::fake([
+        'google.serper.dev/*' => Http::response([
+            'news' => [[
+                'title' => 'A Dubai round',
+                'link' => 'https://google.com/goto?url=TOKEN',
+                'snippet' => 'A round.',
+                'source' => 'Khaleej Times',
+            ]],
+        ]),
+    ]);
+
+    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
+        q: 'Dubai startup raises funding',
+        gl: 'ae',
+        hl: 'en',
+        tbs: 'qdr:w',
+        num: 20,
+    ));
+
+    expect($items)->toBe([]);
+});
+
+it('never drops an item merely because the provider named no outlet', function (): void {
+    config()->set('signals.ignore_domains', ['Khaleej Times']);
+
+    Http::fake([
+        'google.serper.dev/*' => Http::response([
+            'news' => [[
+                'title' => 'A Dubai round',
+                'link' => 'https://gulfbusiness.com/round',
+                'snippet' => 'A round.',
+                // No `source` at all.
+            ]],
+        ]),
+    ]);
+
+    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
+        q: 'Dubai startup raises funding',
+        gl: 'ae',
+        hl: 'en',
+        tbs: 'qdr:w',
+        num: 20,
+    ));
+
+    // "We were not told who published this" is not the same statement as "this publisher is
+    // excluded", and treating it as one would drop every item whose provider omitted the field.
+    expect($items)->toHaveCount(1);
+});

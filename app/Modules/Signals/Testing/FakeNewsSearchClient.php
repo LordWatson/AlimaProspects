@@ -74,7 +74,12 @@ final class FakeNewsSearchClient implements NewsSearchClient
     }
 
     /**
-     * Build a {@see NewsItem} with a correct `url_hash`, for fixtures.
+     * Build a {@see NewsItem} with the same identities {@see SerperNewsClient} would give it — the
+     * URL hash, the content hash and the dedupe hash (S11).
+     *
+     * Through the real {@see SignalItemNormaliser}, deliberately: a fixture whose hashes were
+     * hand-rolled would let a redirect or clustering test pass against a rule the run does not
+     * apply.
      *
      * @param  array<string, mixed>  $raw
      */
@@ -88,6 +93,8 @@ final class FakeNewsSearchClient implements NewsSearchClient
             source: $source,
             publishedAt: $publishedAt,
             raw: $raw === [] ? ['title' => $title, 'snippet' => $snippet, 'link' => $link, 'source' => $source] : $raw,
+            contentHash: $this->normaliser->contentHash($title, $source),
+            dedupeHash: $this->normaliser->dedupeHash($link, $title, $source),
         );
     }
 

@@ -182,6 +182,25 @@ flowchart TD
   override a first-class button, because the member is the one who knows whether two companies with
   the same name are the same company. The name rule behind it has exactly one definition
   (`LeadSourcing\Support\CompanyNameKey`), read by both the deduplicator and the matcher.
+- **An article is not an event (Signals, S11):** a `Signal` is one article and a `SignalCluster` is
+  the thing that happened, and the feed lists and counts the second. Three parts of it generalise.
+  **An identity has to be the identity of the thing, not of the handle you were given**: a Google
+  redirect hands back an opaque token, so `url_hash` stopped identifying an article and a varying
+  token re-admitted the same one on every run — `signals.dedupe_hash` is a content identity behind
+  a known redirector and the canonical URL hash everywhere else, the unique index moved with it,
+  and the team's skip list learned to match an **outlet's name** as well as a host, because behind
+  a redirect every item's host is `google.com`. **Put the cheap deterministic grouping before the
+  expensive judgement**: candidate articles are grouped by headline overlap (Dice over the
+  significant words, no AI) and one representative is classified, so a story that travels well costs
+  one call instead of eight — and because the cards are consolidated _again_ afterwards by the
+  event's own subject, the savings depend on that grouping being generous and the correctness does
+  not, which is what makes `signals.cluster_before_ai` a safe flag rather than a rollback. And
+  **a rejection is worth remembering, keyed by the question as well as the subject**: a round-up
+  inside the recency window cost an AI batch every day it stayed there, so a verdict is kept for 30
+  days against the article _and_ the set of signal types that were offered — add a type and it is
+  asked again, change nothing and nobody pays twice. The counters on a cluster are a **record over
+  its rows** rather than a tally the app increments, the same shape `usage_meters` has over the
+  ledgers (ADR 0012).
 - **Where we search is not which law applies (Signals, S8, ADR 0019):** `Signals\Enums\SearchRegion`
   answers "where do we look" — a Serper country code and a language — and `Core\Enums\Market`
   answers "which rules apply". One column was doing both jobs, which was harmless only while every

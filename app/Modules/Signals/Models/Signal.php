@@ -12,10 +12,14 @@ use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalMatchConfidence;
 use App\Modules\Signals\Enums\SignalStatus;
+use App\Modules\Signals\Services\SignalClusterer;
 use Database\Factories\SignalFactory;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -39,6 +43,7 @@ use Illuminate\Support\Str;
  * @property int|null $signal_watch_id
  * @property int|null $signal_run_id
  * @property int|null $signal_definition_id
+ * @property int|null $signal_cluster_id the event this article is coverage of (S11), or null
  * @property string $event_key
  * @property SignalStatus $status
  * @property SignalDismissReason|null $dismiss_reason
@@ -60,6 +65,9 @@ use Illuminate\Support\Str;
  * @property string|null $source_name
  * @property Carbon|null $published_at
  * @property string $url_hash
+ * @property string|null $content_hash sha1(source name + normalised headline) (S11)
+ * @property string $dedupe_hash the identity this row is unique on: content hash behind a
+ *                               redirector, URL hash everywhere else (S11)
  * @property array<string, mixed> $raw
  * @property int|null $lead_id
  * @property int|null $matched_lead_id the lead this event is **about** (S10), not converted into
@@ -84,6 +92,7 @@ class Signal extends Model
         'signal_watch_id',
         'signal_run_id',
         'signal_definition_id',
+        'signal_cluster_id',
         'event_key',
         'status',
         'dismiss_reason',
@@ -105,6 +114,8 @@ class Signal extends Model
         'source_name',
         'published_at',
         'url_hash',
+        'content_hash',
+        'dedupe_hash',
         'raw',
         'lead_id',
         'matched_lead_id',
@@ -131,6 +142,74 @@ class Signal extends Model
     public function run(): BelongsTo
     {
         return $this->belongsTo(SignalRun::class, 'signal_run_id');
+    }
+
+    /**
+     * The event this article is coverage of (S11), or null when it stands alone.
+     *
+     * The distinction worth holding on to: a **signal** is one article and a **cluster** is one
+     * event. Eight outlets covering one acquisition are eight signals and one cluster; the feed
+     * lists the cluster's primary and the card offers the rest as "reported by 8 sources", because
+     * each member is still a real article with a real link worth reading.
+     *
+     * Nullable in both directions. A signal with no identifiable company subject is not clustered
+     * at all ({@see SignalClusterer}), and `nullOnDelete` means losing a cluster turns its members
+     * back into standalone cards rather than deleting them.
+     *
+     * @return BelongsTo<SignalCluster, $this>
+     */
+    public function cluster(): BelongsTo
+    {
+        return $this->belongsTo(SignalCluster::class, 'signal_cluster_id');
+    }
+
+    /**
+     * Whether this signal is the one its cluster is shown as.
+     *
+     * True for an unclustered signal too: a card with no cluster represents itself. This is the
+     * question the feed asks of every row, which is why it is a method here rather than a condition
+     * repeated at three call sites.
+     */
+    public function isClusterRepresentative(): bool
+    {
+        if ($this->signal_cluster_id === null) {
+            return true;
+        }
+
+        $cluster = $this->relationLoaded('cluster') ? $this->cluster : null;
+
+        return ! $cluster instanceof SignalCluster
+            || $cluster->primary_signal_id === null
+            || (int) $cluster->primary_signal_id === (int) $this->getKey();
+    }
+
+    /**
+     * The rows that stand for an event rather than for one article's coverage of it (S11).
+     *
+     * **One definition, and everything that counts signals has to use it** — the feed, its tab
+     * counts, the daily digest and the dashboard. Teaching only the feed about clusters is how a
+     * dashboard comes to say "8 new signals" over a feed showing one card, which is the exact
+     * discrepancy this phase exists to remove (found in review).
+     *
+     * Written as "**not** hidden behind somebody else" rather than "is the primary", and the
+     * difference is a real failure mode. Retention deletes per signal, so it can take a cluster's
+     * primary and leave its members — `primary_signal_id` then nulls, and a predicate asking "are
+     * you the primary?" would answer no for every surviving member, so the whole story would vanish
+     * from the feed and the counts with the rows still in the table. This way an orphaned cluster
+     * shows all of its members until the next reconcile tidies it: too many cards is a visible
+     * fault somebody reports, where none is a silent one nobody can see.
+     *
+     * @param  Builder<Signal>  $query
+     */
+    #[Scope]
+    protected function representatives(Builder $query): void
+    {
+        $query->whereNotExists(static fn (QueryBuilder $cluster) => $cluster
+            ->from('signal_clusters')
+            ->whereColumn('signal_clusters.id', 'signals.signal_cluster_id')
+            ->whereColumn('signal_clusters.team_id', 'signals.team_id')
+            ->whereNotNull('signal_clusters.primary_signal_id')
+            ->whereColumn('signal_clusters.primary_signal_id', '!=', 'signals.id'));
     }
 
     /**

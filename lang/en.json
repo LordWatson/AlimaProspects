@@ -2018,5 +2018,9 @@
     "My accounts: :name (:count)": "My accounts: :name (:count)",
     "This watch asks what happened to those companies, a few at a time, instead of what happened in the places below.": "This watch asks what happened to those companies, a few at a time, instead of what happened in the places below.",
     "Point it at a list of accounts to watch companies you already work instead of places.": "Point it at a list of accounts to watch companies you already work instead of places.",
-    "Following :name": "Following :name"
+    "Following :name": "Following :name",
+    "Reported by several sources: :count": "Reported by several sources: :count",
+    "One card per event, however many outlets reported it. The counts above work the same way.": "One card per event, however many outlets reported it. The counts above work the same way.",
+    "The classifier did not read this as one of your events.": "The classifier did not read this as one of your events.",
+    "A real event, under this type’s confidence or relevance floor.": "A real event, under this type’s confidence or relevance floor."
 }

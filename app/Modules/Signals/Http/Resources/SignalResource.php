@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Signals\Http\Resources;
 
+use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalCluster;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Services\SignalRetention;
 use Illuminate\Http\Request;
@@ -111,7 +113,73 @@ final class SignalResource extends JsonResource
                 'confidence_explanation' => $signal->match_confidence?->explanation(),
                 'needs_confirmation' => $signal->match_confidence?->warrantsConfirmation() ?? false,
             ],
+            // The other outlets that reported the same event (S11), or null when this card stands
+            // alone — which is both an unclustered signal and a cluster of one. Shape:
+            // `{id: int, sources_count: int (always 2+), first_published_at, last_published_at,
+            // sources: [{id, source_name, source_url, published_at}]}`. Spelled out because this
+            // comment is what the generated specification carries as the field's description, and
+            // the free Scramble cannot infer a mapped collection (see docs/api/README.md §8).
+            'cluster' => $this->clusterPayload($signal),
             'created_at' => $signal->created_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * "Reported by 6 sources", and the list behind it.
+     *
+     * Null in three cases, all of them meaning "there is nothing extra to say": the signal has no
+     * cluster, the relation was not loaded, or the cluster has one member. The last one matters —
+     * every clustered signal starts as a cluster of one, and a card announcing "reported by 1
+     * source" would be noise on most of the feed.
+     *
+     * **Not `whenLoaded`, and null rather than an exception when it is missing.** The card decides
+     * what to show from this, so a caller that forgot to eager-load should get a card with no
+     * sources panel rather than a 500 — and outside production `preventLazyLoading` makes the
+     * forgetting loud anyway. {@see ListSignalsAction} loads it.
+     *
+     * The members carry a link, an outlet and a date and **nothing else**: the summary, the subject
+     * and the scores belong to the event, which is the card. A second copy of them per source would
+     * be a payload three times the size saying the same thing.
+     *
+     * The shape is spelled out rather than left as `array<string, mixed>` because the generated
+     * OpenAPI document is built from these annotations: without it the specification described
+     * `sources` as an always-empty array of strings, which is a published contract telling a client
+     * the opposite of the truth.
+     *
+     * @return array{id: int, sources_count: int, first_published_at: string|null, last_published_at: string|null, sources: list<array{id: int, source_name: string|null, source_url: string, published_at: string|null}>}|null
+     */
+    private function clusterPayload(Signal $signal): ?array
+    {
+        $cluster = $signal->relationLoaded('cluster') ? $signal->cluster : null;
+
+        if (! $cluster instanceof SignalCluster || $cluster->sources_count < 2) {
+            return null;
+        }
+
+        $sources = $cluster->relationLoaded('signals')
+            // `array_values` after `values()` is not a belt-and-braces reindex — it is what makes
+            // this a `list<…>` to the analyser, which a `Collection::all()` is not, and the shape
+            // in the docblock is what the generated specification is built from.
+            ? array_values($cluster->signals
+                ->sortBy([['published_at', 'asc'], ['id', 'asc']])
+                ->map(static fn (Signal $member): array => [
+                    'id' => (int) $member->getKey(),
+                    'source_name' => $member->source_name,
+                    'source_url' => $member->source_url,
+                    'published_at' => $member->published_at?->toIso8601String(),
+                ])
+                ->values()
+                ->all())
+            : [];
+
+        return [
+            'id' => (int) $cluster->getKey(),
+            // How many articles reported this event, including this one. Always 2 or more: a
+            // cluster of one is sent as a null `cluster`.
+            'sources_count' => (int) $cluster->sources_count,
+            'first_published_at' => $cluster->first_published_at?->toIso8601String(),
+            'last_published_at' => $cluster->last_published_at?->toIso8601String(),
+            'sources' => $sources,
         ];
     }
 

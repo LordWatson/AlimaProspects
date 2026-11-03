@@ -577,41 +577,41 @@ already written down in `docs/modules/signals.md`.
 
 ### Tasks
 
-1. [ ] **`SignalItemNormaliser` gains a content identity.** `contentHash` =
+1. [x] **`SignalItemNormaliser` gains a content identity.** `contentHash` =
        `sha1(normalised source_name + normalised headline)` — lower-cased, punctuation and stop
        words stripped, outlet suffixes ("| Gulf News") removed. For a **known redirector host**
        (a config list, `google.com/goto` first) the dedupe identity becomes the content hash;
        otherwise the canonical URL hash stays primary with the content hash stored beside it.
        The unique index moves to `(team_id, dedupe_hash)`; `url_hash` is kept as data.
-2. [ ] **The ignore list matches `source_name` too.** The documented consequence #2 — every
+2. [x] **The ignore list matches `source_name` too.** The documented consequence #2 — every
        redirected item's host is `google.com`, so a host-only ignore list cannot work. Match on
        host **or** normalised source name, which also makes the list behave the way a team
        expects when they type "Khaleej Times" instead of a domain.
-3. [ ] **Migration `signal_clusters`** — team-scoped: `cluster_key`, `signal_definition_id`,
+3. [x] **Migration `signal_clusters`** — team-scoped: `cluster_key`, `signal_definition_id`,
        `event_key`, `primary_signal_id`, `sources_count`, `first_published_at`,
        `last_published_at`, `subject_fingerprint`. Plus `signals.signal_cluster_id`, nullable FK.
-4. [ ] **`SignalClusterer`** — cluster key from `(event_key, subject fingerprint, published
+4. [x] **`SignalClusterer`** — cluster key from `(event_key, subject fingerprint, published
        week)`, where the subject fingerprint reuses the **same** normalisation as
        `SignalLeadMatcher` / `SourcedLead` (one normaliser; if S10 has not shipped, build it
        here and S10 reuses it). Deterministic, no AI. The **primary** signal is the
        highest-confidence one, earliest publication breaking ties — the first report of an event
        is usually the best one.
-5. [ ] **Classify once per cluster.** In `RunSignalWatchAction`, group candidate items by
+5. [x] **Classify once per cluster.** In `RunSignalWatchAction`, group candidate items by
        provisional cluster key **before** the AI batch, send one representative, and apply the
        result to the cluster. This is the phase's cost win and it is a large one: it cuts AI
        spend on a busy news week roughly in proportion to how well a story travels. Keep a
        `signals.cluster_before_ai` flag, default on, so a regression is a config flip rather
        than a rollback.
-6. [ ] **Remember what was rejected.** The documented S3 trade-off (b): non-event and
+6. [x] **Remember what was rejected.** The documented S3 trade-off (b): non-event and
        below-threshold items are forgotten, so every run re-pays to classify the same round-ups.
        Add `signal_rejections` — team, `dedupe_hash`, `verdict`, `seen_count`, `last_seen_at`,
        with its own short retention (30 days) — and skip a hash rejected for the same definition
        inside the window. Counts-only logging, **no article text**, which is also why this table
        is cheap to retain.
-7. [ ] **UI** — the card shows "Reported by 6 sources", expanding to the list; dismissing
+7. [x] **UI** — the card shows "Reported by 6 sources", expanding to the list; dismissing
        dismisses the cluster; converting converts from the primary. The feed's counts count
        clusters, not articles, and the tab labels say so.
-8. [ ] **Backfill** — cluster existing signals in a chunked command
+8. [x] **Backfill** — cluster existing signals in a chunked command
        (`signals:cluster-backfill --dry-run`), newest 90 days only, idempotent. Do **not** merge
        across the converted boundary: a converted signal stays its own primary, because its
        `lead_id` is provenance.
@@ -1024,7 +1024,7 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | S8    | Geography, and the jurisdiction bug             | ☑ **Done** 2026-11-02 | S7           |
 | S9    | The signal builder (library, composer, preview) | ☑ **Done** 2026-11-02 | S7, S8       |
 | S10   | Watchlists & account monitoring                 | ☑ **Done** 2026-11-02 | S7, S8       |
-| S11   | Clustering & redirect-safe dedupe               | ☐ Not started         | S7           |
+| S11   | Clustering & redirect-safe dedupe               | ☑ **Done** 2026-11-03 | S7           |
 | S12   | Ranking, learning & explainability              | ☐ Not started         | S7, S11      |
 | S13   | Pluggable signal sources                        | ☐ Not started         | S7, S8       |
 | S14   | Playbooks                                       | ☐ Not started         | S7, S10, S12 |
@@ -1060,6 +1060,60 @@ virtual); Laravel's generated pivot index name is 67 characters against MySQL's 
 (so both pivot indexes are named); and `Event::fake()` suppresses Eloquent model events, so a
 `scope_id` maintained by a model hook was silently wrong across the whole suite (so the database
 computes it).
+
+## S11, as shipped — two deviations from the plan above
+
+Both are recorded in `docs/modules/signals.md` and both were taken for a concrete reason.
+
+1. **The amount is not in the subject fingerprint.** The plan put it there to keep two funding
+   rounds for one company in one week apart. But an amount is exactly the field outlets disagree
+   about — Gulf News writes "$40m", Zawya writes nothing — so including it splits the coverage this
+   phase exists to merge, in the common case, to guard against a rare one. Two rounds for one
+   company inside a week therefore merge, which is written down as a known limitation with
+   `signals.cluster_before_ai` and the similarity knobs behind it; a funding round and an
+   acquisition are already kept apart by `event_key`, which is the case the plan's own risk note
+   was really about.
+2. **A cluster key is looked up against the previous ISO week as well as its own.** A story that
+   breaks on a Sunday and is covered on the Monday sits in two ISO weeks, and a week bucket read
+   literally would make two cards out of the event most likely to be well covered. So
+   `candidateKeysFor()` offers both and only ever _creates_ the first, which also forced the run and
+   the backfill to file rows in **publication order** — oldest first — so the join is the same
+   whichever order the provider happened to return them in.
+
+Two more things the plan did not anticipate, both found by running it rather than reading it:
+
+- **The similarity measure had to change.** The plan said nothing about which one, and Jaccard —
+  the obvious choice — punishes the outlet that wrote the same headline plus "in an all-cash deal"
+  for the words the shorter headline did not have room for. **Dice** is symmetric and forgiving
+  about length without being blind to it, where the overlap coefficient is not: a three-word
+  headline wholly inside a twelve-word one scores a perfect 1 under that, which is how a
+  classification ends up attached to the wrong event.
+- **The AI Platform's own response cache made two of these tests pass for the wrong reason.** It is
+  keyed on the rendered prompt, so re-running a watch over the same article is a cache hit and the
+  transport is never reached — which looks identical to the dedupe or the rejection ledger having
+  worked. Every test that counts AI calls across two runs now turns
+  `ai-platform.cache.enabled` off, and that is the difference between asserting the claim and
+  asserting nothing.
+
+**What the review caught, and why it is worth reading before S12.** Five of the seven findings were
+one mistake wearing different clothes: **only the feed was taught about clusters.** The digest, the
+dashboard KPI, the per-type breakdown, `signals_created` and a matched lead's timeline all still
+counted articles, so the phase would have moved the "eight for one event" problem rather than
+removed it. The predicate is now one model scope every one of them narrows with. The other two were
+sharper: retention taking a cluster's primary hid its surviving members (the predicate is now
+written as "nobody live stands in front of me" rather than "am I the primary", which fails toward
+too many cards instead of none), and propagating a dismiss across a cluster could flip a **converted**
+member — which has no retention window — to dismissed, which has ninety days, scheduling the
+deletion of a working lead's provenance. The full list is in `docs/modules/signals.md`, "What the
+S11 review changed".
+
+The lesson to carry into S12: **a phase that changes what a row means has to find everything that
+counts those rows**, not just the screen it was written for.
+
+**And one defect the phase did not close.** There is no "classifications avoided" figure anywhere,
+so the AI saving — the phase's headline number — is visible only in the AI ledger, with the gap
+between `results_count` and `signals_created` as the hint. It belongs with S16's cost governance,
+where the other spend figures live.
 
 ## New ADRs this plan introduces
 

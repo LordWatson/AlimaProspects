@@ -369,7 +369,10 @@ final class PreviewSignalDefinitionAction
         $skipped = [];
 
         foreach ($items as $item) {
-            if ($this->ignored->blocksUrl($item->link, $teamList)) {
+            // By link **or** by outlet name since S11, because that is what the run now does — and
+            // a preview that is a hair more lenient than the run shows somebody a result they will
+            // never receive, which is worse than no preview (see {@see IgnoredDomains}).
+            if ($this->ignored->blocksItem($item->link, $item->source, $teamList)) {
                 $skipped[] = PreviewedItem::skipped(
                     $item,
                     PreviewVerdict::IgnoredDomain,

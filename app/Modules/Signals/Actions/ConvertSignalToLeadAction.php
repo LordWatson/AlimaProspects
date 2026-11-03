@@ -27,6 +27,7 @@ use App\Modules\Signals\Events\SignalConverted;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Services\SignalClusterer;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -70,6 +71,7 @@ final class ConvertSignalToLeadAction
         private readonly RecordLeadActivityAction $record,
         private readonly CreateLeadNoteAction $createNote,
         private readonly AuditLogger $audit,
+        private readonly SignalClusterer $clusterer,
     ) {}
 
     /**
@@ -223,6 +225,12 @@ final class ConvertSignalToLeadAction
             'actioned_by' => $actor->getKey(),
             'actioned_at' => now(),
         ])->save();
+
+        // The rest of the cluster follows (S11): one event, one status. **`lead_id` does not
+        // travel** - exactly one article is the provenance of this lead, and eight rows each
+        // claiming to have made it is what `SignalLeadOriginProvider` would then have to choose
+        // between when it shows a lead where it came from.
+        $this->clusterer->propagateStatus($locked);
 
         return [$survivor, $attached, false];
     }

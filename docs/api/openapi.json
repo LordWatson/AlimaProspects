@@ -11886,6 +11886,39 @@
                             "needs_confirmation"
                         ]
                     },
+                    "cluster": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "description": "The other outlets that reported the same event (S11), or null when this card stands\nalone \u2014 which is both an unclustered signal and a cluster of one. Shape:\n`{id: int, sources_count: int (always 2+), first_published_at, last_published_at,\nsources: [{id, source_name, source_url, published_at}]}`. Spelled out because this\ncomment is what the generated specification carries as the field's description, and\nthe free Scramble cannot infer a mapped collection (see docs/api/README.md \u00a78).",
+                        "properties": {
+                            "id": {
+                                "type": "integer"
+                            },
+                            "sources_count": {
+                                "type": "integer",
+                                "description": "How many articles reported this event, including this one. Always 2 or more: a\ncluster of one is sent as a null `cluster`."
+                            },
+                            "first_published_at": {
+                                "type": "string"
+                            },
+                            "last_published_at": {
+                                "type": "string"
+                            },
+                            "sources": {
+                                "type": "array",
+                                "items": {}
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "sources_count",
+                            "first_published_at",
+                            "last_published_at",
+                            "sources"
+                        ]
+                    },
                     "created_at": {
                         "type": [
                             "string",
@@ -11924,6 +11957,7 @@
                     "actioned_at",
                     "deletes_in_days",
                     "matched_lead",
+                    "cluster",
                     "created_at"
                 ],
                 "title": "SignalResource"

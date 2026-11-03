@@ -189,6 +189,17 @@ function clearFilters(): void {
     });
 }
 
+/**
+ * Whether anything on this page is one event reported by several outlets (S11).
+ *
+ * The caption below the tabs is conditional on it rather than always on, because it explains
+ * something the member can see on screen — the alternative is a standing sentence about clustering
+ * on a feed where nothing happens to be clustered.
+ */
+const hasClusters = computed(() =>
+    props.signals.data.some((signal) => signal.cluster !== null),
+);
+
 const isNarrowed = computed(
     () =>
         props.filters.event_keys.length > 0 ||
@@ -514,6 +525,20 @@ onBeforeUnmount(() => {
                         {{ t('Filters') }}
                     </Button>
                 </div>
+
+                <!-- What the numbers on those tabs count, said once and only where it applies:
+                     one event, however many outlets ran it (S11). -->
+                <p
+                    v-if="hasClusters"
+                    class="text-xs text-muted-foreground"
+                    data-test="cluster-note"
+                >
+                    {{
+                        t(
+                            'One card per event, however many outlets reported it. The counts above work the same way.',
+                        )
+                    }}
+                </p>
 
                 <!-- Filters -->
                 <div

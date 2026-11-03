@@ -9,6 +9,7 @@ use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Services\SignalClusterer;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,7 +31,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class RestoreSignalAction
 {
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly SignalClusterer $clusterer,
+    ) {}
 
     /**
      * @throws SignalsException when the signal has already become a lead.
@@ -59,8 +63,13 @@ final class RestoreSignalAction
                 'actioned_at' => null,
             ])->save();
 
+            // The rest of the cluster comes back with it (S11), for the same reason it went away
+            // together: one event, one status.
+            $alsoRestored = $this->clusterer->propagateStatus($locked);
+
             $this->audit->log('signals.restored', $locked, [
                 'event_type' => $locked->event_key,
+                'cluster_members_restored' => $alsoRestored,
             ], $actor);
 
             return $locked;

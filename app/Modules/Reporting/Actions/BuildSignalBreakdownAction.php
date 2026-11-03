@@ -46,9 +46,13 @@ final readonly class BuildSignalBreakdownAction
         /** @var array{counts: array<string, int>, labels: array<string, string>} $data */
         $data = $this->teamContext->run($team, function () use ($team, $range): array {
             /** @var array<string, int> $counts */
+            // **Events, not articles** (Signals S11), the same predicate the feed counts with:
+            // a breakdown where one well-covered acquisition weighs eight times a thinly-covered
+            // one is a chart about press attention rather than about the team's trigger events.
             $counts = $range->constrain(
                 Signal::query()
                     ->where('signals.team_id', $team->getKey())
+                    ->representatives()
                     ->whereIn('status', [SignalStatus::New, SignalStatus::Converted]),
                 'signals.created_at',
             )

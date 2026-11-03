@@ -142,6 +142,17 @@ the two deviations from the original design noted inline.
     - The feed shows **"Deletes in N days"** on every unconverted signal, computed from
       the same window the sweep uses, so retention never removes something a team
       assumed was kept.
+    - **S11's two tables are swept by the same command, and neither holds a person.** A
+      `signal_rejections` row is two hashes, a verdict and a tally — no headline, no URL, no outlet,
+      no name — kept for the same **30 days** the run honours the rejection for, so the sweep
+      cannot delete a memory the run still trusts or keep one it has stopped trusting
+      (`SIGNALS_REJECTION_RETENTION_DAYS`, read by both through
+      `SignalRejectionLedger::window()`). A `signal_clusters` row carries a **company-name**
+      fingerprint and has **no window of its own**: it is deleted when the last signal in it has
+      gone, swept **after** the signals for that reason. That is the control that matters here —
+      without it a subject fingerprint would outlive every row it was derived from. The fingerprint
+      is deliberately a company name and never a person's, which is why a signal naming only an
+      individual is left unclustered rather than given a pseudonymous key nothing would sweep.
 - **Data-subject rights.** `Signals\Services\SignalsPersonalDataExporter` locates
   signals by `subject_person_name` **within one team** (case-insensitive, with `LIKE`
   wildcards escaped so a name containing `%` searches for itself), for the Compliance

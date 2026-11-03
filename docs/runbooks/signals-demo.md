@@ -40,6 +40,12 @@ someone who has just had a liquidity event and may well be looking for somewhere
    be asked about. Know which article each came from.
 5. **Dismiss the obvious noise**, with reasons. A feed with a couple of dismissed items is a more
    honest demo than a curated one, and it sets up section 5.
+6. **On a feed that predates S11, run the backfill once** —
+   `php artisan signals:cluster-backfill --dry-run` to see the damage, then without the flag.
+   Clustering applies to signals found from now on, so an older feed opens on yesterday's eight
+   cards about one acquisition and the feature looks like it does not work. It is idempotent, so
+   running it again is free; it covers the newest 90 days and leaves converted signals as their own
+   cards on purpose.
 
 **Do not** create the watch live and press "Run now" expecting results in the meeting. A run takes
 up to a couple of minutes, Serper caps `/news` at about ten items per query, and a quiet week is a
@@ -71,17 +77,25 @@ per-watch spend is on the watch settings screen, so you can show it rather than 
 1. **Signals → the feed.** Let them read two cards. Point at the event-type chip, the AI summary,
    and the relevance score. Do not read the cards to them; let them find one they recognise.
 2. **Click through to the article.** This is the trust moment: every signal links to the published
-   source. "Everything here came from somewhere you could have read yourself."
-3. **Convert one.** Show the form prefilled from the article, change the company name to make the
+   source. "Everything here came from somewhere you could have read yourself." If the link lands on
+   a Google interstitial rather than the publisher, say so plainly — our provider sometimes hands
+   back a redirect and it still reaches the article. Do not pretend not to have noticed.
+3. **Open "Reported by N sources" on a card that has it (S11).** One card is one _event_, not one
+   article, and this is where that lands: four to eight outlets, each a real link, behind one line.
+   The sentence is _"your competitor's alert tool would have sent you eight emails about this"_ —
+   and then, because it is the honest half, _"and we only paid to read one of them"_. Point at the
+   tab counts while you are there: they count events too, so the number on the tab and the number
+   of cards agree.
+4. **Convert one.** Show the form prefilled from the article, change the company name to make the
    point that they are in control, add a note, convert.
-4. **Land on the lead.** It is now an ordinary lead: Alima is already enriching and scoring it, and
+5. **Land on the lead.** It is now an ordinary lead: Alima is already enriching and scoring it, and
    the **"The event"** panel on the right shows where it came from with a link back to the article.
    Say: "From here it is exactly like every other lead in the system."
-5. **Point at the consent note on the lead** — see section 5. Do not skip it.
-6. **Watch settings.** Show the cadence, the event-type checkboxes with their explainers, and the
+6. **Point at the consent note on the lead** — see section 5. Do not skip it.
+7. **Watch settings.** Show the cadence, the event-type checkboxes with their explainers, and the
    "sources to skip" box — _"this is where you put your competitors, so their blog stops turning up"_.
    Then **Run now**, and let them watch the progress badge.
-7. **Dismiss one, with a reason.** "Telling us why is how next week gets better." Then restore it
+8. **Dismiss one, with a reason.** "Telling us why is how next week gets better." Then restore it
    from the Dismissed tab, so they can see nothing is lost.
 
 ---

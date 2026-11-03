@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { Building2, ExternalLink, Undo2 } from '@lucide/vue';
-import { computed } from 'vue';
+import { Building2, ChevronDown, ExternalLink, Undo2 } from '@lucide/vue';
+import { computed, ref } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -43,6 +43,18 @@ import type { Signal } from '@/types';
  *  - The weaker match says it is weaker, in text, not in a colour.
  *  - **Convert anyway** stays on the card as a real button, because the member is the one who
  *    knows whether two companies with the same name are the same company.
+ *
+ * **Clustered cards (S11).** One card is one *event*, however many outlets reported it, so the card
+ * says "Reported by 6 sources" and opens to the list. Three decisions in that one line:
+ *
+ *  - It is a **disclosure, not a list**. The coverage is reassurance that the event is real, not
+ *    something to read — so it costs one line until somebody asks, and it is a `<button>` with
+ *    `aria-expanded` rather than a hover trick.
+ *  - **No badge and no colour.** The card's one accent is still the lilac type chip
+ *    (brand-tokens.md §2.1); a count is information, not a status.
+ *  - The source row above it keeps naming **this** article's publisher, because that is the link
+ *    the headline and summary came from. The disclosure is the rest of the coverage, including this
+ *    one, so a member can see at a glance that the two agree.
  */
 const props = defineProps<{
     signal: Signal;
@@ -92,6 +104,18 @@ const isConverted = computed(() => props.signal.status === 'converted');
 const matched = computed(() => props.signal.matched_lead);
 
 const matchedHref = computed(() => `/leads/${matched.value?.id ?? ''}`);
+
+/**
+ * The rest of the coverage of this event (S11), or null when the card stands alone — which is both
+ * an unclustered signal and a cluster of one, because "reported by 1 source" would be noise on most
+ * of the feed.
+ */
+const cluster = computed(() => props.signal.cluster);
+
+/** Closed by default: the coverage is reassurance, not something to read. */
+const showSources = ref(false);
+
+const sourcesId = computed(() => `signal-sources-${props.signal.id}`);
 
 const cardTestId = computed(() => `signal-${props.signal.id}`);
 const attachTestId = computed(() => `attach-${props.signal.id}`);
@@ -264,6 +288,63 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                 <p class="text-sm text-foreground" dir="auto">
                     {{ signal.suggested_approach }}
                 </p>
+            </div>
+
+            <!-- Who else reported it. A disclosure, so it costs one line until somebody asks. -->
+            <div v-if="cluster" :data-test="`sources-${signal.id}`">
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded text-sm text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    :aria-expanded="showSources"
+                    :aria-controls="sourcesId"
+                    @click="showSources = !showSources"
+                >
+                    <!-- Count-neutral wording: Arabic needs dual and plural forms a single
+                         ":count sources" string cannot give. -->
+                    {{
+                        t('Reported by several sources: :count', {
+                            count: cluster.sources_count,
+                        })
+                    }}
+                    <ChevronDown
+                        class="duration-fast size-4 transition-transform ease-brand motion-reduce:transition-none"
+                        :class="showSources ? 'rotate-180' : ''"
+                        aria-hidden="true"
+                    />
+                </button>
+
+                <ul
+                    v-show="showSources"
+                    :id="sourcesId"
+                    class="mt-2 space-y-1 border-s border-border ps-3"
+                >
+                    <li
+                        v-for="source in cluster.sources"
+                        :key="source.id"
+                        class="flex flex-wrap items-baseline gap-x-2 text-sm"
+                    >
+                        <a
+                            :href="source.source_url"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1 rounded text-muted-foreground hover:text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                            dir="auto"
+                        >
+                            {{ source.source_name ?? t('Read the article') }}
+                            <ExternalLink class="size-3" aria-hidden="true" />
+                            <span class="sr-only">{{
+                                t('(opens in a new tab)')
+                            }}</span>
+                        </a>
+                        <time
+                            v-if="source.published_at"
+                            class="text-xs text-muted-foreground"
+                            :datetime="source.published_at"
+                        >
+                            {{ date(source.published_at) }}
+                        </time>
+                    </li>
+                </ul>
             </div>
 
             <!-- Source + actions. One primary action per card. -->

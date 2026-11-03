@@ -193,7 +193,31 @@ export type Signal = {
         confidence_explanation: string | null;
         needs_confirmation: boolean;
     } | null;
+    /**
+     * The other outlets that reported this same event (S11).
+     *
+     * Null when the card stands alone, which covers both an unclustered signal and a cluster of
+     * one — "reported by 1 source" would be noise on most of the feed. The members carry a link, an
+     * outlet and a date and nothing else: the summary, the subject and the scores belong to the
+     * event, which is this card.
+     */
+    cluster: SignalClusterSummary | null;
     created_at: string | null;
+};
+
+/** One event's coverage, as the card's "reported by N sources" disclosure reads it (S11). */
+export type SignalClusterSummary = {
+    id: number;
+    /** How many articles reported it, including this one. Always 2 or more when present. */
+    sources_count: number;
+    first_published_at: string | null;
+    last_published_at: string | null;
+    sources: {
+        id: number;
+        source_name: string | null;
+        source_url: string;
+        published_at: string | null;
+    }[];
 };
 
 /** The feed's tab + filter state, mirroring `SignalFilters::toFormState()`. */

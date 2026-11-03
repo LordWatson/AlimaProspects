@@ -161,6 +161,73 @@ return [
     'min_relevance' => (int) env('SIGNALS_MIN_RELEVANCE', 40),
 
     /*
+     * Hosts that wrap somebody else's article behind a token of their own (S11).
+     *
+     * Observed in real Serper data: `link = https://google.com/goto?url=<opaque token>` with
+     * `source = "Construction Week Online"`. The token is Google's own encoding, so the publisher
+     * URL **cannot be recovered locally** — there is nothing to unwrap. That made `url_hash` stop
+     * being the article's identity: a token that varies between requests re-admits the same article
+     * on every run, at the price of a fresh Serper query and a fresh AI batch each time.
+     *
+     * For an entry here, `SignalItemNormaliser` uses the **content** identity
+     * (`sha1(source name + normalised headline)`) as the dedupe hash instead. An entry is a bare
+     * host or a host and a path prefix; the path form is the careful one, because `google.com`
+     * also serves plenty that is not a redirect.
+     */
+    'redirect_hosts' => [
+        'google.com/goto',
+        'google.com/url',
+        'news.google.com',
+    ],
+
+    /*
+     * Clustering: one event, one card (S11).
+     *
+     * A Dubai acquisition reported by Gulf News, Khaleej Times, Zawya, Arabian Business and three
+     * aggregators was five to eight signals, each costing an AI classification and each needing its
+     * own dismiss. The feed's perceived quality was dominated by it.
+     *
+     * **`cluster_before_ai` is the cost win and the flag is the way back.** With it on, the run
+     * groups candidate articles by headline overlap *before* the AI batch and classifies one
+     * representative per group, which cuts AI spend roughly in proportion to how well a story
+     * travels. With it off the run classifies every article as it did in v1, so a regression is a
+     * config flip rather than a rollback. Grouping is deterministic and uses no AI.
+     *
+     * `title_similarity` is the **Dice** coefficient over the significant words of the two
+     * headlines — `2 × shared / (words in A + words in B)`, so roughly "this fraction of the words
+     * in common" — and `min_shared_tokens` is the floor underneath it, because a ratio is most
+     * confident exactly where it has least evidence.
+     *
+     * Both are deliberately strict, and the reason is worth knowing: this grouping decides which
+     * article the **model** reads, so two different events in one group means one of them is written
+     * down as the other. Under-clustering costs an AI call and a duplicate card. The cards are
+     * consolidated again after classification, by a subject-based key that cannot mis-merge like
+     * that — so the savings depend on these two numbers and the correctness does not.
+     */
+    'cluster_before_ai' => (bool) env('SIGNALS_CLUSTER_BEFORE_AI', true),
+
+    'clustering' => [
+        'title_similarity' => (float) env('SIGNALS_CLUSTER_TITLE_SIMILARITY', 0.6),
+        'min_shared_tokens' => (int) env('SIGNALS_CLUSTER_MIN_SHARED_TOKENS', 3),
+    ],
+
+    /*
+     * Remembering what was rejected (S11), which closes the S3 trade-off (b).
+     *
+     * Non-event and below-threshold items were forgotten, so every run re-paid to classify the same
+     * weekly round-ups. A rejection is remembered by `(team, dedupe hash, the set of signal types
+     * that were offered)` and skipped inside the window — the type set matters, because a team that
+     * adds a type has asked a different question about the same article and deserves a fresh answer.
+     *
+     * Short retention on purpose: it holds hashes, a verdict and counts, no article text and no
+     * name, which is what makes it cheap to keep and uninteresting to a subject access request.
+     */
+    'rejections' => [
+        'enabled' => (bool) env('SIGNALS_REMEMBER_REJECTIONS', true),
+        'retention_days' => (int) env('SIGNALS_REJECTION_RETENTION_DAYS', 30),
+    ],
+
+    /*
      * Per-market search settings.
      *
      * **Superseded by `regions` below (S8, ADR 0019)** and kept only because

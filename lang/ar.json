@@ -2018,5 +2018,9 @@
     "My accounts: :name (:count)": "شركاتي: :name (:count)",
     "This watch asks what happened to those companies, a few at a time, instead of what happened in the places below.": "تسأل هذه المراقبة عمّا حدث لتلك الشركات، بضعًا منها في كل مرة، بدلًا من ما حدث في الأماكن أدناه.",
     "Point it at a list of accounts to watch companies you already work instead of places.": "وجِّهها إلى قائمة شركات لمراقبة الشركات التي تعمل عليها بدلًا من الأماكن.",
-    "Following :name": "تتابع :name"
+    "Following :name": "تتابع :name",
+    "Reported by several sources: :count": "مصادر متعدّدة أوردت الخبر: :count",
+    "One card per event, however many outlets reported it. The counts above work the same way.": "بطاقة واحدة لكل حدث، بغضّ النظر عن عدد المصادر التي أوردته. والأعداد أعلاه تتبع القاعدة نفسها.",
+    "The classifier did not read this as one of your events.": "لم نعدّ هذا الخبر من أحداثك.",
+    "A real event, under this type’s confidence or relevance floor.": "حدث حقيقي، لكنّه دون حدّ الثقة أو الصلة المحدّد لهذا النوع."
 }

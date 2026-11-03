@@ -87,30 +87,55 @@ it('auto-assigns team_id from the active team', function (): void {
         ->and($signal->team_id)->toBe($team->getKey());
 });
 
-it('allows the same url_hash in two different teams (unique is per team)', function (): void {
+it('allows the same dedupe_hash in two different teams (unique is per team)', function (): void {
     $teamA = Team::factory()->create();
     $teamB = Team::factory()->create();
 
-    makeSignalGraph($teamA, ['url_hash' => str_repeat('a', 40)]);
-    makeSignalGraph($teamB, ['url_hash' => str_repeat('a', 40)]);
+    makeSignalGraph($teamA, ['dedupe_hash' => str_repeat('a', 40)]);
+    makeSignalGraph($teamB, ['dedupe_hash' => str_repeat('a', 40)]);
 
-    expect(Signal::query()->withoutGlobalScopes()->where('url_hash', str_repeat('a', 40))->count())->toBe(2);
+    expect(Signal::query()->withoutGlobalScopes()->where('dedupe_hash', str_repeat('a', 40))->count())->toBe(2);
 });
 
-it('rejects a duplicate url_hash within the same team', function (): void {
+it('rejects a duplicate dedupe_hash within the same team', function (): void {
     $team = Team::factory()->create();
 
-    ['watch' => $watch, 'run' => $run] = makeSignalGraph($team, ['url_hash' => str_repeat('b', 40)]);
+    ['watch' => $watch, 'run' => $run] = makeSignalGraph($team, ['dedupe_hash' => str_repeat('b', 40)]);
 
     app(TeamContext::class)->run($team, function () use ($team, $watch, $run): void {
         Signal::factory()->create([
             'team_id' => $team->getKey(),
             'signal_watch_id' => $watch->getKey(),
             'signal_run_id' => $run->getKey(),
-            'url_hash' => str_repeat('b', 40),
+            'dedupe_hash' => str_repeat('b', 40),
         ]);
     });
 })->throws(QueryException::class);
+
+it('no longer rejects a duplicate url_hash within a team (S11 moved the identity)', function (): void {
+    // The constraint moved to `dedupe_hash` on purpose. Behind a redirector, two links that differ
+    // only by an opaque token **are** one article, and the old index refused the second insert
+    // rather than recognising it - which is the half of the redirect defect that cost an AI batch
+    // every run. `url_hash` is kept as data and indexed, not unique.
+    $team = Team::factory()->create();
+
+    ['watch' => $watch, 'run' => $run] = makeSignalGraph($team, [
+        'url_hash' => str_repeat('c', 40),
+        'dedupe_hash' => str_repeat('c', 40),
+    ]);
+
+    app(TeamContext::class)->run($team, function () use ($team, $watch, $run): void {
+        Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'signal_run_id' => $run->getKey(),
+            'url_hash' => str_repeat('c', 40),
+            'dedupe_hash' => str_repeat('d', 40),
+        ]);
+    });
+
+    expect(Signal::query()->withoutGlobalScopes()->where('url_hash', str_repeat('c', 40))->count())->toBe(2);
+});
 
 it('nulls lead_id when the converted lead is deleted (one-way FK)', function (): void {
     $team = Team::factory()->create();

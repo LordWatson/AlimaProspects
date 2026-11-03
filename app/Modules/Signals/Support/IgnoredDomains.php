@@ -23,6 +23,18 @@ use Illuminate\Support\Str;
  * normalised — the list because it is typed by a person, the host because it is returned by a
  * provider — so a trailing-dot FQDN (`bayut.com.`) or a tab in the authority (`bayut\t.com`) cannot
  * walk past a list the team believed excluded it.
+ *
+ * **Since S11 an entry also matches the outlet's name** ({@see self::blocksItem()}), and that is a
+ * defect fix rather than a convenience. Serper sometimes returns a Google redirect in place of the
+ * publisher's link, so every redirected item's host is `google.com` — a host-only list cannot
+ * express "not Khaleej Times" about those at all, and adding `google.com` to the list would
+ * silently drop a large share of every result (`docs/modules/signals.md`, "Known limitations",
+ * consequence 2). Matching the `source_name` as well closes it, and it also makes the list behave
+ * the way a team expects when they type "Khaleej Times" instead of a domain.
+ *
+ * The two comparisons cannot be confused with one another: a host is matched as a host and a name
+ * as a slug, so an entry of `bayut.com` blocks the host `news.bayut.com` and an outlet literally
+ * calling itself "Bayut.com", and nothing else.
  */
 final class IgnoredDomains
 {
@@ -67,6 +79,46 @@ final class IgnoredDomains
         $host = $this->hostOf($url);
 
         return $host === null || $this->blocks($host, $extra);
+    }
+
+    /**
+     * Whether an outlet's name is on the list (S11).
+     *
+     * Compared as a slug on both sides, so "Khaleej Times", "khaleej times" and "Khaleej  Times"
+     * are the same outlet. A blank name is never blocked: "we were not told who published this" is
+     * not the same statement as "this publisher is excluded", and treating it as one would drop
+     * every item whose provider omitted the field.
+     *
+     * @param  list<string>  $extra
+     */
+    public function blocksSource(?string $source, array $extra = []): bool
+    {
+        $key = $this->normaliser->sourceKey($source);
+
+        if ($key === '') {
+            return false;
+        }
+
+        foreach ($this->list($extra) as $blocked) {
+            if (Str::slug($blocked) === $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a result is blocked, by its link **or** by the outlet that published it.
+     *
+     * The one question a run and a preview both ask, and the reason this class exists: the two must
+     * not disagree by a hair of normalisation (see the class docblock).
+     *
+     * @param  list<string>  $extra
+     */
+    public function blocksItem(string $url, ?string $source, array $extra = []): bool
+    {
+        return $this->blocksUrl($url, $extra) || $this->blocksSource($source, $extra);
     }
 
     /**

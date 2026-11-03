@@ -7,6 +7,15 @@ use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Services\SignalItemNormaliser;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
 use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use Tests\TestCase;
+
+/*
+ * Boots the application, which {@see SignalItemNormaliser} needs since S11: the redirector list is
+ * configuration (`signals.redirect_hosts`), not a constant, so the next aggregator that wraps its
+ * links is a line in a file rather than a release. That makes this a unit test of a class that
+ * reads config rather than a pure one, which is the honest trade for not holding the list twice.
+ */
+uses(TestCase::class);
 
 function fakeQuery(int $num = 20): SignalQuery
 {

@@ -116,6 +116,11 @@ final class DigestBuilder
 
         if ($this->preferences->wants($user, $team, NotificationType::SignalsDetected)) {
             $signals = Signal::query()
+                // **Events, not articles** (Signals S11). A signal is one article and a cluster is
+                // one event; the feed lists and counts the event, so a digest promising eight new
+                // signals over a feed showing one card would send somebody to look for seven
+                // things that are not there.
+                ->representatives()
                 ->where('status', SignalStatus::New->value)
                 ->where('created_at', '>=', $since)
                 ->count();

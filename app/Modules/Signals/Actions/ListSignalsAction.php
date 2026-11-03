@@ -21,6 +21,12 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  * Ordering is `published_at` descending — the feed is about *when the event happened*, not when
  * Alima happened to find it — with the id as a tie-break so paging is stable when a run writes a
  * dozen signals sharing a fallback timestamp.
+ *
+ * **Since S11 a row is a card only if it represents an event** ({@see self::onlyRepresentatives()}).
+ * Eight outlets covering one acquisition are eight signals and one cluster, and the feed lists the
+ * cluster's primary — the card then offers the other seven as "reported by 8 sources". The date it
+ * is ordered by is the primary's, which is the first report of the event and so the event's own
+ * date; later coverage joining the cluster does not push an old story back to the top of the feed.
  */
 final class ListSignalsAction
 {
@@ -51,7 +57,21 @@ final class ListSignalsAction
                 // `matchedLead` too since S10: the card offers "add this to Acme Ltd" rather
                 // than "convert" when the event is about a company the team already has, and it
                 // has to be able to name it.
-                ->with(['watch:id,name', 'lead:id,company_name', 'matchedLead:id,company_name', 'definition']);
+                //
+                // `cluster` and its members since S11: the card says "reported by 6 sources" and
+                // expands to the list, so both the cluster's counters and the member rows come
+                // down with the page. Columns only — a member is a link and a date on this screen,
+                // never a second copy of the summary.
+                ->with([
+                    'watch:id,name',
+                    'lead:id,company_name',
+                    'matchedLead:id,company_name',
+                    'definition',
+                    'cluster',
+                    'cluster.signals:id,signal_cluster_id,source_name,source_url,published_at',
+                ]);
+
+            $query->representatives();
 
             if ($filters->scope === SignalScope::Accounts) {
                 // The warm half of the feed: only events about companies the team already works.
@@ -98,13 +118,23 @@ final class ListSignalsAction
         // member being told the feature is broken.
         $accountsOnly = $scope === SignalScope::Accounts;
 
-        return $this->teamContext->run($team, static fn (): array => Signal::query()
-            ->where('team_id', $team->getKey())
-            ->when($accountsOnly, static fn ($query) => $query->whereNotNull('matched_lead_id'))
-            ->groupBy('status')
-            ->selectRaw('status, count(*) as aggregate')
-            ->pluck('aggregate', 'status')
-            ->map(static fn (mixed $count): int => (int) $count)
-            ->all());
+        return $this->teamContext->run($team, function () use ($team, $accountsOnly): array {
+            $query = Signal::query()->where('team_id', $team->getKey());
+
+            // Counted the same way the feed lists, which since S11 means **per event, not per
+            // article** (one card per cluster). A tab reading 48 over a list of six cards would be
+            // a member being told the feature is broken — the same mistake S10 made the other way
+            // round with the accounts scope. The predicate is `Signal::representatives()`, shared
+            // with the digest and the dashboard so the three cannot disagree.
+            $query->representatives();
+
+            return $query
+                ->when($accountsOnly, static fn ($builder) => $builder->whereNotNull('matched_lead_id'))
+                ->groupBy('status')
+                ->selectRaw('status, count(*) as aggregate')
+                ->pluck('aggregate', 'status')
+                ->map(static fn (mixed $count): int => (int) $count)
+                ->all();
+        });
     }
 }

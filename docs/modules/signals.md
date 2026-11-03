@@ -29,6 +29,15 @@ deploy, so a recruiter watching for a hiring surge and a contractor watching for
 permission are configuration rather than a release. v1's three types are the first three
 entries in a **platform preset library** teams clone from.
 
+**S11 made one event one card.** A Dubai acquisition reported by Gulf News, Khaleej Times, Zawya,
+Arabian Business and three aggregators was five to eight signals, each costing an AI classification
+and each needing its own dismiss — the feed’s perceived quality was dominated by it. A
+`SignalCluster` is that event; the signals under it are the coverage, and the card says “reported by
+8 sources”. The same phase closed the oldest identity defect in the module: behind a Google redirect
+the article’s link is an opaque token, so `url_hash` stopped being its identity and a token that
+varied re-admitted the same article on **every** run. The run now classifies one representative per
+story, remembers what it rejected, and dedupes on a content identity where the link is not one.
+
 **S10 made it a monitor as well as a feed** (ADR 0021). A watch can be pointed at a **watchlist**
 of companies instead of at a place, and the obvious list is the team's own pipeline — mirrored
 nightly, so nothing is typed. Every kept signal, from any watch, is matched against the team's
@@ -286,6 +295,49 @@ now **follows the signal's own jurisdiction** rather than the watch's market.
       `DeleteSignalWatchlistAction`.
     - **Jobs (S10 ✅):** `SyncPipelineWatchlistsJob` — `ShouldBeUnique`, chunked over teams with a
       per-team try/catch, scheduled `dailyAt('02:40')`. One team's bad row does not stop the rest.
+    - **Clustering (S11 ✅):** `SignalClusterer` holds **two different questions** and the split is
+      the design. Before the AI there is no event yet — only headlines — so `group()` compares the
+      significant words of two titles (**Dice**, not Jaccard: one outlet writes the same headline
+      plus "in an all-cash deal", and Jaccard punishes the longer one for the words the shorter did
+      not have room for) with an absolute floor underneath the ratio. That grouping is provisional
+      and only has to pick one representative per story. **After** the AI the event has a type and
+      a subject, so `clusterKeyFor()` is the real key — `sha1(event key | subject fingerprint | ISO
+      week)` — and it is what makes a story covered again tomorrow join the card it already has,
+      which a headline comparison inside one run never could. `ensure()` finds or creates the row,
+      `reconcile()` recomputes the counters from the member signals, and `propagateStatus()` carries
+      a dismiss, a restore or a conversion across the cluster.
+    - **Where the correctness lives, and where the savings do (S11).** A false merge _before_ the
+      AI means one event is written down as the other, so that threshold is deliberately strict and
+      under-clustering only costs an AI call and a duplicate card. The cards are consolidated again
+      by the subject-based key, which cannot mis-merge that way. **So the savings depend on the
+      similarity numbers and the correctness does not** — which is why `signals.cluster_before_ai`
+      is a safe flag to turn off (it restores v1's behaviour exactly) and why the card
+      consolidation keeps working when it is.
+    - **The content identity (S11 ✅):** `SignalItemNormaliser` gained `contentHash()`
+      (`sha1(normalised source name + normalised headline)`), `isRedirector()` (config,
+      `signals.redirect_hosts`, a bare host or a host and a path prefix) and `dedupeHash()` — the
+      content hash behind a redirector, the canonical URL hash everywhere else. The source is part
+      of the content hash **on purpose**: two outlets reporting one event are two articles, each
+      with a link worth reading, and merging them into one card is the clusterer's question, not
+      this one's. `headlineTokens()` is the clusterer's input; `normalisedHeadline()` strips an
+      outlet suffix (a pipe, a long dash or an interpunct wherever it appears last; a hyphenated or
+      colonned tail **only** when it is literally the source's name) and is Unicode-aware, so an
+      Arabic headline does not reduce to the empty identity two articles must never share.
+    - **Remembering the "no" (S11 ✅):** `SignalRejectionLedger` + `SignalRejection` +
+      `SignalRejectionVerdict`. Keyed by `(team, dedupe hash, definition fingerprint)`, where the
+      fingerprint hashes **the set of signal type keys that were offered** — which is what "rejected
+      for the same definition" has to mean once a watch offers six types at once: add a type and the
+      same article is asked about again, change nothing and nobody pays twice. Two verdicts
+      (`NotEvent`, `BelowThreshold`) because they are two different conversations for somebody
+      tuning a type; **no verdict for an unoffered key**, because that is a statement about our
+      prompt rather than about the article. Writes are update-then-insert so `seen_count`
+      increments and a race loses safely.
+    - **Console (S11 ✅):** `ClusterSignalsBackfillCommand` (`signals:cluster-backfill`,
+      **not scheduled** — a backfill is a one-off an operator runs when the phase ships). Newest 90
+      days by `--days`, chunked per team, idempotent, `--dry-run`, and it fills the `content_hash`
+      the migration deliberately left null. It **skips a converted signal**: its `lead_id` is the
+      only copy of where that lead came from, so it stays its own card rather than disappearing
+      behind a primary that never made one.
     - **Log channel (S1 ✅):** `signals` (daily, `config/logging.php`) — log IDs/counts
       only, never names or article text.
     - **Testing:** `app/Modules/Signals/Testing/FakeNewsSearchClient` (canned Dubai
@@ -399,6 +451,14 @@ now **follows the signal's own jurisdiction** rather than the watch's market.
   templates** (**seed data only since S7** — the query builder no longer reads them; they are the
   record of what the three platform presets were created with), and
   `retention.{dismissed_days,unactioned_days}`. Every key documented in `.env.example`.
+  **S11 added `redirect_hosts`** (the hosts whose links are an opaque token, `google.com/goto`
+  first — config rather than a constant, because the next aggregator that wraps its links should be
+  a line in a file), **`cluster_before_ai`** + **`clustering`** (`title_similarity`,
+  `min_shared_tokens`) and **`rejections`** (`enabled`, `retention_days`). Note that
+  `rejections.retention_days` is **one** number doing two jobs — how long a rejection is honoured
+  and how long the row is kept — read through `SignalRejectionLedger::window()` by both the run and
+  the sweep, because two copies of it would drift and then either delete a memory the run still
+  trusts or keep one it has stopped trusting.
   **S9 added `preview`** (`max_queries`, `results_per_query`, `rate_limit`,
   `daily_budget_micros`) and **`composer`** (`rate_limit`, `max_brief`) — the three caps of ADR 0020
   §5 plus the character bound on the brief, which is ADR 0017's rule rather than a form limit.
@@ -442,11 +502,41 @@ sources, playbooks, delivery and cost governance.
 
 ## Data model
 
-Eight tables. A `signal_definition` defines _what a signal type is_; a `signal_watch` defines
+Ten tables. A `signal_definition` defines _what a signal type is_; a `signal_watch` defines
 _where and how often to look_, and reaches its types through the `signal_watch_definition` pivot;
 each run of it (`signal_run`) records cost and totals; each kept event is a `signal`, unique per
-team on `url_hash` so one article never becomes two signals. A converted signal points one-way at
-the `Lead` it created.
+team on **`dedupe_hash`** so one article never becomes two signals. A converted signal points
+one-way at the `Lead` it created.
+
+`signal_runs.signals_created` counts **events, not rows**, since S11: eight outlets covering one
+acquisition write eight `signals` and add one card, and the number everybody reads — the watch card,
+the admin run list, the `SignalsDetected` announcement — is the number of cards. `results_count` is
+still the raw provider count and `cost_micros` is still what the run cost.
+
+**S11 added two, and moved one identity.** A `signal_cluster` is **one event, however many outlets
+reported it**: the signals under it are the coverage, and the feed lists and counts its
+`primary_signal_id` rather than every member. Its `sources_count`, `first_published_at` and
+`last_published_at` are a **record over the member rows**, recomputed by
+`SignalClusterer::reconcile()` — the same shape `usage_meters` has over the AI ledgers (ADR 0012),
+and for the same reason: a counter the app increments and the rows it counts disagree eventually.
+`subject_fingerprint` is `CompanyNameKey::bare()` of the company the event is about. It reads the
+**company** field and never the person one — a cluster has no retention window of its own, so a
+person's name on one would outlive the rows it came from, and a signal naming only a person is
+therefore left unclustered. That is a statement about which column is read, not a guarantee about
+what is in it: a sole trader the model files under `subject_company_name` puts a person's name here,
+and what bounds it is the orphan sweep taking the row once its last signal has gone (see "Known
+limitations").
+
+A `signal_rejection` is what the classifier has already said no to: a team, a dedupe hash, a
+fingerprint of the offered types, a verdict and a tally. **Two hashes, a verdict and counts** — no
+headline, no URL, no outlet, no name — which is what makes it cheap to keep for 30 days and
+uninteresting to a subject access request.
+
+And the unique index on `signals` **moved from `(team_id, url_hash)` to `(team_id, dedupe_hash)`**,
+with `url_hash` kept as data and indexed. That index is the redirect fix, not the column: behind
+`google.com/goto?url=<token>` two links that differ only by an opaque token **are** one article, and
+the old constraint refused the second insert rather than recognising it — `insertOrIgnore` is what
+makes a re-run idempotent and the unique index is what makes `insertOrIgnore` mean anything.
 
 `signal_definitions` is the one table with **two scopes in it** (ADR 0018 §2): `team_id = null` is
 a platform preset and anything else is a team's own. Three things make that safe rather than
@@ -707,6 +797,7 @@ sequenceDiagram
     participant Act as RunSignalWatchAction
     participant QB as SignalQueryBuilder
     participant Serper as SerperNewsClient
+    participant Cl as SignalClusterer
     participant AI as AiClient (signals.extract_event)
     participant DB as DB (signals/signal_runs)
     Sch->>Job: dispatch(teamId, watchId) for due active watches
@@ -714,11 +805,14 @@ sequenceDiagram
     Act->>DB: claim/create run (Running) [tx]
     Act->>QB: build(watch, activeIcp) → queries
     Act->>Serper: search(query) per query (outside tx)
-    Serper-->>Act: NewsItem[] (clamped, ignore-domains dropped)
-    Act->>DB: drop url_hashes already seen for this team
-    Act->>AI: structured(batch ≤10, UntrustedContent)
-    AI-->>Act: ExtractedSignal[] (schema-valid)
-    Act->>DB: insertOrIgnore kept signals + run totals + last_run_at [one tx]
+    Serper-->>Act: NewsItem[] (clamped, ignored source/outlet dropped)
+    Act->>DB: drop dedupe_hashes already seen for this team
+    Act->>DB: drop hashes already rejected under this type set (S11)
+    Act->>Cl: group(items) → one story per headline cluster (S11)
+    Act->>AI: structured(one representative per story, ≤10, UntrustedContent)
+    AI-->>Act: ExtractedSignal[] (schema-valid), applied to every member
+    Act->>DB: find/create signal_clusters, insertOrIgnore signals, reconcile counters, run totals, last_run_at [one tx]
+    Act->>DB: remember the verdicts it rejected (S11, outside the tx)
     Act-->>Job: afterCommit → SignalsDetected; progress → done
 ```
 
@@ -728,14 +822,30 @@ older than 24 h; Weekly: older than 7 days). The job runs inside `TeamContext` a
 `RunSignalWatchAction`: (1) create the `signal_runs` row (Running) in a transaction;
 (2) **outside any transaction** — `SignalQueryBuilder` turns the watch + active ICP
 into queries → `SerperNewsClient` calls `/news` per query → collect items → **drop
-items whose `url_hash` already exists for this team** → batch the rest (≤10) through
-the `signals.extract_event` prompt (each item wrapped in `UntrustedContent`); (3)
+items whose `dedupe_hash` already exists for this team** and, since S11, **those this team's
+classifier has already rejected** under this same set of signal types → **group what is left into
+stories** by headline overlap (`SignalClusterer::group()`, deterministic, no AI) → batch **one
+representative per story** (≤10) through the `signals.extract_event` prompt (each item wrapped in
+`UntrustedContent`), applying the verdict to every member of the story; (3)
 **reject any `event_type` the run did not offer** (see below) and keep items clearing
 **their own definition's** floors (`SignalDefinition::effectiveThresholds()`, falling back to
-`signals.min_confidence` / `min_relevance` where a type sets none); (4) persist kept signals + run totals + `cost_micros` (Serper +
-AI) in **one `DB::transaction()`**, using an upsert on `(team_id, url_hash)` so a
-re-run is idempotent; (5) **`afterCommit`** fire `SignalsDetected` and set
-`last_run_at`. Progress (`searching → analysing → saving → done`) broadcasts via
+`signals.min_confidence` / `min_relevance` where a type sets none); (4) persist kept signals + run
+totals + `cost_micros` (Serper + AI) in **one `DB::transaction()`**, using an upsert on
+`(team_id, dedupe_hash)` so a re-run is idempotent — and, inside the same transaction, **find or
+create the `signal_clusters` row** each one belongs to and reconcile its counters, because a cluster
+claiming six sources over a card that can show five is the one inconsistency a member would notice;
+(5) **`afterCommit`** fire `SignalsDetected` and set `last_run_at`. The rejected verdicts are
+written **outside** the transaction: a memory that failed to save costs a repeated classification
+next week, which is not worth rolling back the signals this run actually found.
+
+**Clustering, in the order it happens (S11).** Rows are clustered **oldest first**, which is not
+cosmetic: a key is looked up against its own ISO week _and_ the week before, so a story that breaks
+on a Sunday and is covered on the Monday is one event only if the Sunday article is filed first.
+Processing in publication order makes the result the same whichever order the provider returned
+them in. A row whose event names no company keeps a null `signal_cluster_id` and stays its own
+card. The **primary** is the highest-confidence member, earliest publication breaking ties — the
+first report of an event is usually the best one — and `reconcile()` **will not move it once it has
+been actioned**, because it is what carries `lead_id` and the member's decision. Progress (`searching → analysing → saving → done`) broadcasts via
 `SignalRunProgressed`. AI goes through `AiCreditGuard`, so an out-of-credit team gets
 a clean Failed run, not a half-run. **Run-now** uses `TriggerSignalWatchAction`,
 rate-limited to once / 15 min / watch; it **opens a `queued` run row and then dispatches**,
@@ -889,6 +999,14 @@ finds nothing teaches the team the feature doesn't work. Deleting a watch **take
 signals and runs with it** (both FKs cascade), which the confirmation says plainly; any
 signal the team actually wanted is already a lead, and the lead survives.
 
+**Retention, after S11.** The same command sweeps three tables now. A `signal_rejection` goes on
+the same 30-day clock the run honours it for — one number, read from
+`SignalRejectionLedger::window()`, so the sweep cannot delete a memory the run still trusts or keep
+one it has stopped trusting. A `signal_cluster` has **no window of its own** and goes when it has no
+signals left, which is the only thing that stops a subject fingerprint outliving every row it was
+derived from. Clusters are swept **after** the signals, because a cluster is only eligible once its
+last member has gone.
+
 **Retention (S6).** `signals:prune`, nightly at 03:20: dismissed signals go after
 `retention.dismissed_days` (90), unactioned ones after `retention.unactioned_days` (180),
 and **converted ones never** — they are the provenance of a real lead. Chunked at 500
@@ -1032,6 +1150,79 @@ _is_ news.
 **Also learned:** "people moves" and "this week in funding" round-ups are as common in UK news as
 the UAE equivalents the S0 spike found, so every UK preset's `excludes` names them. The AI's
 relevance score remains the main filter; the templates only decide what it gets to look at.
+
+## What the S11 review changed
+
+`laravel-module-reviewer` found no blockers and seven real defects, five of which are the same
+mistake wearing different clothes: **only the feed was taught about clusters.**
+
+1. **A cluster whose primary was swept hid its remaining members.** Retention deletes per _signal_,
+   so it can take the article a cluster is shown as and leave the other seven; the FK nulls
+   `primary_signal_id`. The first predicate asked "are you the primary?", which answered no for
+   every survivor — the whole story disappeared from the feed and the counts with the rows still in
+   the table. The predicate is now written the other way round: a row is shown unless some _other_,
+   live primary stands in front of it (`Signal::representatives()`), so an orphaned cluster shows
+   all of its members. **Too many cards is a fault somebody reports; none is one nobody can see.**
+   `signals:prune` then repairs it — `SignalRetention::clustersNeedingAPrimary()` plus a reconcile —
+   because leaving it to the next run that happens to touch the cluster means never, for a story
+   nobody writes about again.
+2. **The digest and the dashboard still counted articles.** "8 new signals waiting" in the daily
+   digest and on the headline KPIs, over a feed showing one card, is exactly the discrepancy the
+   phase exists to remove. The predicate is now a model scope used by the feed, its tab counts,
+   `DigestBuilder`, `BuildHeadlineKpisAction` and `BuildSignalBreakdownAction` — one definition,
+   because two copies is how a dashboard comes to disagree with the screen it links to.
+3. **`signals_created` counts events now, not rows.** Same reason: "signals created: 8" on the
+   watch card over one card in the feed. The article count is still `results_count` and the cost is
+   still `cost_micros`; the number of rows written is not something anybody reads. `SignalsDetected`
+   carries the event count too, and is **not raised at all** when a run's new rows only added
+   coverage of an event the team already has — "3 new signals" leading to an unchanged feed is worse
+   than silence.
+4. **A matched lead's timeline said the same thing eight times.** `recordMatches()` wrote an entry
+   per article, so one acquisition of a company somebody is working filled their timeline in a
+   single morning — the feed's old defect moved somewhere a member cannot dismiss it. It is scoped
+   to the representatives, and the **reconcile now runs before it** inside the transaction, because
+   a freshly created cluster has no primary until then and the scope would have shown every member
+   again.
+5. **Propagating a dismiss could delete a lead's provenance.** `propagateStatus()` had no
+   `status != converted` guard, so dismissing a new primary whose cluster also held a converted
+   signal flipped that row to `Dismissed` — and converted has no retention window while dismissed
+   has ninety days. The guard is the same one `DismissSignalAction` applies to the row a member
+   actually clicked, and the propagated **count** now goes in that row's audit entry, because one
+   click can clear seven more rows and a trail that does not say how far a decision reached
+   under-reports it.
+6. **The backfill left redirected rows on the wrong identity.** The migration copied `url_hash` into
+   `dedupe_hash` for every existing row, which was right — that is what the old index enforced — but
+   for a `google.com/goto` link that hash is a hash of the token. The first run after the deploy
+   would have computed the content identity, matched nothing, and re-admitted each one once.
+   `signals:cluster-backfill` repoints them, and **leaves a collision alone and counts it**: two
+   rows already sharing a content identity are a duplicate pair that predates this phase, and
+   merging a team's signals is not a decision a backfill should take quietly.
+7. **Three smaller ones, all found by reading rather than running.** The orphan sweep's
+   `whereDoesntHave('signals')` carried the _Signal_ model's team scope into its subquery, so a
+   sweep reached inside a team context would have found every other tenant's clusters empty and
+   deleted them — it reads as a no-op only because the command runs with no context. The sweep also
+   now leaves a cluster touched in the last hour alone, because a run can find an empty cluster and
+   then spend a moment on its insert, and MySQL turns the resulting foreign-key violation inside an
+   `INSERT IGNORE` into a _warning_ — the signals would have been dropped silently. And silence from
+   the model is only read as a rejection when the response named **at least one** item: a
+   truncated-but-schema-valid answer would otherwise have hidden every real event in that batch for
+   thirty days.
+
+Two more things the review surfaced that are not defects but are worth having written down. The
+backfill held every touched cluster as a **model** for the whole run and reconciled only at the very
+end, so a crash part-way through left every cluster it had created with no primary — it now keeps
+ids and reconciles per team. And `SignalRejectionLedger::remember()` does two statements per hash
+rather than one bulk upsert; it is bounded by the batch size and runs outside the transaction, so it
+stays as it is, written down here rather than discovered twice.
+
+**`brand-reviewer`** found no violations: no off-token values, no Signal Orange, the disclosure is
+keyboard-operable with `aria-expanded`/`aria-controls`, and the logical properties mirror correctly.
+Three small fixes taken — `motion-reduce:transition-none` on the chevron (the repo's own precedent),
+and two Arabic voice notes: one noun for "sources" rather than alternating with "outlets", and the
+classifier's explanation moved from "the system did not classify" to the first person, which is the
+brand's voice rather than a machine's. It also noted the outlet links hover to `text-brand` where
+the trigger hovers to `text-foreground`; that is deliberate and consistent with the card's existing
+source link, so it stays.
 
 ## What the S10 reviews changed
 
@@ -1268,14 +1459,65 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
 
 ## Known limitations / TODO
 
+- **A rejection memory survives a type being re-worded** (S11). It is keyed on the _set of signal
+  type keys_ that were offered, so adding or removing a type asks every article again — but editing
+  a type's include/exclude rules or thresholds without changing its key does not. The window bounds
+  it to 30 days rather than leaving it to be noticed, and `SIGNALS_REMEMBER_REJECTIONS=false` turns
+  it off outright. Keying it on a definition's `version` instead would be correct and would also
+  throw the memory away every time somebody fixed a typo.
+- **A clustered signal is not independently actionable** (S11). The feed lists and counts the
+  cluster's primary, and a dismiss, restore or conversion is propagated across the members — so the
+  other seven articles cannot be dismissed one at a time, and nothing offers to. `lead_id` is
+  deliberately **not** propagated: exactly one article is the provenance of the lead, which is what
+  `SignalLeadOriginProvider` reads.
+- **The feed is ordered by the primary's date, not the cluster's latest** (S11). The primary is the
+  first report of an event, which is the event's own date — so later coverage joining a cluster does
+  not push an old story back to the top. The cost is that a story whose coverage builds over three
+  days stays where it was. `last_published_at` is on the row for whenever that becomes the wrong
+  call.
+- **Nothing shows the AI saving** (S11). `signal_runs.results_count` is the article count and
+  `signals_created` is the event count, so the gap between them hints at it — but there is no
+  "classifications avoided" figure anywhere, so the phase's cost win is visible only in the AI
+  ledger. It belongs with S16's cost governance, where the other spend numbers are.
+- **A cluster short of its primary shows all of its members until the nightly sweep** (S11). The
+  feed predicate is deliberately tolerant — see "What the S11 review changed" — so retention taking
+  a primary makes a story briefly look like seven cards rather than vanish. `signals:prune` repairs
+  it within a day. Repairing it the moment the primary is deleted would mean a model observer on
+  `Signal::deleted`, and S7's lesson about hooks that do not fire under `Event::fake()` is the
+  reason there isn't one.
+- **The fingerprint is only as good as the model's company field** (S11). It is
+  `CompanyNameKey::bare(subject_company_name)`, so a sole trader filed as a company puts a person's
+  name on a cluster row. The erasure paths delete the signals rather than the cluster, so such a row
+  survives until the nightly orphan sweep takes it — within a day, not indefinitely, but it is a day
+  longer than the signals themselves.
 - **A long watchlist is searched slowly** (S10). One entity is one query per region and a run is
   capped at 40, so 250 accounts come round about every six days. The screen says the number rather
   than hiding it; raising `signals.watchlist.window` raises the bill proportionally.
 - **`Likely` will be wrong sometimes** (S10). Two businesses whose names differ only by a legal form
   do exist. It is labelled, explained in words, and _Convert anyway_ is a real button — which is the
   most that can be promised about an inference over company names.
-- **One acquisition is still several cards** (S10 makes this more visible, S11 fixes it): searching a
-  company by name returns every outlet that covered the same event.
+- ~~**One acquisition is still several cards.**~~ **Closed in S11.** A `signal_cluster` is the
+  event, the signals under it are the coverage, and the card says "reported by 8 sources". The feed
+  lists and counts the cluster's primary, so the tab numbers answer the same question the list does.
+  Four things it still cannot do, all of them deliberate rather than pending:
+    - **An event naming no company is not clustered.** The subject fingerprint is a company name and
+      never a person's, because a cluster is not swept by retention and a person's name on one would
+      outlive the rows it came from. So eight articles about a founder relocating are still eight
+      cards. A relocation is usually single-sourced; if that stops being true, the fix is a
+      pseudonymous fingerprint with a sweep behind it, not a wider column.
+    - **Two funding rounds for one company in the same ISO week merge.** The plan put the **amount**
+      in the fingerprint to prevent exactly this, and it came back out: an amount is the field
+      outlets disagree about — Gulf News writes "$40m" and Zawya writes nothing — so including it
+      splits the coverage this phase exists to merge, in the common case, to guard against a rare
+      one. A funding round and an acquisition are already kept apart by `event_key`.
+    - **A story that spans more than two ISO weeks is two events.** The key looks at its own week
+      and the one before (so a Sunday story covered on the Monday is one event), and no further: a
+      rolling window would eventually collect a quarter of coverage about one company under one
+      card.
+    - **The pre-AI grouping is deliberately conservative**, so a story written up very differently
+      by two outlets costs two classifications. That is the right way round — a false merge there
+      means one event is recorded as the other — and it costs money rather than correctness, because
+      the cards are consolidated again by the subject key afterwards.
 - **A person entity costs more per head than a company** (one query per definition rather than one
   in total), and nothing on the screen says so — because the screen only offers companies for now.
 - **The strongest account signals are filings, not news** (a PSC change, a shareholding change).
@@ -1356,20 +1598,30 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
 - **Serper sometimes returns a Google redirect, not the publisher's link.** Observed in real
   data: `link = https://google.com/goto?url=<opaque token>` (~280 chars) with
   `source = "Construction Week Online"`. The token is Google's own encoding, so **the publisher
-  URL cannot be recovered locally** — there is nothing to unwrap. Three consequences, none of
-  them yet addressed:
-    1. **`url_hash` stops being the article's identity.** It is `sha1()` of the canonical URL, so
-       for a redirected item it hashes the token. If Google varies that token between requests,
-       the same article re-enters as a new signal on every run — a fresh Serper query and a fresh
-       AI batch each time, which is exactly the spend the hash exists to prevent.
-    2. **The per-team ignore list cannot match.** It compares hosts, and every redirected item's
-       host is `google.com`; adding that would silently drop a large share of all results.
-    3. The card links to a Google interstitial while naming the publisher, where
-       `runbooks/signals-demo.md` promises "every signal links to the published source" — the link
-       does still reach the article, so this is the mildest of the three.
-       **Candidate fix** (not done, needs a decision): fall back to `sha1(source_name + normalised
-       headline)` for the dedupe key when the host is a known redirector, and match the ignore list
-       against `source_name` as well as the host.
+  URL cannot be recovered locally** — there is nothing to unwrap. Two of the three consequences are
+  **closed in S11**:
+    1. ~~**`url_hash` stops being the article's identity.**~~ **Closed.** `signals.dedupe_hash` is
+       the identity now, and for a host on `signals.redirect_hosts` it is the **content** hash
+       (`sha1(normalised source name + normalised headline)`) rather than a hash of the token. The
+       unique index moved with it, so a token that varies between requests no longer re-admits the
+       same article on every run at the price of a fresh Serper query and a fresh AI batch.
+       `url_hash` is kept as data and indexed, because it is still the truth about the link.
+    2. ~~**The per-team ignore list cannot match.**~~ **Closed.** `IgnoredDomains` matches an entry
+       against the **outlet's name** as well as the host, so a team can exclude "Khaleej Times" by
+       name — which is also what they would type anyway. `google.com` is still not on the list and
+       must not be: it would drop a large share of every result.
+    3. **The card links to a Google interstitial while naming the publisher**, where
+       `runbooks/signals-demo.md` promises "every signal links to the published source". **Still
+       open**, and still the mildest of the three — the link does reach the article. There is
+       nothing to fix locally; it needs either a provider setting or a fetch, which is S12's
+       full-article work.
+
+    Two things the content identity cannot do. A redirected item whose headline reduces to nothing
+    identifying falls back to the URL hash and so can still re-enter under a new token — a worse
+    identity than the content hash, but a real one, and better than no row at all. And two genuinely
+    different articles that an outlet published under the **same** headline in the same breath are one
+    signal; that is the trade the content hash is, and it only applies behind a redirector.
+
 - **`ui/spinner` names itself in English.** `Spinner.vue` hardcodes `role="status"` and
   `aria-label="Loading"`, so inside a button its name joins the button's ("Loading
   Running") and an Arabic UI gets an English word; several on one screen also each form a
@@ -1469,3 +1721,4 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
 | 2026-11-02 | S7    | **Signal types became data** (ADR 0018). `SignalEventType` is gone: nothing in the app branched on which case it was — it picked templates, rendered a label and a description, mapped an ICP keyword and grouped a report, all properties of a type rather than decisions about one — so it became a `signal_definitions` row a team owns, created and tuned on **`/signals/types`** without a deploy. v1's three types are the first three entries in a **platform preset library** (`team_id = null`), which a team **clones** rather than references, so a platform edit never silently changes what they are paying to run and their tuning never leaks upward. A watch reaches its types through the `signal_watch_definition` **pivot** rather than a JSON column of ids — a deviation from the S7 plan, because "which watches use this definition?" is `JSON_CONTAINS` on MySQL and `json_each` on SQLite, and only one of those would ever have run here. Thresholds are **per type** now, falling back to the global config. `signals.event_type` was renamed `event_key` and is **denormalised beside the FK** so a signal outlives the type that classified it. **`signals.extract_event` v2**: the schema's `event_type` enum could not survive per-team keys, so the keys and their include/exclude rules are injected into the body and `RunSignalWatchAction::resolveDefinition()` **rejects any key the run did not offer** — that Action is now the guard the schema used to be, which is the one real safety change in this phase. 5 migrations, run round-trip against the local MySQL, which is how **two MySQL-only failures** were found: a _stored_ generated `scope_id` refuses a cascading FK on its base column (now virtual), and Laravel's generated pivot index name is 67 characters against MySQL's 64-character limit (now named). A third bug came from `Event::fake()` — `scope_id` had been maintained by a model `creating` hook, which the suite suppressed, silently writing every row into the platform scope; a column carrying a uniqueness invariant cannot depend on anything a caller might skip, so the database computes it. Tests (37 new): the data migration repoints paused watches and converted signals and is idempotent; a hostile `event_type` is dropped; per-type thresholds bite; a preset refuses a tenant edit with a 404; an all-paused watch completes empty rather than failing. **`laravel-module-reviewer` and `brand-reviewer` then found six things worth fixing, three of them real defects.** Backend: (a) the clone path looked up an existing clone with the default scope, so a team who **deleted a type and re-added it from the library** hit a unique violation and a 500 - `unique(scope_id, key)` knows nothing about `deleted_at`, and the same collision came from a team writing their own type called "Acquisition"; both now go through `SignalDefinitionKeyAllocator`, which restores a trashed clone and suffixes a key somebody else took. (b) `Signal::definition()` was a plain `belongsTo`, so the soft-delete scope made a removed type's signals read "Hiring Surge Uae" on every card, report row and lead-origin panel - exactly what ADR 0018 section 4 promises it would not; `withTrashed()` on the relation and on the report's label query. (c) `SignalFilters::onlyKnownKeys()` **dropped** a key the team no longer had, which answered a filtered request with the whole feed and made a deleted type's signals impossible to isolate - it is gone, and a key is honoured as given, because a key is not meaningless after a delete the way a removed enum case was. Also: the one-click default clones a **declared starter set** rather than everything (the library grows to six packs in S9 and would blow the ceiling); a `signals.max_queries_per_run` ceiling closes the 30x cost exposure this phase opened (25 types x 10 templates against v1's 8); the data migration's `down()` no longer deletes a team's own type that happens to share a preset key; and the ADR's claim that the pivot's `team_id` made a cross-tenant pairing "impossible at the database level" is corrected to defence-in-depth, since the FKs are single-column. Frontend: the editor used `DialogContent`, which has no `max-h` and no overflow, so **Save was unreachable on a laptop or at 200% zoom** (WCAG 1.4.10) - now `DialogScrollContent`; closing it discarded a long hand-written form with no prompt (now `UnsavedChangesDialog`, per section 7h.11); the editor is rebuilt on the shared `FormField`/`FormErrorSummary` set, so it has `aria-invalid`, an error summary and required/optional in words; prose moved off `text-sm` to the 16px body floor and the `dt` rail became DM Mono eyebrows; the lime icon tiles became lilac circles (one accent, and section 5's feature-icon shape); the ceiling is explained in words rather than only disabling buttons; a long team-authored name truncates with a `title` instead of clipping; and "Confidence floor"/"Relevance floor" became "How sure Alima must be" / "How well it must fit you". | `app/Modules/Signals/{Models/SignalDefinition,Enums/{SignalCategory,SignalIcon},Support/{SignalPreset,SignalPresetCatalogue},Services/PlatformPresetReader,Data/SignalDefinitionData,Actions/{List,Save,Delete}SignalDefinitionAction,Actions/CloneSignalPresetsAction,Policies/SignalDefinitionPolicy,Http/**}.php`, `database/migrations/2026_11_02_1000{01..05}_*`, `database/seeders/{SignalPresetSeeder,AiPromptTemplateSeeder,DatabaseSeeder,DemoSeeder}.php`, `database/factories/Signal*Factory.php`, `app/Modules/{Reporting/Actions/BuildSignalBreakdownAction,Admin/Resources/Signal*Resource,Compliance/Services/TeamDataArchiver}.php`, `config/signals.php`, `.env.example`, `resources/js/{pages/signals/*,components/signals/SignalTypeIcon.vue,shared/types/signals.ts}`, `lang/{en,ar}.json`, `docs/{decisions/0018-*,modules/signals.md,ai-prompts.md,api/openapi.json}`, `tests/**/Signals/*`                                                                                                          |
 | 2026-11-01 | UI    | **The feed says what is narrowing it.** The event-type chips are now the shared `FilterToggle`/`FilterGroup` — one chip for the whole product, with the tick that keeps the on state from being colour alone — and the filters in force are summarised above the feed as removable chips (`ActiveFilters`). The filters themselves stay behind the disclosure, which is right for controls used occasionally, but it meant a member could land on a shared link showing four signals out of two hundred with nothing on screen to say why. The feed also dims while a filter request is in flight (`useNavigating()`). No server change. The app-wide hand-rolled `<select>` follow-up recorded in Phase S5/S6 is now down to a handful of call sites.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `resources/js/pages/signals/Index.vue`, `resources/js/components/list/*`, `lang/{en,ar}.json`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 2026-11-02 | S10   | **Account monitoring: a watch can be pointed at companies instead of places** (ADR 0021). Two tables (`signal_watchlists`, `signal_watchlist_entries`, unique on the normalised name) plus `signal_watches.signal_watchlist_id`/`entity_cursor` and `signals.matched_lead_id`/`match_confidence`. A `pipeline` list mirrors the team's own leads nightly (`SyncPipelineWatchlistAction` — a diff, not a rebuild; capped at 250 keeping the most recently worked; drops an anonymised lead), a `manual` list takes names pasted one per line, and `segment` is declared and not offered. **The spike contradicted the plan**: every quoted query returned zero (12/12) and adding a keyword _lost_ results, so an entity query is a bare name — which made a 250-account list exceed the per-run ceiling, hence `entity_cursor` and the ring — a window filled by what one run can **afford** (regions × names), not by a fixed count. `SignalLeadMatcher` reuses the one name rule, extracted to `LeadSourcing\Support\CompanyNameKey` (`for()` strict, `bare()` legal-forms-only — `holdings`/`group` came back out after they made "Acme" match "Acme Holdings Ltd"); two confidences and **no third**, because a weak guess is not a match. A match writes `matched_lead_id` and one `SignalMatched` timeline entry inside the signal's own transaction, and raises `AccountSignalsDetected` → `AnnounceAccountSignals` → `NotificationType::SignalOnAccount`, aggregated per run and addressed to the **lead's owners** (team only where nobody owns it). The card offers _Add to {Lead}_ (`ConvertSignalToLeadAction` with a named target — no lead created, gaps filled only) with _Convert anyway_ beside it; the feed gained a `SignalScope` **scope**, not a fourth status, with the counts scoped to match; the lead page's "The event" became a list. `LeadAnonymiser` now deletes matched signals and watchlist entries in the erasure transaction and `TeamDataArchiver` exports `signal_watchlists.csv`. A watch is pointed at a list from the watch editor's own **What this watch follows** picker. 9 web + 9 API routes, 52 tests of its own.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 2026-11-03 | S11   | **One event, one card — and the redirect defect, closed.** Two tables (`signal_clusters`, `signal_rejections`), two columns (`signals.content_hash`, `signals.dedupe_hash`) and one moved unique index: `(team_id, url_hash)` became `(team_id, dedupe_hash)`, which **is** the redirect fix — behind `google.com/goto?url=<token>` two links differing only by an opaque token are one article, and the old constraint refused the second insert rather than recognising it. `SignalItemNormaliser` gained a content identity (`sha1(normalised source name + normalised headline)`, Unicode-aware, outlet suffix stripped) used as the dedupe hash for a host on the new `signals.redirect_hosts`; `IgnoredDomains` now matches an entry against the **outlet's name** as well as the host, because every redirected item's host is `google.com` and a host-only list could not express "not Khaleej Times" about the items most in need of it. `SignalClusterer` holds two questions on purpose: **before** the AI it groups headlines (Dice over the significant words, with an absolute floor — Jaccard punishes the outlet that wrote "…in an all-cash deal"), which is provisional and only picks a representative; **after** the AI the key is `sha1(event key                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | subject fingerprint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | ISO week)`, which is what makes tomorrow's coverage join today's card. **So the savings depend on the similarity numbers and the correctness does not** — one AI call for eight outlets, and the cards consolidate either way, which is why `signals.cluster_before_ai=false`is a safe flag rather than a rollback.`SignalRejectionLedger`closes the S3 trade-off (b): a round-up inside the recency window cost an AI batch **every day** it stayed there, and is now remembered for 30 days keyed by the article *and* the set of types that were offered — add a type and it is asked again, change nothing and nobody pays twice; no verdict is stored for a key the run did not offer, because that is a statement about our prompt. **Two deviations from the plan, both deliberate:** the **amount is not in the subject fingerprint** (it is the field outlets disagree about, so it splits the coverage this phase exists to merge, in the common case, to guard against a rare one), and a key is looked up against the **previous ISO week** as well as its own (a story breaking on a Sunday and covered on the Monday is the event most likely to be well covered). The card gained a "Reported by N sources" disclosure, a dismiss now dismisses the cluster, and the tab counts count events.`signals:cluster-backfill`groups the newest 90 days — idempotent, chunked per team,`--dry-run`, and it **skips a converted signal** because `lead_id`is the only copy of where that lead came from.`signals:prune` sweeps the rejection memories on the same clock the run honours them for, and a cluster once its last signal has gone, which is what stops a subject fingerprint outliving its rows. 47 new tests, and the two normaliser unit files now boot the app because the redirector list is config rather than a constant. | `app/Modules/Signals/{Services/{SignalClusterer,SignalRejectionLedger,SignalItemNormaliser,SignalRetention},Models/{SignalCluster,SignalRejection,Signal},Enums/SignalRejectionVerdict,Console/{ClusterSignalsBackfillCommand,PruneSignalsCommand},Actions/{RunSignalWatchAction,ListSignalsAction,DismissSignalAction,RestoreSignalAction,ConvertSignalToLeadAction,PreviewSignalDefinitionAction},Data/NewsItem,Support/IgnoredDomains,Http/Resources/SignalResource,Providers/SignalsServiceProvider,Testing/FakeNewsSearchClient}`, `database/migrations/2026_11_03_10000{1,2,3}_*`, `database/factories/{SignalClusterFactory,SignalRejectionFactory,SignalFactory}.php`, `config/signals.php`, `.env.example`, `resources/js/{Components/signals/SignalCard,Pages/signals/Index}.vue`, `resources/js/shared/types/signals.ts`, `lang/{en,ar}.json`, `tests/Feature/Signals/{SignalClusteringTest,SignalDedupeIdentityTest,SignalRejectionMemoryTest,SignalClusterBackfillTest,SignalIgnoreDomainsTest,SignalsTenancyTest,SignalDefinitionMigrationTest}.php`, `tests/Unit/Signals/{SignalClustererTest,SignalItemNormaliserTest,FakeNewsSearchClientTest}.php` |

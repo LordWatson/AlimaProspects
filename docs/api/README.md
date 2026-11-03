@@ -48,6 +48,17 @@ A client may **pin** itself by sending `X-Api-Version: 1` (or `v1`). A mismatch 
 `unsupported_api_version` rather than a best-effort answer, because a client that asked for v2 and
 silently got v1 would misread everything it then parsed.
 
+**A judgement call worth recording (Signals S11, 2026-11-03).** `GET /api/v1/signals` now returns
+**one row per event** rather than one per article: where several outlets reported the same thing, the
+list carries the cluster's representative and a new nullable `cluster` object naming the rest. The
+response shape is additive — nothing was removed, renamed or restructured — so this stayed inside
+v1. What did change is the **number of rows** a given page holds and therefore `meta.total`, which a
+client measuring "how many signals this week" off that figure will read differently. That was
+treated as the endpoint answering its own question better rather than as a contract break: a feed
+that returned eight copies of one event was wrong, and a client cannot have been relying on the
+duplication. A client that wants every article has `cluster.sources`, which carries each one's id,
+outlet, link and date.
+
 ## 3. Authentication and token scopes
 
 ```http
@@ -220,6 +231,15 @@ Scramble is a **dev dependency**: the document is a build artefact, so productio
 generator nor the `/docs/api` route. `config/scramble.php` therefore references no Scramble class —
 every config file is loaded on boot, and a class constant from a package that isn't installed is a
 fatal error rather than a missing feature.
+
+**What the generator cannot see.** Scramble builds the schema from the resource's literal return
+expression, so a field whose value comes from a mapped collection or a private helper is
+under-described — `signals.cluster.sources` is generated as an empty array of strings, which is
+wrong. The free edition also does not read Laravel Data objects (it says so on every run, for three
+endpoints). Where that happens the field's **description** carries the real shape, because that is
+the one part of the entry the generator takes from our own words. Do not hand-edit `openapi.json`
+to correct it: the file is generated and committed, and the next regeneration would silently undo
+the edit.
 
 ## 9. Review (2026-10-31)
 

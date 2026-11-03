@@ -82,22 +82,46 @@ final class BillingServiceProvider extends ModuleServiceProvider
                 : $this->app->make(DisabledBillingGateway::class),
         );
 
-        // The middle capability gate: what this team's **plan** includes (ADR 0015). Decorates
-        // Core's permissive default, and is itself decorated by Admin's operator levers — the same
-        // seam shape as the three sources below, and the reason nothing has to import this module
-        // to ask what a plan contains.
-        $this->app->extend(
-            CapabilityGate::class,
-            fn (CapabilityGate $inner): CapabilityGate => new PlanCapabilityGate(
-                $inner,
-                $this->app->make(PlanResolver::class),
-            ),
-        );
+        // **Plan enforcement, all of it, behind one check** (`billing.enforce_plans`).
+        //
+        // This is the whole of it because of how the seams were arranged in Phase 16: every module
+        // that can be limited by a plan ships its **own permissive default** — `AllCapabilitiesEnabled`,
+        // `StubLeadQuotaSource`, `UnlimitedSeatLimit` — and this provider, registered last, binds
+        // the plan-backed versions over them. So "stop gating on plans" is not a flag threaded
+        // through twenty call sites and a hundred `if`s; it is *not installing four bindings*, and
+        // what is left standing is the behaviour the product had before plans existed.
+        //
+        // What deliberately keeps working with it off:
+        //
+        //  - **Suspension.** Admin decorates whatever is bound here (`SuspensionAware*`), so a
+        //    suspended tenant still cannot source, spend or send. That is an operator's act, not a
+        //    plan limit, and conflating the two would hand a suspended tenant its allowances back.
+        //  - **Operator capability overrides.** `GovernedCapabilityGate` still wraps Core's
+        //    default, so an operator can still turn one capability off for one tenant.
+        //  - **The AI credit allowance.** `StubCreditSource` is a *cost* guard every tenant has had
+        //    since Phase 6 (`ai-platform.credits.*`), not a plan feature. Raise it there if it is
+        //    in the way; it is deliberately not silently infinite.
+        //  - **Plans themselves.** `PlanRegistry` and `PlanResolver` stay bound: the pricing page,
+        //    the billing screen and platform reporting all still read what a team *is on*. Nothing
+        //    *enforces* it.
+        if ((bool) config('billing.enforce_plans', true)) {
+            // The middle capability gate: what this team's **plan** includes (ADR 0015). Decorates
+            // Core's permissive default, and is itself decorated by Admin's operator levers — the
+            // same seam shape as the three sources below, and the reason nothing has to import this
+            // module to ask what a plan contains.
+            $this->app->extend(
+                CapabilityGate::class,
+                fn (CapabilityGate $inner): CapabilityGate => new PlanCapabilityGate(
+                    $inner,
+                    $this->app->make(PlanResolver::class),
+                ),
+            );
 
-        // --- The three seams ---
-        $this->app->bind(CreditSource::class, PlanCreditSource::class);
-        $this->app->bind(LeadQuotaSource::class, PlanLeadQuotaSource::class);
-        $this->app->bind(SeatLimitSource::class, PlanSeatLimit::class);
+            // --- The three seams ---
+            $this->app->bind(CreditSource::class, PlanCreditSource::class);
+            $this->app->bind(LeadQuotaSource::class, PlanLeadQuotaSource::class);
+            $this->app->bind(SeatLimitSource::class, PlanSeatLimit::class);
+        }
     }
 
     public function boot(): void

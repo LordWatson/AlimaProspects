@@ -139,7 +139,10 @@ it('repoints every watch and signal at the team’s own clone of each preset', f
             'signal_run_id' => $runA, 'event_key' => $key, 'status' => $status,
             'headline' => 'Something happened', 'summary' => 'A summary.',
             'confidence' => 90, 'relevance' => 80, 'source_url' => $url,
-            'url_hash' => sha1($url), 'raw' => json_encode(['link' => $url]),
+            // `dedupe_hash` is NOT NULL since S11, and for an ordinary publisher link it **is**
+            // the URL hash - which is what the S11 migration backfilled every existing row with.
+            'url_hash' => sha1($url), 'dedupe_hash' => sha1($url),
+            'raw' => json_encode(['link' => $url]),
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }

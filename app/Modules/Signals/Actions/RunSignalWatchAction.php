@@ -27,6 +27,7 @@ use App\Modules\Signals\Data\SignalQuery;
 use App\Modules\Signals\Data\SignalQueryEntity;
 use App\Modules\Signals\Data\SignalQueryPlan;
 use App\Modules\Signals\Data\SignalQuerySpec;
+use App\Modules\Signals\Enums\SignalRejectionVerdict;
 use App\Modules\Signals\Enums\SignalRunStatus;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\AccountSignalsDetected;
@@ -34,14 +35,18 @@ use App\Modules\Signals\Events\SignalRunProgressed;
 use App\Modules\Signals\Events\SignalsDetected;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalCluster;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
+use App\Modules\Signals\Services\SignalClusterer;
 use App\Modules\Signals\Services\SignalJurisdictionResolver;
 use App\Modules\Signals\Services\SignalLeadMatcher;
 use App\Modules\Signals\Services\SignalQueryBuilder;
+use App\Modules\Signals\Services\SignalRejectionLedger;
+use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -84,6 +89,24 @@ use Illuminate\Support\Str;
  *    already in the pipeline is exactly as useful, and the member should not have to have predicted
  *    it. A match writes `matched_lead_id`, a confidence, and one timeline entry on that lead.
  *
+ * **Since S11 the run pays per event rather than per article.** Two changes, both of them about the
+ * same waste:
+ *
+ * 1. **It classifies one representative per story.** Candidate articles are grouped by headline
+ *    overlap before the AI batch ({@see SignalClusterer::group()}), the fullest one is sent, and the
+ *    verdict is applied to the group — so an acquisition covered by eight outlets costs one AI call
+ *    instead of eight. Every member still becomes a row; the {@see SignalCluster} is what makes
+ *    them one card. `signals.cluster_before_ai` turns it off, which restores v1's behaviour exactly
+ *    and is the way back from a regression without a rollback.
+ * 2. **It remembers what it rejected.** A round-up inside the recency window used to cost an AI
+ *    batch every single day; {@see SignalRejectionLedger} skips it for 30 days, keyed by the article
+ *    *and* the set of types that were offered — because a team that adds a type has asked a
+ *    different question and is owed a fresh answer.
+ *
+ * It also compares `dedupe_hash` rather than `url_hash` when deciding what it has already seen,
+ * which is the fix for the redirect defect: behind `google.com/goto?url=<token>` a varying token
+ * made the same article a new signal on every run.
+ *
  * A watch whose every type has been paused produces an **empty, completed run**, not a failed one:
  * nothing went wrong, there was simply nothing to look for.
  */
@@ -99,6 +122,8 @@ final class RunSignalWatchAction
         private readonly SignalJurisdictionResolver $jurisdictions,
         private readonly SignalLeadMatcher $matcher,
         private readonly RecordLeadActivityAction $activity,
+        private readonly SignalClusterer $clusterer,
+        private readonly SignalRejectionLedger $rejections,
     ) {}
 
     public function handle(SignalWatch $watch): SignalRun
@@ -158,10 +183,16 @@ final class RunSignalWatchAction
         // Drop articles this team has already seen, so a re-run does no AI work on them.
         $items = $this->dropAlreadySeen($watch->team_id, $items);
 
+        // And the ones it has already said no to, under this exact set of types (S11). The
+        // fingerprint is what makes "already said no" a statement about a question rather than
+        // about an article: add a type and every one of these is asked again.
+        $fingerprint = $this->rejections->fingerprintFor($definitions);
+        $items = $this->dropRejected($watch, $fingerprint, $items);
+
         $this->broadcast($run, SignalRunStatus::Running, 55, 'Analysing what we found');
 
         // --- External work: AI extraction (outside any transaction) ---
-        [$kept, $aiCostMicros, $creditExhausted] = $this->extract($watch, $definitions, $icp, $profile, $items);
+        [$kept, $aiCostMicros, $creditExhausted] = $this->extract($watch, $definitions, $icp, $profile, $items, $fingerprint);
         $costMicros = $serperCostMicros + $aiCostMicros;
 
         if ($creditExhausted) {
@@ -258,7 +289,11 @@ final class RunSignalWatchAction
     }
 
     /**
-     * Run every query, flatten, and de-duplicate by `url_hash` within this run.
+     * Run every query, flatten, and de-duplicate within this run.
+     *
+     * By the **dedupe identity**, not the URL hash, since S11: behind a redirector that varies its
+     * token the same article arrives under two links in one run, and the whole point of the content
+     * hash is that those are one item.
      *
      * @param  list<SignalQuery>  $queries
      * @return array{0: list<NewsItem>, 1: int} unique items and the raw result count across queries
@@ -271,7 +306,7 @@ final class RunSignalWatchAction
         foreach ($queries as $query) {
             foreach ($this->news->search($query) as $item) {
                 $rawCount++;
-                $unique[$item->urlHash] = $item;
+                $unique[$item->dedupeKey()] = $item;
             }
         }
 
@@ -279,9 +314,15 @@ final class RunSignalWatchAction
     }
 
     /**
-     * Remove items whose `url_hash` already exists for this team, so a re-run never re-processes an
+     * Remove items whose identity already exists for this team, so a re-run never re-processes an
      * article. Scoped explicitly by `team_id` (belt-and-braces beside the global scope), so one team
      * can never dedupe against another's signals even if ever called outside TeamContext.
+     *
+     * **Compares `dedupe_hash` since S11, and that is the redirect fix.** It used to compare
+     * `url_hash`, which for a `google.com/goto?url=<token>` link hashes the token — so a token that
+     * varied between requests re-admitted the same article on every run, at the price of a fresh
+     * Serper query and a fresh AI batch each time (`docs/modules/signals.md`, "Known limitations",
+     * consequence 1).
      *
      * @param  list<NewsItem>  $items
      * @return list<NewsItem>
@@ -292,12 +333,12 @@ final class RunSignalWatchAction
             return [];
         }
 
-        $hashes = array_map(static fn (NewsItem $i): string => $i->urlHash, $items);
+        $hashes = array_map(static fn (NewsItem $i): string => $i->dedupeKey(), $items);
 
         $seen = Signal::query()
             ->where('team_id', $teamId)
-            ->whereIn('url_hash', $hashes)
-            ->pluck('url_hash')
+            ->whereIn('dedupe_hash', $hashes)
+            ->pluck('dedupe_hash')
             ->all();
 
         if ($seen === []) {
@@ -306,7 +347,47 @@ final class RunSignalWatchAction
 
         $seen = array_flip($seen);
 
-        return array_values(array_filter($items, static fn (NewsItem $i): bool => ! isset($seen[$i->urlHash])));
+        return array_values(array_filter($items, static fn (NewsItem $i): bool => ! isset($seen[$i->dedupeKey()])));
+    }
+
+    /**
+     * Remove items this team's classifier has already rejected under this same set of types (S11).
+     *
+     * The S3 trade-off (b), closed: a non-event was forgotten, so a weekly round-up that sits inside
+     * the recency window cost an AI batch every day for as long as it stayed there. Logged as a
+     * **count**, which is also the measure of whether the memory is earning its keep.
+     *
+     * @param  list<NewsItem>  $items
+     * @return list<NewsItem>
+     */
+    private function dropRejected(SignalWatch $watch, string $fingerprint, array $items): array
+    {
+        if ($items === []) {
+            return [];
+        }
+
+        $rejected = $this->rejections->rejected(
+            (int) $watch->team_id,
+            $fingerprint,
+            array_map(static fn (NewsItem $i): string => $i->dedupeKey(), $items),
+        );
+
+        if ($rejected === []) {
+            return $items;
+        }
+
+        $kept = array_values(array_filter(
+            $items,
+            static fn (NewsItem $i): bool => ! isset($rejected[$i->dedupeKey()]),
+        ));
+
+        Log::channel('signals')->info('Signal run skipped articles it had already rejected.', [
+            'team_id' => (int) $watch->team_id,
+            'signal_watch_id' => (int) $watch->getKey(),
+            'skipped' => count($items) - count($kept),
+        ]);
+
+        return $kept;
     }
 
     /**
@@ -315,11 +396,24 @@ final class RunSignalWatchAction
      * On AI-credit exhaustion, stop batching and return what was gathered plus a `creditExhausted`
      * flag and the cost already spent, so the caller can fail the run *and record the spend*.
      *
+     * **One classification per story, not per article** (S11, `signals.cluster_before_ai`). The
+     * candidate items are grouped by headline overlap first ({@see SignalClusterer::group()}), one
+     * representative per group goes to the model, and the verdict is applied to every member of the
+     * group. This is the phase's cost win and it is a large one: eight outlets covering one
+     * acquisition cost one AI call instead of eight, so spend falls roughly in proportion to how
+     * well a story travels. Every member still becomes its own signal row — each is a real article
+     * with a real link worth reading — and the clustering is what makes them one card.
+     *
+     * The thresholds are read from the **representative's** scores, which is the honest reading:
+     * the model saw that article, and the members are the same event reported elsewhere. A verdict
+     * is remembered against every member ({@see SignalRejectionLedger}), so a round-up's whole
+     * coverage is skipped next run rather than just the one copy that was sent.
+     *
      * @param  list<SignalDefinition>  $definitions  The types offered to the model for this run.
      * @param  list<NewsItem>  $items
      * @return array{0: list<array{0: ExtractedSignal, 1: NewsItem, 2: SignalDefinition}>, 1: int, 2: bool} kept triples, AI cost, credit-exhausted
      */
-    private function extract(SignalWatch $watch, array $definitions, ?Icp $icp, ?BusinessProfile $profile, array $items): array
+    private function extract(SignalWatch $watch, array $definitions, ?Icp $icp, ?BusinessProfile $profile, array $items, string $fingerprint): array
     {
         /** @var array<string, SignalDefinition> $offered */
         $offered = [];
@@ -327,10 +421,24 @@ final class RunSignalWatchAction
             $offered[$definition->key] = $definition;
         }
 
+        /** @var array<string, list<NewsItem>> $stories  every member, keyed by its representative */
+        $stories = [];
+        /** @var list<NewsItem> $representatives */
+        $representatives = [];
+
+        foreach ($this->clusterer->group($items) as $story) {
+            $representatives[] = $story[0];
+            $stories[$story[0]->dedupeKey()] = $story;
+        }
+
         $kept = [];
         $costMicros = 0;
+        /** @var list<string> $notEvent */
+        $notEvent = [];
+        /** @var list<string> $belowThreshold */
+        $belowThreshold = [];
 
-        foreach (array_chunk($items, self::BATCH_SIZE) as $batch) {
+        foreach (array_chunk($representatives, self::BATCH_SIZE) as $batch) {
             try {
                 $response = $this->ai->structured('signals.extract_event', [
                     'business_profile' => $this->profileSummary($profile),
@@ -366,6 +474,9 @@ final class RunSignalWatchAction
             /** @var array<array-key, mixed> $events */
             $events = $response->data['events'] ?? [];
 
+            /** @var array<int, true> $answered  the batch positions the model came back about */
+            $answered = [];
+
             foreach ($events as $raw) {
                 if (! is_array($raw)) {
                     continue;
@@ -378,21 +489,127 @@ final class RunSignalWatchAction
                     continue;
                 }
 
+                $answered[$extracted->itemIndex] = true;
+                $story = $stories[$item->dedupeKey()] ?? [$item];
+
+                if (! $extracted->isEvent || $extracted->eventKey === null) {
+                    // Not one of this team's events at all — a round-up, a listicle. Remembered so
+                    // next week's run does not pay to be told the same thing.
+                    $notEvent = [...$notEvent, ...$this->keysOf($story)];
+
+                    continue;
+                }
+
                 $definition = $this->resolveDefinition($watch, $offered, $extracted->eventKey);
 
                 if (! $definition instanceof SignalDefinition) {
+                    // A key we never offered: our prompt's problem, not a verdict about the
+                    // article, so it is dropped and logged and **nothing is remembered**. Caching
+                    // it would skip an item a corrected prompt would have kept.
                     continue;
                 }
 
                 $thresholds = $definition->effectiveThresholds();
 
                 if ($extracted->meetsThreshold($thresholds['min_confidence'], $thresholds['min_relevance'])) {
-                    $kept[] = [$extracted, $item, $definition];
+                    // Every outlet that covered it becomes a row; they are clustered into one card
+                    // by `complete()`, which is where the subject and the type are known.
+                    foreach ($story as $member) {
+                        $kept[] = [$extracted, $member, $definition];
+                    }
+
+                    continue;
                 }
+
+                $belowThreshold = [...$belowThreshold, ...$this->keysOf($story)];
             }
+
+            // Silence counts — but only from a model that answered something. Leaving an
+            // unanswered item unrecorded would have left the commonest rejection the only one this
+            // phase still paid for twice; trusting silence from a response that came back **empty**
+            // would be worse, because a truncated-but-schema-valid answer would then hide every
+            // real event in that batch for thirty days (found in review). A response that named at
+            // least one item was read; one that named none tells us nothing about any of them.
+            if ($answered !== []) {
+                foreach ($batch as $index => $item) {
+                    if (isset($answered[$index])) {
+                        continue;
+                    }
+
+                    $notEvent = [...$notEvent, ...$this->keysOf($stories[$item->dedupeKey()] ?? [$item])];
+                }
+
+                continue;
+            }
+
+            Log::channel('signals')->warning('Signal extraction returned no verdicts for a batch; remembering nothing.', [
+                'team_id' => (int) $watch->team_id,
+                'signal_watch_id' => (int) $watch->getKey(),
+                'batch_size' => count($batch),
+            ]);
         }
 
+        // A story the model answered twice — once as a real event and once not — is a kept story,
+        // and must not also be remembered as rejected: the memory would skip it on the next run
+        // and quietly lose coverage of an event this run decided was real.
+        $keptKeys = array_map(
+            static fn (array $triple): string => $triple[1]->dedupeKey(),
+            $kept,
+        );
+
+        $this->rememberRejections(
+            $watch,
+            $fingerprint,
+            array_values(array_diff($notEvent, $keptKeys)),
+            array_values(array_diff($belowThreshold, $keptKeys)),
+        );
+
         return [$kept, $costMicros, false];
+    }
+
+    /**
+     * The dedupe identities of a story's members.
+     *
+     * @param  list<NewsItem>  $story
+     * @return list<string>
+     */
+    private function keysOf(array $story): array
+    {
+        return array_map(static fn (NewsItem $item): string => $item->dedupeKey(), $story);
+    }
+
+    /**
+     * Write this run's verdicts to the rejection ledger (S11).
+     *
+     * Outside the persistence transaction, like every other non-essential write in this Action: a
+     * memory that failed to save costs a repeated classification next week, and that is not worth
+     * rolling back the signals this run actually found. Logged as counts.
+     *
+     * `below_threshold` is written after `not_event`, so an article the model called a real event in
+     * one batch is not left recorded as a non-event because a different batch was silent about it.
+     *
+     * @param  list<string>  $notEvent
+     * @param  list<string>  $belowThreshold
+     */
+    private function rememberRejections(SignalWatch $watch, string $fingerprint, array $notEvent, array $belowThreshold): void
+    {
+        if (! $this->rejections->enabled() || ($notEvent === [] && $belowThreshold === [])) {
+            return;
+        }
+
+        $teamId = (int) $watch->team_id;
+        $below = array_values(array_unique($belowThreshold));
+        $not = array_values(array_diff(array_unique($notEvent), $below));
+
+        $this->rejections->remember($teamId, $fingerprint, $not, SignalRejectionVerdict::NotEvent);
+        $this->rejections->remember($teamId, $fingerprint, $below, SignalRejectionVerdict::BelowThreshold);
+
+        Log::channel('signals')->info('Signal run remembered what it rejected.', [
+            'team_id' => $teamId,
+            'signal_watch_id' => (int) $watch->getKey(),
+            'not_event' => count($not),
+            'below_threshold' => count($below),
+        ]);
     }
 
     /**
@@ -543,7 +760,9 @@ final class RunSignalWatchAction
      *
      * Runs **inside** the transaction that inserted them, so a lead whose timeline says an event
      * happened always has the signal behind it. Scoped to this run, which makes it idempotent for
-     * free: a re-run inserts nothing, so there is nothing to announce twice.
+     * free: a re-run inserts nothing, so there is nothing to announce twice. Since S11 it is also
+     * scoped to the rows that **represent an event**, so one event about an account is one entry on
+     * that lead however many outlets ran it.
      *
      * The notification is raised after commit, aggregated per run, and addressed to the lead's
      * owners — never `$user->notify()` and never one per signal (CLAUDE.md).
@@ -554,6 +773,11 @@ final class RunSignalWatchAction
         $matched = Signal::query()
             ->where('signal_run_id', $run->getKey())
             ->whereNotNull('matched_lead_id')
+            // **One entry per event, not per article** (S11). Eight outlets covering the sale of a
+            // company the team is working all match the same lead, and without this the lead's
+            // timeline would say the same thing eight times in one morning — which is the feed's
+            // old defect moved somewhere a member cannot dismiss it.
+            ->representatives()
             ->with('matchedLead')
             ->get()
             ->all();
@@ -604,20 +828,25 @@ final class RunSignalWatchAction
 
     /**
      * Persist the kept signals + the run totals in one transaction. `insertOrIgnore` on
-     * `(team_id, url_hash)` makes a re-run idempotent and never overwrites an existing (possibly
+     * `(team_id, dedupe_hash)` makes a re-run idempotent and never overwrites an existing (possibly
      * converted) signal. Fires {@see SignalsDetected} after commit.
+     *
+     * **The clusters are written here** (S11), because this is the first point at which an event
+     * has both a type and a subject — which is what a cluster key is made of. The grouping done
+     * before the AI batch was provisional and lived for one run; these rows are what make a story
+     * covered again tomorrow join the card it already has.
      *
      * @param  list<array{0: ExtractedSignal, 1: NewsItem, 2: SignalDefinition}>  $kept
      */
     private function complete(SignalRun $run, SignalWatch $watch, array $kept, int $queriesCount, int $resultsCount, int $costMicros, int $queriesRequested = 0, ?int $nextCursor = null): SignalRun
     {
-        // De-duplicate by url_hash within this run, keeping the highest-confidence result when the
-        // model returns more than one for the same article.
+        // De-duplicate by the dedupe identity within this run, keeping the highest-confidence
+        // result when the model returns more than one for the same article.
         $best = [];
         foreach ($kept as [$extracted, $item, $definition]) {
-            $existing = $best[$item->urlHash][0] ?? null;
+            $existing = $best[$item->dedupeKey()][0] ?? null;
             if (! $existing instanceof ExtractedSignal || $extracted->confidence > $existing->confidence) {
-                $best[$item->urlHash] = [$extracted, $item, $definition];
+                $best[$item->dedupeKey()] = [$extracted, $item, $definition];
             }
         }
 
@@ -627,18 +856,47 @@ final class RunSignalWatchAction
         }
 
         $created = DB::transaction(function () use ($run, $watch, $rows, $queriesCount, $resultsCount, $costMicros, $queriesRequested, $nextCursor): int {
+            [$rows, $clusters] = $this->cluster((int) $watch->team_id, $rows);
+
             $created = $rows === [] ? 0 : Signal::query()->insertOrIgnore($rows);
+
+            // The counters on each touched cluster, recomputed from the rows that now exist (S11).
+            // Inside the same transaction as the insert, because a cluster saying "6 sources" over
+            // a card that can only show five is the one inconsistency a member would notice.
+            //
+            // **Before the timeline entries, deliberately.** A freshly created cluster has no
+            // primary until this runs, and `representatives()` treats a cluster with no primary as
+            // "show every member" — so recording the matches first would write one entry per
+            // article again, which is the defect the scope exists to prevent.
+            foreach ($clusters as $cluster) {
+                $this->clusterer->reconcile($cluster);
+            }
 
             // The timeline entries for signals matched to a lead, written **inside** the same
             // transaction as the signals themselves: a lead whose timeline says an event happened
             // and a feed with no such signal in it would be a worse state than neither.
             //
             // Scoped to this run, which is what makes it idempotent for free: a re-run inserts
-            // nothing (`insertOrIgnore` on `(team_id, url_hash)`), so there is nothing new to
+            // nothing (`insertOrIgnore` on `(team_id, dedupe_hash)`), so there is nothing new to
             // announce and no second entry to write.
             if ($created > 0) {
                 $this->recordMatches($run, $watch);
             }
+
+            // **`signals_created` counts events, not rows** (S11). Eight outlets covering one
+            // acquisition write eight rows and add one card, and "signals created: 8" on the watch
+            // card over one card in the feed is the discrepancy this phase exists to remove — so
+            // the number everybody reads is the number of cards. The raw article count is still
+            // `results_count`, and what the run cost is still `cost_micros`; the row count is not
+            // something anybody reads.
+            //
+            // Counted **after** the reconcile, which is what makes "new coverage of an event the
+            // team already has" correctly count as nothing new.
+            $events = $created === 0 ? 0 : Signal::query()
+                ->where('team_id', $watch->team_id)
+                ->where('signal_run_id', $run->getKey())
+                ->representatives()
+                ->count();
 
             $run->forceFill([
                 'status' => SignalRunStatus::Completed,
@@ -647,7 +905,7 @@ final class RunSignalWatchAction
                 // silent trim is a lie about what was searched.
                 'queries_requested' => $queriesRequested,
                 'results_count' => $resultsCount,
-                'signals_created' => $created,
+                'signals_created' => $events,
                 'cost_micros' => $costMicros,
                 'error' => null,
                 'started_at' => $run->started_at ?? now(),
@@ -666,18 +924,74 @@ final class RunSignalWatchAction
 
             $teamId = (int) $run->team_id;
             $runId = (int) $run->getKey();
-            DB::afterCommit(static function () use ($teamId, $runId, $created): void {
-                if ($created > 0) {
-                    event(new SignalsDetected($teamId, $runId, $created));
+            DB::afterCommit(static function () use ($teamId, $runId, $events): void {
+                // Announced only when there is a **card** to look at. A run whose every new row
+                // joined an event the team already has has found nothing new to tell them about,
+                // and "3 new signals" leading to a feed that looks unchanged is worse than silence.
+                if ($events > 0) {
+                    event(new SignalsDetected($teamId, $runId, $events));
                 }
             });
 
-            return $created;
+            return $events;
         });
 
         $this->broadcast($run, SignalRunStatus::Completed, 100, 'Done', $created);
 
         return $run->refresh();
+    }
+
+    /**
+     * Point each row at the event it is coverage of, creating the clusters it needs (S11).
+     *
+     * **Oldest first**, which is not cosmetic. A cluster key is looked up against its own ISO week
+     * *and* the week before ({@see SignalClusterer::candidateKeysFor()}), so a story that breaks on
+     * a Sunday and is covered on the Monday is one event rather than two — and that only works if
+     * the earlier article is filed first. Processing in publication order makes the result the same
+     * whichever order the provider happened to return them in.
+     *
+     * A row with no clusterable subject keeps a null `signal_cluster_id` and stays its own card;
+     * {@see SignalClusterer::clusterKeyFor()} is where that decision lives.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{0: list<array<string, mixed>>, 1: list<SignalCluster>}
+     */
+    private function cluster(int $teamId, array $rows): array
+    {
+        if ($rows === []) {
+            return [[], []];
+        }
+
+        usort($rows, static fn (array $a, array $b): int => ($a['published_at'] <=> $b['published_at']));
+
+        /** @var array<int, SignalCluster> $clusters */
+        $clusters = [];
+
+        foreach ($rows as $index => $row) {
+            $published = $row['published_at'];
+            $company = $row['subject_company_name'];
+
+            if (! $published instanceof DateTimeInterface) {
+                continue;
+            }
+
+            $cluster = $this->clusterer->ensure(
+                teamId: $teamId,
+                eventKey: (string) $row['event_key'],
+                definitionId: is_int($row['signal_definition_id'] ?? null) ? $row['signal_definition_id'] : null,
+                fingerprint: $this->clusterer->subjectFingerprint(is_string($company) ? $company : null),
+                publishedAt: $published,
+            );
+
+            if (! $cluster instanceof SignalCluster) {
+                continue;
+            }
+
+            $rows[$index]['signal_cluster_id'] = $cluster->getKey();
+            $clusters[(int) $cluster->getKey()] = $cluster;
+        }
+
+        return [$rows, array_values($clusters)];
     }
 
     /**
@@ -724,6 +1038,9 @@ final class RunSignalWatchAction
             'matched_lead_id' => $match?->lead->getKey(),
             'match_confidence' => $match?->confidence->value,
             'signal_definition_id' => $definition->getKey(),
+            // Filled by `cluster()` once the key can be computed; null means this event names no
+            // company and stays its own card.
+            'signal_cluster_id' => null,
             'event_key' => $definition->key,
             'status' => SignalStatus::New->value,
             'headline' => Str::limit($item->title, 255, ''),
@@ -749,6 +1066,12 @@ final class RunSignalWatchAction
             'source_name' => $item->source,
             'published_at' => ($item->publishedAt ?? $now)->copy()->utc(),
             'url_hash' => $item->urlHash,
+            // The two identities S11 added. `url_hash` is still the truth about the link;
+            // `dedupe_hash` is what the unique index enforces and what a re-run compares, and
+            // behind a redirector whose token varies it is the content hash rather than the URL's
+            // (`docs/modules/signals.md`, "Known limitations", consequence 1).
+            'content_hash' => $item->contentHash,
+            'dedupe_hash' => $item->dedupeKey(),
             'raw' => json_encode($item->raw, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
             'created_at' => $now,
             'updated_at' => $now,
