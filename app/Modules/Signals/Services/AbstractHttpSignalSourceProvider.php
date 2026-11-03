@@ -8,6 +8,7 @@ use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\LeadSourcing\Services\AbstractHttpLeadSourceProvider;
 use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Exceptions\SourceAddressNotFound;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -127,6 +128,19 @@ abstract class AbstractHttpSignalSourceProvider implements SignalSourceProvider
         $source = $this->kind()->value;
         $status = $response->status();
 
+        // **Asked first, because it is the narrowest of the three** (S13b review). A verdict about
+        // the *addressee* rather than about our query or the provider's health: an unknown company
+        // number, a deleted feed. Logged at `info` for the same reason a rejection is — it is an
+        // ordinary state of a long-lived configuration, not something to wake anybody about.
+        if ($this->isAddressNotFound($response)) {
+            Log::channel('signals')->info('Signal source has nothing at an address; query skipped.', [
+                'source' => $source,
+                'status' => $status,
+            ]);
+
+            throw SignalsException::sourceAddressNotFound($source);
+        }
+
         // A verdict about this query, not about the source. The breaker stays shut: a template with
         // a quote in it says nothing about whether Serper is up.
         if ($this->isQueryRejection($response)) {
@@ -156,6 +170,24 @@ abstract class AbstractHttpSignalSourceProvider implements SignalSourceProvider
         ]);
 
         throw SignalsException::sourceFailed($source);
+    }
+
+    /**
+     * Whether this response is the source telling us **the thing we addressed is not there**.
+     *
+     * False by default, and deliberately so: for a source addressed by a search string we composed,
+     * a 404 is a wrong endpoint — ours, and worth failing loudly. It is only a statement about an
+     * addressee for the two S13b shapes that *have* one, which is why those two override it:
+     * `CompaniesHouseSignalSource` (a company number off an unvalidated `leads.company_number`, or
+     * one since struck off) and `FeedSignalSource` (an address a member typed, at a publisher who
+     * has since moved it).
+     *
+     * See {@see SourceAddressNotFound} for why this is a third
+     * outcome rather than either of the two ADR 0023 §4 named.
+     */
+    protected function isAddressNotFound(Response $response): bool
+    {
+        return false;
     }
 
     /**

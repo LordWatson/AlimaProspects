@@ -14,6 +14,7 @@ use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\WatchlistEntityType;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Exceptions\SourceAddressNotFound;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
 use App\Modules\Signals\Services\SignalSourceRegistry;
@@ -266,6 +267,55 @@ it('fails on a 200 whose body is not the expected shape', function (): void {
     Http::fake(['api.company-information.service.gov.uk/*' => Http::response('<html>sign in</html>')]);
 
     expect(fn () => registrySource()->fetch(registryQuery()))->toThrow(SignalsException::class);
+});
+
+// **The S13b review's finding 1, and the worst bug the reviews found.** `/filing-history` answers
+// 404 for a number that is not on the register, one struck off, and one simply malformed — and a
+// number reaches here from `leads.company_number`, which no validation stands behind. It used to
+// arrive as `sourceFailed()`, which fails the **whole run**: the news queries on the same watch
+// discarded, their cost kept, and the member told the registry was broken. Worse, it did so for
+// ever: `entity_cursor` only advances when a run completes, so the dead account stayed at the head
+// of the ring and was the first thing asked every time. One stale lead number was enough to stop a
+// 250-account watchlist permanently.
+it('treats an unknown company number as a skipped query rather than a failed run', function (): void {
+    foreach ([404, 410] as $status) {
+        Http::fake(['api.company-information.service.gov.uk/*' => Http::response(['errors' => [['error' => 'company-profile-not-found']]], $status)]);
+
+        $thrown = null;
+
+        try {
+            registrySource()->fetch(registryQuery('99999999'));
+        } catch (SignalsException $e) {
+            $thrown = $e;
+        }
+
+        // The **third** meaning of a 4xx (ADR 0023 §4 named two): not the provider's health, not
+        // our query's validity, but the addressee's existence. Not retryable, and the breaker is
+        // deliberately left shut — a struck-off company says nothing about whether the registry is up.
+        expect($thrown?->errorCode())->toBe('signals.source_address_not_found', (string) $status)
+            ->and($thrown)->toBeInstanceOf(SourceAddressNotFound::class)
+            ->and($thrown?->isRetryable())->toBeFalse();
+    }
+});
+
+// The other half of the rule: a 4xx that is *not* about the addressee still fails loudly. A 401 is
+// our credential and a 403 is our quota, and swallowing either per query is how a run completes
+// green having found nothing, every run, for ever.
+it('still fails the run on a registry refusal that is about us', function (): void {
+    foreach ([401, 403] as $status) {
+        Http::fake(['api.company-information.service.gov.uk/*' => Http::response(['error' => 'invalid authorization'], $status)]);
+
+        $thrown = null;
+
+        try {
+            registrySource()->fetch(registryQuery());
+        } catch (SignalsException $e) {
+            $thrown = $e;
+        }
+
+        expect($thrown?->errorCode())->toBe('signals.source_failed', (string) $status)
+            ->and($thrown)->not->toBeInstanceOf(SourceAddressNotFound::class);
+    }
 });
 
 it('fails fast and sends nothing when the registry credential is missing', function (): void {

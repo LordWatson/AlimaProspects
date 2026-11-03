@@ -106,6 +106,50 @@ class SignalsException extends DomainException
     }
 
     /**
+     * What a query was addressed to is not there — an unknown company number, a deleted feed
+     * (S13b review, findings 1 and 2).
+     *
+     * The long version is {@see SourceAddressNotFound}'s docblock. In short: not retryable, the
+     * breaker stays shut, caught **per query**, counted under `skipped` rather than `rejected`, and
+     * excluded from the "refused everything" rule — because a feed is asked exactly one query, so
+     * for it those two are the same event, and failing a run over a 404 that will never change is
+     * how one dead address took a whole watch down on every run.
+     *
+     * The message names no company and no URL. It is rendered to whoever triggered the run, and the
+     * run may have been scheduled rather than asked for; the addressee is on the breakdown.
+     */
+    public static function sourceAddressNotFound(string $source = 'news'): SourceAddressNotFound
+    {
+        // The **subclass**, for the same reason `sourceQueryRejected()` builds one: the run catches
+        // it by type, and the code and message stay where every other failure mode's are.
+        $e = new SourceAddressNotFound('The '.self::sourceLabel($source).' has nothing at one of the addresses this watch asks about. That query was skipped.');
+        $e->errorCode = 'signals.source_address_not_found';
+        $e->status = 422;
+        $e->source = $source;
+
+        return $e;
+    }
+
+    /**
+     * A signal type handed to an Action is not the acting team's own (S13b review).
+     *
+     * The controllers resolve a definition **within** the team before calling anything, so this is
+     * a guard and not a user-facing condition. It exists because the one Action that mints a
+     * credential did `updateOrCreate` on `(team_id, signal_definition_id)`: handed a foreign
+     * definition it would have *created* a row pairing this team with somebody else's type, which
+     * is the one shape of tenancy bug a global scope cannot catch — the write is correctly scoped
+     * and still wrong. CLAUDE.md's "policies double-check ownership", one layer in.
+     */
+    public static function definitionNotYours(): self
+    {
+        $e = new self('That signal type isn’t yours.');
+        $e->errorCode = 'signals.definition_not_yours';
+        $e->status = 403;
+
+        return $e;
+    }
+
+    /**
      * A source is missing required configuration (e.g. the Serper API key) — never retryable, so the
      * job fails fast instead of burning its retries on a request that can never succeed.
      */

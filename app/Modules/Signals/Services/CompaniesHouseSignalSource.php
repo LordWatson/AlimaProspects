@@ -74,6 +74,28 @@ final class CompaniesHouseSignalSource extends AbstractHttpSignalSourceProvider
     }
 
     /**
+     * **A 404 here is a statement about the company, not about the registry** (S13b review,
+     * finding 1).
+     *
+     * `/company/{number}/filing-history` answers 404 for a number that is not on the register, one
+     * that has been struck off, and one that is simply malformed. All three are reachable: a number
+     * comes from `leads.company_number`, which no validation stands behind, or from a registry
+     * search that matched a company since dissolved.
+     *
+     * Without this it arrived as `sourceFailed()` and **failed the entire run** — non-retryably,
+     * discarding the news results on the same watch and keeping their cost. And it did so on every
+     * run, for ever: `entity_cursor` only advances when a run completes, so the dead account stayed
+     * at the head of the ring and was the first thing asked each time. One stale lead number was
+     * enough to stop a 250-account watchlist permanently.
+     *
+     * Now it is one skipped query on the breakdown and the ring moves on.
+     */
+    protected function isAddressNotFound(Response $response): bool
+    {
+        return in_array($response->status(), [404, 410], strict: true);
+    }
+
+    /**
      * Any definition can run on the registry; whether it *finds* anything depends on its filing map.
      *
      * A definition with no `companies_house.filings` configuration matches no filing, which is a

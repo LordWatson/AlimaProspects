@@ -29,14 +29,14 @@ use App\Modules\Signals\Models\SignalRun;
 final class SignalSourceBreakdown
 {
     /**
-     * @var array<string, array{queries: int, results: int, rejected: int, cost_micros: int}>
+     * @var array<string, array{queries: int, results: int, rejected: int, skipped: int, cost_micros: int}>
      */
     private array $rows = [];
 
     /**
      * This source's row, zeroed if it has none yet.
      *
-     * @return array{queries: int, results: int, rejected: int, cost_micros: int}
+     * @return array{queries: int, results: int, rejected: int, skipped: int, cost_micros: int}
      */
     private function row(SignalSourceKind $kind): array
     {
@@ -44,6 +44,7 @@ final class SignalSourceBreakdown
             'queries' => 0,
             'results' => 0,
             'rejected' => 0,
+            'skipped' => 0,
             'cost_micros' => 0,
         ];
     }
@@ -78,6 +79,22 @@ final class SignalSourceBreakdown
     }
 
     /**
+     * Note that a source had **nothing at an address** the run asked about (S13b review).
+     *
+     * Counted separately from `rejected` because the two carry different advice and
+     * {@see self::sourcesThatAnsweredNothing()} must treat them differently: a rejection is about a
+     * template a member can rewrite, a skip is about an addressee — a struck-off company, a feed a
+     * publisher has moved — and a source that only ever skips is not a source that is refusing us.
+     * Not counted under `queries` for the same reason a rejection is not: no answer came back.
+     */
+    public function recordSkip(SignalSourceKind $kind): void
+    {
+        $row = $this->row($kind);
+        $row['skipped']++;
+        $this->rows[$kind->value] = $row;
+    }
+
+    /**
      * Add a source's metered cost, as the source itself computes it.
      *
      * Taken from `SignalSourceProvider::estimatedCostMicros()` rather than multiplied here, because
@@ -103,6 +120,12 @@ final class SignalSourceBreakdown
         return $this->rows[$kind->value]['rejected'] ?? 0;
     }
 
+    /** How many of a source's queries found nothing at the address they named. */
+    public function skipsFor(SignalSourceKind $kind): int
+    {
+        return $this->rows[$kind->value]['skipped'] ?? 0;
+    }
+
     /**
      * The sources that were asked something and answered **nothing** (S13a review finding 1).
      *
@@ -112,6 +135,14 @@ final class SignalSourceBreakdown
      *
      * A source with no rejections and no queries is **not** included: it was never asked, which is
      * what a definition that names it while contributing no templates produces.
+     *
+     * **A source whose queries were all `skipped` is not included either** (S13b review). A skip is
+     * a 404 at an address — a struck-off company, a feed a publisher has moved — and nothing about
+     * it is systemic: the provider answered, correctly, that there is nothing there. Reading a skip
+     * as a refusal is what failed a whole watch over one stale `leads.company_number`, and for a
+     * feed, which is asked exactly one query, it would fail the run every time an address went
+     * stale. The condition is `rejected > 0` rather than `rejected + skipped > 0` for that reason,
+     * and the skips stay visible as their own column.
      *
      * @return list<SignalSourceKind>
      */
@@ -140,11 +171,15 @@ final class SignalSourceBreakdown
      * got no answer); a query skipped because its source is not registered was not, and is counted
      * nowhere. `queries_requested` remains the separate "what the plan wanted before the ceiling"
      * figure (ADR 0019 §4).
+     *
+     * A **skipped** query counts here too, for the same reason a rejected one does: a request went
+     * out and came back 404. It found nothing, which is what the `results` column is for.
      */
     public function totalQueriesAttempted(): int
     {
         return array_sum(array_column($this->rows, 'queries'))
-            + array_sum(array_column($this->rows, 'rejected'));
+            + array_sum(array_column($this->rows, 'rejected'))
+            + array_sum(array_column($this->rows, 'skipped'));
     }
 
     /**
@@ -174,7 +209,7 @@ final class SignalSourceBreakdown
      * Ordered deliberately, so two runs of the same watch serialise their sources the same way and a
      * diff of two rows is readable.
      *
-     * @return array<string, array{queries: int, results: int, rejected: int, cost_micros: int}>
+     * @return array<string, array{queries: int, results: int, rejected: int, skipped: int, cost_micros: int}>
      */
     public function toArray(): array
     {
@@ -197,7 +232,7 @@ final class SignalSourceBreakdown
      * as itself rather than crash a screen. Returns a plain list so a UI can render it without
      * knowing the enum.
      *
-     * @return list<array{source: string, label: string, queries: int, results: int, rejected: int, cost_micros: int}>
+     * @return list<array{source: string, label: string, queries: int, results: int, rejected: int, skipped: int, cost_micros: int}>
      */
     public static function fromRun(SignalRun $run): array
     {
@@ -224,6 +259,9 @@ final class SignalSourceBreakdown
                 'queries' => (int) ($row['queries'] ?? 0),
                 'results' => (int) ($row['results'] ?? 0),
                 'rejected' => (int) ($row['rejected'] ?? 0),
+                // Absent on every row written before the S13b review, which is the whole reason
+                // each field here is read with a default rather than destructured.
+                'skipped' => (int) ($row['skipped'] ?? 0),
                 'cost_micros' => (int) ($row['cost_micros'] ?? 0),
             ];
         }

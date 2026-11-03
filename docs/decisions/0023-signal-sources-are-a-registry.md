@@ -124,10 +124,50 @@ _was that a sensible thing to ask it?_ Conflating them makes one team's bad temp
 outage — and conflating a rejection with an outage makes everybody's outage look like one team's bad
 template, which is worse, because nobody is told.
 
+### 4a. ...and a query whose **addressee** is missing is a skipped query, not either of those
+
+**Added by the S13b review, and the reviews found three separate bugs that all reduce to this one
+omission.** Section 4 above splits a 4xx two ways — _is the provider up_ (the breaker) and _was that
+a sensible thing to ask_ (`SourceQueryRejected`) — and both of those are questions about **us**: our
+credential, our template, our parameters. That was exhaustive at S13a, because every source was
+addressed by a search string we had composed.
+
+S13b added sources addressed by a **subject** (a company number) and by the **definition** (a feed's
+URL). For those a 404 is a verdict about neither the provider nor our query: the request was well
+formed, the provider is healthy, and the addressee is not there. `leads.company_number` carries no
+validation and companies get struck off; publishers move their feeds. Both are ordinary states of a
+long-lived configuration.
+
+So there is a third outcome, `SourceAddressNotFound`: not retryable, the breaker stays **shut**,
+caught **per query**, counted under `skipped` rather than `rejected` on
+`signal_runs.source_breakdown`, and deliberately **excluded** from the "refused every query" rule
+above.
+
+Neither of the other two outcomes could carry it:
+
+- As `sourceFailed()` — which is what it was — one struck-off company failed the **whole run**,
+  non-retryably, discarding the news results on the same watch and keeping their cost. For ever:
+  `entity_cursor` only advances when a run completes, so the dead account stayed at the head of the
+  ring and was the first thing asked every time. One stale lead number stopped a 250-account
+  watchlist.
+- As `SourceQueryRejected` it would fail the run too, by a different route. A feed is asked exactly
+  **one** query per definition, so for it "refused a query" and "refused every query" are the same
+  event, and §4's systemic rule fires on a single dead URL. That rule is right for an exhausted
+  Serper account and wrong for a 404 that will never change.
+
+The general form, which the next source will also have to answer: **a 4xx has as many meanings as
+there are parties to the request.** The provider, the question, and the thing the question is about
+are three, and a rule that collapses any two of them is cheap until a source arrives whose addressee
+is somebody else's configuration.
+
+A skip is **not** silent: it is its own column on the run breakdown and on `/admin/signal-runs`,
+beside `rejected`, because the advice differs — a rejection is a template somebody can rewrite, a
+skip is an address with nothing at it.
+
 ### 5. Each source reports its own cost and its own outcome onto the run
 
 `signal_runs.source_breakdown` (json) carries, per source kind: `queries`, `results`, `rejected`,
-`cost_micros`. `signal_runs.cost_micros` stays the single total, so nothing that reads it changes.
+`skipped` (§4a, added by the S13b review) and `cost_micros`. `signal_runs.cost_micros` stays the single total, so nothing that reads it changes.
 
 A breakdown rather than a second table because the question it answers is always "what did _this
 run_ cost, and where did the money go" — and because S12 already established that a figure the UI

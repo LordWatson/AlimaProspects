@@ -240,6 +240,13 @@ function duration(ms: number | null): string {
                             >
                                 Rejected
                             </th>
+                            <th
+                                scope="col"
+                                class="px-4 py-2 text-end"
+                                title="Queries that found nothing at the address they named — a company off the register, a feed that has moved. These never fail a run."
+                            >
+                                Skipped
+                            </th>
                             <th scope="col" class="px-4 py-2 text-end">
                                 Cost · micros
                             </th>
@@ -269,6 +276,9 @@ function duration(ms: number | null): string {
                             </td>
                             <td class="px-4 py-2 text-end tabular-nums">
                                 {{ number(source.rejected) }}
+                            </td>
+                            <td class="px-4 py-2 text-end tabular-nums">
+                                {{ number(source.skipped ?? 0) }}
                             </td>
                             <td class="px-4 py-2 text-end tabular-nums">
                                 {{ number(source.cost_micros) }}

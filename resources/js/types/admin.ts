@@ -451,9 +451,12 @@ export type AdminPagination = {
  * What one signal source cost and found (S13, ADR 0023) — a row of `signal_runs.source_breakdown`.
  *
  * `rejected` is counted apart from `queries` on purpose: a query the provider refused as a *pattern*
- * never ran, so including it would make cost-per-query wrong. `breaker_open` is null rather than
- * false where this build watches no breaker for the source, which is the same rule the provider
- * health screen follows — a green light nobody wired up is worse than no light.
+ * never ran, so including it would make cost-per-query wrong. `skipped` is apart from both (S13b
+ * review): it is a query that found **nothing at the address it named** — a struck-off company, a
+ * feed a publisher has moved — which is a different problem with different advice, and is the one
+ * 4xx that must never fail a run. `breaker_open` is null rather than false where this build watches
+ * no breaker for the source, which is the same rule the provider health screen follows — a green
+ * light nobody wired up is worse than no light.
  */
 export type AdminSignalRunSource = {
     source: string;
@@ -461,6 +464,7 @@ export type AdminSignalRunSource = {
     queries: number;
     results: number;
     rejected: number;
+    skipped?: number;
     cost_micros: number;
     breaker_open?: boolean | null;
     breaker_failures?: number | null;

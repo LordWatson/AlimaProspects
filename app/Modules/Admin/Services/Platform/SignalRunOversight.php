@@ -153,7 +153,7 @@ final class SignalRunOversight
      * green suite says nothing about production. One column, chunked, is slower and is the same
      * answer on both.
      *
-     * @return list<array{source: string, label: string, queries: int, results: int, rejected: int, cost_micros: int, breaker_open: bool|null, breaker_failures: int|null}>
+     * @return list<array{source: string, label: string, queries: int, results: int, rejected: int, skipped: int, cost_micros: int, breaker_open: bool|null, breaker_failures: int|null}>
      */
     private function sourceTotals(DateRange $range): array
     {
@@ -164,7 +164,7 @@ final class SignalRunOversight
 
         $range->constrain($query, 'signal_runs.created_at');
 
-        /** @var array<string, array{queries: int, results: int, rejected: int, cost_micros: int}> $totals */
+        /** @var array<string, array{queries: int, results: int, rejected: int, skipped: int, cost_micros: int}> $totals */
         $totals = [];
 
         $query->chunkById(500, static function ($runs) use (&$totals): void {
@@ -172,10 +172,14 @@ final class SignalRunOversight
                 foreach (SignalSourceBreakdown::fromRun($run) as $row) {
                     $key = $row['source'];
 
-                    $totals[$key] ??= ['queries' => 0, 'results' => 0, 'rejected' => 0, 'cost_micros' => 0];
+                    $totals[$key] ??= ['queries' => 0, 'results' => 0, 'rejected' => 0, 'skipped' => 0, 'cost_micros' => 0];
                     $totals[$key]['queries'] += $row['queries'];
                     $totals[$key]['results'] += $row['results'];
                     $totals[$key]['rejected'] += $row['rejected'];
+                    // Separate from `rejected` since the S13b review: a rejection is a template
+                    // somebody can rewrite, a skip is an address with nothing at it. Summed over a
+                    // window they are the two different questions an operator asks of a source.
+                    $totals[$key]['skipped'] += $row['skipped'];
                     $totals[$key]['cost_micros'] += $row['cost_micros'];
                 }
             }
