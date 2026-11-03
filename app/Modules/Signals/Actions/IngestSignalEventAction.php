@@ -6,6 +6,7 @@ namespace App\Modules\Signals\Actions;
 
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalInboundEvent;
+use App\Modules\Signals\Models\SignalWebhookSecret;
 use App\Modules\Signals\Services\WebhookSignalSource;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,8 @@ final class IngestSignalEventAction
      *
      * @param  array<string, mixed>  $event  The columns, from the request.
      * @param  array<string, mixed>  $payload  What was accepted, stored whole for an operator.
+     * @param  SignalWebhookSecret  $secret  The secret the signature was verified against, stamped
+     *                                       here rather than in `authorize()` (S13b review).
      * @return array{0: SignalInboundEvent, 1: bool} the row, and whether this call created it
      */
     public function handle(
@@ -46,21 +49,37 @@ final class IngestSignalEventAction
         string $idempotencyKey,
         array $event,
         array $payload,
+        SignalWebhookSecret $secret,
     ): array {
         $teamId = (int) $definition->team_id;
 
         try {
-            $row = DB::transaction(fn (): SignalInboundEvent => SignalInboundEvent::query()->create([
-                ...$event,
-                'team_id' => $teamId,
-                // **From the resolved definition**, never from the body. The request resolved it
-                // from a key within the authenticated team, so a guessed integer could not have
-                // reached here (ADR 0023 §7).
-                'signal_definition_id' => $definition->getKey(),
-                'idempotency_key' => $idempotencyKey,
-                'payload' => $payload,
-                'received_at' => now(),
-            ]));
+            $row = DB::transaction(function () use ($definition, $teamId, $idempotencyKey, $event, $payload, $secret): SignalInboundEvent {
+                // **`last_used_at` is stamped here, in the same commit as the event.** It used to
+                // be written by `IngestSignalEventRequest::authorize()`, which runs before
+                // validation and outside any transaction — so a malformed body that passed the
+                // signature check updated a credential's usage and then 422'd, and "last used"
+                // reported a request that was never accepted. It is the line a member reads to
+                // decide whether their integration is working, so it has to mean the same thing
+                // the 202 does.
+                $secret->forceFill(['last_used_at' => now()])->save();
+
+                return SignalInboundEvent::query()->create([
+                    ...$event,
+                    'team_id' => $teamId,
+                    // **From the resolved definition**, never from the body. The request resolved
+                    // it from a key within the authenticated team, so a guessed integer could not
+                    // have reached here (ADR 0023 §7).
+                    'signal_definition_id' => $definition->getKey(),
+                    'idempotency_key' => $idempotencyKey,
+                    // The identity this event will have as a signal, stored so the source can
+                    // exclude the ones already classified **in the query** rather than after the
+                    // cap has been spent on them (S13b review, finding 8).
+                    'dedupe_hash' => SignalInboundEvent::dedupeIdentityFor($teamId, $idempotencyKey),
+                    'payload' => $payload,
+                    'received_at' => now(),
+                ]);
+            });
         } catch (QueryException $e) {
             $existing = $this->existing($teamId, $idempotencyKey);
 

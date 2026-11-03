@@ -90,6 +90,22 @@ another team and a stale timestamp are all `403` with one message, because the d
 oracle: "that key exists but the signature is wrong" is how somebody enumerates another tenant's
 signal types.
 
+**Nothing goes in the URL.** A request carrying _any_ query string is refused with that same 403
+(S13b review). The signature covers the raw body with the timestamp inside it, and Laravel's
+`input()` falls back to the query string for a key the body omits — so a captured, still-fresh
+request replayed with `?summary=...` appended would have had that value reach the stored row with
+the signature still verifying, because it was never inside the signed message. Put every field in
+the body.
+
+**The idempotency key is unique per team, not per signal type.** Reusing one key for two different
+`event_type`s acknowledges the second call with `created: false` and stores nothing, because the
+first row already holds that key. Key your events however you like, as long as the key is unique
+across everything you push.
+
+**`created: false` means "already stored", not "already processed".** It is the database's unique
+index answering, which is what makes a retry safe without a pre-query: two concurrent retries of one
+event both pass a `SELECT` and only one survives the `INSERT`.
+
 Also additive on the existing endpoints: `/signal-definitions` gained `source_config` (a feed's
 address, the registry filings a type claims) and, **where the server loaded it**,
 `webhook_secret_hint` and `webhook_secret_used_at` — the tail of the secret and when it was last

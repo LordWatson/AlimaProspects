@@ -37,6 +37,7 @@ final class SignalEventController extends Controller
             idempotencyKey: $request->idempotencyKey(),
             event: $request->event(),
             payload: $request->payload(),
+            secret: $request->verifiedSecret(),
         );
 
         // Deliberately not an API Resource: there is no resource here. The caller gets back their

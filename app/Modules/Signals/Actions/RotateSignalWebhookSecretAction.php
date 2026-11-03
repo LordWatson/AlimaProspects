@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWebhookSecret;
 use Illuminate\Support\Facades\DB;
@@ -41,9 +42,21 @@ final class RotateSignalWebhookSecretAction
     public function handle(Team $team, User $actor, SignalDefinition $definition): string
     {
         return $this->teamContext->run($team, function () use ($team, $actor, $definition): string {
+            // **Re-read inside the context rather than trusting the model handed in** (S13b
+            // review). The write below is an `updateOrCreate` on `(team_id, signal_definition_id)`,
+            // so a foreign definition would not have *leaked* anything — it would have minted a
+            // credential against a pairing that should not exist, correctly scoped and still wrong.
+            // The controllers already resolve within the team; this is the second lock, and it is
+            // the global scope doing the asking rather than a comparison somebody has to remember.
+            $owned = SignalDefinition::query()->whereKey($definition->getKey())->first();
+
+            if (! $owned instanceof SignalDefinition || (int) $owned->team_id !== (int) $team->getKey()) {
+                throw SignalsException::definitionNotYours();
+            }
+
             $minted = SignalWebhookSecret::mint();
 
-            $secret = DB::transaction(function () use ($team, $definition, $minted): string {
+            return DB::transaction(function () use ($team, $actor, $definition, $minted): string {
                 // Replaced rather than added to: two valid secrets at once is a grace period nobody
                 // asked for and a second thing to find when one leaks. `updateOrCreate` on the
                 // unique pair is what makes "mint" and "rotate" the same call.
@@ -61,17 +74,22 @@ final class RotateSignalWebhookSecretAction
                     ],
                 );
 
+                // **Inside the transaction** (S13b review, finding 15). It was after it, so a
+                // committed rotation whose audit write then failed left a credential replaced with
+                // nothing recorded about who replaced it — which is the one question an audit log
+                // exists to answer, asked of the one kind of row where it is asked in anger. The
+                // audit write touches our own table and calls nothing external, so it belongs in
+                // the same commit; `DB::afterCommit()` is for the work that must not.
+                //
+                // The hint and never the secret. An audit row is read by operators and exported; a
+                // credential in one would outlive every control this feature has.
+                $this->audit->log('signals.webhook_secret_rotated', $definition, [
+                    'signal_definition_id' => (int) $definition->getKey(),
+                    'hint' => $minted['hint'],
+                ], $actor);
+
                 return $minted['secret'];
             });
-
-            // The hint and never the secret. An audit row is read by operators and exported; a
-            // credential in one would outlive every control this feature has.
-            $this->audit->log('signals.webhook_secret_rotated', $definition, [
-                'signal_definition_id' => (int) $definition->getKey(),
-                'hint' => $minted['hint'],
-            ], $actor);
-
-            return $secret;
         });
     }
 }

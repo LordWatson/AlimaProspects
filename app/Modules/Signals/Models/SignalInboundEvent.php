@@ -38,6 +38,7 @@ use Illuminate\Support\Carbon;
  * @property int $team_id
  * @property int|null $signal_definition_id
  * @property string $idempotency_key
+ * @property string|null $dedupe_hash
  * @property array<array-key, mixed> $payload
  * @property string $title
  * @property string|null $link
@@ -62,6 +63,7 @@ class SignalInboundEvent extends Model
         'team_id',
         'signal_definition_id',
         'idempotency_key',
+        'dedupe_hash',
         'payload',
         'title',
         'link',
@@ -70,6 +72,49 @@ class SignalInboundEvent extends Model
         'occurred_at',
         'received_at',
     ];
+
+    /**
+     * Stamp the derived identity on the way in, whoever is writing the row.
+     *
+     * The same shape as `BelongsToTeam`'s auto-assign and for the same reason: the value is derived
+     * from two columns already on the row, so a writer that forgot it would produce a row the
+     * exclusion query cannot match — and a null compares equal to nothing, so the failure would be
+     * silent and in the permissive direction. The Action sets it explicitly as well, which is the
+     * belt beside these braces; a factory and a seeder only get it from here.
+     */
+    protected static function booted(): void
+    {
+        static::creating(static function (self $event): void {
+            // No guard on `idempotency_key`: the column is NOT NULL and the request requires it, so
+            // a row without one does not reach an insert.
+            if ($event->dedupe_hash === null) {
+                $event->dedupe_hash = self::dedupeIdentityFor((int) $event->team_id, $event->idempotency_key);
+            }
+        });
+    }
+
+    /**
+     * The identity this event will have as a `Signal` — one definition, two readers.
+     *
+     * **The idempotency key, not the link.** A customer's events may share a URL or carry none at
+     * all, and the key is the one thing they promised would be unique. Prefixed and salted with the
+     * team so it cannot collide with a news article's content hash or with another tenant's event.
+     *
+     * Stored on the row as well as computed, because the exclusion in
+     * {@see WebhookSignalSource::fetch()} is a `whereNotExists` against `signals.dedupe_hash` and
+     * `sha1()` is not a function SQL agrees about across SQLite and MySQL (S13b review, finding 8).
+     */
+    public static function dedupeIdentityFor(int $teamId, string $idempotencyKey): string
+    {
+        return sha1('webhook:'.$teamId.':'.$idempotencyKey);
+    }
+
+    /** This row's signal identity, computed where an older row has none stored. */
+    public function dedupeIdentity(): string
+    {
+        return $this->dedupe_hash
+            ?? self::dedupeIdentityFor((int) $this->team_id, $this->idempotency_key);
+    }
 
     /**
      * The signal type this event claims to be.

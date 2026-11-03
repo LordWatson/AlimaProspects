@@ -10,6 +10,9 @@ use App\Modules\Signals\Data\SourceItem;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalInboundEvent;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * Events a customer pushed in, read back as an ordinary source (S13b, ADR 0023 §7).
@@ -76,6 +79,13 @@ final class WebhookSignalSource implements SignalSourceProvider
      * Scoped by `team_id` explicitly beside the global scope, for the reason every query in this
      * module is: a run has no request behind it.
      *
+     * **A known edge, recorded rather than fixed.** The exclusion covers events that became
+     * signals; one the **classifier refused** is remembered by `SignalRejectionLedger` and not by a
+     * row in `signals`, so it stays in the window and keeps occupying one of the capped slots until
+     * the window passes it. A burst consisting largely of refusals can therefore delay newer
+     * events, and `signals.sources.webhook.max_per_run` is the lever. See "Known limitations" in
+     * `docs/modules/signals.md`.
+     *
      * @return list<SourceItem>
      */
     public function fetch(SignalSourceQuery $query): array
@@ -91,6 +101,19 @@ final class WebhookSignalSource implements SignalSourceProvider
             ->where('team_id', $teamId)
             ->where('signal_definition_id', $definitionId)
             ->recent((int) config('signals.sources.webhook.window_days', 7))
+            // **Events already classified are excluded in the query, not after the cap**
+            // (S13b review, finding 8). The cap used to be spent on whatever was newest in the
+            // window, including the events that had already become signals and would be dropped
+            // moments later by `dropAlreadySeen()` — so a customer pushing two hundred events in a
+            // burst, which is what a backfill or a retry loop looks like, had the same newest fifty
+            // offered on every run and the other hundred and fifty classified never. Silently.
+            ->whereNotExists(fn (QueryBuilder $query) => $query
+                ->selectRaw('1')
+                ->from('signals')
+                ->whereColumn('signals.dedupe_hash', 'signal_inbound_events.dedupe_hash')
+                // Scoped explicitly: this is a raw subquery, so the global team scope is not
+                // standing behind it the way it stands behind the outer query.
+                ->where('signals.team_id', $teamId))
             ->limit(max(1, (int) config('signals.sources.webhook.max_per_run', 50)))
             ->get();
 
@@ -127,7 +150,7 @@ final class WebhookSignalSource implements SignalSourceProvider
      */
     private function toItem(SignalInboundEvent $event): SourceItem
     {
-        $identity = sha1('webhook:'.$event->team_id.':'.$event->idempotency_key);
+        $identity = $event->dedupeIdentity();
 
         // A link is optional — plenty of internal events have no public page — so the item carries
         // the empty string rather than a fabricated URL, and `url_hash` falls back to the identity.
@@ -135,14 +158,20 @@ final class WebhookSignalSource implements SignalSourceProvider
 
         return new SourceItem(
             title: $event->title,
-            snippet: $event->summary ?? '',
+            snippet: $this->snippetFor($event),
             link: $link,
             urlHash: $identity,
             source: $event->source_name,
-            publishedAt: $event->occurred_at ?? $event->received_at,
+            // **Converted, not passed through, and the tests are how we know.** The model's
+            // datetimes are `CarbonImmutable` and `SourceItem::$publishedAt` is
+            // `?Illuminate\Support\Carbon` — *siblings*, not parent and child, so handing one over
+            // is a `TypeError` that PHPStan does not catch. It would have thrown on every run that
+            // had an event to read: the webhook source had unit tests for its door and none for
+            // this method, which is precisely the gap the S13b review named.
+            publishedAt: Carbon::instance($event->occurred_at ?? $event->received_at),
             raw: [
                 'title' => $event->title,
-                'summary' => $event->summary,
+                'summary' => $this->snippetFor($event),
                 'link' => $link,
                 'source' => $event->source_name,
                 'idempotency_key' => $event->idempotency_key,
@@ -152,5 +181,56 @@ final class WebhookSignalSource implements SignalSourceProvider
             kind: $this->kind(),
             classification: null,
         );
+    }
+
+    /**
+     * The text the classifier reads: the caller's summary, with the subject they named appended.
+     *
+     * **A pushed `company_name` was being thrown away** (S13b review, finding 9). The schema
+     * accepted it, the row stored it in `payload`, and nothing downstream ever read it: the
+     * classifier's batch sends title, snippet, source and date, so a caller who sent
+     * `{"title": "Renewal closed", "company_name": "Acme Ltd"}` — which is a perfectly ordinary
+     * shape for an internal event — had the event classified with no idea whom it concerned, and
+     * `SignalLeadMatcher` had nothing to match on. Either the fields had to be dropped from the
+     * contract or they had to arrive somewhere that is read. They are read here.
+     *
+     * Appended to the snippet rather than passed as a structured subject, because that is exactly
+     * what this is: a customer's *assertion* about who the event is about, and the snippet is where
+     * assertions go to be weighed by the prompt. Setting `ExtractedSignal`'s subject fields from it
+     * would be believing the caller about the subject, which ADR 0023 §7 does not allow and which
+     * is the field `signals.matched_lead_id` is keyed on.
+     *
+     * Only appended when the text does not already name the subject, so the ordinary case where a
+     * summary reads "Acme Ltd renewed" is not made to say it twice.
+     */
+    private function snippetFor(SignalInboundEvent $event): string
+    {
+        $summary = trim($event->summary ?? '');
+        $payload = $event->payload;
+        $parts = [];
+
+        foreach (['company_name', 'person_name'] as $field) {
+            $value = $payload[$field] ?? null;
+
+            if (! is_string($value) || trim($value) === '') {
+                continue;
+            }
+
+            $value = trim($value);
+
+            if (Str::contains($summary.' '.$event->title, $value, ignoreCase: true)) {
+                continue;
+            }
+
+            $parts[] = $value;
+        }
+
+        if ($parts === []) {
+            return $summary;
+        }
+
+        $subject = 'About: '.implode(', ', $parts).'.';
+
+        return $summary === '' ? $subject : $summary.' '.$subject;
     }
 }

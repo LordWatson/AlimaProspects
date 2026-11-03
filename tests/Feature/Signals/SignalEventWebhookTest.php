@@ -312,6 +312,95 @@ it('records when a secret was last used', function (): void {
     expect($model->last_used_at)->not->toBeNull();
 });
 
+// **The query string carries nothing** (S13b review, finding 10). The signature covers the raw
+// body with the timestamp inside it, and `input()` falls back to the query string for any key the
+// body omits — so a captured, still-fresh request replayed with `?summary=...` appended would have
+// had that value reach the row with the signature still verifying, because it was never inside the
+// signed message. Refused outright, with the same opaque 403 as every other refusal here.
+it('refuses a request that carries anything in the URL', function (): void {
+    [, , $secret] = webhookFixture();
+
+    $body = eventBody();
+    $raw = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    $timestamp = now()->getTimestamp();
+
+    test()->call(
+        'POST',
+        '/api/v1/signal-events?summary=injected+by+a+replay',
+        [],
+        [],
+        [],
+        [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+            'HTTP_X_SIGNAL_TIMESTAMP' => (string) $timestamp,
+            'HTTP_X_SIGNAL_SIGNATURE' => hash_hmac('sha256', $timestamp.'.'.$raw, $secret),
+        ],
+        $raw,
+    )->assertStatus(403);
+
+    expect(SignalInboundEvent::withoutGlobalScopes()->count())->toBe(0);
+});
+
+// **`last_used_at` means "we accepted an event from you"** (S13b review, finding 16). It used to be
+// stamped in `authorize()`, which runs before validation: a body that signed correctly and then
+// failed the schema still updated it, so the line a member reads to decide whether their
+// integration is working could say yes while every request was being refused.
+it('does not record a use for an event it refused as malformed', function (): void {
+    [$team, , $secret] = webhookFixture();
+
+    postEvent(eventBody(['title' => '']), $secret)->assertStatus(422);
+
+    $model = app(TeamContext::class)->run($team, fn (): SignalWebhookSecret => SignalWebhookSecret::query()->sole());
+
+    expect($model->last_used_at)->toBeNull()
+        ->and(SignalInboundEvent::withoutGlobalScopes()->count())->toBe(0);
+});
+
+// CLAUDE.md §2: "every tenant model needs a test proving cross-tenant access fails". Both of this
+// phase's models, and both directions of the one that holds a credential.
+it('scopes inbound events and secrets to the team that owns them', function (): void {
+    [$teamA, $definitionA] = webhookFixture();
+    [$teamB] = webhookFixture();
+
+    app(TeamContext::class)->run($teamA, fn (): SignalInboundEvent => SignalInboundEvent::factory()->create([
+        'team_id' => $teamA->getKey(),
+        'signal_definition_id' => $definitionA->getKey(),
+        'idempotency_key' => 'a-team-a-event',
+    ]));
+
+    // Team B sees none of team A's events, and none of their secrets.
+    app(TeamContext::class)->run($teamB, function (): void {
+        expect(SignalInboundEvent::query()->where('idempotency_key', 'a-team-a-event')->exists())->toBeFalse()
+            ->and(SignalInboundEvent::query()->count())->toBe(0)
+            ->and(SignalWebhookSecret::query()->count())->toBe(1);
+    });
+
+    // ...and team A sees their own.
+    app(TeamContext::class)->run($teamA, function (): void {
+        expect(SignalInboundEvent::query()->count())->toBe(1)
+            ->and(SignalWebhookSecret::query()->count())->toBe(1);
+    });
+
+    // The global scope is the floor, not the ceiling: without it there are two of each.
+    expect(SignalInboundEvent::withoutGlobalScopes()->count())->toBe(1)
+        ->and(SignalWebhookSecret::withoutGlobalScopes()->count())->toBe(2);
+});
+
+// The same key, pushed by two different teams, is two different events. The unique index is on the
+// pair, which is what lets a customer use their own numbering without knowing about anybody else.
+it('treats one idempotency key in two teams as two events', function (): void {
+    [, , $secretA] = webhookFixture();
+    postEvent(eventBody(['idempotency_key' => 'shared-key-1']), $secretA)->assertStatus(202);
+
+    [, , $secretB] = webhookFixture();
+    postEvent(eventBody(['idempotency_key' => 'shared-key-1']), $secretB)
+        ->assertStatus(202)
+        ->assertJsonPath('data.created', true);
+
+    expect(SignalInboundEvent::withoutGlobalScopes()->count())->toBe(2);
+});
+
 it('produces the signature a customer’s own code would', function (): void {
     [$team, , $secret] = webhookFixture();
 

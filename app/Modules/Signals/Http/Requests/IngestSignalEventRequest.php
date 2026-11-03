@@ -8,6 +8,7 @@ use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWebhookSecret;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Throwable;
@@ -50,6 +51,9 @@ final class IngestSignalEventRequest extends FormRequest
     /** The signal type this event is for, resolved and verified. Set by {@see self::authorize()}. */
     private ?SignalDefinition $definition = null;
 
+    /** The secret whose signature this request carried, set by {@see self::authorize()}. */
+    private ?SignalWebhookSecret $secret = null;
+
     /**
      * Verify the signature before anything else looks at the body.
      *
@@ -59,6 +63,18 @@ final class IngestSignalEventRequest extends FormRequest
      */
     public function authorize(): bool
     {
+        // **Nothing in the URL** (S13b review, finding 10). The signature covers the raw *body*
+        // with the timestamp, which is what makes a replay useless and the content tamper-evident
+        // — and `input()` falls back to the query string for any key the body omits. So a captured,
+        // still-fresh request could be replayed with `?summary=` or `?url=` appended and those
+        // values would reach the row with the signature still verifying, because they were never
+        // inside the signed message. Refused outright rather than ignored: a signed endpoint whose
+        // caller is a machine has no business taking parameters from the address, and the same
+        // opaque 403 as every other refusal here keeps the differences from being an oracle.
+        if ($this->getQueryString() !== null) {
+            return false;
+        }
+
         $definition = $this->resolveDefinition();
 
         if (! $definition instanceof SignalDefinition) {
@@ -85,11 +101,26 @@ final class IngestSignalEventRequest extends FormRequest
             return false;
         }
 
-        $secret->forceFill(['last_used_at' => now()])->save();
-
+        // **Not stamped here** (S13b review, finding 16). `authorize()` runs before validation and
+        // outside any transaction, so stamping it was a write on behalf of a request that might
+        // still be refused as malformed — and a write in an authorisation check is the kind of
+        // thing that is true until somebody adds a second caller. The verified secret is carried to
+        // the controller, which stamps it after the event has been stored.
+        $this->secret = $secret;
         $this->definition = $definition;
 
         return true;
+    }
+
+    /**
+     * The secret this request's signature was verified against.
+     *
+     * Only ever non-null after {@see self::authorize()} has returned true. Handed to the controller
+     * so `last_used_at` is stamped once the event is stored rather than while it is being checked.
+     */
+    public function verifiedSecret(): SignalWebhookSecret
+    {
+        return $this->secret ?? throw SignalsException::webhookRefused();
     }
 
     /**
@@ -145,7 +176,12 @@ final class IngestSignalEventRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
-        $this->replace($this->except([
+        // **From the body, not from `all()`.** `except()` reads the merged input, which includes the
+        // query string; `getInputSource()` is the body bag (the decoded JSON for a JSON request).
+        // `authorize()` already refuses a request carrying a query string, so this is the second of
+        // the two — and it is the one that holds if that refusal is ever relaxed, because an
+        // unsigned value must not be *able* to reach a column.
+        $this->replace(Arr::except($this->getInputSource()->all(), [
             'heat',
             'score_breakdown',
             'confidence',
