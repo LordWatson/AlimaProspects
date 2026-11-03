@@ -1100,6 +1100,30 @@ this phase, each surfaced by a test written for a _new_ behaviour rather than by
 have a provider. `isAvailable()` stays, because it is the mechanism that lets the next source be
 declared before it is wired.
 
+**What the reviews then changed, and the one lesson in it.** Four findings would have shipped
+something broken and one of them completely — the webhook source could not read a single stored
+event, a `CarbonImmutable`/`Carbon` sibling mismatch no test reached and PHPStan cannot see. The
+three structural ones are a single omission, and it is the omission a plan that adds sources to an
+existing hardening layer should expect: **ADR 0023 §4's two meanings of a 4xx were two questions
+about us**, written when every source was addressed by a string we had composed. A source addressed
+by a subject or by a definition has a third — the addressee is not there — and without it a
+struck-off company number failed a watch on every run for ever, and a publisher moving a feed failed
+a run whose news queries had all worked. Hence §4a and a `skipped` column.
+
+The rest were the new sources inheriting assumptions that fitted the old ones: a byte cap that was
+never streamed, a feed cache keyed by URL in a multi-tenant product, a per-run event cap spent on
+events already dealt with, and a per-run **query** budget that counted the entity queries and not
+the definition-addressed ones. Two more were found by writing the tests the review asked for rather
+than by either review, both the same conflation of `! isQueryBased()` with "addresses a subject".
+
+The lesson for the phases after this one: **a source is not finished when it is registered and unit
+tested.** Every one of these lived in the seam between the new source and code that already existed, and the
+tests that found them were run-level and cross-tenant rather than per-provider. S14's plan should
+budget for that seam explicitly.
+
+`docs/modules/signals.md`, "What the S13b reviews changed", has the full list and the five findings
+accepted rather than fixed.
+
 ## S13a, as shipped — the phase was split, and four deviations
 
 **The phase was split, with the plan's own blessing.** S13 asked for nine tasks: a registry, five

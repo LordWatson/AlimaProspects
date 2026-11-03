@@ -238,7 +238,31 @@ flowchart TD
   `SignalsException::sourceQueryRejected()` answers _was that a sensible thing to ask it?_: not
   retryable, breaker untouched, caught per query, counted on the run, and the rest of the plan
   proceeds. Any later integration that lets a customer compose part of a request has the same split
-  to make.
+  to make. **S13b's review found that two was the wrong number** (ADR 0023 §4a), and the way it was
+  wrong generalises further than the fix: both of those questions are about **us** — our credential,
+  our template, our parameters — which was exhaustive only while every source was addressed by a
+  string we had composed. A source addressed by a **subject** (a company number) or by a stored
+  **configuration** (a feed's URL) has a third answer: the request was well formed, the provider is
+  healthy, and the addressee is not there. Missing it cost two separate outages-by-construction, in
+  opposite directions: as a provider failure a struck-off company number failed a whole watch on
+  every run for ever, and as a _query_ rejection a moved feed failed a run too, because a feed is
+  asked exactly one query so "some refused" and "all refused" are the same event. **A 4xx has as
+  many meanings as there are parties to the request** — the provider, the question, and the thing
+  the question is about — and a rule that collapses any two of them is cheap until a source arrives
+  whose addressee is somebody else's configuration.
+- **A cache key in a multi-tenant product is a tenancy decision (Signals, S13b review):** the feed
+  source cached its poll-interval floor and its conditional-GET validators under the feed's URL
+  alone, on reasoning that reads as obviously correct — three watches pointed at one newsletter
+  should be three readings of one fetch, not three requests to a small publisher who will block us
+  for it. It is correct **inside** a team and a silent cross-tenant failure between them, because
+  nothing cached the _entries_ for the second reader to read: team A's poll stamped the floor and
+  banked the ETag, and team B's fetch of the same public newsletter returned an empty list or a 304,
+  so their signals never existed. No error, no row, nothing to notice, for as long as the busier
+  team kept polling. Worth stating generally because the global query scope — the thing this
+  codebase relies on for tenancy — stands behind Eloquent and nowhere near a cache key, and the
+  failure direction is _denial_ rather than leakage, which is the half nobody tests for. The rule:
+  **anything keyed by a value a tenant chose is keyed per tenant too, unless the thing being cached
+  is readable by all of them.**
 - **A ranking nobody can interrogate is worse than date order (Signals, S12):** the feed is ordered
   by a `heat` a member can open and read the working of, and three parts of how that was built
   generalise. **Unknown is not zero.** `SignalScorer` weighs eight components and leaves one it

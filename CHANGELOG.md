@@ -5,6 +5,43 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-11-03 — Signals: the three new sources, hardened
+
+Review found a set of problems in the three sources added above, and all of them are fixed. The ones
+worth knowing about:
+
+**Your own events would not have worked at all.** Pushed events were accepted and stored correctly
+and then failed to be read back, every time, on a type mismatch no test covered. Found by writing
+the missing test. Nothing had been lost — the events were on disk — but nothing had been classified
+either.
+
+**One dead address could stop a whole watch.** A company that had been struck off the register, or a
+feed whose publisher had moved it, made the entire run fail — taking the news results on the same
+watch with it, and doing it again on every run. A missing address is now a skipped query: the rest of
+the run proceeds and the skip is counted where support can see it.
+
+**Feeds are no longer shared between customers.** Two companies watching the same public newsletter
+were, in effect, taking turns: the first to poll it got the articles and the second got nothing.
+Each team now has its own reading of every feed. Previewing a feed type no longer leaves its first
+real run empty, either.
+
+**A burst of pushed events is no longer truncated.** If your system sent two hundred events at once
+— a backfill, or a retry loop — only the newest fifty were ever looked at, because the fifty Alima
+reads per run were spent on events it had already dealt with. Each run now reads fifty it has not
+seen, so a burst is worked through over the following runs instead of being lost.
+
+**The subject you send is now used.** `company_name` and `person_name` were accepted and ignored.
+Alima now reads them when deciding what an event is about and which of your leads it concerns.
+
+**A signal type that names a feed now requires its address**, instead of saving quietly and finding
+nothing.
+
+Security hardening, for the technically minded: requests to `POST /api/v1/signal-events` must put
+every field in the signed body — anything in the URL is refused, because it is not covered by the
+signature. Feed fetches pin the address they checked, so a DNS record cannot change between the
+check and the request, and a feed address that does not resolve is refused rather than attempted.
+The read limit on a feed is now enforced as it was always documented to be.
+
 ### Added — 2026-11-03 — Signals: the registry, a feed, and your own events
 
 Three more places a signal type can watch, and each one answers a different complaint.
