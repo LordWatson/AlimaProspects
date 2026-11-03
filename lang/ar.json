@@ -2097,5 +2097,19 @@
     "An industry newsletter, a regulator’s filings feed, a portal’s press releases.": "نشرة قطاعية، أو خلاصة إيداعات جهة تنظيمية، أو بيانات صحفية لبوابة.",
     "Your own events": "أحداثك الخاصة",
     "Events your own systems push to Alima.": "الأحداث التي ترسلها أنظمتك إلى أليما.",
-    "Alima searches for these words, then keeps only what matches your rules.": "تبحث أليما عن هذه الكلمات، ثم تحتفظ بما يطابق قواعدك فقط."
+    "Alima searches for these words, then keeps only what matches your rules.": "تبحث أليما عن هذه الكلمات، ثم تحتفظ بما يطابق قواعدك فقط.",
+    "Feed address": "عنوان الخلاصة",
+    "An RSS or Atom address. Alima reads it at most once an hour, however often your watches run.": "عنوان RSS أو Atom. تقرأه أليما مرة واحدة كل ساعة على الأكثر، أيًا كان تواتر مراقباتك.",
+    "Add this type to a watch that follows a list of companies — filings are looked up per company.": "أضف هذا النوع إلى مراقبة تتابع قائمة شركات — تُقرأ الإيداعات لكل شركة على حدة.",
+    "Save this type first, then create a signing secret for it.": "احفظ هذا النوع أولًا، ثم أنشئ له مفتاح توقيع.",
+    "Signing secret": "مفتاح التوقيع",
+    "Copy this now — it is not shown again.": "انسخه الآن — لن يُعرض مرة أخرى.",
+    "Ends in": "ينتهي بـ",
+    "last used": "آخر استخدام",
+    "never used yet": "لم يُستخدم بعد",
+    "No secret yet. Create one, then sign each request with it.": "لا يوجد مفتاح بعد. أنشئ مفتاحًا، ثم وقّع كل طلب به.",
+    "Replace secret": "استبدال المفتاح",
+    "Create secret": "إنشاء مفتاح",
+    "New signing secret created. Copy it now — it is not shown again.": "تم إنشاء مفتاح توقيع جديد. انسخه الآن — لن يُعرض مرة أخرى.",
+    "Enter a web address Alima can reach, starting with https://.": "أدخل عنوان ويب يمكن لأليما الوصول إليه، يبدأ بـ https://."
 }

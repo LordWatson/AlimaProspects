@@ -2097,5 +2097,19 @@
     "An industry newsletter, a regulator’s filings feed, a portal’s press releases.": "An industry newsletter, a regulator’s filings feed, a portal’s press releases.",
     "Your own events": "Your own events",
     "Events your own systems push to Alima.": "Events your own systems push to Alima.",
-    "Alima searches for these words, then keeps only what matches your rules.": "Alima searches for these words, then keeps only what matches your rules."
+    "Alima searches for these words, then keeps only what matches your rules.": "Alima searches for these words, then keeps only what matches your rules.",
+    "Feed address": "Feed address",
+    "An RSS or Atom address. Alima reads it at most once an hour, however often your watches run.": "An RSS or Atom address. Alima reads it at most once an hour, however often your watches run.",
+    "Add this type to a watch that follows a list of companies — filings are looked up per company.": "Add this type to a watch that follows a list of companies — filings are looked up per company.",
+    "Save this type first, then create a signing secret for it.": "Save this type first, then create a signing secret for it.",
+    "Signing secret": "Signing secret",
+    "Copy this now — it is not shown again.": "Copy this now — it is not shown again.",
+    "Ends in": "Ends in",
+    "last used": "last used",
+    "never used yet": "never used yet",
+    "No secret yet. Create one, then sign each request with it.": "No secret yet. Create one, then sign each request with it.",
+    "Replace secret": "Replace secret",
+    "Create secret": "Create secret",
+    "New signing secret created. Copy it now — it is not shown again.": "New signing secret created. Copy it now — it is not shown again.",
+    "Enter a web address Alima can reach, starting with https://.": "Enter a web address Alima can reach, starting with https://."
 }

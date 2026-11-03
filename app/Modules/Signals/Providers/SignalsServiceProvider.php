@@ -42,6 +42,7 @@ use App\Modules\Signals\Services\SignalItemNormaliser;
 use App\Modules\Signals\Services\SignalLeadOriginProvider;
 use App\Modules\Signals\Services\SignalScorer;
 use App\Modules\Signals\Services\SignalSourceRegistry;
+use App\Modules\Signals\Services\WebhookSignalSource;
 use App\Modules\Signals\Services\WebSearchSignalSource;
 use App\Modules\Signals\Support\IgnoredDomains;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -132,6 +133,18 @@ final class SignalsServiceProvider extends ModuleServiceProvider
             max(1, (int) config('signals.preview.rate_limit', 10)),
         )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
 
+        // **The webhook's own bucket** (S13b, ADR 0023 §7), and keeping it separate is the point:
+        // a webhook's caller is a machine that will retry in a loop, and a loop against the shared
+        // `api` limiter would lock the customer out of every other endpoint they use — including
+        // the ones they would need to diagnose it with.
+        //
+        // Per **team** rather than per member or per IP: a webhook is a system-to-system
+        // integration, so the thing being rate-limited is the integration, and a customer running
+        // it from three servers should get one allowance between them rather than three.
+        RateLimiter::for('signals-events', fn (Request $request): Limit => Limit::perMinute(
+            max(1, (int) config('signals.sources.webhook.rate_limit', 120)),
+        )->by((string) ($request->user()?->currentTeam?->getKey() ?? $request->ip())));
+
         $this->recordOutcomes();
     }
 
@@ -205,6 +218,11 @@ final class SignalsServiceProvider extends ModuleServiceProvider
                 $app->make(IgnoredDomains::class),
                 $app->make(Cache::class),
             ));
+
+            // Pushed events (S13b). No credential, no timeout, no breaker and no cost: it makes no
+            // outbound request. Everything that needed hardening happened at the door, where the
+            // data came from outside (ADR 0023 §7).
+            $registry->register(new WebhookSignalSource);
 
             return $registry;
         });

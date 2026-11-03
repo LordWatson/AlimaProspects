@@ -71,6 +71,11 @@ Route::middleware(['auth', 'verified', 'capability:signals'])->group(function ()
     Route::patch('signals/types/{definition}', [SignalDefinitionController::class, 'update'])
         ->whereNumber('definition')
         ->name('signal-definitions.update');
+    // The webhook's signing secret (S13b). A POST rather than a GET: it *creates* a credential and
+    // invalidates the previous one, so it must not be reachable by following a link or a prefetch.
+    Route::post('signals/types/{definition}/webhook-secret', [SignalDefinitionController::class, 'rotateSecret'])
+        ->whereNumber('definition')
+        ->name('signal-definitions.webhook-secret');
     Route::delete('signals/types/{definition}', [SignalDefinitionController::class, 'destroy'])
         ->whereNumber('definition')
         ->name('signal-definitions.destroy');

@@ -120,6 +120,14 @@ final class SignalQueryBuilder
         /** @var array<string, SignalSourceQuery> $queries keyed by region|eventKey|q to dedupe */
         $queries = [];
 
+        // **Definition-addressed sources, once each** (S13b): a feed's URL and a webhook's stored
+        // events both live on the definition, so neither multiplies by place, region or template.
+        // A feed asked once per place per region per template would be fetched forty times a run
+        // for one identical document.
+        foreach ($definitions as $definition) {
+            $this->pushDefinitionQueries($queries, $spec, $definition, $tbs, $num);
+        }
+
         // **Place, then region, then type, then template.** That order is also the trim order,
         // because the trim keeps the first N, so the nesting decides what a watch over budget
         // loses. Place outermost is what makes the loss survivable: coverage is dropped a whole
@@ -194,6 +202,10 @@ final class SignalQueryBuilder
         // company and `gl` means nothing to it. So the kinds are split here and the two shapes are
         // built separately, rather than one being bent into the other.
         $searchKinds = $this->queryBased($unionKinds);
+
+        foreach ($definitions as $definition) {
+            $this->pushDefinitionQueries($queries, $spec, $definition, $tbs, $num);
+        }
 
         foreach ($spec->entities as $entity) {
             $this->pushSubjectQueries($queries, $spec, $entity, $definitions, $tbs, $num);
@@ -535,7 +547,7 @@ final class SignalQueryBuilder
         $region = $spec->regions[0] ?? SearchRegion::Gb;
 
         foreach ($this->unionSourcesFor($definitions) as $kind) {
-            if ($kind->isQueryBased()) {
+            if (! $kind->addressesSubject()) {
                 continue;
             }
 
@@ -563,6 +575,67 @@ final class SignalQueryBuilder
                 kind: $kind,
                 config: $config,
                 entity: $entity,
+            );
+        }
+    }
+
+    /**
+     * One query per definition for every source addressed by the **definition** itself (S13b) —
+     * a feed, whose URL is on the definition, and the webhook, whose stored events are keyed to it.
+     *
+     * Exactly once each, whatever the spec's places, regions and templates: there is one document
+     * behind a feed URL and one set of inbound events behind a type, and asking for either forty
+     * times would fetch the same thing forty times.
+     *
+     * The config carries the definition's own slice plus the two ids the webhook source needs to
+     * find its rows. Those ids are **ours**, not a caller's: the webhook endpoint resolves a
+     * definition from a key within the authenticated team before anything is stored, so by the time
+     * an id reaches here it has already been established as that team's (ADR 0023 §7).
+     *
+     * @param  array<string, SignalSourceQuery>  $queries
+     */
+    private function pushDefinitionQueries(
+        array &$queries,
+        SignalQuerySpec $spec,
+        SignalDefinition $definition,
+        string $tbs,
+        int $num,
+    ): void {
+        $region = $spec->regions[0] ?? SearchRegion::Gb;
+
+        foreach ($definition->sourceKinds() as $kind) {
+            if ($kind->isQueryBased() || $kind->addressesSubject()) {
+                continue;
+            }
+
+            $provider = $this->sources->find($kind);
+
+            if ($provider === null || ! $provider->supports($definition)) {
+                continue;
+            }
+
+            $key = $kind->value.'|definition|'.$definition->getKey();
+
+            if (isset($queries[$key])) {
+                continue;
+            }
+
+            $config = $definition->sourceConfig($kind);
+            $config['definition_id'] = $definition->getKey() === null ? null : (int) $definition->getKey();
+            $config['team_id'] = $definition->team_id === null ? null : (int) $definition->team_id;
+
+            $queries[$key] = new SignalSourceQuery(
+                eventKey: $definition->key,
+                // No search string: this source is told *which* definition, not *what* to look for.
+                q: '',
+                region: $region,
+                gl: $region->gl(),
+                hl: $region->hl(),
+                tbs: $tbs,
+                num: $num,
+                ignoreDomains: $spec->ignoreDomains,
+                kind: $kind,
+                config: $config,
             );
         }
     }

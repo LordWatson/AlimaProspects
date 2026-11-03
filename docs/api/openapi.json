@@ -4879,13 +4879,19 @@
                             "type": "array",
                             "enum": [
                                 "news",
-                                "web_search"
+                                "web_search",
+                                "companies_house",
+                                "feed",
+                                "webhook"
                             ],
                             "items": {
                                 "type": "string",
                                 "enum": [
                                     "news",
-                                    "web_search"
+                                    "web_search",
+                                    "companies_house",
+                                    "feed",
+                                    "webhook"
                                 ]
                             }
                         }
@@ -6143,6 +6149,100 @@
                     },
                     "404": {
                         "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-events": {
+            "post": {
+                "operationId": "v1.signal-events.store",
+                "tags": [
+                    "SignalEvent"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/IngestSignalEventRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "202": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "idempotency_key": {
+                                                    "type": "string"
+                                                },
+                                                "created": {
+                                                    "type": "boolean"
+                                                },
+                                                "received_at": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "idempotency_key",
+                                                "created",
+                                                "received_at"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9040,6 +9140,79 @@
                 ],
                 "title": "IcpResource"
             },
+            "IngestSignalEventRequest": {
+                "type": "object",
+                "description": "The door an inbound event comes through, and every lock on it (S13b, ADR 0023 \u00a77).\n\n**This is the only request in the product whose body came from outside our own code**, and the\nADR's list is a list of *conditions of acceptance* rather than features. Each is enforced here\nrather than in the Action, because a request that fails any of them must not reach business logic\nat all:\n\n1. **A per-definition secret and an HMAC over the raw body**, compared in constant time. The raw\n   body and not the parsed one: `json_encode(json_decode($body))` is not `$body`, so verifying a\n   re-encoded payload would let an attacker who can change key order or whitespace keep a valid\n   signature over different bytes.\n2. **A timestamp inside the signature's scope.** Signing the body alone makes a captured request\n   valid for ever; the timestamp is part of what is signed, so it cannot be edited to refresh one.\n3. **An idempotency key**, unique per team, so a machine retrying in a loop is accepted once and\n   acknowledged every time.\n4. **A strict bounded schema**, rejected whole rather than coerced \u2014 and the fields that decide\n   meaning are not in it at all (see {@see self::rules()}).\n5. **Its own rate limit**, applied on the route.\n\nThe one thing this class deliberately does **not** do is tell a caller which check failed. A\nsignature failure, an unknown definition key and a type belonging to another team all answer the\nsame way, because the differences are an oracle: \"that key exists but the signature is wrong\" is\nhow somebody enumerates another tenant's signal types.",
+                "properties": {
+                    "event_type": {
+                        "type": "string",
+                        "description": "The type, by **key** and within the authenticated team. Never an id: a guessed integer\nmust not be able to write into another tenant's type.",
+                        "maxLength": 32
+                    },
+                    "idempotency_key": {
+                        "type": "string",
+                        "description": "The caller's own identity for this event. Required, because without one a retry is\nindistinguishable from a second event.",
+                        "minLength": 8,
+                        "maxLength": 128
+                    },
+                    "title": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "summary": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 1000
+                    },
+                    "url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uri",
+                        "description": "Optional: plenty of internal events have no public page. Bounded to the column and\nrequired to be http(s) when present, so a stored link cannot be a `javascript:` URL\nrendered on a card.",
+                        "maxLength": 2048
+                    },
+                    "source_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "occurred_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time",
+                        "description": "Believed as a **date and nothing else**, and only inside a sanity window."
+                    },
+                    "company_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "The subject, which the classifier will read as untrusted text like any snippet.",
+                        "maxLength": 255
+                    },
+                    "person_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    }
+                },
+                "required": [
+                    "event_type",
+                    "idempotency_key",
+                    "title"
+                ],
+                "title": "IngestSignalEventRequest"
+            },
             "InsightResource": {
                 "type": "object",
                 "properties": {
@@ -10659,12 +10832,60 @@
                             "type": "string",
                             "enum": [
                                 "news",
-                                "web_search"
+                                "web_search",
+                                "companies_house",
+                                "feed",
+                                "webhook"
                             ]
                         },
                         "minItems": 1,
-                        "maxItems": 2,
+                        "maxItems": 5,
                         "uniqueItems": true
+                    },
+                    "source_config": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "description": "Per-source settings (S13b). Only the shapes a source actually reads are validated;\nanything else is dropped by `sourceConfig()` rather than rejected, so a client sending\na key for a source it does not know about is not an error.",
+                        "properties": {
+                            "feed": {
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "properties": {
+                                    "url": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "description": "**`ActiveUrl` is deliberately not used.** The question is not \"does this resolve\" but\n\"may this application fetch it\", which is `SafeUrl`'s \u2014 scheme, port and whether the\nhost lands on the public internet. A member deserves that answer beside the field\nrather than from a worker three hours later.",
+                                        "maxLength": 2048
+                                    }
+                                }
+                            },
+                            "companies_house": {
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "properties": {
+                                    "filings": {
+                                        "type": [
+                                            "array",
+                                            "null"
+                                        ],
+                                        "items": {
+                                            "type": "string",
+                                            "maxLength": 64
+                                        },
+                                        "maxItems": 25,
+                                        "uniqueItems": true
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 "required": [
@@ -11109,12 +11330,60 @@
                             "type": "string",
                             "enum": [
                                 "news",
-                                "web_search"
+                                "web_search",
+                                "companies_house",
+                                "feed",
+                                "webhook"
                             ]
                         },
                         "minItems": 1,
-                        "maxItems": 2,
+                        "maxItems": 5,
                         "uniqueItems": true
+                    },
+                    "source_config": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "description": "Per-source settings (S13b). Only the shapes a source actually reads are validated;\nanything else is dropped by `sourceConfig()` rather than rejected, so a client sending\na key for a source it does not know about is not an error.",
+                        "properties": {
+                            "feed": {
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "properties": {
+                                    "url": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "description": "**`ActiveUrl` is deliberately not used.** The question is not \"does this resolve\" but\n\"may this application fetch it\", which is `SafeUrl`'s \u2014 scheme, port and whether the\nhost lands on the public internet. A member deserves that answer beside the field\nrather than from a worker three hours later.",
+                                        "maxLength": 2048
+                                    }
+                                }
+                            },
+                            "companies_house": {
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "properties": {
+                                    "filings": {
+                                        "type": [
+                                            "array",
+                                            "null"
+                                        ],
+                                        "items": {
+                                            "type": "string",
+                                            "maxLength": 64
+                                        },
+                                        "maxItems": 25,
+                                        "uniqueItems": true
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 "required": [
@@ -11364,6 +11633,24 @@
                         "description": "Which sources this type runs on (S13). Values, so the client can tick them against\n`available_sources`; the labels and the \"what this is good for\" line come from the\nenum, through the controller, so one wording serves the form and the card.",
                         "items": {}
                     },
+                    "source_config": {
+                        "type": "array",
+                        "description": "Per-source settings (S13b) \u2014 a feed's URL today. Only the sources that need\nconfiguring appear, so the form shows a field for a feed and nothing for the news.\nNever the stored column: the keys a source reads are an allowlist, and echoing the\nraw json back would make this endpoint a mirror for whatever a caller put in it.",
+                        "items": {}
+                    },
+                    "webhook_secret_hint": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "The **tail** of the webhook secret and when it was last used (S13b) \u2014 never the\nsecret, which is shown exactly once by the request that creates it and stored\nencrypted. \"Last used: never\" beside a secret minted an hour ago is how a member\nlearns their integration is still signing with the old one. *`whenLoaded`, so the keys are absent rather than null where nobody asked for them.**\nThis resource serialises a definition on five screens and a platform preset \u2014 which\ncannot have a secret at all, being a platform row \u2014 and only the type library needs\nthese. Reading the relation unconditionally was a `LazyLoadingViolationException` on\nevery one of the others, which is the defect `preventLazyLoading` exists to surface;\nreturning null instead would have been worse, because \"absent\" is a contract a client\ncan read and \"null\" would have claimed the type has no secret."
+                    },
+                    "webhook_secret_used_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "match_keywords": {
                         "type": "array",
                         "items": {
@@ -11481,6 +11768,7 @@
                     "translatable",
                     "query_templates",
                     "source_keys",
+                    "source_config",
                     "match_keywords",
                     "includes",
                     "excludes",
@@ -11608,9 +11896,12 @@
                             "is_active": {
                                 "type": "boolean"
                             },
+                            "source_config": {
+                                "type": "object",
+                                "description": "**News, always** (S13). The composer drafts what to search for and how to judge\nit; it does not choose where to spend money. `sourceKinds` is empty on a drafted\ndefinition and that resolves to news on save anyway, so sending it explicitly\nmakes the draft a complete form state rather than one the client has to patch.\n*Empty, always** (S13b). The composer drafts what to search for and how to judge\nit; it does not configure a feed or mint a secret. Sent so the draft is a\ncomplete form state the client can open without patching it."
+                            },
                             "source_keys": {
                                 "type": "array",
-                                "description": "**News, always** (S13). The composer drafts what to search for and how to judge\nit; it does not choose where to spend money. `sourceKinds` is empty on a drafted\ndefinition and that resolves to news on save anyway, so sending it explicitly\nmakes the draft a complete form state rather than one the client has to patch.",
                                 "items": {}
                             }
                         },
@@ -11628,6 +11919,7 @@
                             "suggested_approach_hint",
                             "markets",
                             "is_active",
+                            "source_config",
                             "source_keys"
                         ]
                     }

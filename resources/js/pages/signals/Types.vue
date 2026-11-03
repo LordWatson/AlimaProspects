@@ -128,7 +128,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
-const { currency } = useFormat();
+const { currency, date } = useFormat();
 
 /**
  * Wrap a formatted figure so it cannot reorder inside an Arabic sentence.
@@ -394,6 +394,7 @@ const form = useForm<SignalDefinitionForm>({
     is_active: true,
     // News, which is where every type starts and what every pre-S13 type runs on.
     source_keys: ['news'],
+    source_config: {},
 });
 
 /** What the error summary calls each field, so "Name" links to the box rather than `name` does. */
@@ -482,6 +483,134 @@ function toggleSource(value: SignalSourceKind, checked: boolean): void {
         : form.source_keys.filter((key) => key !== value);
 
     form.source_keys = next.length > 0 ? next : ['news'];
+
+    // **Unticking a source clears its settings** (S13b). Leaving a feed URL behind on a type that
+    // no longer runs on feeds would be a stored outbound address nobody can see any more — and it
+    // would still count against the team's feed ceiling.
+    if (!checked && value === 'feed') {
+        form.source_config = { ...form.source_config, feed: undefined };
+    }
+}
+
+/** The feed URL, bound through the config object the form posts whole. */
+const feedUrl = computed({
+    get: () => form.source_config.feed?.url ?? '',
+    set: (url: string) => {
+        form.source_config = {
+            ...form.source_config,
+            feed: url.trim() === '' ? undefined : { url: url.trim() },
+        };
+    },
+});
+
+/** Whether a source the member has ticked still needs something typed before it does anything. */
+function sourceTicked(value: SignalSourceKind): boolean {
+    return form.source_keys.includes(value);
+}
+
+/**
+ * The source rows, with the one per-row fact the markup needs already decided (S13b).
+ *
+ * Only `ticked`, because everything else a ticked source needs is asked **below** the list rather
+ * than inside a row — there is one feed address per type, and a field nested in the feed row would
+ * read as one of several.
+ */
+const sourceRows = computed(() =>
+    props.options.sources.map((source) => ({
+        ...source,
+        ticked: form.source_keys.includes(source.value),
+    })),
+);
+
+/**
+ * The one-time secret the server just flashed (S13b, ADR 0023 §7).
+ *
+ * **Held in a ref and cleared on the next navigation**, which is what makes "shown once" true of
+ * the browser and not only of the database. A page prop would be restored by a back button, and a
+ * credential that can be recovered by pressing back is one a shoulder, a screen share or a
+ * screenshot can recover too.
+ *
+ * `Inertia::flash()` arrives as a router event rather than a prop (`lib/flashToast.ts` reads the
+ * toast the same way), so this listens for it and both listeners are torn down on unmount.
+ */
+const revealedSecret = ref<{ definition_id: number; secret: string } | null>(
+    null,
+);
+
+const stopFlashListener = router.on('flash', (event) => {
+    const flash = (event as CustomEvent).detail?.flash;
+    const secret = flash?.webhookSecret as
+        | { definition_id: number; secret: string }
+        | undefined;
+
+    if (secret) {
+        revealedSecret.value = secret;
+    }
+});
+
+// Any navigation takes it off the screen, including a back button.
+const stopNavigateListener = router.on('navigate', () => {
+    revealedSecret.value = null;
+});
+
+onBeforeUnmount(() => {
+    stopFlashListener();
+    stopNavigateListener();
+});
+
+function revealedSecretFor(definition: SignalDefinition): string | null {
+    return revealedSecret.value?.definition_id === definition.id
+        ? revealedSecret.value.secret
+        : null;
+}
+
+/** Whether to ask for a feed address: the feed source is ticked. */
+const needsFeedUrl = computed(() => sourceTicked('feed'));
+
+/**
+ * Whether to say that this type's filings are looked up per company.
+ *
+ * Driven by the enum's own `addresses_subject`, so a later subject-addressed source gets the same
+ * sentence without this screen learning its name.
+ */
+const needsWatchlist = computed(() =>
+    props.options.sources.some(
+        (source) =>
+            source.addresses_subject === true && sourceTicked(source.value),
+    ),
+);
+
+/** Whether to say a signing secret needs a saved type first. */
+const needsSaveFirst = computed(
+    () => sourceTicked('webhook') && editing.value === null,
+);
+
+/**
+ * The server's message about the feed URL, if any.
+ *
+ * Read here rather than in the template because Laravel's error bag keys a nested field with a
+ * **dotted** path (`source_config.feed.url`), which is not a key of the form object — so indexing
+ * `form.errors` with it belongs in one typed place rather than inline in the markup.
+ */
+const feedUrlError = computed<string | undefined>(
+    () =>
+        (form.errors as Record<string, string | undefined>)[
+            'source_config.feed.url'
+        ],
+);
+
+/**
+ * Ask the server for a new signing secret (S13b).
+ *
+ * Only ever on a **saved** type: rotation is addressed by id, and a secret for a type that does not
+ * exist yet would have nothing to belong to. The secret comes back flashed and is shown once.
+ */
+function rotateWebhookSecret(definition: SignalDefinition): void {
+    router.post(
+        `/signals/types/${definition.id}/webhook-secret`,
+        {},
+        { preserveScroll: true },
+    );
 }
 
 /**
@@ -603,6 +732,7 @@ function openNew(): void {
         suggested_approach_hint: null,
         is_active: true,
         source_keys: ['news'],
+        source_config: {},
     });
     form.reset();
     syncTextareas();
@@ -632,6 +762,19 @@ function openEdit(definition: SignalDefinition): void {
             definition.source_keys.length > 0
                 ? [...definition.source_keys]
                 : ['news'],
+        // Cloned, not shared: editing the field must not mutate the prop the card is rendering.
+        source_config: {
+            feed: definition.source_config?.feed
+                ? { url: definition.source_config.feed.url }
+                : undefined,
+            companies_house: definition.source_config?.companies_house
+                ? {
+                      filings: [
+                          ...definition.source_config.companies_house.filings,
+                      ],
+                  }
+                : undefined,
+        },
     });
     form.reset();
     syncTextareas();
@@ -1159,6 +1302,95 @@ function confirmRemove(): void {
                                 </dd>
                             </div>
                         </dl>
+
+                        <!-- The webhook's signing secret (S13b, ADR 0023 §7). Only on a type that
+                             actually runs on pushed events, because a secret for a type nothing
+                             sends to is a credential with no purpose.
+
+                             **The secret itself appears exactly once**, flashed by the request that
+                             created it — a page prop would survive a back button, which is the one
+                             way "shown once" stops being true of a browser rather than just of the
+                             database. What stays on the card is the tail and the last-used date. -->
+                        <div
+                            v-if="definition.source_keys.includes('webhook')"
+                            class="space-y-2 border-t border-border pt-4"
+                            :data-test="`webhook-${definition.id}`"
+                        >
+                            <p
+                                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                            >
+                                {{ t('Signing secret') }}
+                            </p>
+
+                            <div
+                                v-if="revealedSecretFor(definition)"
+                                class="space-y-2 rounded-xl border border-border bg-muted p-3"
+                            >
+                                <p class="text-sm font-medium text-foreground">
+                                    {{
+                                        t(
+                                            'Copy this now — it is not shown again.',
+                                        )
+                                    }}
+                                </p>
+                                <code
+                                    class="block overflow-x-auto font-mono text-xs break-all text-foreground"
+                                    dir="ltr"
+                                    :data-test="`webhook-secret-${definition.id}`"
+                                >
+                                    {{ revealedSecretFor(definition) }}
+                                </code>
+                            </div>
+
+                            <p
+                                v-else-if="definition.webhook_secret_hint"
+                                class="text-sm text-muted-foreground"
+                                dir="auto"
+                            >
+                                {{ t('Ends in') }}
+                                <code class="font-mono" dir="ltr">{{
+                                    definition.webhook_secret_hint
+                                }}</code>
+                                ·
+                                <template
+                                    v-if="definition.webhook_secret_used_at"
+                                >
+                                    {{ t('last used') }}
+                                    {{
+                                        date(definition.webhook_secret_used_at)
+                                    }}
+                                </template>
+                                <template v-else>
+                                    {{ t('never used yet') }}
+                                </template>
+                            </p>
+
+                            <p
+                                v-else
+                                class="text-sm text-muted-foreground"
+                                dir="auto"
+                            >
+                                {{
+                                    t(
+                                        'No secret yet. Create one, then sign each request with it.',
+                                    )
+                                }}
+                            </p>
+
+                            <Button
+                                v-if="can.manage"
+                                variant="outline"
+                                size="sm"
+                                :data-test="`rotate-webhook-${definition.id}`"
+                                @click="rotateWebhookSecret(definition)"
+                            >
+                                {{
+                                    definition.webhook_secret_hint
+                                        ? t('Replace secret')
+                                        : t('Create secret')
+                                }}
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
@@ -1536,18 +1768,14 @@ function confirmRemove(): void {
 
                             <div class="space-y-3 pt-1">
                                 <div
-                                    v-for="source in options.sources"
+                                    v-for="source in sourceRows"
                                     :key="source.value"
                                     class="flex items-start gap-3"
                                 >
                                     <Checkbox
                                         :id="`type-source-${source.value}`"
                                         class="mt-0.5"
-                                        :model-value="
-                                            form.source_keys.includes(
-                                                source.value,
-                                            )
-                                        "
+                                        :model-value="source.ticked"
                                         :aria-describedby="
                                             source.description
                                                 ? `type-source-${source.value}-note`
@@ -1586,6 +1814,74 @@ function confirmRemove(): void {
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- What a ticked source still needs, **below the list rather than
+                                 inside a row**: there is one feed address per type, so a field
+                                 nested in the feed row would look like one of several. Driven by
+                                 what is ticked rather than by the row, which also keeps the markup
+                                 out of the loop's scope. -->
+                            <div v-if="needsFeedUrl" class="space-y-2 pt-1">
+                                <Label for="type-feed-url">
+                                    {{ t('Feed address') }}
+                                </Label>
+                                <Input
+                                    id="type-feed-url"
+                                    v-model="feedUrl"
+                                    type="url"
+                                    inputmode="url"
+                                    placeholder="https://example.com/feed.xml"
+                                    dir="ltr"
+                                    :aria-invalid="
+                                        feedUrlError ? true : undefined
+                                    "
+                                    aria-describedby="type-feed-url-note"
+                                    data-test="feed-url"
+                                />
+                                <p
+                                    id="type-feed-url-note"
+                                    class="text-xs text-muted-foreground"
+                                >
+                                    {{
+                                        t(
+                                            'An RSS or Atom address. Alima reads it at most once an hour, however often your watches run.',
+                                        )
+                                    }}
+                                </p>
+                                <p
+                                    v-if="feedUrlError"
+                                    class="text-sm text-destructive"
+                                >
+                                    {{ feedUrlError }}
+                                </p>
+                            </div>
+
+                            <!-- The registry holds one record per company, so it is looked up per
+                                 account. That is a property of the **watch** rather than of the
+                                 type, so this form cannot ask for it and says so instead. -->
+                            <p
+                                v-if="needsWatchlist"
+                                class="text-xs text-muted-foreground"
+                                dir="auto"
+                            >
+                                {{
+                                    t(
+                                        'Add this type to a watch that follows a list of companies — filings are looked up per company.',
+                                    )
+                                }}
+                            </p>
+
+                            <!-- A signing secret needs a saved type to belong to. -->
+                            <p
+                                v-if="needsSaveFirst"
+                                class="text-xs text-muted-foreground"
+                                dir="auto"
+                            >
+                                {{
+                                    t(
+                                        'Save this type first, then create a signing secret for it.',
+                                    )
+                                }}
+                            </p>
 
                             <p
                                 id="type-sources-hint"

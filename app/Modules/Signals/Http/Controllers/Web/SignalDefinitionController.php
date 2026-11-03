@@ -13,6 +13,7 @@ use App\Modules\Signals\Actions\ComposeSignalDefinitionAction;
 use App\Modules\Signals\Actions\DeleteSignalDefinitionAction;
 use App\Modules\Signals\Actions\ListSignalDefinitionsAction;
 use App\Modules\Signals\Actions\PreviewSignalDefinitionAction;
+use App\Modules\Signals\Actions\RotateSignalWebhookSecretAction;
 use App\Modules\Signals\Actions\SaveSignalDefinitionAction;
 use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Enums\SignalCategory;
@@ -123,6 +124,12 @@ final class SignalDefinitionController extends Controller
                     'value' => $kind->value,
                     'label' => $kind->label(),
                     'description' => $kind->description(),
+                    // Whether ticking it is enough, or whether it also needs something typed
+                    // (S13b): a feed needs its URL, a webhook needs a signing secret. The form asks
+                    // for the extra thing rather than letting somebody tick a source that will
+                    // quietly contribute nothing.
+                    'needs_configuration' => $kind->needsConfiguration(),
+                    'addresses_subject' => $kind->addressesSubject(),
                 ], SignalSourceKind::available()),
             ],
             // The floors that apply to a type that sets none, so the form's placeholders can say
@@ -292,6 +299,47 @@ final class SignalDefinitionController extends Controller
         Inertia::flash('toast', [
             'type' => 'success',
             'message' => __('Signal type updated. Watches using it will use the new version on their next check.'),
+        ]);
+
+        return to_route('signal-definitions.index');
+    }
+
+    /**
+     * Mint or replace this type's webhook secret, and show it exactly once (S13b, ADR 0023 §7).
+     *
+     * **Flashed, not returned as a page prop.** An Inertia prop survives a back button and a page
+     * restore; a one-shot flash does not, which is the only way "shown once" is true of a browser
+     * rather than just of the database. The row stores the secret encrypted and nothing ever reads
+     * it back for display.
+     *
+     * Authorised as an **update** to the signal type: a webhook secret is part of configuring that
+     * type, so whoever may change what it searches for may change how it is signed.
+     */
+    public function rotateSecret(
+        Request $request,
+        int $definition,
+        RotateSignalWebhookSecretAction $action,
+    ): RedirectResponse {
+        $model = $this->definition($request, $definition);
+
+        $this->authorize('update', $model);
+
+        $secret = $action->handle(
+            $this->team($request),
+            $this->user($request),
+            $model,
+        );
+
+        // The one time it exists outside the database. The copy-it-now wording is the UI's job; what
+        // matters here is that nothing else will ever hand it over.
+        Inertia::flash('webhookSecret', [
+            'definition_id' => (int) $model->getKey(),
+            'secret' => $secret,
+        ]);
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => __('New signing secret created. Copy it now — it is not shown again.'),
         ]);
 
         return to_route('signal-definitions.index');

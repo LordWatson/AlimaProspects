@@ -35,6 +35,10 @@ final class ListSignalDefinitionsAction
             // platform presets, which a team may not edit.
             ->where('team_id', $team->getKey())
             ->withCount(['watches', 'signals'])
+            // The webhook secret's hint and last-used date reach the card (S13b). Eager-loaded
+            // because `preventLazyLoading` is on outside production and a relation read per row is
+            // the N+1 it exists to catch — and because the library screen renders thirty of these.
+            ->with('webhookSecret')
             ->orderBy('id')
             ->get());
     }

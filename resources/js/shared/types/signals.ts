@@ -80,6 +80,23 @@ export type SignalDefinition = {
     markets: string[] | null;
     /** Which sources this type runs on (S13). Never empty: a type with none would search nowhere. */
     source_keys: SignalSourceKind[];
+    /** Per-source settings (S13b) — a feed's URL, the registry filings a type claims. */
+    source_config: SignalSourceConfig;
+    /**
+     * The tail of this type's webhook signing secret, or null where it has none (S13b).
+     *
+     * Never the secret: it is shown exactly once, by the request that creates it, and the row
+     * stores it encrypted. This is only enough to tell two secrets apart.
+     */
+    webhook_secret_hint?: string | null;
+    /**
+     * When a customer's system last signed a request with it, or null for never.
+     *
+     * Both are **optional**: the server sends them only where the relation was loaded, which is the
+     * type library. Every other screen that renders a definition does not need them and does not
+     * pay a query for them.
+     */
+    webhook_secret_used_at?: string | null;
     /** Which library preset this was cloned from, and at which version. */
     preset_key: SignalEventKey | null;
     preset_version: number | null;
@@ -128,6 +145,16 @@ export type SignalSourceOption = {
      * filter: choosing a source needs the trade-off spelled out, filtering by one does not.
      */
     description?: string;
+    /** Whether ticking it is enough, or it also needs something typed — a feed URL, a secret (S13b). */
+    needs_configuration?: boolean;
+    /** Whether it is addressed by an account, so it only runs on a watchlist watch (S13b). */
+    addresses_subject?: boolean;
+};
+
+/** Per-source settings on a signal type (S13b). Only the sources that need any appear. */
+export type SignalSourceConfig = {
+    feed?: { url: string | null };
+    companies_house?: { filings: string[] };
 };
 
 export type SignalDismissReason =
@@ -534,6 +561,8 @@ export type SignalDefinitionForm = {
     is_active: boolean;
     /** Which sources to run on (S13). At least one; the form pre-selects news. */
     source_keys: SignalSourceKind[];
+    /** Per-source settings (S13b). Sent whole, so unticking a feed clears its URL. */
+    source_config: SignalSourceConfig;
 };
 
 /**

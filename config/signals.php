@@ -639,11 +639,50 @@ return [
             'user_agent' => env('SIGNALS_FEED_USER_AGENT', 'AlimaProspects/1.0 (+signals)'),
         ],
 
+        /*
+         * Events a customer pushes in (S13b, ADR 0023 §7).
+         *
+         * **The only path into this module from outside our own code.** Every control here is a
+         * condition of acceptance, and the ones that are not configurable — the HMAC over the raw
+         * body, the constant-time comparison, the per-team idempotency key, the refusal to believe
+         * a score or a jurisdiction — are not configurable on purpose.
+         */
         'webhook' => [
             // A pushed event costs nothing to receive. What it costs is the AI that classifies it,
             // which is metered where every other AI call is.
             'cost_micros_per_request' => 0,
             'ignore_domains' => [],
+
+            // **How old a stored event may be and still be offered to a run.**
+            //
+            // This is what makes it safe for an inbound event to have no `processed_at` flag: a
+            // classified event becomes a `Signal` whose `(team_id, dedupe_hash)` is unique, and one
+            // the classifier refused is remembered by `SignalRejectionLedger` — so the only thing
+            // needing a bound is an event nobody ever classified, because the type was not attached
+            // to a watch.
+            //
+            // It MUST stay shorter than `remember_rejections_days` (30), or an event the classifier
+            // refused would reappear the day that memory expired and be paid for again.
+            'window_days' => (int) env('SIGNALS_WEBHOOK_WINDOW_DAYS', 7),
+
+            // Events one run will read for one type. A customer's integration that pushes a
+            // thousand events a day should not be able to make one run's AI bill the cost of the
+            // whole feature; the rest are swept by `signals:prune`.
+            'max_per_run' => (int) env('SIGNALS_WEBHOOK_MAX_PER_RUN', 50),
+
+            // How far out of step a caller's clock may be before a signed request is refused.
+            // Five minutes each way: long enough for an ordinary clock skew and a slow retry,
+            // short enough that a captured request stops working while it still matters.
+            'timestamp_tolerance' => (int) env('SIGNALS_WEBHOOK_TIMESTAMP_TOLERANCE', 300),
+
+            // **Its own rate limit, separate from the API's general one**, because a webhook's
+            // caller is a machine that will retry in a loop — and a loop against the shared bucket
+            // would lock the customer out of every other endpoint they use.
+            'rate_limit' => (int) env('SIGNALS_WEBHOOK_RATE_LIMIT', 120),
+
+            // How long a stored event is kept before `signals:prune` sweeps it. Longer than the
+            // window above, so an operator answering "what did they send us?" still can.
+            'retention_days' => (int) env('SIGNALS_WEBHOOK_RETENTION_DAYS', 30),
         ],
     ],
 

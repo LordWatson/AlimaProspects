@@ -424,18 +424,33 @@ it('saves the sources a member chose', function (): void {
     expect($definition->sourceKinds())->toBe([SignalSourceKind::News, SignalSourceKind::WebSearch]);
 });
 
-it('refuses a source with no implementation behind it', function (): void {
+it('refuses a source this build has never heard of', function (): void {
     $user = createUserWithTeam();
 
-    // The same rule `SearchRegion`'s unoffered regions follow (ADR 0019 §2a): a declared case with
-    // nothing behind it would be a type that contributes no queries and says nothing about why.
+    // **S13b completed the set**, so there is no longer a declared-but-unoffered case to point this
+    // at: all five of `SignalSourceKind`'s cases now have a provider. `isAvailable()` stays, and
+    // stays the thing the rule is built from, because it is the mechanism that lets the *next*
+    // source be declared before it is wired — the same way `SearchRegion::isOffered()` holds five
+    // regions that are ready in code and not offered (ADR 0019 §2a).
     //
-    // `webhook` rather than `companies_house` or `feed`, both of which S13b gave implementations —
-    // the assertion is about availability, so it has to name the case that still genuinely has
-    // none. When S13b's webhook ships, this names whatever is declared and not offered then.
+    // What is still testable, and is the part that matters, is that the rule is built from the
+    // enum rather than from a hand-written list: a key nothing knows about is refused.
     $this->actingAs($user)
-        ->post('/signals/types', definitionPayload(['source_keys' => ['webhook']]))
+        ->post('/signals/types', definitionPayload(['source_keys' => ['pigeon_post']]))
         ->assertSessionHasErrors('source_keys.0');
+});
+
+it('offers exactly the sources that have a provider registered', function (): void {
+    // The enum's promise and the container's wiring have to agree, or a type can be saved against a
+    // source that silently contributes nothing. After S13b that is all five.
+    $registered = app(SignalSourceRegistry::class)->registered();
+
+    foreach (SignalSourceKind::cases() as $kind) {
+        expect($kind->isAvailable())->toBe(in_array($kind, $registered, strict: true), $kind->value);
+    }
+
+    expect(SignalSourceKind::availableValues())
+        ->toBe(['news', 'web_search', 'companies_house', 'feed', 'webhook']);
 });
 
 it('stores news for a caller that does not mention sources', function (): void {

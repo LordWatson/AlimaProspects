@@ -8,6 +8,7 @@ use App\Modules\Signals\Data\DraftSignalDefinition;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use stdClass;
 
 /**
  * A composer draft, on its way to a review form (S9).
@@ -59,6 +60,10 @@ final class SignalDraftResource extends JsonResource
                 // it; it does not choose where to spend money. `sourceKinds` is empty on a drafted
                 // definition and that resolves to news on save anyway, so sending it explicitly
                 // makes the draft a complete form state rather than one the client has to patch.
+                // **Empty, always** (S13b). The composer drafts what to search for and how to judge
+                // it; it does not configure a feed or mint a secret. Sent so the draft is a
+                // complete form state the client can open without patching it.
+                'source_config' => new stdClass,
                 'source_keys' => array_map(
                     static fn (SignalSourceKind $kind): string => $kind->value,
                     // Null (the composer never sets them) and empty both become news, so the draft

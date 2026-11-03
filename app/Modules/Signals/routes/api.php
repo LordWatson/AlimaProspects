@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use App\Modules\Auth\Enums\TokenAbility;
+use App\Modules\Core\Enums\Capability;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalDefinitionController;
+use App\Modules\Signals\Http\Controllers\Api\V1\SignalEventController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalWatchController;
 use App\Modules\Signals\Http\Controllers\Api\V1\SignalWatchlistController;
 use Illuminate\Support\Facades\Route;
@@ -18,6 +20,23 @@ use Illuminate\Support\Facades\Route;
  * easier to loop than a button.
  */
 Route::middleware('auth:sanctum')->group(function (): void {
+    /*
+     * Pushed events (S13b, ADR 0023 §7) — the only path into this module that originates outside
+     * our own code.
+     *
+     * Four controls on the route itself, before the request's own six: the token's ability, the
+     * plan capability (a webhook is part of the API, so it follows API access), and **its own rate
+     * limiter** rather than the shared `api` one, because a machine retrying in a loop must not be
+     * able to lock a customer out of every other endpoint.
+     */
+    Route::post('signal-events', [SignalEventController::class, 'store'])
+        ->middleware([
+            'ability:'.TokenAbility::SignalsWrite->value,
+            'capability:'.Capability::ApiAccess->value,
+            'throttle:signals-events',
+        ])
+        ->name('signal-events.store');
+
     Route::get('signals', [SignalController::class, 'index'])
         ->middleware('ability:'.TokenAbility::SignalsRead->value)
         ->name('signals.index');

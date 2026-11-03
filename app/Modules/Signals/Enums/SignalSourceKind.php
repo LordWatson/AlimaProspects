@@ -85,10 +85,17 @@ enum SignalSourceKind: string
     /**
      * An event a customer pushed to `POST /api/v1/signal-events` (S13b).
      *
-     * **Declared, not offered.** The only path into this module that originates outside our own
-     * code, and ADR 0023 §7 is the whole trust model: signed, replay-protected, bounded,
-     * rate-limited, wrapped in `UntrustedContent`, and never believed about a score, a jurisdiction
-     * or a lead.
+     * **The only path into this module that originates outside our own code**, and ADR 0023 §7 is
+     * the whole trust model: signed with a per-type secret, replay-protected by an idempotency key,
+     * bounded by a strict schema, rate-limited on its own bucket, and never believed about a score,
+     * a jurisdiction or a lead.
+     *
+     * A pushed event is **stored, then read back like any other source** — so it is classified by
+     * the same prompt as a news article and decided by the same thresholds. The customer supplies an
+     * observation; Alima still decides what it means.
+     *
+     * Behind `Capability::ApiAccess`, because it is part of the API rather than a feature of a
+     * screen.
      */
     case Webhook = 'webhook';
 
@@ -123,7 +130,7 @@ enum SignalSourceKind: string
             self::WebSearch => 'The wider web — planning decisions, award announcements, a company’s own blog. Finds events the press missed, and finds more noise with them.',
             self::CompaniesHouse => 'UK filings for the accounts on a watchlist: officer and ownership changes, insolvency, charges. Structured and certain, so nothing is guessed — and free.',
             self::Feed => 'An industry newsletter, a regulator’s filings feed, a portal’s press releases. Everything it publishes is read, so a focused feed beats a broad one.',
-            self::Webhook => 'Events your own systems push to Alima.',
+            self::Webhook => 'Events your own systems push to Alima, signed with a secret only you hold. They are read and judged exactly like news.',
         };
     }
 
@@ -134,12 +141,17 @@ enum SignalSourceKind: string
      * that would silently contribute no queries. The run asks the registry instead — by then the
      * question is "is one registered", and a stored key that stopped being available (a source
      * withdrawn, a credential pulled) must be skipped rather than crash a scheduled watch.
+     *
+     * **Every case returns true as of S13b**, which finished the set. This stays because it is the
+     * mechanism that lets the next source be declared before it is wired — the same role
+     * `SearchRegion::isOffered()` plays for five regions that are ready in code and waiting on a
+     * legal position — and because the save path reading it is what keeps that future case out of a
+     * team's configuration until it works.
      */
     public function isAvailable(): bool
     {
         return match ($this) {
-            self::News, self::WebSearch, self::CompaniesHouse, self::Feed => true,
-            self::Webhook => false,
+            self::News, self::WebSearch, self::CompaniesHouse, self::Feed, self::Webhook => true,
         };
     }
 
@@ -158,15 +170,48 @@ enum SignalSourceKind: string
     }
 
     /**
+     * Whether this source is addressed by a **subject** — an account — rather than by a search
+     * string or by the definition itself (S13b).
+     *
+     * There are three addressing shapes and `SignalQueryBuilder` builds each differently, which is
+     * why this is a question and not a flag:
+     *
+     * - **query-based** ({@see self::isQueryBased()}) — news and web search take a string, and
+     *   multiply out by place, region and template;
+     * - **subject-addressed** — Companies House takes a company number, so one query per account,
+     *   with no name or region multiplication;
+     * - **definition-addressed** — a feed takes its URL and a webhook its stored events, both of
+     *   which live on the definition, so one query per definition and nothing else.
+     *
+     * Getting this wrong is a cost bug rather than a correctness one, and in the expensive
+     * direction: a feed asked once per place per region per template would be fetched forty times a
+     * run for one identical document.
+     */
+    public function addressesSubject(): bool
+    {
+        return $this === self::CompaniesHouse;
+    }
+
+    /**
      * Whether a definition has to configure this source before it does anything (S13b).
      *
-     * A feed needs a URL; news and web search need only the templates the type already has. The
-     * form asks for the extra field when this is true, rather than letting somebody tick a source
-     * that will quietly contribute nothing.
+     * A feed needs a URL and a webhook needs a signing secret; news, web search and the registry
+     * need only what the type already has. The form asks for the extra thing when this is true,
+     * rather than letting somebody tick a source that will quietly contribute nothing.
+     *
+     * Companies House is deliberately **false** even though it needs a watchlist: that is a
+     * property of the *watch*, not of the type, so the type form cannot ask for it and says so in
+     * words instead.
      */
     public function needsConfiguration(): bool
     {
-        return $this === self::Feed;
+        return match ($this) {
+            // A feed needs its URL, and a webhook needs a signing secret before a customer's system
+            // can send anything. Neither does anything useful until somebody supplies that, which
+            // is why the form asks rather than letting the box be ticked and nothing happen.
+            self::Feed, self::Webhook => true,
+            self::News, self::WebSearch, self::CompaniesHouse => false,
+        };
     }
 
     /**

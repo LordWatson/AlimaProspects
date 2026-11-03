@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -301,6 +302,19 @@ class SignalDefinition extends Model
     public function excludes(): array
     {
         return $this->ruleList('excludes');
+    }
+
+    /**
+     * This type's webhook signing secret, where it has one (S13b).
+     *
+     * A `hasOne` rather than a `hasMany`: there is one live secret per type, because two valid
+     * secrets at once is a grace period nobody asked for and a second thing to find when one leaks.
+     *
+     * @return HasOne<SignalWebhookSecret, $this>
+     */
+    public function webhookSecret(): HasOne
+    {
+        return $this->hasOne(SignalWebhookSecret::class, 'signal_definition_id');
     }
 
     /**

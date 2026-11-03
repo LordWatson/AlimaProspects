@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Console;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalCluster;
+use App\Modules\Signals\Models\SignalInboundEvent;
 use App\Modules\Signals\Services\SignalClusterer;
 use App\Modules\Signals\Services\SignalRetention;
 use Illuminate\Console\Command;
@@ -77,6 +78,7 @@ final class PruneSignalsCommand extends Command
         $repaired = $this->repairClusters($dryRun);
         $rejections = $this->pruneRejections($dryRun);
         $clusters = $this->pruneClusters($dryRun);
+        $inbound = $this->pruneInboundEvents($dryRun);
 
         $context = [
             'dismissed_deleted' => $counts[SignalStatus::Dismissed->value] ?? 0,
@@ -84,6 +86,7 @@ final class PruneSignalsCommand extends Command
             'rejections_deleted' => $rejections,
             'clusters_deleted' => $clusters,
             'clusters_repaired' => $repaired,
+            'inbound_events_deleted' => $inbound,
             'dismissed_days' => $this->retention->windowFor(SignalStatus::Dismissed),
             'unactioned_days' => $this->retention->windowFor(SignalStatus::New),
             'dry_run' => $dryRun,
@@ -102,15 +105,68 @@ final class PruneSignalsCommand extends Command
         ));
 
         $this->info(sprintf(
-            '%s %d rejection memory(ies) and %d empty cluster(s), and %s %d cluster(s) a new primary.',
+            '%s %d rejection memory(ies), %d empty cluster(s) and %d inbound event(s), and %s %d cluster(s) a new primary.',
             $dryRun ? 'Would also delete' : 'Also deleted',
             $rejections,
             $clusters,
+            $inbound,
             $dryRun ? 'would give' : 'gave',
             $repaired,
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Sweep inbound webhook events past their retention window (S13b).
+     *
+     * **Kept longer than the source reads them**, and the gap is the point:
+     * `signals.sources.webhook.window_days` (7) is how long an event can still become a signal, and
+     * this window (30) is how long an operator can still answer "what did they actually send us?"
+     * about one that did. Deleting on the source's window would destroy the evidence at exactly the
+     * moment somebody starts asking about it.
+     *
+     * The row is swept whatever became of it. A classified event already exists as a `Signal` with
+     * its own retention, and the inbound row is only ever the record of the request — so removing it
+     * never removes a signal, and `signals.payload` on the signal keeps what the classifier read.
+     *
+     * Chunked and counted like every other step here, and silent about content: counts and windows
+     * only, never a title or a customer's own text.
+     */
+    private function pruneInboundEvents(bool $dryRun): int
+    {
+        $days = max(1, (int) config('signals.sources.webhook.retention_days', 30));
+
+        $eligible = SignalInboundEvent::query()
+            ->withoutGlobalScopes()
+            ->where('received_at', '<', now()->subDays($days));
+
+        if ($dryRun) {
+            return (clone $eligible)->count();
+        }
+
+        $deleted = 0;
+
+        do {
+            $ids = (clone $eligible)->limit(self::CHUNK)->pluck('id')->all();
+
+            if ($ids === []) {
+                break;
+            }
+
+            // Re-applying the age guard on the delete itself, like every other sweep in this
+            // command: an event received between the read and the write must not be removed because
+            // it happened to land in a chunk of ids.
+            $removed = SignalInboundEvent::query()
+                ->withoutGlobalScopes()
+                ->whereIn('id', $ids)
+                ->where('received_at', '<', now()->subDays($days))
+                ->delete();
+
+            $deleted += $removed;
+        } while ($removed > 0);
+
+        return $deleted;
     }
 
     /**

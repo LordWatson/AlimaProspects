@@ -71,6 +71,26 @@ final class SignalDefinitionResource extends JsonResource
                     ? null
                     : ['filings' => $definition->sourceConfig(SignalSourceKind::CompaniesHouse)['filings'] ?? []],
             ], static fn (mixed $value): bool => $value !== null),
+            // The **tail** of the webhook secret and when it was last used (S13b) — never the
+            // secret, which is shown exactly once by the request that creates it and stored
+            // encrypted. "Last used: never" beside a secret minted an hour ago is how a member
+            // learns their integration is still signing with the old one.
+            //
+            // **`whenLoaded`, so the keys are absent rather than null where nobody asked for them.**
+            // This resource serialises a definition on five screens and a platform preset — which
+            // cannot have a secret at all, being a platform row — and only the type library needs
+            // these. Reading the relation unconditionally was a `LazyLoadingViolationException` on
+            // every one of the others, which is the defect `preventLazyLoading` exists to surface;
+            // returning null instead would have been worse, because "absent" is a contract a client
+            // can read and "null" would have claimed the type has no secret.
+            'webhook_secret_hint' => $this->whenLoaded(
+                'webhookSecret',
+                fn (): ?string => $definition->webhookSecret?->hint,
+            ),
+            'webhook_secret_used_at' => $this->whenLoaded(
+                'webhookSecret',
+                fn (): ?string => $definition->webhookSecret?->last_used_at?->toIso8601String(),
+            ),
             'match_keywords' => $definition->match_keywords ?? [],
             'includes' => $definition->includes(),
             'excludes' => $definition->excludes(),

@@ -134,6 +134,27 @@ class SignalsException extends DomainException
     }
 
     /**
+     * An inbound event could not be accepted (S13b, ADR 0023 §7).
+     *
+     * **One answer for every reason**, and that is the security property rather than laziness: a bad
+     * signature, an unknown signal-type key, a stale timestamp and a type belonging to another team
+     * all produce this. The differences are an oracle — "that key exists but the signature is wrong"
+     * is how somebody enumerates another tenant's signal types, and "your timestamp is stale" tells
+     * a replayer exactly what to fix.
+     *
+     * Raised only where a refusal has escaped the request's `authorize()` (which answers 403 on its
+     * own), so in practice this is the guard on `definition()` being read without verification.
+     */
+    public static function webhookRefused(): self
+    {
+        $e = new self('That event could not be accepted.');
+        $e->errorCode = 'signals.webhook_refused';
+        $e->status = 403;
+
+        return $e;
+    }
+
+    /**
      * The team already has as many feeds as their plan allows (S13b).
      *
      * A ceiling on **creating** them, like the watch and type ceilings and for the same reason: each

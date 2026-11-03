@@ -194,7 +194,7 @@ it('sweeps a cluster once its last signal has gone', function (): void {
     // A cluster has no window of its own; emptying is its only expiry, and that is what stops a
     // subject fingerprint outliving every row it was derived from.
     $this->artisan('signals:prune')
-        ->expectsOutputToContain('and 1 empty cluster(s)')
+        ->expectsOutputToContain('1 empty cluster(s)')
         ->assertSuccessful();
 
     expect(SignalCluster::query()->withoutGlobalScopes()->count())->toBe(0);
