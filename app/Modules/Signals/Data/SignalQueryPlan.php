@@ -23,7 +23,7 @@ use Spatie\LaravelData\Data;
 final class SignalQueryPlan extends Data
 {
     /**
-     * @param  list<SignalQuery>  $queries  What will actually run, after the ceiling.
+     * @param  list<SignalSourceQuery>  $queries  What will actually run, after the ceiling.
      * @param  int  $requested  What the watch's types and places came to before it.
      */
     public function __construct(

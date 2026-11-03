@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use App\Modules\Signals\Data\NewsItem;
+use App\Modules\Signals\Data\SourceItem;
 use App\Modules\Signals\Services\SignalClusterer;
 use App\Modules\Signals\Services\SignalItemNormaliser;
-use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use App\Modules\Signals\Testing\FakeSignalSource;
 use Carbon\CarbonImmutable;
 use Tests\TestCase;
 
@@ -18,16 +18,16 @@ use Tests\TestCase;
 uses(TestCase::class);
 
 beforeEach(function (): void {
-    $this->news = new FakeNewsSearchClient;
+    $this->news = new FakeSignalSource;
     $this->clusterer = new SignalClusterer(new SignalItemNormaliser);
 });
 
 /**
  * The canonical fixture: one Dubai acquisition, as eight outlets wrote it.
  *
- * @return list<NewsItem>
+ * @return list<SourceItem>
  */
-function zephyrCoverage(FakeNewsSearchClient $news): array
+function zephyrCoverage(FakeSignalSource $news): array
 {
     $headlines = [
         ['Regional Holdings acquires Dubai logistics firm Zephyr', 'Gulf News'],

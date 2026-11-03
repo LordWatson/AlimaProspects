@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property int $results_count
  * @property int $signals_created
  * @property int $cost_micros
+ * @property array<array-key, mixed>|null $source_breakdown Written by `SignalSourceBreakdown`; read back defensively, because what is in the column was written by whichever build stored it.
  * @property string|null $error
  * @property Carbon|null $started_at
  * @property Carbon|null $finished_at
@@ -52,6 +53,7 @@ class SignalRun extends Model
         'results_count',
         'signals_created',
         'cost_micros',
+        'source_breakdown',
         'error',
         'started_at',
         'finished_at',
@@ -104,6 +106,7 @@ class SignalRun extends Model
             'results_count' => 'integer',
             'signals_created' => 'integer',
             'cost_micros' => 'integer',
+            'source_breakdown' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
         ];

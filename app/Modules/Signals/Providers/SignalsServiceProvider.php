@@ -15,7 +15,8 @@ use App\Modules\Signals\Console\ClusterSignalsBackfillCommand;
 use App\Modules\Signals\Console\DispatchDueSignalWatchesCommand;
 use App\Modules\Signals\Console\PruneSignalsCommand;
 use App\Modules\Signals\Console\RescoreSignalsCommand;
-use App\Modules\Signals\Contracts\NewsSearchClient;
+use App\Modules\Signals\Contracts\SignalSourceProvider;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Events\SignalConverted;
 use App\Modules\Signals\Events\SignalDismissed;
 use App\Modules\Signals\Events\SignalRestored;
@@ -32,15 +33,18 @@ use App\Modules\Signals\Policies\SignalPolicy;
 use App\Modules\Signals\Policies\SignalTuningSuggestionPolicy;
 use App\Modules\Signals\Policies\SignalWatchlistPolicy;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
-use App\Modules\Signals\Services\SerperNewsClient;
+use App\Modules\Signals\Services\NewsSignalSource;
 use App\Modules\Signals\Services\SignalArticleEnricher;
 use App\Modules\Signals\Services\SignalItemNormaliser;
 use App\Modules\Signals\Services\SignalLeadOriginProvider;
 use App\Modules\Signals\Services\SignalScorer;
+use App\Modules\Signals\Services\SignalSourceRegistry;
+use App\Modules\Signals\Services\WebSearchSignalSource;
 use App\Modules\Signals\Support\IgnoredDomains;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Repository as Cache;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -147,19 +151,43 @@ final class SignalsServiceProvider extends ModuleServiceProvider
 
     public function register(): void
     {
-        // The news client talks to Serper /news behind its own circuit breaker (separate from Lead
-        // Sourcing's), configured from config/signals.php. Reuses the generic LeadSourcing breaker.
-        $this->app->bind(NewsSearchClient::class, fn ($app): SerperNewsClient => new SerperNewsClient(
-            $app->make(HttpFactory::class),
-            new CircuitBreaker(
-                $app->make(Cache::class),
-                (int) config('signals.circuit_breaker.threshold', 5),
-                (int) config('signals.circuit_breaker.cooldown', 60),
-                prefix: 'signals:cb',
-            ),
-            $app->make(SignalItemNormaliser::class),
-            $app->make(IgnoredDomains::class),
-        ));
+        // **The source registry** (S13, ADR 0023) — the factory seam a new signal source slots into
+        // without `RunSignalWatchAction` changing. A singleton, because a test registers a fake into
+        // the same instance the run resolves: `FakeSignalSource::install($this->app)`.
+        //
+        // Each source gets its **own breaker key** under the module's shared `signals:cb` prefix
+        // (`AbstractHttpSignalSourceProvider::breakerKey()`), so a team running news *and* web
+        // search does not lose their news because Serper's `/search` is unwell. Every key is
+        // mirrored in `Admin\Enums\PlatformProvider` so an open breaker is visible to operations,
+        // and `PlatformProviderTest` asserts the two still agree.
+        //
+        // Only the sources that are actually implemented are registered; `SignalSourceKind`'s other
+        // cases are declared and not offered, and a definition cannot be saved against one.
+        $this->app->singleton(SignalSourceRegistry::class, function ($app): SignalSourceRegistry {
+            $registry = new SignalSourceRegistry;
+
+            $registry->register(new NewsSignalSource(
+                $app->make(HttpFactory::class),
+                $this->sourceBreaker($app),
+                $app->make(SignalItemNormaliser::class),
+                $app->make(IgnoredDomains::class),
+            ));
+
+            $registry->register(new WebSearchSignalSource(
+                $app->make(HttpFactory::class),
+                $this->sourceBreaker($app),
+                $app->make(SignalItemNormaliser::class),
+                $app->make(IgnoredDomains::class),
+            ));
+
+            return $registry;
+        });
+
+        // The news source on its own, for the few callers that mean "the news" rather than "whatever
+        // this definition runs on" — the preview's default and the cost estimator's baseline.
+        $this->app->bind(SignalSourceProvider::class, fn ($app): SignalSourceProvider => $app
+            ->make(SignalSourceRegistry::class)
+            ->for(SignalSourceKind::News));
 
         // The full-article reader (S12). Its own breaker key under the module's own prefix, so a
         // publisher timing out repeatedly stops being fetched without touching the news
@@ -194,5 +222,23 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         // The dependency points this way on purpose: Signals already knows about leads because it
         // creates them, and the workspace must not learn about Signals to render a panel.
         $this->app->bind(LeadOriginProvider::class, SignalLeadOriginProvider::class);
+    }
+
+    /**
+     * A fresh {@see CircuitBreaker} on the module's shared prefix, for one source.
+     *
+     * A new instance per source rather than a shared one: the breaker's prefix is shared and its
+     * *key* is what separates the sources, so handing the same object to both would work — and would
+     * make it look as though they shared state. One per source makes the independence legible, and
+     * it is the same construction the article enricher makes for its own key.
+     */
+    private function sourceBreaker(Container $app): CircuitBreaker
+    {
+        return new CircuitBreaker(
+            $app->make(Cache::class),
+            (int) config('signals.circuit_breaker.threshold', 5),
+            (int) config('signals.circuit_breaker.cooldown', 60),
+            prefix: 'signals:cb',
+        );
     }
 }

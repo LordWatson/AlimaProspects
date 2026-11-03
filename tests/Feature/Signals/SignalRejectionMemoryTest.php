@@ -8,14 +8,14 @@ use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
-use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Enums\SignalRejectionVerdict;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalRejection;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
-use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use App\Modules\Signals\Testing\FakeSignalSource;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -32,8 +32,8 @@ uses(RefreshDatabase::class);
 beforeEach(function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    $this->fakeNews = new FakeNewsSearchClient;
-    app()->instance(NewsSearchClient::class, $this->fakeNews);
+    $this->fakeNews = new FakeSignalSource;
+    app(SignalSourceRegistry::class)->register($this->fakeNews);
 
     $this->fakeAi = new FakeAiTransport;
     app()->instance(AiTransport::class, $this->fakeAi);
@@ -62,7 +62,7 @@ function rejectionRun(Team $team, SignalWatch $watch): SignalRun
     return app(TeamContext::class)->run($team, fn (): SignalRun => app(RunSignalWatchAction::class)->handle($watch));
 }
 
-function roundUp(FakeNewsSearchClient $news): array
+function roundUp(FakeSignalSource $news): array
 {
     return [$news->item(
         title: 'The ten biggest Dubai deals of the year so far',

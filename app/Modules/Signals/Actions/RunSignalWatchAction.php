@@ -20,15 +20,16 @@ use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Actions\RecordLeadActivityAction;
 use App\Modules\LeadsWorkspace\Enums\LeadActivityType;
 use App\Modules\Onboarding\Models\BusinessProfile;
-use App\Modules\Signals\Contracts\NewsSearchClient;
+use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Data\ExtractedSignal;
-use App\Modules\Signals\Data\NewsItem;
-use App\Modules\Signals\Data\SignalQuery;
 use App\Modules\Signals\Data\SignalQueryEntity;
 use App\Modules\Signals\Data\SignalQueryPlan;
 use App\Modules\Signals\Data\SignalQuerySpec;
+use App\Modules\Signals\Data\SignalSourceQuery;
+use App\Modules\Signals\Data\SourceItem;
 use App\Modules\Signals\Enums\SignalRejectionVerdict;
 use App\Modules\Signals\Enums\SignalRunStatus;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\AccountSignalsDetected;
 use App\Modules\Signals\Events\SignalRunProgressed;
@@ -48,6 +49,8 @@ use App\Modules\Signals\Services\SignalLeadMatcher;
 use App\Modules\Signals\Services\SignalQueryBuilder;
 use App\Modules\Signals\Services\SignalRejectionLedger;
 use App\Modules\Signals\Services\SignalScorer;
+use App\Modules\Signals\Services\SignalSourceRegistry;
+use App\Modules\Signals\Support\SignalSourceBreakdown;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -126,7 +129,7 @@ final class RunSignalWatchAction
 
     public function __construct(
         private readonly SignalQueryBuilder $queries,
-        private readonly NewsSearchClient $news,
+        private readonly SignalSourceRegistry $sources,
         private readonly AiClient $ai,
         private readonly CapabilityGate $capabilities,
         private readonly SignalJurisdictionResolver $jurisdictions,
@@ -178,19 +181,36 @@ final class RunSignalWatchAction
 
         [$plan, $nextCursor] = $this->planFor($watch, $definitions, $icp);
         $queriesCount = $plan->count();
-        $serperCostMicros = $queriesCount * (int) config('signals.cost_micros_per_request', 1_000);
 
-        // --- External work: Serper search (outside any transaction) ---
+        // What each source cost and found (S13, task 8). Accumulated by `search()` as it goes rather
+        // than multiplied out afterwards, because a rejected query and a query that found nothing
+        // are different things and only the loop can tell them apart.
+        $breakdown = new SignalSourceBreakdown;
+
+        // --- External work: the sources (outside any transaction) ---
         try {
-            [$items, $resultsCount] = $this->search($plan->queries);
+            [$items, $resultsCount] = $this->search($plan->queries, $breakdown, $watch);
         } catch (SignalsException $e) {
             if ($e->isRetryable()) {
                 throw $e; // bubble → the job retries with backoff
             }
 
-            // Misconfig/driver can never succeed; no paid request ran (the guard throws first).
-            return $this->fail($run, $watch, $e->getMessage(), $queriesCount, 0, 0, $plan->requested);
+            // Misconfig/driver can never succeed. The spend recorded is whatever ran before the
+            // failure — which is no longer necessarily zero, since a plan can span sources and the
+            // second one may be the one that is misconfigured.
+            return $this->fail(
+                $run,
+                $watch,
+                $e->getMessage(),
+                $queriesCount,
+                $breakdown->totalResults(),
+                $breakdown->totalCostMicros(),
+                $plan->requested,
+                $breakdown,
+            );
         }
+
+        $searchCostMicros = $breakdown->totalCostMicros();
 
         // Drop articles this team has already seen, so a re-run does no AI work on them.
         $items = $this->dropAlreadySeen($watch->team_id, $items);
@@ -205,7 +225,7 @@ final class RunSignalWatchAction
 
         // --- External work: AI extraction (outside any transaction) ---
         [$kept, $aiCostMicros, $creditExhausted] = $this->extract($watch, $definitions, $icp, $profile, $items, $fingerprint);
-        $costMicros = $serperCostMicros + $aiCostMicros;
+        $costMicros = $searchCostMicros + $aiCostMicros;
 
         if ($creditExhausted) {
             // "Not half-run": don't persist partial signals, but record the spend already incurred so
@@ -218,6 +238,7 @@ final class RunSignalWatchAction
                 $resultsCount,
                 $costMicros,
                 $plan->requested,
+                $breakdown,
             );
         }
 
@@ -232,6 +253,7 @@ final class RunSignalWatchAction
             costMicros: $costMicros,
             queriesRequested: $plan->requested,
             nextCursor: $nextCursor,
+            breakdown: $breakdown,
         );
     }
 
@@ -301,24 +323,81 @@ final class RunSignalWatchAction
     }
 
     /**
-     * Run every query, flatten, and de-duplicate within this run.
+     * Run every query against its own source, flatten, and de-duplicate within this run.
      *
      * By the **dedupe identity**, not the URL hash, since S11: behind a redirector that varies its
      * token the same article arrives under two links in one run, and the whole point of the content
-     * hash is that those are one item.
+     * hash is that those are one item. The de-duplication is across **sources** as well as across
+     * queries since S13 — the news and the wider web routinely return the same article, and a story
+     * found twice is one signal that happens to have two ways in. First writer wins, which means the
+     * source listed earlier in the enum (news) is the one attributed; that is the right bias, because
+     * a news item carries an outlet name and a `/search` hit carries a hostname.
      *
-     * @param  list<SignalQuery>  $queries
-     * @return array{0: list<NewsItem>, 1: int} unique items and the raw result count across queries
+     * **A rejected query does not fail the run** (ADR 0023 §4). A source that refuses a query
+     * pattern — which is how Serper answers a `site:` or quoted template on a free account tier — is
+     * telling us about that query, so the query is counted as rejected on the breakdown and the rest
+     * of the plan proceeds. Before S13 this raised a retryable failure and cost the team the whole
+     * run, three times over. A genuinely unwell source still bubbles.
+     *
+     * @param  list<SignalSourceQuery>  $queries
+     * @return array{0: list<SourceItem>, 1: int} unique items and the raw result count across queries
      */
-    private function search(array $queries): array
+    private function search(array $queries, SignalSourceBreakdown $breakdown, SignalWatch $watch): array
     {
         $unique = [];
         $rawCount = 0;
 
+        /** @var array<string, int> $executed queries actually run, per source */
+        $executed = [];
+
         foreach ($queries as $query) {
-            foreach ($this->news->search($query) as $item) {
+            $provider = $this->sources->find($query->kind);
+
+            if (! $provider instanceof SignalSourceProvider) {
+                // A stored key with no provider: a source withdrawn between deploys, or one whose
+                // credential was pulled. Skipped rather than fatal — a scheduled watch must not die
+                // at three in the morning because a source went away (ADR 0023 §1).
+                Log::channel('signals')->warning('Signal run skipped a query for an unregistered source.', [
+                    'team_id' => (int) $watch->team_id,
+                    'signal_watch_id' => (int) $watch->getKey(),
+                    'source' => $query->kind->value,
+                ]);
+
+                continue;
+            }
+
+            try {
+                $items = $provider->fetch($query);
+            } catch (SignalsException $e) {
+                if ($e->errorCode() === 'signals.source_query_rejected') {
+                    $breakdown->recordRejection($query->kind);
+
+                    continue;
+                }
+
+                throw $e;
+            }
+
+            $executed[$query->kind->value] = ($executed[$query->kind->value] ?? 0) + 1;
+            $breakdown->recordQuery($query->kind, count($items));
+
+            foreach ($items as $item) {
                 $rawCount++;
-                $unique[$item->dedupeKey()] = $item;
+
+                // Attributed to the template that found it, for the explanation panel (S13; the gap
+                // S12 recorded as its second deviation). Stamped here rather than in the provider
+                // because a provider is handed one query and has no reason to hold the plan.
+                $unique[$item->dedupeKey()] ??= $item->foundBy($query->q);
+            }
+        }
+
+        // The money, asked of each source rather than multiplied here: a source knows its own
+        // pricing, one of the declared ones is free, and a future one may not bill per query at all.
+        foreach ($executed as $key => $count) {
+            $kind = SignalSourceKind::parse($key);
+
+            if ($kind instanceof SignalSourceKind) {
+                $breakdown->recordCost($kind, $this->sources->for($kind)->estimatedCostMicros($count));
             }
         }
 
@@ -336,8 +415,8 @@ final class RunSignalWatchAction
      * Serper query and a fresh AI batch each time (`docs/modules/signals.md`, "Known limitations",
      * consequence 1).
      *
-     * @param  list<NewsItem>  $items
-     * @return list<NewsItem>
+     * @param  list<SourceItem>  $items
+     * @return list<SourceItem>
      */
     private function dropAlreadySeen(int $teamId, array $items): array
     {
@@ -345,7 +424,7 @@ final class RunSignalWatchAction
             return [];
         }
 
-        $hashes = array_map(static fn (NewsItem $i): string => $i->dedupeKey(), $items);
+        $hashes = array_map(static fn (SourceItem $i): string => $i->dedupeKey(), $items);
 
         $seen = Signal::query()
             ->where('team_id', $teamId)
@@ -359,7 +438,7 @@ final class RunSignalWatchAction
 
         $seen = array_flip($seen);
 
-        return array_values(array_filter($items, static fn (NewsItem $i): bool => ! isset($seen[$i->dedupeKey()])));
+        return array_values(array_filter($items, static fn (SourceItem $i): bool => ! isset($seen[$i->dedupeKey()])));
     }
 
     /**
@@ -369,8 +448,8 @@ final class RunSignalWatchAction
      * the recency window cost an AI batch every day for as long as it stayed there. Logged as a
      * **count**, which is also the measure of whether the memory is earning its keep.
      *
-     * @param  list<NewsItem>  $items
-     * @return list<NewsItem>
+     * @param  list<SourceItem>  $items
+     * @return list<SourceItem>
      */
     private function dropRejected(SignalWatch $watch, string $fingerprint, array $items): array
     {
@@ -381,7 +460,7 @@ final class RunSignalWatchAction
         $rejected = $this->rejections->rejected(
             (int) $watch->team_id,
             $fingerprint,
-            array_map(static fn (NewsItem $i): string => $i->dedupeKey(), $items),
+            array_map(static fn (SourceItem $i): string => $i->dedupeKey(), $items),
         );
 
         if ($rejected === []) {
@@ -390,7 +469,7 @@ final class RunSignalWatchAction
 
         $kept = array_values(array_filter(
             $items,
-            static fn (NewsItem $i): bool => ! isset($rejected[$i->dedupeKey()]),
+            static fn (SourceItem $i): bool => ! isset($rejected[$i->dedupeKey()]),
         ));
 
         Log::channel('signals')->info('Signal run skipped articles it had already rejected.', [
@@ -422,8 +501,8 @@ final class RunSignalWatchAction
      * coverage is skipped next run rather than just the one copy that was sent.
      *
      * @param  list<SignalDefinition>  $definitions  The types offered to the model for this run.
-     * @param  list<NewsItem>  $items
-     * @return array{0: list<array{0: ExtractedSignal, 1: NewsItem, 2: SignalDefinition}>, 1: int, 2: bool} kept triples, AI cost, credit-exhausted
+     * @param  list<SourceItem>  $items
+     * @return array{0: list<array{0: ExtractedSignal, 1: SourceItem, 2: SignalDefinition}>, 1: int, 2: bool} kept triples, AI cost, credit-exhausted
      */
     private function extract(SignalWatch $watch, array $definitions, ?Icp $icp, ?BusinessProfile $profile, array $items, string $fingerprint): array
     {
@@ -433,9 +512,9 @@ final class RunSignalWatchAction
             $offered[$definition->key] = $definition;
         }
 
-        /** @var array<string, list<NewsItem>> $stories  every member, keyed by its representative */
+        /** @var array<string, list<SourceItem>> $stories  every member, keyed by its representative */
         $stories = [];
-        /** @var list<NewsItem> $representatives */
+        /** @var list<SourceItem> $representatives */
         $representatives = [];
 
         foreach ($this->clusterer->group($items) as $story) {
@@ -497,7 +576,7 @@ final class RunSignalWatchAction
                 $extracted = ExtractedSignal::fromAiItem($raw);
                 $item = $batch[$extracted->itemIndex] ?? null;
 
-                if (! $item instanceof NewsItem) {
+                if (! $item instanceof SourceItem) {
                     continue;
                 }
 
@@ -582,12 +661,12 @@ final class RunSignalWatchAction
     /**
      * The dedupe identities of a story's members.
      *
-     * @param  list<NewsItem>  $story
+     * @param  list<SourceItem>  $story
      * @return list<string>
      */
     private function keysOf(array $story): array
     {
-        return array_map(static fn (NewsItem $item): string => $item->dedupeKey(), $story);
+        return array_map(static fn (SourceItem $item): string => $item->dedupeKey(), $story);
     }
 
     /**
@@ -848,9 +927,9 @@ final class RunSignalWatchAction
      * before the AI batch was provisional and lived for one run; these rows are what make a story
      * covered again tomorrow join the card it already has.
      *
-     * @param  list<array{0: ExtractedSignal, 1: NewsItem, 2: SignalDefinition}>  $kept
+     * @param  list<array{0: ExtractedSignal, 1: SourceItem, 2: SignalDefinition}>  $kept
      */
-    private function complete(SignalRun $run, SignalWatch $watch, array $kept, int $queriesCount, int $resultsCount, int $costMicros, int $queriesRequested = 0, ?int $nextCursor = null): SignalRun
+    private function complete(SignalRun $run, SignalWatch $watch, array $kept, int $queriesCount, int $resultsCount, int $costMicros, int $queriesRequested = 0, ?int $nextCursor = null, ?SignalSourceBreakdown $breakdown = null): SignalRun
     {
         // De-duplicate by the dedupe identity within this run, keeping the highest-confidence
         // result when the model returns more than one for the same article.
@@ -867,7 +946,7 @@ final class RunSignalWatchAction
             $rows[] = $this->toRow($run, $watch, $extracted, $item, $definition);
         }
 
-        $created = DB::transaction(function () use ($run, $watch, $rows, $queriesCount, $resultsCount, $costMicros, $queriesRequested, $nextCursor): int {
+        $created = DB::transaction(function () use ($run, $watch, $rows, $queriesCount, $resultsCount, $costMicros, $queriesRequested, $nextCursor, $breakdown): int {
             [$rows, $clusters] = $this->cluster((int) $watch->team_id, $rows);
 
             $created = $rows === [] ? 0 : Signal::query()->insertOrIgnore($rows);
@@ -928,6 +1007,13 @@ final class RunSignalWatchAction
                 'results_count' => $resultsCount,
                 'signals_created' => $events,
                 'cost_micros' => $costMicros,
+                // Per source, beneath the total (S13). Null rather than `{}` for a run that
+                // searched nothing — a watch whose every type was paused, or one trimmed to
+                // nothing — because an empty object reads as "we looked and spent nothing", and
+                // "we did not look" is a different sentence.
+                'source_breakdown' => $breakdown === null || $breakdown->isEmpty()
+                    ? null
+                    : $breakdown->toArray(),
                 'error' => null,
                 'started_at' => $run->started_at ?? now(),
                 'finished_at' => now(),
@@ -1128,7 +1214,7 @@ final class RunSignalWatchAction
      *
      * @return array<string, mixed>
      */
-    private function toRow(SignalRun $run, SignalWatch $watch, ExtractedSignal $extracted, NewsItem $item, SignalDefinition $definition): array
+    private function toRow(SignalRun $run, SignalWatch $watch, ExtractedSignal $extracted, SourceItem $item, SignalDefinition $definition): array
     {
         $now = now();
 
@@ -1185,6 +1271,15 @@ final class RunSignalWatchAction
             'suggested_approach' => $extracted->suggestedApproach,
             'source_url' => $item->link,
             'source_name' => $item->source,
+            // Which source found it, and which of the type's templates did (S13). The kind comes off
+            // the **item** rather than off the query, because an article returned by two sources is
+            // de-duplicated to one row and the attribution has to follow the row that survived.
+            //
+            // `matched_template` is nullable and null is a real answer: a signal from a source that
+            // does not search by keyword has no template behind it, and the explanation panel says
+            // so rather than inventing one.
+            'source_kind' => $item->kind->value,
+            'matched_template' => $item->matchedTemplate,
             'published_at' => ($item->publishedAt ?? $now)->copy()->utc(),
             'url_hash' => $item->urlHash,
             // The two identities S11 added. `url_hash` is still the truth about the link;
@@ -1282,7 +1377,7 @@ final class RunSignalWatchAction
      * Render a batch as a compact JSON array with an item_index per item, for the prompt. This is the
      * untrusted content (title/snippet/source/date), wrapped by the caller.
      *
-     * @param  list<NewsItem>  $batch
+     * @param  list<SourceItem>  $batch
      */
     private function itemsJson(array $batch): string
     {
@@ -1305,9 +1400,9 @@ final class RunSignalWatchAction
      * and advancing the watch's `last_run_at` — so a persistently failing watch (e.g. a team out of
      * AI credit) backs off to its cadence instead of being re-dispatched every hour.
      */
-    private function fail(SignalRun $run, SignalWatch $watch, string $message, int $queriesCount = 0, int $resultsCount = 0, int $costMicros = 0, int $queriesRequested = 0): SignalRun
+    private function fail(SignalRun $run, SignalWatch $watch, string $message, int $queriesCount = 0, int $resultsCount = 0, int $costMicros = 0, int $queriesRequested = 0, ?SignalSourceBreakdown $breakdown = null): SignalRun
     {
-        DB::transaction(function () use ($run, $watch, $message, $queriesCount, $resultsCount, $costMicros, $queriesRequested): void {
+        DB::transaction(function () use ($run, $watch, $message, $queriesCount, $resultsCount, $costMicros, $queriesRequested, $breakdown): void {
             $run->forceFill([
                 'status' => SignalRunStatus::Failed,
                 'error' => $message,
@@ -1315,6 +1410,12 @@ final class RunSignalWatchAction
                 'queries_requested' => $queriesRequested,
                 'results_count' => $resultsCount,
                 'cost_micros' => $costMicros,
+                // Recorded on a **failed** run too: a plan can span sources now, so the one that
+                // failed is not necessarily the one that spent the money, and an operator asking
+                // "what did this failure cost" needs the answer per source.
+                'source_breakdown' => $breakdown === null || $breakdown->isEmpty()
+                    ? null
+                    : $breakdown->toArray(),
                 'started_at' => $run->started_at ?? now(),
                 'finished_at' => now(),
             ])->save();

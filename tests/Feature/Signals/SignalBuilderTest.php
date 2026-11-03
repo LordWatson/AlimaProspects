@@ -13,7 +13,6 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Actions\ComposeSignalDefinitionAction;
 use App\Modules\Signals\Actions\PreviewSignalDefinitionAction;
-use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Data\DraftSignalDefinition;
 use App\Modules\Signals\Data\PreviewedItem;
 use App\Modules\Signals\Data\SignalPreviewResult;
@@ -24,8 +23,9 @@ use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalPreview;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Support\SignalCostEstimator;
-use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use App\Modules\Signals\Testing\FakeSignalSource;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -50,8 +50,8 @@ uses(RefreshDatabase::class);
 beforeEach(function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    $this->fakeNews = new FakeNewsSearchClient;
-    app()->instance(NewsSearchClient::class, $this->fakeNews);
+    $this->fakeNews = new FakeSignalSource;
+    app(SignalSourceRegistry::class)->register($this->fakeNews);
 
     $this->fakeAi = new FakeAiTransport;
     app()->instance(AiTransport::class, $this->fakeAi);

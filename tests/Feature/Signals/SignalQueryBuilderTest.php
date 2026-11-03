@@ -7,8 +7,8 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
-use App\Modules\Signals\Data\SignalQuery;
 use App\Modules\Signals\Data\SignalQueryPlan;
+use App\Modules\Signals\Data\SignalSourceQuery;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalQueryBuilder;
@@ -31,7 +31,7 @@ beforeEach(function (): void {
  */
 function queryStrings(SignalQueryPlan $plan): array
 {
-    return array_map(static fn (SignalQuery $q): string => $q->q, $plan->queries);
+    return array_map(static fn (SignalSourceQuery $q): string => $q->q, $plan->queries);
 }
 
 /**
@@ -56,7 +56,7 @@ it('builds the templates of the definitions it is given, and no others', functio
         'UAE Series B funding',
         'Dubai startup Series A funding round',
     ])
-        ->and($queries->queries)->each->toBeInstanceOf(SignalQuery::class);
+        ->and($queries->queries)->each->toBeInstanceOf(SignalSourceQuery::class);
 
     foreach ($queries->queries as $q) {
         expect($q->eventKey)->toBe(SignalPresetCatalogue::FUNDING_ROUND)
@@ -108,7 +108,7 @@ it('covers every definition it is given', function (): void {
     $definitions = array_map(definitionFor(...), $keys);
 
     $queries = $this->builder->build($watch, $definitions);
-    $built = array_values(array_unique(array_map(static fn (SignalQuery $q): string => $q->eventKey, $queries->queries)));
+    $built = array_values(array_unique(array_map(static fn (SignalSourceQuery $q): string => $q->eventKey, $queries->queries)));
 
     expect($built)->toEqualCanonicalizing($keys)
         ->and($queries->count())->toBe(8); // 3 + 3 + 2 templates
@@ -283,8 +283,8 @@ it('matches an ambiguous buying signal to the first definition given, determinis
     $acquisitionFirst = $this->builder->build($watch, [$acquisition, $funding], $icp);
     $fundingFirst = $this->builder->build($watch, [$funding, $acquisition], $icp);
 
-    $extra = static fn (SignalQueryPlan $plan): SignalQuery => collect($plan->queries)
-        ->firstOrFail(static fn (SignalQuery $q): bool => $q->q === 'Dubai sold a stake to an investment firm');
+    $extra = static fn (SignalQueryPlan $plan): SignalSourceQuery => collect($plan->queries)
+        ->firstOrFail(static fn (SignalSourceQuery $q): bool => $q->q === 'Dubai sold a stake to an investment firm');
 
     expect($extra($acquisitionFirst)->eventKey)->toBe(SignalPresetCatalogue::ACQUISITION)
         ->and($extra($fundingFirst)->eventKey)->toBe(SignalPresetCatalogue::FUNDING_ROUND);

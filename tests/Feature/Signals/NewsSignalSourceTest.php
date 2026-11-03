@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use App\Modules\Signals\Contracts\NewsSearchClient;
-use App\Modules\Signals\Data\NewsItem;
-use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Contracts\SignalSourceProvider;
+use App\Modules\Signals\Data\SignalSourceQuery;
+use App\Modules\Signals\Data\SourceItem;
 use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
@@ -18,9 +18,9 @@ beforeEach(function (): void {
     Http::preventStrayRequests();
 });
 
-function newsQuery(string $q = 'Dubai startup raises funding'): SignalQuery
+function newsQuery(string $q = 'Dubai startup raises funding'): SignalSourceQuery
 {
-    return new SignalQuery(
+    return new SignalSourceQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         region: SearchRegion::Ae,
         q: $q,
@@ -47,10 +47,10 @@ it('maps a /news payload into normalised news items', function (): void {
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(newsQuery());
+    $items = app(SignalSourceProvider::class)->fetch(newsQuery());
 
     expect($items)->toHaveCount(1)
-        ->and($items[0])->toBeInstanceOf(NewsItem::class)
+        ->and($items[0])->toBeInstanceOf(SourceItem::class)
         ->and($items[0]->title)->toBe('Dubai startup Acme closes $40m Series A')
         ->and($items[0]->source)->toBe('Gulf Business')
         ->and($items[0]->urlHash)->toHaveLength(40)
@@ -60,7 +60,7 @@ it('maps a /news payload into normalised news items', function (): void {
 it('sends q, gl, hl, tbs and num with the API key header', function (): void {
     Http::fake(['google.serper.dev/*' => Http::response(['news' => []])]);
 
-    app(NewsSearchClient::class)->search(newsQuery('UAE Series B funding'));
+    app(SignalSourceProvider::class)->fetch(newsQuery('UAE Series B funding'));
 
     Http::assertSent(function ($request): bool {
         $body = $request->data();
@@ -85,7 +85,7 @@ it('drops results on ignored portal/aggregator domains', function (): void {
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(newsQuery());
+    $items = app(SignalSourceProvider::class)->fetch(newsQuery());
 
     expect($items)->toHaveCount(1)
         ->and($items[0]->link)->toBe('https://arabianbusiness.com/deal');
@@ -101,7 +101,7 @@ it('rejects a result without a usable http(s) link', function (): void {
         ]),
     ]);
 
-    expect(app(NewsSearchClient::class)->search(newsQuery()))->toBe([]);
+    expect(app(SignalSourceProvider::class)->fetch(newsQuery()))->toBe([]);
 });
 
 it('collapses duplicate articles (same canonical URL) within one response', function (): void {
@@ -114,7 +114,7 @@ it('collapses duplicate articles (same canonical URL) within one response', func
         ]),
     ]);
 
-    expect(app(NewsSearchClient::class)->search(newsQuery()))->toHaveCount(1);
+    expect(app(SignalSourceProvider::class)->fetch(newsQuery()))->toHaveCount(1);
 });
 
 it('retries on a 429 then succeeds', function (): void {
@@ -124,7 +124,7 @@ it('retries on a 429 then succeeds', function (): void {
             ->push(['news' => [['title' => 'Deal', 'link' => 'https://arabianbusiness.com/deal', 'snippet' => 'a']]], 200),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(newsQuery());
+    $items = app(SignalSourceProvider::class)->fetch(newsQuery());
 
     expect($items)->toHaveCount(1);
     Http::assertSentCount(2);
@@ -135,10 +135,10 @@ it('fails with a retryable domain exception when the provider errors', function 
     config()->set('signals.serper.retry_times', 0);
 
     try {
-        app(NewsSearchClient::class)->search(newsQuery());
+        app(SignalSourceProvider::class)->fetch(newsQuery());
         $this->fail('Expected a SignalsException.');
     } catch (SignalsException $e) {
-        expect($e->errorCode())->toBe('signals.news_provider_failed')
+        expect($e->errorCode())->toBe('signals.source_unavailable')
             ->and($e->isRetryable())->toBeTrue();
     }
 });
@@ -150,7 +150,7 @@ it('opens the circuit after repeated transient failures', function (): void {
 
     foreach (range(1, 3) as $ignored) {
         try {
-            app(NewsSearchClient::class)->search(newsQuery());
+            app(SignalSourceProvider::class)->fetch(newsQuery());
         } catch (SignalsException) {
             // expected
         }
@@ -159,7 +159,7 @@ it('opens the circuit after repeated transient failures', function (): void {
     // 3 failures reach the threshold, so the breaker is open: the next call is refused outright,
     // proven behaviourally — it throws and sends no HTTP request.
     Http::assertSentCount(3);
-    expect(fn () => app(NewsSearchClient::class)->search(newsQuery()))->toThrow(SignalsException::class);
+    expect(fn () => app(SignalSourceProvider::class)->fetch(newsQuery()))->toThrow(SignalsException::class);
     Http::assertSentCount(3); // still 3 — the refused call sent nothing
 });
 
@@ -170,7 +170,7 @@ it('does not trip the breaker on a 4xx response', function (): void {
 
     foreach (range(1, 5) as $ignored) {
         try {
-            app(NewsSearchClient::class)->search(newsQuery());
+            app(SignalSourceProvider::class)->fetch(newsQuery());
         } catch (SignalsException) {
             // expected
         }
@@ -185,7 +185,7 @@ it('does not retry a 4xx response', function (): void {
     config()->set('signals.serper.retry_times', 2);
     Http::fake(['google.serper.dev/*' => Http::response('bad request', 400)]);
 
-    expect(fn () => app(NewsSearchClient::class)->search(newsQuery()))->toThrow(SignalsException::class);
+    expect(fn () => app(SignalSourceProvider::class)->fetch(newsQuery()))->toThrow(SignalsException::class);
     Http::assertSentCount(1); // a 4xx is our fault — not retried
 });
 
@@ -194,10 +194,10 @@ it('fails fast and sends nothing when the API key is missing', function (): void
     Http::fake();
 
     try {
-        app(NewsSearchClient::class)->search(newsQuery());
+        app(SignalSourceProvider::class)->fetch(newsQuery());
         $this->fail('Expected a SignalsException.');
     } catch (SignalsException $e) {
-        expect($e->errorCode())->toBe('signals.news_provider_misconfigured')
+        expect($e->errorCode())->toBe('signals.source_misconfigured')
             ->and($e->isRetryable())->toBeFalse();
     }
 
@@ -208,7 +208,7 @@ it('rejects an unsupported news driver', function (): void {
     config()->set('signals.serper.provider', 'bing');
     Http::fake();
 
-    expect(fn () => app(NewsSearchClient::class)->search(newsQuery()))
+    expect(fn () => app(SignalSourceProvider::class)->fetch(newsQuery()))
         ->toThrow(SignalsException::class);
     Http::assertNothingSent();
 });
@@ -223,7 +223,7 @@ it('drops a subdomain of an ignored domain but keeps a look-alike', function ():
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(newsQuery());
+    $items = app(SignalSourceProvider::class)->fetch(newsQuery());
 
     expect($items)->toHaveCount(1)
         ->and($items[0]->link)->toBe('https://notbayut.com/story');
@@ -238,7 +238,7 @@ it('leaves publishedAt null when the date is unparseable', function (): void {
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(newsQuery());
+    $items = app(SignalSourceProvider::class)->fetch(newsQuery());
 
     expect($items)->toHaveCount(1)
         ->and($items[0]->publishedAt)->toBeNull();
@@ -261,7 +261,7 @@ it('clamps oversized text and rejects an over-long link', function (): void {
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(newsQuery());
+    $items = app(SignalSourceProvider::class)->fetch(newsQuery());
 
     expect($items)->toHaveCount(1)
         ->and(mb_strlen($items[0]->title))->toBeLessThanOrEqual(255)
@@ -273,12 +273,12 @@ it('clamps oversized text and rejects an over-long link', function (): void {
 it('fails on a 200 response whose body is not the expected shape', function (): void {
     Http::fake(['google.serper.dev/*' => Http::response('<html>auth required</html>', 200)]);
 
-    expect(fn () => app(NewsSearchClient::class)->search(newsQuery()))
+    expect(fn () => app(SignalSourceProvider::class)->fetch(newsQuery()))
         ->toThrow(SignalsException::class);
 });
 
 it('treats a valid JSON object with no news key as empty results', function (): void {
     Http::fake(['google.serper.dev/*' => Http::response(['searchParameters' => ['q' => 'x']], 200)]);
 
-    expect(app(NewsSearchClient::class)->search(newsQuery()))->toBe([]);
+    expect(app(SignalSourceProvider::class)->fetch(newsQuery()))->toBe([]);
 });

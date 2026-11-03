@@ -12,9 +12,8 @@ use App\Modules\LeadsWorkspace\Enums\LeadActivityType;
 use App\Modules\LeadsWorkspace\Models\LeadActivity;
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
-use App\Modules\Signals\Contracts\NewsSearchClient;
-use App\Modules\Signals\Data\NewsItem;
 use App\Modules\Signals\Data\SignalFilters;
+use App\Modules\Signals\Data\SourceItem;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalsDetected;
 use App\Modules\Signals\Http\Resources\SignalResource;
@@ -23,8 +22,9 @@ use App\Modules\Signals\Models\SignalCluster;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalClusterer;
+use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
-use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use App\Modules\Signals\Testing\FakeSignalSource;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -44,8 +44,8 @@ uses(RefreshDatabase::class);
 beforeEach(function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    $this->fakeNews = new FakeNewsSearchClient;
-    app()->instance(NewsSearchClient::class, $this->fakeNews);
+    $this->fakeNews = new FakeSignalSource;
+    app(SignalSourceRegistry::class)->register($this->fakeNews);
 
     $this->fakeAi = new FakeAiTransport;
     app()->instance(AiTransport::class, $this->fakeAi);
@@ -60,9 +60,9 @@ beforeEach(function (): void {
 /**
  * One Dubai acquisition, as eight outlets wrote it.
  *
- * @return list<NewsItem>
+ * @return list<SourceItem>
  */
-function clusterCoverage(FakeNewsSearchClient $news, string $link = 'zephyr'): array
+function clusterCoverage(FakeSignalSource $news, string $link = 'zephyr'): array
 {
     $headlines = [
         ['Regional Holdings acquires Dubai logistics firm Zephyr', 'Gulf News'],

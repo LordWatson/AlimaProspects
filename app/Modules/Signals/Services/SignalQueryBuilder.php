@@ -7,10 +7,11 @@ namespace App\Modules\Signals\Services;
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
-use App\Modules\Signals\Data\SignalQuery;
 use App\Modules\Signals\Data\SignalQueryPlan;
 use App\Modules\Signals\Data\SignalQuerySpec;
+use App\Modules\Signals\Data\SignalSourceQuery;
 use App\Modules\Signals\Enums\SearchRegion;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use Illuminate\Support\Facades\Log;
@@ -101,7 +102,7 @@ final class SignalQueryBuilder
             return $this->buildEntityQueries($spec, $definitions, $tbs, $num, $maxQueries);
         }
 
-        /** @var array<string, SignalQuery> $queries keyed by region|eventKey|q to dedupe */
+        /** @var array<string, SignalSourceQuery> $queries keyed by region|eventKey|q to dedupe */
         $queries = [];
 
         // **Place, then region, then type, then template.** That order is also the trim order,
@@ -115,9 +116,11 @@ final class SignalQueryBuilder
         foreach ($locations as $location) {
             foreach ($regions as $region) {
                 foreach ($definitions as $definition) {
+                    [$kinds, $config] = $this->sourcesFor($definition);
+
                     foreach ($this->templatesFor($definition, $region) as $template) {
                         $q = $this->compose($template, $location);
-                        $this->push($queries, $region, $definition->key, $q, $tbs, $num, $ignoreDomains);
+                        $this->push($queries, $region, $definition->key, $q, $tbs, $num, $ignoreDomains, $kinds, $config);
                     }
                 }
             }
@@ -162,8 +165,12 @@ final class SignalQueryBuilder
         int $num,
         ?int $maxQueries,
     ): SignalQueryPlan {
-        /** @var array<string, SignalQuery> $queries */
+        /** @var array<string, SignalSourceQuery> $queries */
         $queries = [];
+
+        // A bare company name belongs to no single type, so it is asked of every source any watched
+        // type runs on — see `unionSourcesFor()` for why the union rather than the first.
+        $unionKinds = $this->unionSourcesFor($definitions);
 
         // **Entity, then region, then (for a person) type.** Entity outermost, because the trim
         // keeps the first N and an account half-searched is worse than an account not searched this
@@ -183,6 +190,7 @@ final class SignalQueryBuilder
                             $tbs,
                             $num,
                             $spec->ignoreDomains,
+                            $unionKinds,
                         );
 
                         continue;
@@ -195,6 +203,8 @@ final class SignalQueryBuilder
                             continue;
                         }
 
+                        [$kinds, $config] = $this->sourcesFor($definition);
+
                         $this->push(
                             $queries,
                             $region,
@@ -203,6 +213,8 @@ final class SignalQueryBuilder
                             $tbs,
                             $num,
                             $spec->ignoreDomains,
+                            $kinds,
+                            $config,
                         );
                     }
                 }
@@ -248,7 +260,7 @@ final class SignalQueryBuilder
      * a ceiling of 40 gets the first four types of its first place, and `wasTrimmed()` is how the
      * screen says so.
      *
-     * @param  list<SignalQuery>  $queries
+     * @param  list<SignalSourceQuery>  $queries
      */
     private function plan(array $queries, SignalQuerySpec $spec, ?int $maxQueries = null): SignalQueryPlan
     {
@@ -305,7 +317,7 @@ final class SignalQueryBuilder
      * @param  list<SignalDefinition>  $definitions
      * @param  list<string>  $locations
      * @param  list<SearchRegion>  $regions
-     * @param  array<string, SignalQuery>  $queries
+     * @param  array<string, SignalSourceQuery>  $queries
      * @param  list<string>  $ignoreDomains
      */
     private function appendBuyingSignalQueries(
@@ -332,10 +344,15 @@ final class SignalQueryBuilder
                 continue;
             }
 
+            // The matched definition's own sources, not the union: a buying signal that mapped onto
+            // one watched type is a question about *that* type, so it is asked wherever that type
+            // looks and nowhere else.
+            [$kinds, $config] = $this->sourcesFor($definition);
+
             foreach ($locations as $location) {
                 foreach ($regions as $region) {
                     $q = $this->compose(trim($location.' '.$signal), $location);
-                    $this->push($queries, $region, $definition->key, $q, $tbs, $num, $ignoreDomains);
+                    $this->push($queries, $region, $definition->key, $q, $tbs, $num, $ignoreDomains, $kinds, $config);
                 }
             }
         }
@@ -398,36 +415,111 @@ final class SignalQueryBuilder
     }
 
     /**
-     * Add a query, de-duplicating identical (region + event key + text) triples.
+     * Add a query **per source** (S13), de-duplicating identical (source + region + event key +
+     * text) tuples.
      *
      * The region is part of the key because the same text in two regions is two different searches:
      * "London company acquisition" asked with `gl=gb` and with `gl=ae` returns different news,
      * which is the whole reason a watch can name more than one.
      *
-     * @param  array<string, SignalQuery>  $queries
+     * **The source joined it at S13** for the same kind of reason: the same template asked of
+     * `/news` and of `/search` returns different things — the spike found `/search` answers queries
+     * the news endpoint has nothing for — and the two have to stay attributable apart, or the run's
+     * per-source breakdown and the card's source badge mean nothing. So one template on two sources
+     * is **two** queries and costs twice, which is also why the per-run ceiling now bounds a watch
+     * across sources rather than within one.
+     *
+     * @param  array<string, SignalSourceQuery>  $queries
      * @param  list<string>  $ignoreDomains
+     * @param  list<SignalSourceKind>  $kinds  The sources to ask. Empty is treated as none, not as
+     *                                         news: a caller with no sources has nothing to ask, and
+     *                                         defaulting here would hide a definition whose keys were
+     *                                         all withdrawn.
+     * @param  array<string, array<string, mixed>>  $config  Per-source settings, keyed by source.
      */
-    private function push(array &$queries, SearchRegion $region, string $eventKey, string $q, string $tbs, int $num, array $ignoreDomains = []): void
-    {
+    private function push(
+        array &$queries,
+        SearchRegion $region,
+        string $eventKey,
+        string $q,
+        string $tbs,
+        int $num,
+        array $ignoreDomains = [],
+        array $kinds = [],
+        array $config = [],
+    ): void {
         if ($q === '') {
             return;
         }
 
-        $key = $region->value.'|'.$eventKey.'|'.$q;
+        foreach ($kinds as $kind) {
+            $key = $kind->value.'|'.$region->value.'|'.$eventKey.'|'.$q;
 
-        if (isset($queries[$key])) {
-            return;
+            if (isset($queries[$key])) {
+                continue;
+            }
+
+            $queries[$key] = new SignalSourceQuery(
+                eventKey: $eventKey,
+                q: $q,
+                region: $region,
+                gl: $region->gl(),
+                hl: $region->hl(),
+                tbs: $tbs,
+                num: $num,
+                ignoreDomains: $ignoreDomains,
+                kind: $kind,
+                config: $config[$kind->value] ?? [],
+            );
+        }
+    }
+
+    /**
+     * The sources a definition runs on, and its own settings for each.
+     *
+     * @return array{0: list<SignalSourceKind>, 1: array<string, array<string, mixed>>}
+     */
+    private function sourcesFor(SignalDefinition $definition): array
+    {
+        $kinds = $definition->sourceKinds();
+        $config = [];
+
+        foreach ($kinds as $kind) {
+            $config[$kind->value] = $definition->sourceConfig($kind);
         }
 
-        $queries[$key] = new SignalQuery(
-            eventKey: $eventKey,
-            q: $q,
-            region: $region,
-            gl: $region->gl(),
-            hl: $region->hl(),
-            tbs: $tbs,
-            num: $num,
-            ignoreDomains: $ignoreDomains,
-        );
+        return [$kinds, $config];
+    }
+
+    /**
+     * The union of every definition's sources, in enum declaration order.
+     *
+     * For the queries that belong to no single type: an entity watch's bare company names (S10) and
+     * the ICP's buying-signal queries. Both ask "what happened to / around this", and the answer
+     * could be classified as any of the watched types — so if **any** watched type runs on the wider
+     * web, the question is worth asking there too. The alternative, picking the first definition's
+     * sources, would make the result depend on pivot order.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     * @return list<SignalSourceKind>
+     */
+    public function unionSourcesFor(array $definitions): array
+    {
+        $kinds = [];
+
+        foreach ($definitions as $definition) {
+            foreach ($definition->sourceKinds() as $kind) {
+                if (! in_array($kind, $kinds, strict: true)) {
+                    $kinds[] = $kind;
+                }
+            }
+        }
+
+        // Enum order, so a plan's queries come out in a stable order whatever order the definitions
+        // arrived in — which is what makes the trim deterministic.
+        return array_values(array_filter(
+            SignalSourceKind::cases(),
+            static fn (SignalSourceKind $kind): bool => in_array($kind, $kinds, strict: true),
+        ));
     }
 }

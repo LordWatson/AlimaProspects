@@ -10,6 +10,7 @@ use App\Modules\Core\Enums\Market;
 use App\Modules\Signals\Enums\SignalCategory;
 use App\Modules\Signals\Enums\SignalIcon;
 use App\Modules\Signals\Enums\SignalScoreComponent;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Services\PlatformPresetReader;
 use Database\Factories\SignalDefinitionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -44,6 +45,8 @@ use Illuminate\Support\Carbon;
  * @property bool $is_active
  * @property list<string> $query_templates
  * @property array<string, list<string>>|null $query_templates_i18n
+ * @property array<array-key, mixed>|null $source_keys Read through `sourceKinds()`, never directly: a key this build does not know must be skipped rather than trusted.
+ * @property array<array-key, mixed>|null $source_config Read through `sourceConfig()`, which hands a provider only its own slice.
  * @property list<string>|null $match_keywords
  * @property array{includes?: list<string>, excludes?: list<string>}|null $classification_rules
  * @property array{min_confidence?: int|null, min_relevance?: int|null}|null $thresholds
@@ -102,6 +105,8 @@ class SignalDefinition extends Model
         'is_active',
         'query_templates',
         'query_templates_i18n',
+        'source_keys',
+        'source_config',
         'match_keywords',
         'classification_rules',
         'thresholds',
@@ -299,6 +304,56 @@ class SignalDefinition extends Model
     }
 
     /**
+     * The sources this type runs on (S13, ADR 0023 §2).
+     *
+     * **Never empty.** A null column, an empty list, or a list of keys this build does not
+     * recognise all resolve to `[News]` — see `SignalSourceKind::parseList()`. The alternative is a
+     * type that searches nowhere and whose run completes successfully having found nothing, which is
+     * the most confusing failure this feature could have; S8 already learned it once with locations
+     * and `SignalQuerySpec` defaults the same way for the same reason.
+     *
+     * This is **what the definition asks for**, not what it will get. Whether a provider is
+     * registered for a kind, and whether that provider will serve this definition, is
+     * `SignalSourceRegistry::forDefinition()`'s question.
+     *
+     * @return list<SignalSourceKind>
+     */
+    public function sourceKinds(): array
+    {
+        return SignalSourceKind::parseList($this->source_keys);
+    }
+
+    /**
+     * Whether this type runs on a given source.
+     */
+    public function usesSource(SignalSourceKind $kind): bool
+    {
+        return in_array($kind, $this->sourceKinds(), strict: true);
+    }
+
+    /**
+     * One source's slice of `source_config`, which is all a provider is ever handed.
+     *
+     * Scoped per source deliberately: a provider that could read the whole column could read another
+     * source's credentials, and the column is the one place a feed URL and a webhook secret id will
+     * live (S13b).
+     *
+     * @return array<string, mixed>
+     */
+    public function sourceConfig(SignalSourceKind $kind): array
+    {
+        $config = $this->source_config;
+
+        if (! is_array($config)) {
+            return [];
+        }
+
+        $slice = $config[$kind->value] ?? [];
+
+        return is_array($slice) ? $slice : [];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function casts(): array
@@ -310,6 +365,8 @@ class SignalDefinition extends Model
             'is_active' => 'boolean',
             'query_templates' => 'array',
             'query_templates_i18n' => 'array',
+            'source_keys' => 'array',
+            'source_config' => 'array',
             'match_keywords' => 'array',
             'classification_rules' => 'array',
             'thresholds' => 'array',

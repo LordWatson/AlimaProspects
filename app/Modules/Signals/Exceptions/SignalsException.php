@@ -22,48 +22,153 @@ final class SignalsException extends DomainException
      */
     protected bool $retryable = false;
 
+    /**
+     * Which signal source this error is about (S13), or null for an error that is not about one.
+     *
+     * @see self::source()
+     */
+    protected ?string $source = null;
+
     public function isRetryable(): bool
     {
         return $this->retryable;
     }
 
     /**
-     * The news provider failed (timeout, 5xx/429, or a tripped circuit breaker). Transient —
-     * retryable.
+     * A signal source failed transiently (timeout, 5xx/429, or a tripped circuit breaker) —
+     * **retryable**, so a queued run bubbles it and the job retries with backoff.
+     *
+     * Renamed from `newsProviderFailed()` at S13 (ADR 0023): there is more than one source now, and
+     * the message a member reads should not say "news" when their web-search source is the one that
+     * is unwell.
      */
-    public static function newsProviderFailed(): self
+    public static function sourceUnavailable(string $source = 'news'): self
     {
-        $e = new self('We couldn’t reach the news service. Please try again shortly.');
-        $e->errorCode = 'signals.news_provider_failed';
+        $e = new self('We couldn’t reach the '.self::sourceLabel($source).'. Please try again shortly.');
+        $e->errorCode = 'signals.source_unavailable';
         $e->status = 502;
         $e->retryable = true;
+        $e->source = $source;
 
         return $e;
     }
 
     /**
-     * The news provider is missing required configuration (e.g. the Serper API key) — never
-     * retryable.
+     * A signal source answered, and the answer was unusable: a malformed 200, an HTML error page
+     * behind a success status, a 401/403, a 404 on the endpoint.
+     *
+     * **Not retryable, and the breaker stays shut.** Every case here is ours — a wrong key, a wrong
+     * endpoint, a provider changing its payload — and none of them is evidence the source is down,
+     * so opening the circuit for every team would be the wrong conclusion drawn loudly.
      */
-    public static function newsProviderMisconfigured(): self
+    public static function sourceFailed(string $source = 'news'): self
     {
-        $e = new self('Signals isn’t set up yet. An administrator needs to add the news service’s API key.');
-        $e->errorCode = 'signals.news_provider_misconfigured';
-        $e->status = 503;
+        $e = new self('The '.self::sourceLabel($source).' returned something we couldn’t read.');
+        $e->errorCode = 'signals.source_failed';
+        $e->status = 502;
+        $e->source = $source;
 
         return $e;
     }
 
     /**
-     * A news driver other than the supported one was configured — a config error, not transient.
+     * A source refused **this particular query** — a verdict about the query, not about the source
+     * (ADR 0023 §4).
+     *
+     * Serper answers a `site:` or quoted-phrase pattern with `HTTP 400 "Query pattern not allowed
+     * for free accounts."`, which the S13a spike found. Before S13 that raised the retryable failure
+     * above, so one template a member had typed with a quote in it failed their whole watch, three
+     * times over, re-paying for every other query in the plan each time — and reported that we
+     * couldn't reach the news service, which was untrue and unfixable by them.
+     *
+     * So it is **not retryable**, it does **not** trip the breaker, and `RunSignalWatchAction`
+     * catches it **per query**: the query is counted as rejected in the run's source breakdown and
+     * the rest of the plan proceeds. A run whose every query was rejected completes having found
+     * nothing, rather than failing — nothing is broken; we asked badly.
      */
-    public static function newsProviderUnavailable(): self
+    public static function sourceQueryRejected(string $source = 'news'): self
     {
-        $e = new self('That news source isn’t available.');
-        $e->errorCode = 'signals.news_provider_unavailable';
-        $e->status = 503;
+        $e = new self('The '.self::sourceLabel($source).' wouldn’t accept one of your search templates. Try plain keywords, without quotation marks or `site:`.');
+        $e->errorCode = 'signals.source_query_rejected';
+        $e->status = 422;
+        $e->source = $source;
 
         return $e;
+    }
+
+    /**
+     * A source is missing required configuration (e.g. the Serper API key) — never retryable, so the
+     * job fails fast instead of burning its retries on a request that can never succeed.
+     */
+    public static function sourceMisconfigured(string $source = 'news'): self
+    {
+        $e = new self('Signals isn’t set up yet. An administrator needs to add the '.self::sourceLabel($source).'’s API key.');
+        $e->errorCode = 'signals.source_misconfigured';
+        $e->status = 503;
+        $e->source = $source;
+
+        return $e;
+    }
+
+    /**
+     * A driver other than the supported one was configured for a source — a config error, not
+     * transient.
+     */
+    public static function sourceDriverUnsupported(string $source = 'news'): self
+    {
+        $e = new self('That signal source isn’t available.');
+        $e->errorCode = 'signals.source_driver_unsupported';
+        $e->status = 503;
+        $e->source = $source;
+
+        return $e;
+    }
+
+    /**
+     * No provider is registered for a source key (S13) — the registry's refusal.
+     *
+     * Raised where a *member* named the source, so it is worth telling them. A **run** meeting a
+     * stored key with no provider asks `SignalSourceRegistry::find()` instead and skips it: a source
+     * withdrawn between deploys, or one whose credential was pulled, must not crash a scheduled
+     * watch at three in the morning.
+     */
+    public static function unknownSource(string $source): self
+    {
+        $e = new self('That signal source isn’t available.');
+        $e->errorCode = 'signals.unknown_source';
+        $e->status = 422;
+        $e->source = $source;
+
+        return $e;
+    }
+
+    /**
+     * The source this error is about, for the run's per-source breakdown.
+     *
+     * A field rather than something parsed back out of the message, because the breakdown keys on it
+     * and a translated or reworded sentence must not be able to move a cost onto the wrong row.
+     */
+    public function source(): ?string
+    {
+        return $this->source;
+    }
+
+    /**
+     * A source's name as a sentence reads it. Deliberately not `SignalSourceKind::label()`: that is
+     * a form label ("Web search") and this is the middle of a sentence ("the web-search service"),
+     * and a key this build does not know still has to produce a readable line — which is why the
+     * parameter is a string rather than the enum.
+     */
+    private static function sourceLabel(string $source): string
+    {
+        return match ($source) {
+            'news' => 'news service',
+            'web_search' => 'web-search service',
+            'companies_house' => 'Companies House service',
+            'feed' => 'feed',
+            'webhook' => 'events API',
+            default => 'signal source',
+        };
     }
 
     /**

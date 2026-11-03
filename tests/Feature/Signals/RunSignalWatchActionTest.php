@@ -10,7 +10,6 @@ use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
-use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Enums\SignalRunStatus;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalRunProgressed;
@@ -19,8 +18,9 @@ use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
-use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use App\Modules\Signals\Testing\FakeSignalSource;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -31,8 +31,8 @@ uses(RefreshDatabase::class);
 beforeEach(function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    $this->fakeNews = new FakeNewsSearchClient;
-    app()->instance(NewsSearchClient::class, $this->fakeNews);
+    $this->fakeNews = new FakeSignalSource;
+    app(SignalSourceRegistry::class)->register($this->fakeNews);
 
     $this->fakeAi = new FakeAiTransport;
     app()->instance(AiTransport::class, $this->fakeAi);
@@ -214,7 +214,7 @@ it('fails the run cleanly on a non-retryable provider failure', function (): voi
     $team = Team::factory()->create();
     $watch = dubaiWatch($team);
 
-    $this->fakeNews->willFail(SignalsException::newsProviderMisconfigured());
+    $this->fakeNews->willFail(SignalsException::sourceMisconfigured());
 
     $run = runWatchFor($team, $watch);
 
@@ -226,7 +226,7 @@ it('bubbles a retryable provider failure so the job can retry', function (): voi
     $team = Team::factory()->create();
     $watch = dubaiWatch($team);
 
-    $this->fakeNews->willFail(SignalsException::newsProviderFailed());
+    $this->fakeNews->willFail(SignalsException::sourceUnavailable());
 
     expect(fn () => runWatchFor($team, $watch))->toThrow(SignalsException::class);
 });

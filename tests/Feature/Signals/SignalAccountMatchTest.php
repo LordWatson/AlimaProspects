@@ -16,8 +16,7 @@ use App\Modules\Notifications\Enums\NotificationType;
 use App\Modules\Notifications\Listeners\AnnounceAccountSignals;
 use App\Modules\Notifications\Models\Notification;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
-use App\Modules\Signals\Contracts\NewsSearchClient;
-use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Data\SignalSourceQuery;
 use App\Modules\Signals\Enums\SignalMatchConfidence;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Enums\WatchlistEntityType;
@@ -29,8 +28,9 @@ use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
 use App\Modules\Signals\Services\SignalLeadMatcher;
+use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
-use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use App\Modules\Signals\Testing\FakeSignalSource;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -53,8 +53,8 @@ beforeEach(function (): void {
 
     $this->seed(AiPromptTemplateSeeder::class);
 
-    $this->fakeNews = new FakeNewsSearchClient;
-    app()->instance(NewsSearchClient::class, $this->fakeNews);
+    $this->fakeNews = new FakeSignalSource;
+    app(SignalSourceRegistry::class)->register($this->fakeNews);
 
     $this->fakeAi = new FakeAiTransport;
     app()->instance(AiTransport::class, $this->fakeAi);
@@ -143,7 +143,7 @@ it('searches a watchlist by bare company name, with no keyword and no quotes', f
 
     runAccountWatch($team, $watch);
 
-    $queries = array_map(static fn (SignalQuery $q): string => $q->q, $this->fakeNews->queries());
+    $queries = array_map(static fn (SignalSourceQuery $q): string => $q->q, $this->fakeNews->queries());
 
     // The spike settled both halves of this: every quoted query returned nothing, and appending a
     // keyword *lost* genuine results. So a company is searched by name alone and the classifier
@@ -180,7 +180,7 @@ it('qualifies a person by a keyword, because a name alone is every namesake aliv
 
     runAccountWatch($team, $watch);
 
-    $queries = array_map(static fn (SignalQuery $q): string => $q->q, $this->fakeNews->queries());
+    $queries = array_map(static fn (SignalSourceQuery $q): string => $q->q, $this->fakeNews->queries());
 
     expect($queries)->not->toBe(['Jane Founder'])
         ->and($queries[0] ?? '')->toStartWith('Jane Founder ');
@@ -201,7 +201,7 @@ it('covers a long list a window at a time, and comes round again', function (): 
     runAccountWatch($team, $watch);
 
     // The fake records every query it was ever asked, so the second run's are the tail.
-    $asked = static fn (array $queries): array => array_map(static fn (SignalQuery $q): string => $q->q, $queries);
+    $asked = static fn (array $queries): array => array_map(static fn (SignalSourceQuery $q): string => $q->q, $queries);
 
     expect($asked($this->fakeNews->queries()))->toBe(['First Ltd', 'Second Ltd'])
         ->and((int) $watch->refresh()->entity_cursor)->toBe(2);
@@ -412,7 +412,7 @@ it('takes as many accounts as the run can afford, not as many as the window allo
     $this->fakeAi->queueStructured(['events' => []]);
     runAccountWatch($team, $watch);
 
-    $asked = array_map(static fn (SignalQuery $q): string => $q->q, $this->fakeNews->queries());
+    $asked = array_map(static fn (SignalSourceQuery $q): string => $q->q, $this->fakeNews->queries());
 
     expect(array_values(array_unique($asked)))->toBe(['First Ltd', 'Second Ltd'])
         ->and(count($asked))->toBe(4)
@@ -423,7 +423,7 @@ it('takes as many accounts as the run can afford, not as many as the window allo
     $this->fakeAi->queueStructured(['events' => []]);
     runAccountWatch($team, $watch);
 
-    expect(array_values(array_unique(array_slice(array_map(static fn (SignalQuery $q): string => $q->q, $this->fakeNews->queries()), 4))))
+    expect(array_values(array_unique(array_slice(array_map(static fn (SignalSourceQuery $q): string => $q->q, $this->fakeNews->queries()), 4))))
         ->toBe(['Third Ltd', 'Fourth Ltd']);
 });
 

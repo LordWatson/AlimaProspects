@@ -6,9 +6,11 @@ namespace App\Modules\Signals\Support;
 
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\Signals\Data\SignalQueryPlan;
 use App\Modules\Signals\Data\SignalQuerySpec;
 use App\Modules\Signals\Enums\SignalCategory;
 use App\Modules\Signals\Enums\SignalIcon;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\SignalWatchCadence;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
@@ -46,12 +48,19 @@ final class SignalCostEstimator
     ) {}
 
     /**
-     * The monthly cost of a definition with this many templates, for this team.
+     * The monthly cost of a definition with this many templates **on these sources**, for this team.
+     *
+     * The sources joined the signature at S13 and they are a multiplier, not a detail: one template
+     * on two sources is two paid searches per run (ADR 0023, `SignalQueryBuilder::push()`). A form
+     * that let somebody tick "web search" without the number moving would be the one place in this
+     * feature that hid a doubling of cost.
+     *
+     * @param  list<SignalSourceKind>  $sourceKinds  Empty means news, which is what a type starts on.
      */
-    public function estimate(Team $team, int $templates): SignalCostEstimate
+    public function estimate(Team $team, int $templates, array $sourceKinds = []): SignalCostEstimate
     {
         $templates = max(0, $templates);
-        $stub = $this->stub($templates);
+        $stub = $this->stub($templates, $sourceKinds);
 
         /** @var list<SignalWatch> $watches */
         $watches = $this->teamContext->run($team, fn (): array => SignalWatch::query()
@@ -63,27 +72,32 @@ final class SignalCostEstimator
         $perRun = 0;
         $perMonth = 0;
         $runsPerMonth = 0;
+        $costPerMonth = 0;
 
         if ($hypothetical) {
             // No watch yet — which is the normal case for somebody building their first type, and
             // the moment the number is most worth showing. Costed as one daily watch over the
             // team's own market defaults, which is exactly what the one-click first watch creates.
-            $perRun = $templates === 0
-                ? 0
-                : $this->queries->buildFromSpec(SignalQuerySpec::forDraft($team, [], []), [$stub])->count();
+            $plan = $templates === 0
+                ? null
+                : $this->queries->buildFromSpec(SignalQuerySpec::forDraft($team, [], []), [$stub]);
+            $perRun = $plan?->count() ?? 0;
             $runsPerMonth = $this->runsPerMonth(SignalWatchCadence::Daily);
             $perMonth = $perRun * $runsPerMonth;
+            $costPerMonth = $this->costOf($plan) * $runsPerMonth;
         } else {
             foreach ($watches as $watch) {
-                $queries = $templates === 0
-                    ? 0
-                    : $this->queries->buildFromSpec(SignalQuerySpec::forWatch($watch), [$stub])->count();
+                $plan = $templates === 0
+                    ? null
+                    : $this->queries->buildFromSpec(SignalQuerySpec::forWatch($watch), [$stub]);
 
+                $queries = $plan?->count() ?? 0;
                 $runs = $this->runsPerMonth($watch->cadence);
 
                 $perRun += $queries;
                 $perMonth += $queries * $runs;
                 $runsPerMonth += $runs;
+                $costPerMonth += $this->costOf($plan) * $runs;
             }
         }
 
@@ -92,10 +106,34 @@ final class SignalCostEstimator
             queriesPerRun: $perRun,
             runsPerMonth: $runsPerMonth,
             queriesPerMonth: $perMonth,
-            costMicrosPerMonth: $perMonth * (int) config('signals.cost_micros_per_request', 1_000),
+            costMicrosPerMonth: $costPerMonth,
             watchCount: $hypothetical ? 1 : count($watches),
             hypothetical: $hypothetical,
         );
+    }
+
+    /**
+     * What one run of a plan would cost, summed **per query at its own source's price**.
+     *
+     * Not `count() * config('signals.cost_micros_per_request')`, which is what this was until S13:
+     * sources are priced separately (`signals.sources.*.cost_micros_per_request`) and one of the
+     * declared ones is free, so a flat multiplier would quote a free source as though it were
+     * Serper. Reading each query's own kind cannot drift from what the run will be charged, for the
+     * same reason the query count is taken from a real plan rather than multiplied out.
+     */
+    private function costOf(?SignalQueryPlan $plan): int
+    {
+        if (! $plan instanceof SignalQueryPlan) {
+            return 0;
+        }
+
+        $cost = 0;
+
+        foreach ($plan->queries as $query) {
+            $cost += $query->kind->costMicrosPerRequest();
+        }
+
+        return $cost;
     }
 
     /**
@@ -105,8 +143,14 @@ final class SignalCostEstimator
      * `SignalQuerySpec` was extracted, which is what makes this possible at all. The templates are
      * distinct so the builder's de-duplication does not collapse them, and each carries
      * `{location}` so the count reflects a real per-place multiplication.
+     *
+     * `source_keys` is set from the caller's choice (S13), because the builder emits one query per
+     * source and the whole point of this class is that the arithmetic is the builder's rather than
+     * ours.
+     *
+     * @param  list<SignalSourceKind>  $sourceKinds
      */
-    private function stub(int $templates): SignalDefinition
+    private function stub(int $templates, array $sourceKinds = []): SignalDefinition
     {
         $definition = new SignalDefinition;
         $definition->forceFill([
@@ -124,6 +168,10 @@ final class SignalCostEstimator
             'classification_rules' => ['includes' => [], 'excludes' => []],
             'thresholds' => ['min_confidence' => null, 'min_relevance' => null],
             'markets' => null,
+            // Empty falls back to news in `SignalSourceKind::parseList()`, which is what a type
+            // starts on and therefore the right answer for a caller that does not care.
+            'source_keys' => array_map(static fn (SignalSourceKind $kind): string => $kind->value, $sourceKinds),
+            'source_config' => null,
             'version' => 1,
         ]);
 

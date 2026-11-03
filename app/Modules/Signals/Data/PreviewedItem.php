@@ -44,7 +44,7 @@ final class PreviewedItem extends Data
      * Its scores are null rather than zero, and that distinction is worth keeping: zero would read
      * as "the AI judged this harshly", and nothing judged it at all.
      */
-    public static function skipped(NewsItem $item, PreviewVerdict $verdict, string $query): self
+    public static function skipped(SourceItem $item, PreviewVerdict $verdict, string $query): self
     {
         return new self(
             headline: $item->title,
@@ -66,7 +66,7 @@ final class PreviewedItem extends Data
      * An item the AI classified, with the verdict the thresholds and geography produced.
      */
     public static function classified(
-        NewsItem $item,
+        SourceItem $item,
         ExtractedSignal $event,
         PreviewVerdict $verdict,
         string $query,

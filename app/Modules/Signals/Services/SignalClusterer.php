@@ -6,7 +6,7 @@ namespace App\Modules\Signals\Services;
 
 use App\Modules\LeadSourcing\Support\CompanyNameKey;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
-use App\Modules\Signals\Data\NewsItem;
+use App\Modules\Signals\Data\SourceItem;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalCluster;
@@ -74,13 +74,13 @@ final class SignalClusterer
      * With `signals.cluster_before_ai` off, every item is its own group and the run behaves exactly
      * as it did in v1. That flag is the way back from a regression without a rollback.
      *
-     * @param  list<NewsItem>  $items
-     * @return list<list<NewsItem>>
+     * @param  list<SourceItem>  $items
+     * @return list<list<SourceItem>>
      */
     public function group(array $items): array
     {
         if ($items === [] || ! (bool) config('signals.cluster_before_ai', true)) {
-            return array_map(static fn (NewsItem $item): array => [$item], $items);
+            return array_map(static fn (SourceItem $item): array => [$item], $items);
         }
 
         $threshold = $this->similarityThreshold();
@@ -91,7 +91,7 @@ final class SignalClusterer
         // appending a member cannot reshape the thing the comparison reads.
         /** @var list<list<string>> $signatures */
         $signatures = [];
-        /** @var list<list<NewsItem>> $groups */
+        /** @var list<list<SourceItem>> $groups */
         $groups = [];
 
         foreach ($items as $item) {
@@ -390,12 +390,12 @@ final class SignalClusterer
      * Ties are broken by dedupe identity so the representative does not depend on the order the
      * provider happened to return.
      *
-     * @param  list<NewsItem>  $items
-     * @return list<NewsItem>
+     * @param  list<SourceItem>  $items
+     * @return list<SourceItem>
      */
     private function representativeFirst(array $items): array
     {
-        usort($items, static function (NewsItem $a, NewsItem $b): int {
+        usort($items, static function (SourceItem $a, SourceItem $b): int {
             $weight = (mb_strlen($b->title) + mb_strlen($b->snippet)) <=> (mb_strlen($a->title) + mb_strlen($a->snippet));
 
             return $weight !== 0 ? $weight : strcmp($a->dedupeKey(), $b->dedupeKey());

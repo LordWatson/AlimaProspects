@@ -7,10 +7,10 @@ use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\Signals\Actions\ConvertSignalToLeadAction;
-use App\Modules\Signals\Contracts\NewsSearchClient;
+use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Data\ConvertSignalData;
 use App\Modules\Signals\Data\ExtractedSignal;
-use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Data\SignalSourceQuery;
 use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
@@ -276,7 +276,7 @@ it('drops an ignored source however the host is dressed up', function (): void {
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
@@ -306,7 +306,7 @@ it('stores the canonical link, so userinfo can’t dress up the destination', fu
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',

@@ -11,13 +11,13 @@ use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\AuditLog;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
-use App\Modules\Signals\Contracts\NewsSearchClient;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\PlatformPresetReader;
+use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
-use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use App\Modules\Signals\Testing\FakeSignalSource;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Database\Seeders\SignalPresetSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -664,8 +664,8 @@ it('flashes a composer draft back to the library screen', function (): void {
 it('flashes a preview result and nothing that could be mistaken for a draft', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    $news = new FakeNewsSearchClient;
-    app()->instance(NewsSearchClient::class, $news);
+    $news = new FakeSignalSource;
+    app(SignalSourceRegistry::class)->register($news);
 
     $fake = new FakeAiTransport;
     app()->instance(AiTransport::class, $fake);

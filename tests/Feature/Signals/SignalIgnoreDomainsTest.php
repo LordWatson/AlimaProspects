@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use App\Modules\Core\Support\TeamContext;
-use App\Modules\Signals\Contracts\NewsSearchClient;
-use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Contracts\SignalSourceProvider;
+use App\Modules\Signals\Data\SignalSourceQuery;
 use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalQueryBuilder;
@@ -44,7 +44,7 @@ function watchIgnoring(array $ignore): SignalWatch
  * rather than loading them (ADR 0018), so a caller has to say which types it is building for - here,
  * whatever the watch is attached to.
  *
- * @return list<SignalQuery>
+ * @return list<SignalSourceQuery>
  */
 function queriesFor(SignalWatch $watch): array
 {
@@ -115,7 +115,7 @@ it('drops results from a team’s own ignored domain as well as the global list'
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
@@ -146,7 +146,7 @@ it('still applies the global list when a watch adds none', function (): void {
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
@@ -187,7 +187,7 @@ it('drops a result by the outlet’s name, not only by its host', function (): v
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
@@ -217,7 +217,7 @@ it('compares an outlet name as a slug, so spacing and case do not matter', funct
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
@@ -244,7 +244,7 @@ it('never drops an item merely because the provider named no outlet', function (
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',

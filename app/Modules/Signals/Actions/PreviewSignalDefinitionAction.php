@@ -16,14 +16,14 @@ use App\Modules\Core\Exceptions\CapabilityException;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Onboarding\Models\BusinessProfile;
-use App\Modules\Signals\Contracts\NewsSearchClient;
+use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Data\ExtractedSignal;
-use App\Modules\Signals\Data\NewsItem;
 use App\Modules\Signals\Data\PreviewedItem;
 use App\Modules\Signals\Data\SignalDefinitionData;
 use App\Modules\Signals\Data\SignalPreviewResult;
-use App\Modules\Signals\Data\SignalQuery;
 use App\Modules\Signals\Data\SignalQuerySpec;
+use App\Modules\Signals\Data\SignalSourceQuery;
+use App\Modules\Signals\Data\SourceItem;
 use App\Modules\Signals\Enums\PreviewVerdict;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalDefinition;
@@ -31,6 +31,7 @@ use App\Modules\Signals\Models\SignalPreview;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalJurisdictionResolver;
 use App\Modules\Signals\Services\SignalQueryBuilder;
+use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Support\IgnoredDomains;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
@@ -94,7 +95,7 @@ final class PreviewSignalDefinitionAction
 
     public function __construct(
         private readonly SignalQueryBuilder $queries,
-        private readonly NewsSearchClient $news,
+        private readonly SignalSourceRegistry $sources,
         private readonly AiClient $ai,
         private readonly CapabilityGate $capabilities,
         private readonly SignalJurisdictionResolver $jurisdictions,
@@ -132,7 +133,7 @@ final class PreviewSignalDefinitionAction
             max(1, (int) config('signals.preview.max_queries', 4)),
         );
 
-        $queries = array_map(static fn (SignalQuery $query): string => $query->q, $plan->queries);
+        $queries = array_map(static fn (SignalSourceQuery $query): string => $query->q, $plan->queries);
         $searchCostMicros = $plan->count() * (int) config('signals.cost_micros_per_request', 1_000);
 
         // **Check and reserve under one lock.** The check alone was a read-then-write: a preview
@@ -314,8 +315,8 @@ final class PreviewSignalDefinitionAction
      * somebody waiting at a screen, and the honest answer to "the news provider is down" is an
      * empty result with a diagnosis rather than a 500 on a button.
      *
-     * @param  list<SignalQuery>  $queries
-     * @return array{0: list<NewsItem>, 1: array<string, string>} The items, and urlHash → query text.
+     * @param  list<SignalSourceQuery>  $queries
+     * @return array{0: list<SourceItem>, 1: array<string, string>} The items, and urlHash → query text.
      */
     private function search(array $queries): array
     {
@@ -323,10 +324,21 @@ final class PreviewSignalDefinitionAction
         $byHash = [];
 
         foreach ($queries as $query) {
+            $provider = $this->sources->find($query->kind);
+
+            if (! $provider instanceof SignalSourceProvider) {
+                continue;
+            }
+
             try {
-                $results = $this->news->search($query);
+                $results = $provider->fetch($query);
             } catch (SignalsException $e) {
+                // Including a rejected query pattern (ADR 0023 §4), which is **exactly** what a
+                // preview exists to surface: the member is sitting at a screen having just typed a
+                // template with a quote in it, and the next query may well work. One bad template
+                // must not empty the sample.
                 Log::channel('signals')->warning('A preview search failed; showing what came back.', [
+                    'source' => $query->kind->value,
                     'error_code' => $e->errorCode(),
                 ]);
 
@@ -357,9 +369,9 @@ final class PreviewSignalDefinitionAction
      * list that watch's own run would use. It read the union of every watch's list for one phase,
      * which was a second way for a preview to disagree with the run it is previewing.
      *
-     * @param  list<NewsItem>  $items
+     * @param  list<SourceItem>  $items
      * @param  array<string, string>  $queriesByHash
-     * @return array{0: list<NewsItem>, 1: list<PreviewedItem>}
+     * @return array{0: list<SourceItem>, 1: list<PreviewedItem>}
      */
     private function partitionBySource(SignalQuerySpec $spec, array $items, array $queriesByHash): array
     {
@@ -395,7 +407,7 @@ final class PreviewSignalDefinitionAction
      * offered type — which matters more than it looks: a preview that classified with a different
      * prompt would be previewing a search nobody will ever perform.
      *
-     * @param  list<NewsItem>  $items
+     * @param  list<SourceItem>  $items
      * @param  array<string, string>  $queriesByHash
      * @return array{0: list<PreviewedItem>, 1: int, 2: bool}
      */
@@ -572,14 +584,14 @@ final class PreviewSignalDefinitionAction
      * our own outage as a finding about their templates told a member to rewrite something that was
      * working.
      *
-     * @param  list<NewsItem>  $items
+     * @param  list<SourceItem>  $items
      * @param  array<string, string>  $queriesByHash
      * @return list<PreviewedItem>
      */
     private function unclassified(array $items, array $queriesByHash): array
     {
         return array_map(
-            fn (NewsItem $item): PreviewedItem => PreviewedItem::skipped(
+            fn (SourceItem $item): PreviewedItem => PreviewedItem::skipped(
                 $item,
                 PreviewVerdict::Unclassified,
                 $queriesByHash[$item->urlHash] ?? '',
@@ -663,7 +675,7 @@ final class PreviewSignalDefinitionAction
     }
 
     /**
-     * @param  list<NewsItem>  $items
+     * @param  list<SourceItem>  $items
      */
     private function itemsJson(array $items): string
     {

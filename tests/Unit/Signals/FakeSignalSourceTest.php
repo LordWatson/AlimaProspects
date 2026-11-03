@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Data\SignalSourceQuery;
 use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Services\SignalItemNormaliser;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
-use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use App\Modules\Signals\Testing\FakeSignalSource;
 use Tests\TestCase;
 
 /*
@@ -17,9 +17,9 @@ use Tests\TestCase;
  */
 uses(TestCase::class);
 
-function fakeQuery(int $num = 20): SignalQuery
+function fakeQuery(int $num = 20): SignalSourceQuery
 {
-    return new SignalQuery(
+    return new SignalSourceQuery(
         eventKey: SignalPresetCatalogue::FUNDING_ROUND,
         region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
@@ -31,18 +31,18 @@ function fakeQuery(int $num = 20): SignalQuery
 }
 
 it('builds items whose url_hash matches the normaliser', function (): void {
-    $fake = new FakeNewsSearchClient;
+    $fake = new FakeSignalSource;
     $item = $fake->item('Deal', 'https://arabianbusiness.com/deal');
 
     expect($item->urlHash)->toBe((new SignalItemNormaliser)->urlHash('https://arabianbusiness.com/deal'));
 });
 
 it('honours the query num and records the queries it was asked', function (): void {
-    $fake = new FakeNewsSearchClient;
+    $fake = new FakeSignalSource;
     $fake->willReturn($fake->dubaiFixtures()); // 3 items
 
-    $one = $fake->search(fakeQuery(num: 1));
-    $all = $fake->search(fakeQuery(num: 20));
+    $one = $fake->fetch(fakeQuery(num: 1));
+    $all = $fake->fetch(fakeQuery(num: 20));
 
     expect($one)->toHaveCount(1)
         ->and($all)->toHaveCount(3)
@@ -50,7 +50,7 @@ it('honours the query num and records the queries it was asked', function (): vo
 });
 
 it('throws the configured failure', function (): void {
-    $fake = (new FakeNewsSearchClient)->willFail(new RuntimeException('boom'));
+    $fake = (new FakeSignalSource)->willFail(new RuntimeException('boom'));
 
-    expect(fn () => $fake->search(fakeQuery()))->toThrow(RuntimeException::class);
+    expect(fn () => $fake->fetch(fakeQuery()))->toThrow(RuntimeException::class);
 });

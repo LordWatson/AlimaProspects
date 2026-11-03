@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
-use App\Modules\Signals\Data\SignalQuery;
+use App\Modules\Signals\Data\SignalSourceQuery;
 use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
@@ -51,7 +51,7 @@ it('asks every template in every place, in every region', function (): void {
         ->and($plan->requested)->toBe(8)
         ->and($plan->wasTrimmed())->toBeFalse();
 
-    $texts = array_map(static fn (SignalQuery $q): string => $q->q, $plan->queries);
+    $texts = array_map(static fn (SignalSourceQuery $q): string => $q->q, $plan->queries);
 
     expect($texts)->toContain('Dubai hiring surge')
         ->and($texts)->toContain('Abu Dhabi hiring surge')
@@ -62,11 +62,11 @@ it('asks every template in every place, in every region', function (): void {
     // news, which is the whole reason a watch can name more than one.
     $dubaiHiring = array_values(array_filter(
         $plan->queries,
-        static fn (SignalQuery $q): bool => $q->q === 'Dubai hiring surge',
+        static fn (SignalSourceQuery $q): bool => $q->q === 'Dubai hiring surge',
     ));
 
     expect($dubaiHiring)->toHaveCount(2)
-        ->and(array_map(static fn (SignalQuery $q): string => (string) $q->gl, $dubaiHiring))
+        ->and(array_map(static fn (SignalSourceQuery $q): string => (string) $q->gl, $dubaiHiring))
         ->toEqualCanonicalizing(['ae', 'gb']);
 });
 
@@ -85,7 +85,7 @@ it('carries each region own gl and hl onto its queries', function (): void {
 });
 
 it('sends no country code for an unbiased search', function (): void {
-    // `global` is not a country, so `gl` is null and `SerperNewsClient` omits it entirely rather
+    // `global` is not a country, so `gl` is null and `NewsSignalSource` omits it entirely rather
     // than inventing a code for the one search whose point is not to be biased.
     config()->set('signals.regions.global.offered', true);
 
@@ -131,7 +131,7 @@ it('falls back to the market region rather than searching nowhere', function ():
     expect($plan->count())->toBeGreaterThan(0)
         ->and($plan->queries[0]->region)->toBe(SearchRegion::Gb)
         // And the places come from the region's own defaults.
-        ->and(array_map(static fn (SignalQuery $q): string => $q->q, $plan->queries))
+        ->and(array_map(static fn (SignalSourceQuery $q): string => $q->q, $plan->queries))
         ->toContain('London company acquired');
 });
 
@@ -170,7 +170,7 @@ it('trims by dropping the last places rather than a slice of every place', funct
 
     $plan = $this->builder->build($watch, [$definition]);
 
-    expect(array_map(static fn (SignalQuery $q): string => $q->q, $plan->queries))
+    expect(array_map(static fn (SignalSourceQuery $q): string => $q->q, $plan->queries))
         ->toBe(['Dubai a', 'Dubai b']);
 });
 
@@ -189,8 +189,8 @@ it('is deterministic, so coverage does not shuffle between runs', function (): v
     $first = $this->builder->build($watch, $definitions);
     $second = $this->builder->build($watch, $definitions);
 
-    expect(array_map(static fn (SignalQuery $q): string => $q->q, $first->queries))
-        ->toBe(array_map(static fn (SignalQuery $q): string => $q->q, $second->queries));
+    expect(array_map(static fn (SignalSourceQuery $q): string => $q->q, $first->queries))
+        ->toBe(array_map(static fn (SignalSourceQuery $q): string => $q->q, $second->queries));
 });
 
 it('uses a region translated templates where the definition has them', function (): void {
@@ -209,7 +209,7 @@ it('uses a region translated templates where the definition has them', function 
 
     $plan = $this->builder->build($watch, [$definition]);
 
-    expect(array_map(static fn (SignalQuery $q): string => $q->q, $plan->queries))
+    expect(array_map(static fn (SignalSourceQuery $q): string => $q->q, $plan->queries))
         ->toBe(['استحواذ شركة Dubai'])
         ->and($plan->queries[0]->hl)->toBe('ar');
 });
@@ -230,7 +230,7 @@ it('falls back to the English templates for a type nobody has translated', funct
 
     $plan = $this->builder->build($watch, [$definition]);
 
-    expect(array_map(static fn (SignalQuery $q): string => $q->q, $plan->queries))
+    expect(array_map(static fn (SignalSourceQuery $q): string => $q->q, $plan->queries))
         ->toBe(['Dubai company acquisition'])
         // The language still goes to Serper: English keywords with `hl=ar` is a worse search than
         // Arabic ones, and a better one than none at all.
@@ -260,7 +260,7 @@ it('produces exactly v1 queries for a watch the S8 backfill touched', function (
 
     $plan = $this->builder->build($watch, $definitions);
 
-    expect(array_map(static fn (SignalQuery $q): string => $q->q, $plan->queries))->toBe([
+    expect(array_map(static fn (SignalSourceQuery $q): string => $q->q, $plan->queries))->toBe([
         // acquisition
         'Dubai company acquisition',
         'UAE acquisition deal',
@@ -307,13 +307,13 @@ it('keeps every region covered when a run is trimmed', function (): void {
         ->and($plan->wasTrimmed())->toBeTrue();
 
     $regions = array_values(array_unique(
-        array_map(static fn (SignalQuery $q): string => $q->region->value, $plan->queries),
+        array_map(static fn (SignalSourceQuery $q): string => $q->region->value, $plan->queries),
     ));
 
     expect($regions)->toEqualCanonicalizing(['ae', 'gb']);
 
     // And what it lost is the *later places*, whole — Dubai in both regions, nothing of Sharjah.
-    expect(array_map(static fn (SignalQuery $q): string => $q->q, $plan->queries))
+    expect(array_map(static fn (SignalSourceQuery $q): string => $q->q, $plan->queries))
         ->toBe(['Dubai a', 'Dubai b', 'Dubai a', 'Dubai b']);
 });
 
@@ -334,6 +334,6 @@ it('searches every type in the first place before moving on', function (): void 
 
     $plan = $this->builder->build($watch, $definitions);
 
-    expect(array_map(static fn (SignalQuery $q): string => $q->eventKey, $plan->queries))
+    expect(array_map(static fn (SignalSourceQuery $q): string => $q->eventKey, $plan->queries))
         ->toEqualCanonicalizing(['one', 'two', 'three']);
 });

@@ -11,6 +11,7 @@ use App\Modules\Core\Enums\Market;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalMatchConfidence;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Services\SignalClusterer;
 use Database\Factories\SignalFactory;
@@ -66,6 +67,8 @@ use Illuminate\Support\Str;
  * @property string|null $suggested_approach
  * @property string $source_url
  * @property string|null $source_name
+ * @property SignalSourceKind $source_kind
+ * @property string|null $matched_template
  * @property Carbon|null $published_at
  * @property string $url_hash
  * @property string|null $content_hash sha1(source name + normalised headline) (S11)
@@ -118,6 +121,8 @@ class Signal extends Model
         'suggested_approach',
         'source_url',
         'source_name',
+        'source_kind',
+        'matched_template',
         'published_at',
         'url_hash',
         'content_hash',
@@ -332,6 +337,7 @@ class Signal extends Model
             'heat' => 'integer',
             'score_breakdown' => 'array',
             'article_fetched_at' => 'datetime',
+            'source_kind' => SignalSourceKind::class,
             'published_at' => 'datetime',
             'raw' => 'array',
             'actioned_at' => 'datetime',

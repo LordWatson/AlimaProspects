@@ -446,9 +446,99 @@ return [
         'OM' => ['oman', 'muscat'],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Signal sources (S13, ADR 0023)
+    |--------------------------------------------------------------------------
+    |
+    | Per-source settings, keyed by `SignalSourceKind`. A source's *code* is not
+    | configurable — a key with no provider behind it is a bug, which is what
+    | `SignalSourceKind::isAvailable()` exists to say — but its price, its own
+    | skip list and its result count are.
+    |
+    | `cost_micros_per_request` falls back to the module-wide
+    | `signals.cost_micros_per_request` so the news figure keeps its existing
+    | meaning and its existing env key. A free source configures 0.
+    |
+    | `ignore_domains` here is merged on top of the global list **for that
+    | source only**, because the two lists answer different questions: the
+    | global one names publishers nobody wants, and a source's own names a
+    | shape of page only that source returns.
+    |
+    */
+    'sources' => [
+
+        'news' => [
+            'cost_micros_per_request' => (int) env('SIGNALS_NEWS_COST_MICROS', 1_000),
+            // Nothing of its own: the global list was written for /news, and everything on it
+            // applies here.
+            'ignore_domains' => [],
+        ],
+
+        'web_search' => [
+            'cost_micros_per_request' => (int) env('SIGNALS_WEB_SEARCH_COST_MICROS', 1_000),
+
+            /*
+             * What the global list misses on /search (S13a spike).
+             *
+             * The spike's dominant noise was social, and the global list already drops Facebook,
+             * Instagram, LinkedIn, Reddit, X, YouTube, TikTok and Medium. What it does not drop is
+             * these two shapes, which only this endpoint returns:
+             *
+             * 1. **Job aggregators.** `/search` answers almost any "company hiring X" query with
+             *    board index pages ("11 Operations manager jobs in London"). A vacancy listing is
+             *    not a trigger event — see the dropped job-posting source in docs/modules/signals.md.
+             * 2. **Press-release wires and Q&A/forum sites**, which republish and discuss rather
+             *    than report, so an event arrives here as a duplicate of the article the news
+             *    source already found, attributed to the wire.
+             *
+             * Informational and service pages (a council's "how planning decisions are made", a
+             * portal's "register a project" form) are deliberately **not** listed: they live on the
+             * same hosts as the genuine register entries we want, so the relevance floor is what
+             * has to reject them, not a host list.
+             */
+            'ignore_domains' => [
+                // Job boards and aggregators. Subdomains need no entry of their own — the matching
+                // is host-or-parent, so `indeed.com` covers `uk.indeed.com` — but a separate
+                // registrable domain does, which is why the `.co.uk` siblings are listed.
+                'indeed.com', 'indeed.co.uk', 'glassdoor.com', 'glassdoor.co.uk', 'totaljobs.com',
+                'reed.co.uk', 'cv-library.co.uk', 'monster.com', 'monster.co.uk', 'ziprecruiter.com',
+                'builtin.com', 'ashbyhq.com', 'lever.co', 'greenhouse.io', 'workable.com',
+                'myworkdayjobs.com', 'bayt.com', 'gulftalent.com', 'naukrigulf.com',
+                'charityjob.co.uk', 'jobserve.com', 'adzuna.co.uk',
+                // Press-release wires: a republication of something the news source already has.
+                'prurgent.com', 'prnewswire.com', 'einpresswire.com', 'openpr.com', 'pressat.co.uk',
+                // Q&A, forums and scrapers.
+                'quora.com', 'pinterest.com', 'slideshare.net', 'scribd.com', 'issuu.com',
+            ],
+        ],
+
+        /*
+         * Declared, not offered (S13b). Present so the shape of the config is the shape of the
+         * enum and the next phase adds values rather than a section.
+         */
+        'companies_house' => [
+            // Free: the credential is reused from Lead Sourcing (ADR 0008) and the API is not metered.
+            'cost_micros_per_request' => 0,
+            'ignore_domains' => [],
+        ],
+
+        'feed' => [
+            'cost_micros_per_request' => 0,
+            'ignore_domains' => [],
+        ],
+
+        'webhook' => [
+            // A pushed event costs nothing to receive. What it costs is the AI that classifies it,
+            // which is metered where every other AI call is.
+            'cost_micros_per_request' => 0,
+            'ignore_domains' => [],
+        ],
+    ],
+
     // Source domains to drop from /news results: property portals (the client's competitors) and
     // generic aggregators/roundup pages that aren't a genuine single event (S0 spike). A per-team
-    // ignore list is merged in at S6.
+    // ignore list is merged in at S6, and a per-**source** list at S13 (`signals.sources.*`).
     'ignore_domains' => [
         // UAE property portals / agency sites (competitors, not events).
         'bayut.com', 'propertyfinder.ae', 'dubizzle.com', 'propertyfinder.com',
