@@ -1806,6 +1806,16 @@ The migration also stopped importing `SignalSourceKind` (a replayed migration mu
 meaning because an enum case was renamed), and `SignalFilters` now drops a declared-but-unavailable
 source key as its own docblock already claimed it did.
 
+**The migration was verified against real MySQL 8.0.46**, not only the suite's SQLite — the standing
+rule for this repo, because a green suite says nothing about whether a migration runs. All
+migrations applied to a throwaway schema, the S13a one rolled back and re-applied, and the result
+inspected in `information_schema`: the three json columns nullable, `signals.source_kind`
+`varchar(32) NOT NULL DEFAULT 'news'`, `signals.matched_template` `varchar(255)` nullable, and
+`signals_team_source_status_index` present over `(team_id, source_kind, status)` at 32 characters —
+half MySQL's 64-character identifier limit. The **backfill** was checked with rows rather than on an
+empty schema: the 30 seeded platform presets all came out `["news"]` and `sourceKinds()` reads them
+as news, which is the compatibility guarantee `SignalSourcesTest` now pins.
+
 **What the brand review caught.** Eight findings, two of them accessibility defects that would have
 shipped:
 

@@ -682,3 +682,24 @@ it('changes the stored sources when an update does mention them', function (): v
 
     expect($definition->refresh()->sourceKinds())->toBe([SignalSourceKind::News]);
 });
+
+// --- The migration's compatibility guarantee -------------------------------------------------
+
+it('leaves every seeded platform preset running on the news', function (): void {
+    // **The backfill, asserted.** `signal_definitions.source_keys` was added by S13a and every
+    // existing row set to `["news"]`, which is the whole compatibility story: that is what each of
+    // them was already doing. The seeded presets are the rows the backfill actually runs against —
+    // their seed migration runs before it — so this is the one place the guarantee is checkable
+    // without hand-writing the row the assertion expects.
+    //
+    // Verified against real MySQL 8.0 as well as the suite's SQLite, because a json column's
+    // round-trip is exactly the kind of thing the two disagree about.
+    $presets = SignalDefinition::withoutGlobalScopes()->whereNull('team_id')->get();
+
+    expect($presets)->not->toBeEmpty();
+
+    foreach ($presets as $preset) {
+        expect($preset->sourceKinds())->toBe([SignalSourceKind::News])
+            ->and($preset->usesSource(SignalSourceKind::WebSearch))->toBeFalse();
+    }
+});
