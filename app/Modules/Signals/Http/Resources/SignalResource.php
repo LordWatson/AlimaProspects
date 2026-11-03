@@ -86,6 +86,12 @@ final class SignalResource extends JsonResource
             'suggested_approach' => $signal->suggested_approach,
             'source_url' => $signal->source_url,
             'source_name' => $signal->source_name,
+            // Which source found it, and the query that did (S13). The kind is always present —
+            // every pre-S13 signal is news, correctly — and `matched_template` is nullable because
+            // a source that does not search by keyword has no template behind it.
+            'source_kind' => $signal->source_kind->value,
+            'source_kind_label' => $signal->source_kind->label(),
+            'matched_template' => $signal->matched_template,
             'published_at' => $signal->published_at?->toIso8601String(),
             'actioned_at' => $signal->actioned_at?->toIso8601String(),
             // What the retention sweep will do to this row, and when (S6 / compliance.md §5a).

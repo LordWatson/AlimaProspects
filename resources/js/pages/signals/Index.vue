@@ -32,6 +32,8 @@ import type {
     SignalScope,
     SignalScopeOption,
     SignalSortOption,
+    SignalSourceKind,
+    SignalSourceOption,
     SignalSortOrder,
     SignalsDetectedPayload,
     SignalStatus,
@@ -65,6 +67,8 @@ const props = defineProps<{
         scopes: SignalScopeOption[];
         /** How it may be ordered (S12), each with its own description. */
         sorts: SignalSortOption[];
+        /** Which sources the feed may be narrowed to (S13). */
+        sources: SignalSourceOption[];
     };
     stages: PipelineStage[];
     watchCount: number;
@@ -126,6 +130,7 @@ const currentScope = computed<SignalScopeOption | undefined>(() =>
 // link opens the same feed.
 const showFilters = ref(
     props.filters.event_keys.length > 0 ||
+        props.filters.source_kinds.length > 0 ||
         props.filters.from !== null ||
         props.filters.to !== null ||
         props.filters.min_relevance !== null,
@@ -146,6 +151,8 @@ type SignalQueryParams = {
     /** Omitted when it is the default, for the same reason. */
     sort?: SignalSortOrder;
     event_keys: SignalEventKey[];
+    /** Which sources to show (S13). Empty means every one, so the plain feed keeps its URL. */
+    source_kinds: SignalSourceKind[];
     from?: string;
     to?: string;
     min_relevance?: number;
@@ -160,6 +167,7 @@ function queryFor(changes: Partial<SignalFilterState>): SignalQueryParams {
         scope: next.scope === 'accounts' ? 'accounts' : undefined,
         sort: next.sort === 'published' ? 'published' : undefined,
         event_keys: next.event_keys,
+        source_kinds: next.source_kinds,
         from: next.from ?? undefined,
         to: next.to ?? undefined,
         min_relevance: next.min_relevance ?? undefined,
@@ -175,6 +183,7 @@ function tabHref(changes: Partial<SignalFilterState>): string {
     if (query.scope) params.set('scope', query.scope);
     if (query.sort) params.set('sort', query.sort);
     query.event_keys.forEach((key) => params.append('event_keys[]', key));
+    query.source_kinds.forEach((key) => params.append('source_kinds[]', key));
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
     if (query.min_relevance !== undefined) {
@@ -200,9 +209,20 @@ function toggleEventKey(key: SignalEventKey): void {
     });
 }
 
+function toggleSourceKind(kind: SignalSourceKind): void {
+    navigate({
+        source_kinds: props.filters.source_kinds.includes(kind)
+            ? props.filters.source_kinds.filter(
+                  (candidate) => candidate !== kind,
+              )
+            : [...props.filters.source_kinds, kind],
+    });
+}
+
 function clearFilters(): void {
     navigate({
         event_keys: [],
+        source_kinds: [],
         from: null,
         to: null,
         min_relevance: null,
@@ -223,6 +243,7 @@ const hasClusters = computed(() =>
 const isNarrowed = computed(
     () =>
         props.filters.event_keys.length > 0 ||
+        props.filters.source_kinds.length > 0 ||
         props.filters.from !== null ||
         props.filters.to !== null ||
         props.filters.min_relevance !== null,
@@ -256,6 +277,20 @@ const activeChips = computed<ActiveFilterChip[]>(() => {
         });
     }
 
+    for (const kind of props.filters.source_kinds) {
+        const source = props.options.sources.find(
+            (candidate) => candidate.value === kind,
+        );
+
+        chips.push({
+            id: 'source_kinds:' + kind,
+            group: t('Source'),
+            // The server drops a source this build does not know, so a chip without an option
+            // should not happen — the key is shown rather than a blank if it ever does.
+            label: source ? t(source.label) : kind,
+        });
+    }
+
     if (props.filters.from !== null) {
         chips.push({
             id: 'from:1',
@@ -285,6 +320,16 @@ function removeChip(chip: ActiveFilterChip): void {
     if (key === 'event_keys') {
         navigate({
             event_keys: props.filters.event_keys.filter(
+                (candidate) => candidate !== raw,
+            ),
+        });
+
+        return;
+    }
+
+    if (key === 'source_kinds') {
+        navigate({
+            source_kinds: props.filters.source_kinds.filter(
                 (candidate) => candidate !== raw,
             ),
         });
@@ -631,6 +676,26 @@ onBeforeUnmount(() => {
                             :label="typeLabel(definition)"
                             :data-test="'filter-event-' + definition.key"
                             @toggle="toggleEventKey(definition.key)"
+                        />
+                    </FilterGroup>
+
+                    <!-- Which source found it (S13, task 9). Only shown when there is more than
+                         one to choose between: a team running news alone would get a group with a
+                         single chip that cannot change anything, which is a control that teaches
+                         somebody the screen is cluttered. -->
+                    <FilterGroup
+                        v-if="options.sources.length > 1"
+                        :legend="t('Source')"
+                    >
+                        <FilterToggle
+                            v-for="source in options.sources"
+                            :key="source.value"
+                            :pressed="
+                                filters.source_kinds.includes(source.value)
+                            "
+                            :label="t(source.label)"
+                            :data-test="'filter-source-' + source.value"
+                            @toggle="toggleSourceKind(source.value)"
                         />
                     </FilterGroup>
 

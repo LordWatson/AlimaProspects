@@ -48,6 +48,7 @@ import SignalTypeIcon from '@/components/signals/SignalTypeIcon.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -79,6 +80,8 @@ import type {
     SignalPresetPack,
     SignalPreviewResult,
     SignalPreviewVerdict,
+    SignalSourceKind,
+    SignalSourceOption,
 } from '@/types';
 
 defineOptions({
@@ -106,10 +109,21 @@ const props = defineProps<{
          * their type ceiling, having asked for a search per template per type on every run.
          */
         starter_keys: string[];
+        /** The sources a type may run on, with what each is good for (S13). */
+        sources: SignalSourceOption[];
     };
     defaults: SignalDefinitionDefaults;
     /** What one template would cost this team a month — the form multiplies as they type. */
     cost: SignalCostFacts;
+    /**
+     * The same facts per source (S13), keyed by source.
+     *
+     * A source is a cost multiplier: one template on two sources is two paid searches per run. The
+     * form sums the entries for the ticked sources and multiplies by its template count, so the
+     * number moves as a box is ticked without a round trip. Every figure in each entry is the
+     * server's (ADR 0019 §4).
+     */
+    cost_by_source: Record<string, SignalCostFacts>;
     can: { manage: boolean; compose: boolean };
 }>();
 
@@ -263,6 +277,9 @@ function applyDraft(draft: SignalDraft): void {
     editing.value = null;
     draftSummary.value = draft.summary;
     form.clearErrors();
+    // A draft arrives complete, including `source_keys` — which the composer always sets to news,
+    // because it drafts what to search for and how to judge it and does not choose where a team
+    // spends money (ADR 0020's rule, applied to ADR 0023's new field).
     form.defaults({ ...draft.definition });
     form.reset();
     syncTextareas();
@@ -375,6 +392,8 @@ const form = useForm<SignalDefinitionForm>({
     min_relevance: null,
     suggested_approach_hint: null,
     is_active: true,
+    // News, which is where every type starts and what every pre-S13 type runs on.
+    source_keys: ['news'],
 });
 
 /** What the error summary calls each field, so "Name" links to the box rather than `name` does. */
@@ -447,15 +466,53 @@ function syncTextareas(): void {
 // places those watches cover (ADR 0019 §4). A standing instruction to spend money should say how
 // much, where it is created — and the number is only interesting while somebody is adding
 // templates, which is why the server sends the per-template facts and this multiplies.
+/**
+ * Tick or untick a source (S13).
+ *
+ * Unticking the last one leaves news, rather than leaving nothing. The server already stores news
+ * for an empty choice (ADR 0023 §2), so refusing to empty the list here is not a second rule — it is
+ * the same rule, made visible at the moment somebody would otherwise see an empty group and a
+ * validation error for a state the product does not have.
+ */
+function toggleSource(value: SignalSourceKind, checked: boolean): void {
+    const next = checked
+        ? [...new Set([...form.source_keys, value])]
+        : form.source_keys.filter((key) => key !== value);
+
+    form.source_keys = next.length > 0 ? next : ['news'];
+}
+
+/**
+ * The per-template facts for the sources that are actually ticked (S13).
+ *
+ * Falls back to the news entry when nothing is ticked, which is what the server stores for an empty
+ * choice — so the figure on screen and the figure that will be charged agree even mid-edit.
+ */
+const chosenCosts = computed<SignalCostFacts[]>(() => {
+    const chosen = form.source_keys
+        .map((key) => props.cost_by_source[key])
+        .filter((facts): facts is SignalCostFacts => facts !== undefined);
+
+    return chosen.length > 0 ? chosen : [props.cost];
+});
+
 const monthlyCostCents = computed(() =>
     Math.round(
-        (props.cost.cost_micros_per_month * form.query_templates.length) /
+        (chosenCosts.value.reduce(
+            (total, facts) => total + facts.cost_micros_per_month,
+            0,
+        ) *
+            form.query_templates.length) /
             10_000,
     ),
 );
 
 const monthlyQueries = computed(
-    () => props.cost.queries_per_month * form.query_templates.length,
+    () =>
+        chosenCosts.value.reduce(
+            (total, facts) => total + facts.queries_per_month,
+            0,
+        ) * form.query_templates.length,
 );
 
 /**
@@ -543,6 +600,7 @@ function openNew(): void {
         min_relevance: null,
         suggested_approach_hint: null,
         is_active: true,
+        source_keys: ['news'],
     });
     form.reset();
     syncTextareas();
@@ -567,6 +625,11 @@ function openEdit(definition: SignalDefinition): void {
         min_relevance: definition.min_relevance,
         suggested_approach_hint: definition.suggested_approach_hint,
         is_active: definition.is_active,
+        // Never empty: the server guarantees at least one, and a clone of a preset carries news.
+        source_keys:
+            definition.source_keys.length > 0
+                ? [...definition.source_keys]
+                : ['news'],
     });
     form.reset();
     syncTextareas();
@@ -1438,6 +1501,73 @@ function confirmRemove(): void {
                                 )
                             }}
                         </p>
+
+                        <!-- Where to look (S13, ADR 0023). Checkboxes rather than a select,
+                             because the sources are additive and a member may run both. News is
+                             pre-ticked and cannot be the only thing missing: the server stores news
+                             for an empty choice, so there is no state in which a saved type searches
+                             nowhere. Each one carries its trade-off line from the enum, because the
+                             honest answer to "should I add web search?" is "it finds more, and more
+                             of it is noise" — and a member who learns that from their feed instead
+                             of from here will switch it off and not come back. -->
+                        <FormField
+                            id="type-sources"
+                            :label="t('Where to look')"
+                            required
+                            :error="form.errors.source_keys"
+                            :hint="
+                                t(
+                                    'Each source you add is a separate paid search per template, on every run.',
+                                )
+                            "
+                        >
+                            <template #default="{ describedBy, invalid }">
+                                <div
+                                    class="space-y-3"
+                                    role="group"
+                                    :aria-describedby="describedBy"
+                                    :aria-invalid="invalid"
+                                >
+                                    <div
+                                        v-for="source in options.sources"
+                                        :key="source.value"
+                                        class="flex items-start gap-3"
+                                    >
+                                        <Checkbox
+                                            :id="`type-source-${source.value}`"
+                                            class="mt-0.5"
+                                            :model-value="
+                                                form.source_keys.includes(
+                                                    source.value,
+                                                )
+                                            "
+                                            :data-test="`source-${source.value}`"
+                                            @update:model-value="
+                                                toggleSource(
+                                                    source.value,
+                                                    $event === true,
+                                                )
+                                            "
+                                        />
+                                        <div class="min-w-0 flex-1 space-y-1">
+                                            <Label
+                                                :for="`type-source-${source.value}`"
+                                                class="font-medium"
+                                            >
+                                                {{ t(source.label) }}
+                                            </Label>
+                                            <p
+                                                v-if="source.description"
+                                                class="text-sm text-muted-foreground"
+                                                dir="auto"
+                                            >
+                                                {{ t(source.description) }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </FormField>
 
                         <FormField
                             id="type-includes"

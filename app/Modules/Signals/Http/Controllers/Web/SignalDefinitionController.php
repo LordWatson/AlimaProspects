@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Enums\Capability;
+use App\Modules\Core\Models\Team;
 use App\Modules\Signals\Actions\CloneSignalPresetsAction;
 use App\Modules\Signals\Actions\ComposeSignalDefinitionAction;
 use App\Modules\Signals\Actions\DeleteSignalDefinitionAction;
@@ -16,6 +17,7 @@ use App\Modules\Signals\Actions\SaveSignalDefinitionAction;
 use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Enums\SignalCategory;
 use App\Modules\Signals\Enums\SignalIcon;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
 use App\Modules\Signals\Http\Requests\CloneSignalPresetsRequest;
 use App\Modules\Signals\Http\Requests\ComposeSignalDefinitionRequest;
@@ -109,6 +111,19 @@ final class SignalDefinitionController extends Controller
                     'label' => $pack->label(),
                     'audience' => $pack->audience(),
                 ], SignalPresetPack::cases()),
+                // The sources a type may run on (S13, task 9), with what each is good for. Only the
+                // available ones: a case with no provider behind it would be a tick box that quietly
+                // changes nothing.
+                //
+                // The description is the enum's, and it is written as a **trade-off** rather than a
+                // boast — the honest answer to "should I add web search?" is "it finds more, and
+                // more of it is noise", and a member who learns that from their feed instead of
+                // from this form will switch it off and not come back.
+                'sources' => array_map(static fn (SignalSourceKind $kind): array => [
+                    'value' => $kind->value,
+                    'label' => $kind->label(),
+                    'description' => $kind->description(),
+                ], SignalSourceKind::available()),
             ],
             // The floors that apply to a type that sets none, so the form's placeholders can say
             // what "leave this empty" actually means rather than showing a bare box.
@@ -121,7 +136,13 @@ final class SignalDefinitionController extends Controller
             // template rather than as a total so the form can show the number changing as somebody
             // adds one — the moment the number is worth seeing (S9 task 4). The client multiplies;
             // the server owns the arithmetic (ADR 0019 §4).
-            'cost' => $this->costFacts($cost->estimate($team, 1)),
+            'cost' => $this->costFacts($cost->estimate($team, 1, [SignalSourceKind::default()]), SignalSourceKind::default()),
+            // The same facts **per source** (S13), because a source is a cost multiplier: one
+            // template on two sources is two paid searches per run. The screen sums the entries for
+            // the sources that are ticked and multiplies by its template count; every figure in
+            // each entry is still computed here, so the client owns only the sum and the
+            // multiplication (ADR 0019 §4).
+            'cost_by_source' => $this->costBySource($cost, $team),
             'can' => [
                 'manage' => $user->can('create', $this->transientDefinition($team)),
                 // The AI shortcut is the paid half (plan decision #1). The screen asks the gate
@@ -129,6 +150,27 @@ final class SignalDefinitionController extends Controller
                 'compose' => $capabilities->allows($team, Capability::SignalComposer),
             ],
         ]);
+    }
+
+    /**
+     * The per-template cost facts for **each** available source, keyed by source.
+     *
+     * One estimate per source rather than one for all of them, because the screen needs the figure
+     * to move as a box is ticked and it cannot ask the server on every keystroke. Sources are priced
+     * independently (`signals.sources.*.cost_micros_per_request`) and one of the declared ones is
+     * free, so a single figure multiplied by a count would be wrong the moment a free source ships.
+     *
+     * @return array<string, array<string, int|bool>>
+     */
+    private function costBySource(SignalCostEstimator $cost, Team $team): array
+    {
+        $out = [];
+
+        foreach (SignalSourceKind::available() as $kind) {
+            $out[$kind->value] = $this->costFacts($cost->estimate($team, 1, [$kind]), $kind);
+        }
+
+        return $out;
     }
 
     /**
@@ -141,7 +183,7 @@ final class SignalDefinitionController extends Controller
      *
      * @return array<string, int|bool>
      */
-    private function costFacts(SignalCostEstimate $estimate): array
+    private function costFacts(SignalCostEstimate $estimate, ?SignalSourceKind $kind = null): array
     {
         return [
             'templates' => $estimate->templates,
@@ -151,7 +193,9 @@ final class SignalDefinitionController extends Controller
             'cost_micros_per_month' => $estimate->costMicrosPerMonth,
             'watch_count' => $estimate->watchCount,
             'hypothetical' => $estimate->hypothetical,
-            'micros_per_search' => (int) config('signals.cost_micros_per_request', 1_000),
+            // This source's own price, not the module-wide one: sources are priced separately and
+            // one of the declared ones is free, so a shared figure would misquote the moment it ships.
+            'micros_per_search' => ($kind ?? SignalSourceKind::default())->costMicrosPerRequest(),
         ];
     }
 

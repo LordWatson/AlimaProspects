@@ -40,6 +40,17 @@ enum PlatformProvider: string
     /** Serper's /news endpoint, behind Signals' own client and its own breaker (ADR 0011). */
     case SerperNews = 'signals_news';
 
+    /**
+     * Serper's /search endpoint **as Signals uses it** (S13, ADR 0023) — distinct from
+     * {@see self::WebSearch}, which is Lead Sourcing's use of the same vendor.
+     *
+     * Two cases for one endpoint because they are two breakers: Lead Sourcing's lives under
+     * `lead_sourcing:cb` and Signals' under `signals:cb`, by the same decision that gave Signals its
+     * own news breaker at ADR 0011 — the two features are tuned independently and one must not shed
+     * the other's load. A single row here would report whichever was reset last.
+     */
+    case SignalsWebSearch = 'signals_web_search';
+
     /** Firebase Cloud Messaging, for mobile push. */
     case Push = 'fcm';
 
@@ -58,6 +69,7 @@ enum PlatformProvider: string
             self::GooglePlaces => 'Google Places',
             self::WebSearch => 'Serper (web search)',
             self::SerperNews => 'Serper (news)',
+            self::SignalsWebSearch => 'Serper (web search, Signals)',
             self::Push => 'Firebase push',
             self::Claude => 'Claude',
             self::Resend => 'Resend',
@@ -73,6 +85,7 @@ enum PlatformProvider: string
             self::GooglePlaces => 'UAE and local discovery runs fail.',
             self::WebSearch => 'Web-search discovery runs fail.',
             self::SerperNews => 'Signal watches find nothing; scheduled runs record a failure and retry on the next tick.',
+            self::SignalsWebSearch => 'Signal types that run on web search contribute nothing. Their news queries are unaffected — that is why the two breakers are separate.',
             self::Push => 'Mobile push is dropped. In-app and email notifications still arrive.',
             self::Claude => 'Scoring, drafting, insights and the background check stop. Discovery still finds companies; they arrive unscored.',
             self::Resend => 'Outreach sends and notification emails fail. Nothing is silently marked sent — a failed send is recorded as failed.',
@@ -88,7 +101,7 @@ enum PlatformProvider: string
     {
         return match ($this) {
             self::CompaniesHouse, self::GooglePlaces, self::WebSearch => 'lead_sourcing:cb',
-            self::SerperNews => 'signals:cb',
+            self::SerperNews, self::SignalsWebSearch => 'signals:cb',
             self::Push => 'notifications:cb',
             // No breaker. The AI transport retries and fails the call; mail fails the send and the
             // message is recorded as failed; Cashier surfaces Stripe's own errors. Adding breakers
@@ -126,11 +139,20 @@ enum PlatformProvider: string
      * Resend and Stripe have no ledger of their own in this product — a failed send is recorded on
      * the `outreach_messages` row and a Stripe error on the subscription — so their rows on the
      * health screen carry the breaker column and nothing else, and say why.
+     *
+     * **{@see self::SignalsWebSearch} is the same answer for a different reason** (S13). Its breaker
+     * *is* watched, so the health column is real. But `platform_daily_metrics` records signal
+     * provider calls and cost **per run**, attributed to {@see self::SerperNews}, and a run now
+     * spans sources — so there is no per-source figure in that ledger to report here, and inventing
+     * one by re-deriving it from `signal_runs.source_breakdown` would change what a platform metric
+     * means, which is ADR 0016's decision and not S13's. The per-source cost is recorded, and it is
+     * shown where cost questions are asked: `/admin/signal-runs`. So this row carries health and
+     * says nothing about spend, rather than reporting a zero that is not true.
      */
     public function isMetered(): bool
     {
         return match ($this) {
-            self::Resend, self::Stripe, self::Push => false,
+            self::Resend, self::Stripe, self::Push, self::SignalsWebSearch => false,
             default => true,
         };
     }

@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Data;
 use App\Modules\Core\Enums\Market;
 use App\Modules\Signals\Enums\SignalCategory;
 use App\Modules\Signals\Enums\SignalIcon;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Http\Requests\SaveSignalDefinitionRequest;
 use App\Modules\Signals\Models\SignalDefinition;
 use Illuminate\Support\Str;
@@ -59,6 +60,9 @@ final class SignalDefinitionData extends Data
      * @param  list<string>  $includes
      * @param  list<string>  $excludes
      * @param  list<Market>|null  $markets  Null means "any market".
+     * @param  list<SignalSourceKind>  $sourceKinds  Which sources this type runs on (S13, ADR 0023).
+     *                                               Empty resolves to news, which is what a type
+     *                                               starts on and what every pre-S13 type is.
      */
     public function __construct(
         public readonly string $name,
@@ -74,6 +78,7 @@ final class SignalDefinitionData extends Data
         public readonly ?string $suggestedApproachHint = null,
         public readonly ?array $markets = null,
         public readonly bool $isActive = true,
+        public readonly array $sourceKinds = [],
     ) {}
 
     /**
@@ -102,6 +107,7 @@ final class SignalDefinitionData extends Data
             // A missing checkbox is absent rather than false in a form post, so "absent" has to
             // mean the default and not "switch it off" (the same reasoning as `SignalWatchData`).
             isActive: array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true,
+            sourceKinds: self::sources($validated['source_keys'] ?? null),
         );
     }
 
@@ -138,6 +144,12 @@ final class SignalDefinitionData extends Data
             'markets' => $this->markets === null
                 ? null
                 : array_map(static fn (Market $market): string => $market->value, $this->markets),
+            // Always written, never left absent: a type that searched nowhere would complete a run
+            // successfully having found nothing (ADR 0023 §2). An empty choice stores news.
+            'source_keys' => array_map(
+                static fn (SignalSourceKind $kind): string => $kind->value,
+                $this->sourceKinds === [] ? [SignalSourceKind::default()] : $this->sourceKinds,
+            ),
         ];
     }
 
@@ -169,6 +181,12 @@ final class SignalDefinitionData extends Data
             'markets' => ['nullable', 'array', 'max:'.count(Market::cases())],
             'markets.*' => ['string', 'distinct', 'in:'.implode(',', Market::values())],
             'is_active' => ['boolean'],
+            // **Only the sources that actually exist** (S13). `availableValues()` rather than
+            // `values()`, because a declared-but-unoffered case has no provider behind it and a
+            // type saved against one would contribute no queries and say nothing about why — the
+            // same reason `SearchRegion`'s unoffered regions are not accepted either (ADR 0019 §2a).
+            'source_keys' => ['nullable', 'array', 'min:1', 'max:'.count(SignalSourceKind::available())],
+            'source_keys.*' => ['string', 'distinct', 'in:'.implode(',', SignalSourceKind::availableValues())],
         ];
     }
 
@@ -216,6 +234,35 @@ final class SignalDefinitionData extends Data
         }
 
         return array_slice($out, 0, $maxItems);
+    }
+
+    /**
+     * The sources a saved type runs on, filtered to the ones this build can actually run.
+     *
+     * Filtered **again** here, after validation: the rules reject an unavailable key for a member
+     * typing into a form, and this is what holds for a payload assembled anywhere else — ADR 0020's
+     * habit of bounding the same thing in the schema and in the save path, because the two are
+     * reached by different callers.
+     *
+     * @return list<SignalSourceKind>
+     */
+    private static function sources(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $kinds = [];
+
+        foreach ($value as $entry) {
+            $kind = SignalSourceKind::parse($entry);
+
+            if ($kind !== null && $kind->isAvailable() && ! in_array($kind, $kinds, strict: true)) {
+                $kinds[] = $kind;
+            }
+        }
+
+        return $kinds;
     }
 
     /**

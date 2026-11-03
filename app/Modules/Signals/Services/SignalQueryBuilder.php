@@ -70,6 +70,20 @@ final class SignalQueryBuilder
     private const string ENTITY_KEY = '*account';
 
     /**
+     * The registry, so a definition's stored source keys are turned into the sources that will
+     * actually run it (S13, ADR 0023).
+     *
+     * The builder asks rather than trusting the column, and the three refusals it collapses are
+     * three different things: a key this build does not recognise, a key with no provider
+     * registered (a source withdrawn between deploys, a credential pulled), and a provider that
+     * **declines** this definition through `supports()` — no SIC codes for a filings source, no URL
+     * for a feed. None of them is an error and all of them mean "no queries from here", so the
+     * builder is where they belong: a plan that contained queries nobody could run would be costed,
+     * trimmed and reported as coverage that does not exist.
+     */
+    public function __construct(private readonly SignalSourceRegistry $sources) {}
+
+    /**
      * The queries one run of a watch would ask for.
      *
      * @param  list<SignalDefinition>  $definitions  The types to build for, in priority order.
@@ -481,10 +495,12 @@ final class SignalQueryBuilder
      */
     private function sourcesFor(SignalDefinition $definition): array
     {
-        $kinds = $definition->sourceKinds();
+        $kinds = [];
         $config = [];
 
-        foreach ($kinds as $kind) {
+        foreach ($this->sources->forDefinition($definition) as $provider) {
+            $kind = $provider->kind();
+            $kinds[] = $kind;
             $config[$kind->value] = $definition->sourceConfig($kind);
         }
 
@@ -508,7 +524,9 @@ final class SignalQueryBuilder
         $kinds = [];
 
         foreach ($definitions as $definition) {
-            foreach ($definition->sourceKinds() as $kind) {
+            foreach ($this->sources->forDefinition($definition) as $provider) {
+                $kind = $provider->kind();
+
                 if (! in_array($kind, $kinds, strict: true)) {
                     $kinds[] = $kind;
                 }

@@ -148,6 +148,16 @@ const showExplanation = ref(false);
 const explanationId = computed(() => `signal-why-${props.signal.id}`);
 
 /**
+ * Whether to name the source on the card (S13).
+ *
+ * Only when it is not the news. News is where every signal type starts and where most cards come
+ * from, so badging all of them is a word repeated thirty times a morning that distinguishes nothing
+ * — and on the cards that are *not* news it is the one piece of provenance worth having, because a
+ * web-search result's "outlet" is a hostname and its noise profile is different by construction.
+ */
+const showSourceKind = computed(() => props.signal.source_kind !== 'news');
+
+/**
  * The number in the header: heat where there is one, relevance where there is not.
  *
  * The label changes with it, because telling a member "Score 70" when the 70 is a relevance would
@@ -477,6 +487,16 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                         <template v-else>
                             · {{ t('from the headline and snippet') }}
                         </template>
+                        <!-- The query that found it (S13). S12 shipped this panel without it
+                             because no row stored which template matched; `signals.matched_template`
+                             is that column. Null for a source that does not search by keyword, and
+                             the line simply omits it rather than inventing one. -->
+                        <template v-if="signal.matched_template">
+                            ·
+                            <span class="font-mono" dir="ltr">{{
+                                signal.matched_template
+                            }}</span>
+                        </template>
                     </p>
                 </div>
             </div>
@@ -542,17 +562,35 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
             <div
                 class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border pt-4"
             >
-                <a
-                    :href="signal.source_url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="inline-flex items-center gap-1 rounded text-sm text-muted-foreground hover:text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                    dir="auto"
-                >
-                    {{ signal.source_name ?? t('Read the article') }}
-                    <ExternalLink class="size-3" aria-hidden="true" />
-                    <span class="sr-only">{{ t('(opens in a new tab)') }}</span>
-                </a>
+                <span class="inline-flex flex-wrap items-center gap-2">
+                    <a
+                        :href="signal.source_url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center gap-1 rounded text-sm text-muted-foreground hover:text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        dir="auto"
+                    >
+                        {{ signal.source_name ?? t('Read the article') }}
+                        <ExternalLink class="size-3" aria-hidden="true" />
+                        <span class="sr-only">{{
+                            t('(opens in a new tab)')
+                        }}</span>
+                    </a>
+                    <!-- Which source found it (S13) — and **only** when that is not the news.
+                         News is where every type starts and most cards come from, so a badge on
+                         all of them is a word repeated 30 times a morning that distinguishes
+                         nothing. On a web-search card it is the one thing worth knowing: the
+                         "outlet" is a hostname rather than a publisher, and the result is noisier
+                         by construction (ADR 0023). Neutral `secondary`, never the accent —
+                         provenance is not a status, and Signal Orange is decorative only. -->
+                    <Badge
+                        v-if="showSourceKind"
+                        variant="secondary"
+                        :data-test="`source-kind-${signal.id}`"
+                    >
+                        {{ t(signal.source_kind_label) }}
+                    </Badge>
+                </span>
 
                 <div class="flex flex-wrap items-center gap-2">
                     <!-- Converted: the only thing left is to go and work the lead. -->

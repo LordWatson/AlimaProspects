@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Signals\Http\Resources;
 
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Http\Request;
@@ -51,6 +52,13 @@ final class SignalDefinitionResource extends JsonResource
             // translation file. See `SignalDefinition::usesPlatformWording()`.
             'translatable' => $definition->usesPlatformWording(),
             'query_templates' => $definition->query_templates,
+            // Which sources this type runs on (S13). Values, so the client can tick them against
+            // `available_sources`; the labels and the "what this is good for" line come from the
+            // enum, through the controller, so one wording serves the form and the card.
+            'source_keys' => array_map(
+                static fn (SignalSourceKind $kind): string => $kind->value,
+                $definition->sourceKinds(),
+            ),
             'match_keywords' => $definition->match_keywords ?? [],
             'includes' => $definition->includes(),
             'excludes' => $definition->excludes(),

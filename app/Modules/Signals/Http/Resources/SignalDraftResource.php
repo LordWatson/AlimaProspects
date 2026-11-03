@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Http\Resources;
 
 use App\Modules\Signals\Data\DraftSignalDefinition;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -54,6 +55,14 @@ final class SignalDraftResource extends JsonResource
                     ? null
                     : array_map(static fn ($market): string => $market->value, $definition->markets),
                 'is_active' => $definition->isActive,
+                // **News, always** (S13). The composer drafts what to search for and how to judge
+                // it; it does not choose where to spend money. `sourceKinds` is empty on a drafted
+                // definition and that resolves to news on save anyway, so sending it explicitly
+                // makes the draft a complete form state rather than one the client has to patch.
+                'source_keys' => array_map(
+                    static fn (SignalSourceKind $kind): string => $kind->value,
+                    $definition->sourceKinds === [] ? [SignalSourceKind::default()] : $definition->sourceKinds,
+                ),
             ],
         ];
     }

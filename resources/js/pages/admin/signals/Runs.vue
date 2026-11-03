@@ -23,6 +23,7 @@ import { useFormat } from '@/composables/useFormat';
 import type {
     AdminPagination,
     AdminSignalRun,
+    AdminSignalRunSource,
     AdminWindowFilters,
 } from '@/types';
 
@@ -51,6 +52,8 @@ const props = defineProps<{
         failure_rate: number | null;
         cost_micros: number;
         signals_created: number;
+        /** Cost and volume by source over the window, each with its breaker state (S13). */
+        sources: AdminSignalRunSource[];
         statuses: { value: string; label: string }[];
     };
     filters: AdminWindowFilters & {
@@ -196,6 +199,98 @@ function duration(ms: number | null): string {
                     </CardContent>
                 </Card>
             </dl>
+
+            <!-- Where the window's spend went, per source, with each source's breaker beside it
+                 (S13, task 8). On this screen rather than only on /admin/providers because this is
+                 the moment the fact matters: an operator looking at a column of failing runs should
+                 not have to remember that a second screen would have told them the breaker is open.
+                 /admin/providers remains the only place one can be reset. -->
+            <div
+                v-if="summary.sources.length > 0"
+                class="mt-4 overflow-x-auto rounded-2xl border border-border bg-card"
+                data-test="run-sources"
+            >
+                <table class="w-full text-sm">
+                    <caption class="sr-only">
+                        Cost and volume by signal source over this window
+                    </caption>
+                    <thead
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
+                    >
+                        <tr class="border-b border-border">
+                            <th scope="col" class="px-4 py-2 text-start">
+                                Source
+                            </th>
+                            <th scope="col" class="px-4 py-2 text-end">
+                                Queries
+                            </th>
+                            <th scope="col" class="px-4 py-2 text-end">
+                                Results
+                            </th>
+                            <th
+                                scope="col"
+                                class="px-4 py-2 text-end"
+                                title="Queries the provider refused as a pattern. These never ran, so they are not billed as queries."
+                            >
+                                Rejected
+                            </th>
+                            <th scope="col" class="px-4 py-2 text-end">
+                                Cost · micros
+                            </th>
+                            <th scope="col" class="px-4 py-2 text-start">
+                                Breaker
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="source in summary.sources"
+                            :key="source.source"
+                            class="border-b border-border last:border-0"
+                            :data-test="`run-source-${source.source}`"
+                        >
+                            <th
+                                scope="row"
+                                class="px-4 py-2 text-start font-medium text-foreground"
+                            >
+                                {{ source.label }}
+                            </th>
+                            <td class="px-4 py-2 text-end tabular-nums">
+                                {{ number(source.queries) }}
+                            </td>
+                            <td class="px-4 py-2 text-end tabular-nums">
+                                {{ number(source.results) }}
+                            </td>
+                            <td class="px-4 py-2 text-end tabular-nums">
+                                {{ number(source.rejected) }}
+                            </td>
+                            <td class="px-4 py-2 text-end tabular-nums">
+                                {{ number(source.cost_micros) }}
+                            </td>
+                            <td class="px-4 py-2">
+                                <!-- Three states, not two. Null means this build watches no
+                                     breaker for the source, which is a fact about the code. -->
+                                <Badge
+                                    v-if="source.breaker_open === true"
+                                    variant="error"
+                                >
+                                    Open ·
+                                    {{ number(source.breaker_failures ?? 0) }}
+                                </Badge>
+                                <span
+                                    v-else-if="source.breaker_open === false"
+                                    class="text-muted-foreground"
+                                >
+                                    Closed
+                                </span>
+                                <span v-else class="text-muted-foreground">
+                                    Not watched
+                                </span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
 
         <form

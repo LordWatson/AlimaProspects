@@ -8,6 +8,7 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Data\SignalFilters;
 use App\Modules\Signals\Enums\SignalScope;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Models\Signal;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -85,6 +86,16 @@ final class ListSignalsAction
                 // The stored key, not the FK: a signal whose definition has been deleted keeps its
                 // key and must stay filterable by it.
                 $query->whereIn('event_key', $filters->eventKeys);
+            }
+
+            if ($filters->sourceKinds !== []) {
+                // By the stored column, which every row has: a pre-S13 signal is `news` because
+                // that is what found it, so this filter has a true answer for the whole table and
+                // never silently excludes the history.
+                $query->whereIn('source_kind', array_map(
+                    static fn (SignalSourceKind $kind): string => $kind->value,
+                    $filters->sourceKinds,
+                ));
             }
 
             if ($filters->from !== null) {

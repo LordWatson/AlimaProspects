@@ -19,6 +19,7 @@ use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalScope;
 use App\Modules\Signals\Enums\SignalSortOrder;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
@@ -103,6 +104,13 @@ final class SignalController extends Controller
                     'label' => $sort->label(),
                     'description' => $sort->description(),
                 ], SignalSortOrder::cases()),
+                // Which sources the feed may be narrowed to (S13, task 9). Only the available ones:
+                // a source with no provider has no rows, so offering it would be a control that can
+                // only ever empty the feed.
+                'sources' => array_map(static fn (SignalSourceKind $kind): array => [
+                    'value' => $kind->value,
+                    'label' => $kind->label(),
+                ], SignalSourceKind::available()),
             ],
             'watchCount' => $watchCount,
             // What a first watch would cover, so the empty state can name the place rather than

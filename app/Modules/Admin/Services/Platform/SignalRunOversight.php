@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Admin\Services\Platform;
 
+use App\Modules\Admin\Enums\PlatformProvider;
 use App\Modules\Reporting\Support\DateRange;
 use App\Modules\Reporting\Support\Ratio;
 use App\Modules\Signals\Enums\SignalRunStatus;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Models\SignalRun;
+use App\Modules\Signals\Support\SignalSourceBreakdown;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 /**
@@ -29,6 +32,8 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  */
 final class SignalRunOversight
 {
+    public function __construct(private readonly ProviderHealth $health) {}
+
     /**
      * @param  array<string, mixed>  $filters  status, team_id
      * @return LengthAwarePaginator<int, SignalRun>
@@ -80,6 +85,11 @@ final class SignalRunOversight
                 'results' => $run->results_count,
                 'created' => $run->signals_created,
                 'cost_micros' => $run->cost_micros,
+                // Where this run's money went, per source (S13, task 8). Read back from the stored
+                // breakdown rather than recomputed, so the figures are the ones the run was charged
+                // at rather than ones re-derived from today's prices — and empty for every run from
+                // before S13, which the screen renders as a dash rather than as four zeros.
+                'sources' => SignalSourceBreakdown::fromRun($run),
                 // Null when the run never started or never finished — which is itself the finding
                 // on a stuck run, and a zero would hide it.
                 'duration_ms' => $started === null || $finished === null
@@ -115,6 +125,7 @@ final class SignalRunOversight
             'failure_rate' => Ratio::of($failed, $total),
             'cost_micros' => (int) (clone $query)->sum('cost_micros'),
             'signals_created' => (int) (clone $query)->sum('signals_created'),
+            'sources' => $this->sourceTotals($range),
             'statuses' => array_map(
                 static fn (SignalRunStatus $status): array => [
                     'value' => $status->value,
@@ -123,5 +134,97 @@ final class SignalRunOversight
                 SignalRunStatus::cases(),
             ),
         ];
+    }
+
+    /**
+     * Cost and volume by **source** over the window, with each source's breaker beside it (S13,
+     * task 8).
+     *
+     * **Why this lives here and not only on the provider-health screen.** The health screen answers
+     * "is Serper up"; this answers "where did this week's signal spend go, and is one of these
+     * sources quietly shut". An operator looking at a column of failing runs should not have to
+     * remember that a second screen exists to tell them the breaker is open — that is the moment
+     * the fact is worth knowing. `/admin/providers` remains the canonical health view and the only
+     * place a breaker can be reset.
+     *
+     * **Aggregated in PHP over a chunked read of one column**, not in SQL. `source_breakdown` is
+     * json, and MySQL and SQLite disagree enough about json aggregation that a query written for one
+     * is wrong on the other — which is exactly the trap `sqlite-tests-mysql-prod` describes, where a
+     * green suite says nothing about production. One column, chunked, is slower and is the same
+     * answer on both.
+     *
+     * @return list<array{source: string, label: string, queries: int, results: int, rejected: int, cost_micros: int, breaker_open: bool|null, breaker_failures: int|null}>
+     */
+    private function sourceTotals(DateRange $range): array
+    {
+        $query = SignalRun::query()
+            ->withoutGlobalScopes()
+            ->select(['id', 'source_breakdown'])
+            ->whereNotNull('source_breakdown');
+
+        $range->constrain($query, 'signal_runs.created_at');
+
+        /** @var array<string, array{queries: int, results: int, rejected: int, cost_micros: int}> $totals */
+        $totals = [];
+
+        $query->chunkById(500, static function ($runs) use (&$totals): void {
+            foreach ($runs as $run) {
+                foreach (SignalSourceBreakdown::fromRun($run) as $row) {
+                    $key = $row['source'];
+
+                    $totals[$key] ??= ['queries' => 0, 'results' => 0, 'rejected' => 0, 'cost_micros' => 0];
+                    $totals[$key]['queries'] += $row['queries'];
+                    $totals[$key]['results'] += $row['results'];
+                    $totals[$key]['rejected'] += $row['rejected'];
+                    $totals[$key]['cost_micros'] += $row['cost_micros'];
+                }
+            }
+        });
+
+        $out = [];
+
+        foreach ($totals as $key => $row) {
+            $kind = SignalSourceKind::parse($key);
+            $provider = $kind === null ? null : $this->providerFor($kind);
+
+            $out[] = [
+                'source' => $key,
+                // A withdrawn or unknown key labels as itself: an operator reading a historical
+                // window needs to see that something spent money there.
+                'label' => $kind?->label() ?? $key,
+                ...$row,
+                // Null, not false, where this build has no breaker mapped for the source — the same
+                // rule `PlatformProvider::breakerPrefix()` follows, and for the same reason: a green
+                // light nobody wired up is worse than no light.
+                'breaker_open' => $provider === null
+                    ? null
+                    : $this->health->breaker($provider)->isOpen((string) $provider->breakerKey()),
+                'breaker_failures' => $provider === null
+                    ? null
+                    : $this->health->breaker($provider)->failures((string) $provider->breakerKey()),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The health screen's provider row for a signal source, or null when it has none.
+     *
+     * The mapping is here rather than on `SignalSourceKind` because it points from Signals' own
+     * vocabulary into Admin's, and Signals must not learn about the admin panel to run a watch —
+     * the dependency only ever points this way (ADR 0014; `docs/modules/admin.md`, "it owns no
+     * business rule").
+     */
+    private function providerFor(SignalSourceKind $kind): ?PlatformProvider
+    {
+        return match ($kind) {
+            SignalSourceKind::News => PlatformProvider::SerperNews,
+            SignalSourceKind::WebSearch => PlatformProvider::SignalsWebSearch,
+            // S13b's sources. Companies House has a breaker, but it is Lead Sourcing's — a signal
+            // source reusing that credential (ADR 0023) will share it, and claiming it here before
+            // the source exists would report a light for something that cannot be lit.
+            SignalSourceKind::CompaniesHouse, SignalSourceKind::Feed, SignalSourceKind::Webhook => null,
+        };
     }
 }

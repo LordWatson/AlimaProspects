@@ -4873,6 +4873,24 @@
                         }
                     },
                     {
+                        "name": "source_kinds[]",
+                        "in": "query",
+                        "schema": {
+                            "type": "array",
+                            "enum": [
+                                "news",
+                                "web_search"
+                            ],
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "news",
+                                    "web_search"
+                                ]
+                            }
+                        }
+                    },
+                    {
                         "name": "from",
                         "in": "query",
                         "schema": {
@@ -10630,6 +10648,23 @@
                     },
                     "is_active": {
                         "type": "boolean"
+                    },
+                    "source_keys": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "description": "**Only the sources that actually exist** (S13). `availableValues()` rather than\n`values()`, because a declared-but-unoffered case has no provider behind it and a\ntype saved against one would contribute no queries and say nothing about why \u2014 the\nsame reason `SearchRegion`'s unoffered regions are not accepted either (ADR 0019 \u00a72a).",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "news",
+                                "web_search"
+                            ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 2,
+                        "uniqueItems": true
                     }
                 },
                 "required": [
@@ -11063,6 +11098,23 @@
                     },
                     "is_active": {
                         "type": "boolean"
+                    },
+                    "source_keys": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "description": "**Only the sources that actually exist** (S13). `availableValues()` rather than\n`values()`, because a declared-but-unoffered case has no provider behind it and a\ntype saved against one would contribute no queries and say nothing about why \u2014 the\nsame reason `SearchRegion`'s unoffered regions are not accepted either (ADR 0019 \u00a72a).",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "news",
+                                "web_search"
+                            ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 2,
+                        "uniqueItems": true
                     }
                 },
                 "required": [
@@ -11307,6 +11359,11 @@
                             "type": "string"
                         }
                     },
+                    "source_keys": {
+                        "type": "array",
+                        "description": "Which sources this type runs on (S13). Values, so the client can tick them against\n`available_sources`; the labels and the \"what this is good for\" line come from the\nenum, through the controller, so one wording serves the form and the card.",
+                        "items": {}
+                    },
                     "match_keywords": {
                         "type": "array",
                         "items": {
@@ -11423,6 +11480,7 @@
                     "is_preset",
                     "translatable",
                     "query_templates",
+                    "source_keys",
                     "match_keywords",
                     "includes",
                     "excludes",
@@ -11549,6 +11607,11 @@
                             },
                             "is_active": {
                                 "type": "boolean"
+                            },
+                            "source_keys": {
+                                "type": "array",
+                                "description": "**News, always** (S13). The composer drafts what to search for and how to judge\nit; it does not choose where to spend money. `sourceKinds` is empty on a drafted\ndefinition and that resolves to news on save anyway, so sending it explicitly\nmakes the draft a complete form state rather than one the client has to patch.",
+                                "items": {}
                             }
                         },
                         "required": [
@@ -11564,7 +11627,8 @@
                             "min_relevance",
                             "suggested_approach_hint",
                             "markets",
-                            "is_active"
+                            "is_active",
+                            "source_keys"
                         ]
                     }
                 },
@@ -11781,6 +11845,33 @@
                         "type": "string"
                     },
                     "source_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "source_kind": {
+                        "type": "string",
+                        "description": "Which source found it, and the query that did (S13). The kind is always present \u2014\nevery pre-S13 signal is news, correctly \u2014 and `matched_template` is nullable because\na source that does not search by keyword has no template behind it.",
+                        "enum": [
+                            "news",
+                            "web_search",
+                            "companies_house",
+                            "feed",
+                            "webhook"
+                        ]
+                    },
+                    "source_kind_label": {
+                        "type": "string",
+                        "enum": [
+                            "News",
+                            "Web search",
+                            "Companies House",
+                            "A feed you choose",
+                            "Your own events"
+                        ]
+                    },
+                    "matched_template": {
                         "type": [
                             "string",
                             "null"
@@ -12072,6 +12163,9 @@
                     "suggested_approach",
                     "source_url",
                     "source_name",
+                    "source_kind",
+                    "source_kind_label",
+                    "matched_template",
                     "published_at",
                     "actioned_at",
                     "deletes_in_days",

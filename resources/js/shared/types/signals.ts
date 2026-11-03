@@ -78,6 +78,8 @@ export type SignalDefinition = {
     suggested_approach_hint: string | null;
     /** Market codes this type is worth running in, or null for any. */
     markets: string[] | null;
+    /** Which sources this type runs on (S13). Never empty: a type with none would search nowhere. */
+    source_keys: SignalSourceKind[];
     /** Which library preset this was cloned from, and at which version. */
     preset_key: SignalEventKey | null;
     preset_version: number | null;
@@ -99,6 +101,34 @@ export type SignalDefinition = {
 };
 
 export type SignalStatus = 'new' | 'dismissed' | 'converted';
+
+/**
+ * Where a signal came from (S13, ADR 0023).
+ *
+ * The full enum, including the three cases the server declares and does not yet offer — a card
+ * rendering a historical row has to be able to name whatever is on it, and a union that only listed
+ * the available sources would make that a type error rather than a label.
+ *
+ * What a member may *choose* is whatever the server sends in `options.sources`, never this union.
+ */
+export type SignalSourceKind =
+    | 'news'
+    | 'web_search'
+    | 'companies_house'
+    | 'feed'
+    | 'webhook';
+
+/** A source with its label, and — on the type form — what it is good for. */
+export type SignalSourceOption = {
+    value: SignalSourceKind;
+    /** Translation key, not a finished string. */
+    label: string;
+    /**
+     * Translation key, not a finished string. Present on the type form and absent on the feed
+     * filter: choosing a source needs the trade-off spelled out, filtering by one does not.
+     */
+    description?: string;
+};
 
 export type SignalDismissReason =
     | 'not_relevant'
@@ -162,6 +192,15 @@ export type Signal = {
     suggested_approach: string | null;
     source_url: string;
     source_name: string | null;
+    /** Which source found it. Always present — every pre-S13 signal is `news`, correctly (S13). */
+    source_kind: SignalSourceKind;
+    /** Translation key, not a finished string. */
+    source_kind_label: string;
+    /**
+     * The query that found it, for the explanation panel — or null for a source that does not search
+     * by keyword. This is what S12's second deviation recorded as missing (S13).
+     */
+    matched_template: string | null;
     published_at: string | null;
     actioned_at: string | null;
     /**
@@ -328,6 +367,8 @@ export type SignalFilterState = {
     sort: SignalSortOrder;
     /** Signal definition keys. Any the team no longer has is dropped by the server. */
     event_keys: SignalEventKey[];
+    /** Which sources to show (S13). Empty means every source, which is what the feed has always shown. */
+    source_kinds: SignalSourceKind[];
     /** `Y-m-d`, as a date input speaks it. */
     from: string | null;
     to: string | null;
@@ -491,6 +532,8 @@ export type SignalDefinitionForm = {
     min_relevance: number | null;
     suggested_approach_hint: string | null;
     is_active: boolean;
+    /** Which sources to run on (S13). At least one; the form pre-selects news. */
+    source_keys: SignalSourceKind[];
 };
 
 /**

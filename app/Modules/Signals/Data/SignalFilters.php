@@ -7,6 +7,7 @@ namespace App\Modules\Signals\Data;
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Enums\SignalScope;
 use App\Modules\Signals\Enums\SignalSortOrder;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\SignalDefinition;
 use DateTimeImmutable;
@@ -68,6 +69,19 @@ final class SignalFilters extends Data
          * order they already understand to fall back to.
          */
         public readonly SignalSortOrder $sort = SignalSortOrder::Heat,
+        /**
+         * Which sources to show (S13, task 9). Empty means every source, which is what the feed has
+         * always shown and therefore the only safe default.
+         *
+         * A list rather than a single value, because the useful question is subtractive: a team that
+         * has added web search and found it noisy wants "news only" without unticking it on every
+         * type and losing the coverage. Unknown keys are **dropped** here, unlike `eventKeys` — a
+         * source is an enum and a case this build does not know has no rows to match, so honouring
+         * it would narrow the feed to nothing for a reason nobody could see.
+         *
+         * @var list<SignalSourceKind>
+         */
+        public readonly array $sourceKinds = [],
     ) {}
 
     /**
@@ -97,6 +111,7 @@ final class SignalFilters extends Data
             // a stale bookmark shows a feed rather than a 404.
             scope: SignalScope::tryFrom((string) ($input['scope'] ?? '')) ?? SignalScope::All,
             sort: SignalSortOrder::fromRequest($input['sort'] ?? null),
+            sourceKinds: self::sourceKinds($input['source_kinds'] ?? null),
         );
     }
 
@@ -104,7 +119,7 @@ final class SignalFilters extends Data
      * The shape the Vue filter bar binds to — every key always present, so the form never has to
      * guess whether a filter is absent or merely empty.
      *
-     * @return array{status: string, scope: string, sort: string, event_keys: list<string>, from: string|null, to: string|null, min_relevance: int|null}
+     * @return array{status: string, scope: string, sort: string, event_keys: list<string>, source_kinds: list<string>, from: string|null, to: string|null, min_relevance: int|null}
      */
     public function toFormState(): array
     {
@@ -116,6 +131,7 @@ final class SignalFilters extends Data
             'scope' => $this->scope->value,
             'sort' => $this->sort->value,
             'event_keys' => $this->eventKeys,
+            'source_kinds' => array_map(static fn (SignalSourceKind $kind): string => $kind->value, $this->sourceKinds),
             // Date inputs speak `Y-m-d`, not ISO-8601 with a timezone.
             'from' => $this->from?->format('Y-m-d'),
             'to' => $this->to?->format('Y-m-d'),
@@ -131,6 +147,7 @@ final class SignalFilters extends Data
     public function isNarrowed(): bool
     {
         return $this->eventKeys !== []
+            || $this->sourceKinds !== []
             || $this->from !== null
             || $this->to !== null
             || $this->minRelevance !== null;
@@ -165,6 +182,36 @@ final class SignalFilters extends Data
         }
 
         return array_slice($keys, 0, self::MAX_KEYS);
+    }
+
+    /**
+     * The sources to narrow to, dropping anything this build does not recognise.
+     *
+     * **Dropped rather than honoured**, which is the opposite of `eventKeys()` and the class
+     * docblock explains why the two differ: an event key outlives the type that made it, so
+     * filtering by a deleted type's key is a real question. A source key is an enum case, so one
+     * this build does not know cannot be on any row — honouring it would answer a filtered request
+     * with an empty page for a reason the member could never work out.
+     *
+     * @return list<SignalSourceKind>
+     */
+    private static function sourceKinds(mixed $value): array
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return [];
+        }
+
+        $kinds = [];
+
+        foreach ((array) $value as $candidate) {
+            $kind = SignalSourceKind::parse($candidate);
+
+            if ($kind !== null && ! in_array($kind, $kinds, strict: true)) {
+                $kinds[] = $kind;
+            }
+        }
+
+        return $kinds;
     }
 
     /**

@@ -447,6 +447,25 @@ export type AdminPagination = {
     per_page: number;
 };
 
+/**
+ * What one signal source cost and found (S13, ADR 0023) — a row of `signal_runs.source_breakdown`.
+ *
+ * `rejected` is counted apart from `queries` on purpose: a query the provider refused as a *pattern*
+ * never ran, so including it would make cost-per-query wrong. `breaker_open` is null rather than
+ * false where this build watches no breaker for the source, which is the same rule the provider
+ * health screen follows — a green light nobody wired up is worse than no light.
+ */
+export type AdminSignalRunSource = {
+    source: string;
+    label: string;
+    queries: number;
+    results: number;
+    rejected: number;
+    cost_micros: number;
+    breaker_open?: boolean | null;
+    breaker_failures?: number | null;
+};
+
 export type AdminSignalRun = {
     id: number;
     team: string | null;
@@ -457,6 +476,8 @@ export type AdminSignalRun = {
     results: number;
     created: number;
     cost_micros: number;
+    /** Where this run's money went, per source. Empty for every run from before S13. */
+    sources: AdminSignalRunSource[];
     /** Null when the run never started or never finished — which is the finding on a stuck run. */
     duration_ms: number | null;
     error: string | null;

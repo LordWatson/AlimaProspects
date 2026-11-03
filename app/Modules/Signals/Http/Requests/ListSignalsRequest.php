@@ -8,6 +8,7 @@ use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Data\SignalFilters;
 use App\Modules\Signals\Enums\SignalScope;
 use App\Modules\Signals\Enums\SignalSortOrder;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\SignalStatus;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -47,6 +48,11 @@ final class ListSignalsRequest extends FormRequest
             // shared link should do rather than 422.
             'event_keys' => ['nullable', 'array', 'max:'.max(1, (int) config('signals.max_definitions_per_team', 25))],
             'event_keys.*' => ['string', 'max:32'],
+            // Which sources to show (S13). Bounded by the enum, and only the available cases: a
+            // source with no provider has no rows, so offering to filter by it would be a control
+            // that can only ever empty the feed.
+            'source_kinds' => ['nullable', 'array', 'max:'.count(SignalSourceKind::available())],
+            'source_kinds.*' => ['string', 'distinct', 'in:'.implode(',', SignalSourceKind::availableValues())],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'min_relevance' => ['nullable', 'integer', 'min:0', 'max:100'],
