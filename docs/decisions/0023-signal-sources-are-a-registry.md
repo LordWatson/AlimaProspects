@@ -96,16 +96,33 @@ typed with a quote in it would fail their whole watch, three times over, re-payi
 query in the plan on each attempt, and report "we couldn't reach the news service", which is both
 untrue and unfixable by them.
 
-So a 4xx that is a verdict about **this query** (`400`, `422`) raises
-`SignalsException::sourceQueryRejected()`, which is non-retryable, does not trip the breaker — it is
-our query's fault, not the provider's health — and is caught **per query** by the run. The query is
-counted as `rejected` in the run's source breakdown and the run carries on with the rest of the plan.
-A run whose every query was rejected completes with nothing found rather than failing, because
-nothing is broken: we asked badly.
+So a 4xx that is a verdict about **this query** raises `SourceQueryRejected` (a
+`SignalsException` subclass, so the run can `catch` it by type rather than comparing an error-code
+string), which is non-retryable, does not trip the breaker — it is our query's fault, not the
+provider's health — and is caught **per query** by the run. The query is counted as `rejected` in the
+run's source breakdown and the run carries on with the rest of the plan.
+
+**Two conditions, both added by the S13a review, and the first is the important one.**
+
+A 400 is the most overloaded status a search API has. Serper answers a refused query pattern with
+one; from the same endpoint it is also how an exhausted account, a parameter we are sending wrongly,
+and a changed API contract arrive. So the **status is not sufficient**: the response body has to say
+so, matching `signals.serper.query_rejection_markers`, and any other 400 or 422 is `sourceFailed()`
+— loud and non-retryable. Erring that way round is deliberate: a misclassified rejection costs one
+noisy failed run, and a misclassified outage costs a customer their whole feature without telling
+anybody. An empty marker list means no 400 is ever a rejection, which fails safe.
+
+And a run where a source refused **every** query it was asked **fails**, rather than completing with
+nothing found. "Some queries refused" is a note about a member's template; "every query refused" is
+a statement about something systemic — every template unusable, or a credential, a parameter or a
+contract that has broken — and a green run reading "0 signals" with no explanation would hide all of
+it, silently, every run, with the breaker deliberately shut. That is the
+"searched nothing and completed successfully" failure this module keeps legislating against.
 
 The distinction to hold on to: a breaker answers _is this provider up?_, and a rejection answers
 _was that a sensible thing to ask it?_ Conflating them makes one team's bad template everybody's
-outage.
+outage — and conflating a rejection with an outage makes everybody's outage look like one team's bad
+template, which is worse, because nobody is told.
 
 ### 5. Each source reports its own cost and its own outcome onto the run
 

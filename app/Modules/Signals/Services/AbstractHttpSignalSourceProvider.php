@@ -14,6 +14,7 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -128,7 +129,7 @@ abstract class AbstractHttpSignalSourceProvider implements SignalSourceProvider
 
         // A verdict about this query, not about the source. The breaker stays shut: a template with
         // a quote in it says nothing about whether Serper is up.
-        if ($this->isQueryRejection($status)) {
+        if ($this->isQueryRejection($response)) {
             Log::channel('signals')->info('Signal source rejected a query pattern; query skipped.', [
                 'source' => $source,
                 'status' => $status,
@@ -158,15 +159,51 @@ abstract class AbstractHttpSignalSourceProvider implements SignalSourceProvider
     }
 
     /**
-     * Whether this status is the source telling us *that query* was unacceptable.
+     * Whether this response is the source telling us *that query* was unacceptable.
      *
-     * 400 and 422 only. A 401/403 is a credential problem and a 404 is a wrong endpoint — both are
-     * ours and both should fail the run loudly rather than be swallowed one query at a time, which
-     * would turn a bad API key into a run that quietly finds nothing for ever.
+     * A 401/403 is a credential problem and a 404 is a wrong endpoint — both are ours and both fail
+     * the run loudly rather than being swallowed one query at a time, which would turn a bad API
+     * key into a run that quietly finds nothing for ever.
+     *
+     * **The status is not enough, which is the S13a review's first finding.** This used to return
+     * true for any 400 or 422, and a 400 is the most overloaded code a search API has: Serper
+     * answers a refused query *pattern* with one, and from the same endpoint a 400 is also how an
+     * exhausted account, a malformed `tbs`/`gl`/`num` of ours, and a changed API contract arrive.
+     * Swallowing all of those per query would complete every run green, with nothing found, no
+     * retry and the breaker deliberately shut — for ever, silently. That is precisely the failure
+     * this module keeps legislating against.
+     *
+     * So the **body** has to say so. The markers live in
+     * `signals.serper.query_rejection_markers` so a provider's wording can change without a deploy,
+     * and anything that does not match is `sourceFailed()`: non-retryable, loud, and visible on the
+     * run. Erring that way round is deliberate — a misclassified rejection costs one noisy failed
+     * run, and a misclassified outage costs a customer their whole feature without telling anybody.
      */
-    protected function isQueryRejection(int $status): bool
+    protected function isQueryRejection(Response $response): bool
     {
-        return $status === 400 || $status === 422;
+        if ($response->status() !== 400 && $response->status() !== 422) {
+            return false;
+        }
+
+        $markers = config('signals.serper.query_rejection_markers', []);
+
+        if (! is_array($markers) || $markers === []) {
+            return false;
+        }
+
+        // The whole body rather than a named field: a provider that returns `{"message": …}` today
+        // may return `{"error": {"message": …}}` tomorrow, and the question being asked — does this
+        // response say the query was unacceptable — is the same either way. Lower-cased, because a
+        // marker is matched and not parsed.
+        $body = Str::lower($response->body());
+
+        foreach ($markers as $marker) {
+            if (is_string($marker) && $marker !== '' && Str::contains($body, Str::lower($marker))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -1751,6 +1751,85 @@ So `JobPostingSignalSource` is **not built**, `SignalSourceKind` has no case for
 aggregation is wanted later it is a different source shape — one that tracks postings per company
 over time — and a different decision. Recorded here so nobody spikes it a second time.
 
+## What the S13a reviews changed
+
+`laravel-module-reviewer` and `brand-reviewer` were both run against the finished phase. Every
+finding was accepted. **Three would have shipped something broken, and the first one changed a
+decision in ADR 0023.**
+
+1. **A 400 is not always "our query was bad", and treating it as one would have hidden an outage
+   for ever.** The spike established exactly one 400 body — Serper's "Query pattern not allowed for
+   free accounts" — and the code generalised it to _any_ 400 or 422. But a 400 is the most
+   overloaded code a search API has: the same endpoint answers an exhausted account, a parameter we
+   are sending wrongly, and a changed contract with one. Every one of those would have been
+   swallowed per query, so every run of every watch would have **completed green with nothing
+   found**, no retry, and the breaker deliberately shut — silently, for ever, which is precisely
+   the "searched nothing and completed successfully" failure this module keeps legislating against.
+   Two fixes. `isQueryRejection()` now takes the **response** and requires the body to match
+   `signals.serper.query_rejection_markers`; anything else is `sourceFailed()`, which is loud and
+   non-retryable. And ADR 0023 §4's rule was narrowed: a run where a source refused **every** query
+   it was asked now **fails** rather than completing, because "some refused" is a note about a
+   template and "all refused" is a statement about something systemic. An empty marker list fails
+   safe.
+2. **The cost of a failed run was recorded as zero, and the code's own comment said otherwise.**
+   `search()` recorded each source's spend in a second loop _after_ the query loop, so a
+   non-retryable failure on query N left the method before any of it was kept — and the run was
+   written with `cost_micros: 0` having already paid for N−1 searches. The comment on the failure
+   path claimed "the spend recorded is whatever ran before the failure", which was true of the
+   query count and false of the money. It is now recorded in a `finally`.
+3. **An update that did not mention sources silently downgraded a type to news.**
+   `SignalDefinitionData::$sourceKinds` was `list<SignalSourceKind>` with `[]` meaning "news", so
+   absent and empty were the same value — and `SaveSignalDefinitionAction` `forceFill`s everything
+   `toAttributes()` returns. An older client PATCHing a name (the mobile app, a customer's
+   integration written before S13a) would therefore have turned a web-search type back into a news
+   one, changing what it cost and what it found, with no error and nothing on screen. The field is
+   now **nullable** — null means "not mentioned" — and `toAttributes()` omits the key entirely in
+   that case. Create still stores news, because `sourceKinds()` reads a null column as news.
+
+Three more were correctness-adjacent and are worth knowing:
+
+4. **`signal_runs.queries_count` and `source_breakdown.queries` did not reconcile.** The column was
+   the _planned_ count, so it included refused queries and ones skipped for an unregistered source
+   while the breakdown counted only the answered ones — and `/admin/signal-runs` showed both without
+   them summing. `queries_count` is now `answered + refused`: a refused query **was** made, and one
+   skipped because its source is not registered was not, and is counted nowhere.
+5. **The preview priced every query at the news rate**, which matters more than it sounds: that
+   figure is what the `signal_previews` ledger row records, and therefore what the team's daily
+   preview budget is enforced on (ADR 0020). A cap measured in the wrong currency is not a cap.
+6. **The run dispatched on an error-code string.** `search()` decided whether a provider failure was
+   survivable by comparing `errorCode()` against `'signals.source_query_rejected'` — a magic string
+   (CLAUDE.md §2) in the one position where a rename would silently reintroduce the defect the check
+   exists to prevent, with every test still passing. `SourceQueryRejected` is now a subclass and the
+   `catch` is typed. `SignalsException` lost its `final` for that and nothing else.
+
+The migration also stopped importing `SignalSourceKind` (a replayed migration must not change
+meaning because an enum case was renamed), and `SignalFilters` now drops a declared-but-unavailable
+source key as its own docblock already claimed it did.
+
+**What the brand review caught.** Eight findings, two of them accessibility defects that would have
+shipped:
+
+- **The "Where to look" group had no accessible name.** It used `FormField`, which renders a
+  `<Label for>` — and a label pointing at a `<div role="group">` names nothing, so a screen reader
+  announced an unnamed group. The same missing id broke the error summary's anchor, and
+  `fieldLabels` had no `source_keys` entry so the summary would have shown the raw key. It is now a
+  real `<fieldset>` with a real `<legend>`, which is the native way to name a set of checkboxes and
+  needs no ARIA — the same thing `FilterGroup` does for the feed's chips. Each source's trade-off
+  line is `aria-describedby`'d onto its checkbox, because "Web search, checkbox" without "finds more
+  noise" is missing the only reason that line exists.
+- **The admin table's scroll region was not keyboard-reachable** — no `tabindex`, no `role`, no
+  focus ring, where the runs table beside it has all three. WCAG 2.1.1, and the third time a review
+  has found this defect in this product.
+- **`t('Source')` is translated as الاستكشاف — "Discovery".** Correct for the lead screens that ask
+  which _provider_ found a lead, and wrong here: the Arabic filter group and chip would have read
+  "Discovery: Web search". The feed's source filter uses `'Where it came from'` instead.
+- Eleven translation keys were missing from both language files, including every source label and
+  description. And the type editor's "Alima searches **published news** for these words" had quietly
+  become untrue — a type can now search the web — so it is "Alima searches for these words".
+- Plus: `required` removed from a field that cannot be unmet, `font-normal` on the source rows so
+  they sit under the legend rather than beside it, one text size instead of three, and `<bdi>` round
+  the matched query template so the `·` separators in the explanation line do not reorder in Arabic.
+
 ## What the S12 review changed
 
 `laravel-module-reviewer` and `brand-reviewer` were both run against the finished phase. Every
@@ -1848,6 +1927,23 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
 
 ## Known limitations / TODO
 
+- **`max_queries_per_run` now bounds a run across sources, so adding one halves a watch's reach**
+  (S13a). A definition on two sources asks every template twice, and the ceiling is still forty — so
+  a watch over five places that was comfortably inside budget on news alone can be trimmed the
+  moment web search is ticked. The arithmetic is honest rather than broken (a source is real money)
+  and the watch card already says coverage was trimmed, but nothing on the **type** form warns that
+  ticking a second source may cost a place on a watch somebody else configured. The cost line says
+  what the searches cost and not what they displace. A per-plan ceiling is S16's job and is where
+  this should be resolved.
+- **Platform reporting still attributes every signal provider call to `signals_news`** (S13a).
+  `PlatformRollup` counts `signal_runs` rows and sums `cost_micros` onto that one dimension, which
+  was exact while a run meant one provider and is now a run-level figure filed under its commonest
+  source. Rather than report a zero that is not true, `PlatformProvider::SignalsWebSearch::isMetered()`
+  returns **false**, so its row on `/admin/providers` carries the breaker and says nothing about
+  spend; the per-source figures are recorded on `signal_runs.source_breakdown` and shown on
+  `/admin/signal-runs`. Splitting the rollup per source would mean aggregating a json column
+  cross-tenant and changing what a platform metric means, which is ADR 0016's decision rather than
+  this phase's.
 - **A rejection memory survives a type being re-worded** (S11). It is keyed on the _set of signal
   type keys_ that were offered, so adding or removing a type asks every article again — but editing
   a type's include/exclude rules or thresholds without changing its key does not. The window bounds

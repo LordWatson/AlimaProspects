@@ -134,7 +134,19 @@ final class PreviewSignalDefinitionAction
         );
 
         $queries = array_map(static fn (SignalSourceQuery $query): string => $query->q, $plan->queries);
-        $searchCostMicros = $plan->count() * (int) config('signals.cost_micros_per_request', 1_000);
+
+        // **Priced per source, not at the news rate** (S13a review finding 4). This used to be
+        // `count × signals.cost_micros_per_request`, which was exact while every query went to
+        // `/news` and silently wrong once a draft could name a second source: sources are priced
+        // independently and one of the declared ones is free. It matters more here than almost
+        // anywhere, because this figure is what the `signal_previews` ledger row records and
+        // therefore what the team's daily preview budget is enforced on (ADR 0020) — a cap measured
+        // in the wrong currency is not a cap.
+        $searchCostMicros = 0;
+
+        foreach ($plan->queries as $query) {
+            $searchCostMicros += $query->kind->costMicrosPerRequest();
+        }
 
         // **Check and reserve under one lock.** The check alone was a read-then-write: a preview
         // takes seconds, so without this every member of a team pressing at once read the same

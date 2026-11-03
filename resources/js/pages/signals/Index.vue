@@ -284,7 +284,11 @@ const activeChips = computed<ActiveFilterChip[]>(() => {
 
         chips.push({
             id: 'source_kinds:' + kind,
-            group: t('Source'),
+            // **Not the shared `'Source'` key.** It is translated in `lang/ar.json` as
+            // الاستكشاف — "Discovery" — which is right for the lead screens that ask which
+            // *provider* found a lead, and wrong here: in Arabic this chip would have read
+            // "Discovery: Web search". Its own key, with its own Arabic (brand review).
+            group: t('Where it came from'),
             // The server drops a source this build does not know, so a chip without an option
             // should not happen — the key is shown rather than a blank if it ever does.
             label: source ? t(source.label) : kind,
@@ -685,7 +689,7 @@ onBeforeUnmount(() => {
                          somebody the screen is cluttered. -->
                     <FilterGroup
                         v-if="options.sources.length > 1"
-                        :legend="t('Source')"
+                        :legend="t('Where it came from')"
                     >
                         <FilterToggle
                             v-for="source in options.sources"

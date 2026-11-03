@@ -35,6 +35,7 @@ use App\Modules\Signals\Events\AccountSignalsDetected;
 use App\Modules\Signals\Events\SignalRunProgressed;
 use App\Modules\Signals\Events\SignalsDetected;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Exceptions\SourceQueryRejected;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalCluster;
 use App\Modules\Signals\Models\SignalDefinition;
@@ -180,7 +181,6 @@ final class RunSignalWatchAction
         $profile = BusinessProfile::query()->where('team_id', $watch->team_id)->first();
 
         [$plan, $nextCursor] = $this->planFor($watch, $definitions, $icp);
-        $queriesCount = $plan->count();
 
         // What each source cost and found (S13, task 8). Accumulated by `search()` as it goes rather
         // than multiplied out afterwards, because a rejected query and a query that found nothing
@@ -195,14 +195,17 @@ final class RunSignalWatchAction
                 throw $e; // bubble → the job retries with backoff
             }
 
-            // Misconfig/driver can never succeed. The spend recorded is whatever ran before the
-            // failure — which is no longer necessarily zero, since a plan can span sources and the
-            // second one may be the one that is misconfigured.
+            // Misconfig, a refused credential, a source that refused every query, or a driver that
+            // can never succeed. **The spend recorded is whatever ran before the failure**, which
+            // is no longer necessarily zero — a plan can span sources and the second one may be the
+            // one that broke. `search()` records each source's cost in a `finally` precisely so
+            // this is true rather than merely claimed (S13a review finding 2).
             return $this->fail(
                 $run,
                 $watch,
                 $e->getMessage(),
-                $queriesCount,
+                // What was actually attempted, not what was planned — see `totalQueriesAttempted()`.
+                $breakdown->totalQueriesAttempted(),
                 $breakdown->totalResults(),
                 $breakdown->totalCostMicros(),
                 $plan->requested,
@@ -211,6 +214,14 @@ final class RunSignalWatchAction
         }
 
         $searchCostMicros = $breakdown->totalCostMicros();
+
+        // **The queries this run actually made**, which is what `signal_runs.queries_count` records
+        // from here on. It used to be `$plan->count()` — the *planned* figure, which counted a
+        // refused query and a query skipped for an unregistered source alongside the ones that ran,
+        // so the column and `source_breakdown` disagreed and the admin screen showed both without
+        // them summing (S13a review finding 3). `queries_requested` remains the separate "what the
+        // plan wanted before the ceiling" figure.
+        $queriesCount = $breakdown->totalQueriesAttempted();
 
         // Drop articles this team has already seen, so a re-run does no AI work on them.
         $items = $this->dropAlreadySeen($watch->team_id, $items);
@@ -347,61 +358,107 @@ final class RunSignalWatchAction
         $unique = [];
         $rawCount = 0;
 
-        /** @var array<string, int> $executed queries actually run, per source */
+        /** @var array<string, int> $executed queries actually answered, per source */
         $executed = [];
 
-        foreach ($queries as $query) {
-            $provider = $this->sources->find($query->kind);
+        try {
+            foreach ($queries as $query) {
+                $provider = $this->sources->find($query->kind);
 
-            if (! $provider instanceof SignalSourceProvider) {
-                // A stored key with no provider: a source withdrawn between deploys, or one whose
-                // credential was pulled. Skipped rather than fatal — a scheduled watch must not die
-                // at three in the morning because a source went away (ADR 0023 §1).
-                Log::channel('signals')->warning('Signal run skipped a query for an unregistered source.', [
-                    'team_id' => (int) $watch->team_id,
-                    'signal_watch_id' => (int) $watch->getKey(),
-                    'source' => $query->kind->value,
-                ]);
+                if (! $provider instanceof SignalSourceProvider) {
+                    // A stored key with no provider: a source withdrawn between deploys, or one
+                    // whose credential was pulled. Skipped rather than fatal — a scheduled watch
+                    // must not die at three in the morning because a source went away (ADR 0023 §1).
+                    // Not counted anywhere, because no query was made.
+                    Log::channel('signals')->warning('Signal run skipped a query for an unregistered source.', [
+                        'team_id' => (int) $watch->team_id,
+                        'signal_watch_id' => (int) $watch->getKey(),
+                        'source' => $query->kind->value,
+                    ]);
 
-                continue;
-            }
+                    continue;
+                }
 
-            try {
-                $items = $provider->fetch($query);
-            } catch (SignalsException $e) {
-                if ($e->errorCode() === 'signals.source_query_rejected') {
+                try {
+                    $items = $provider->fetch($query);
+                } catch (SourceQueryRejected) {
+                    // A verdict about this query. A **typed** catch rather than a comparison
+                    // against an error-code string: this is the one place in the run that decides
+                    // whether a failure is survivable, and a renamed code must not be able to turn
+                    // it into a swallowed outage (review finding).
                     $breakdown->recordRejection($query->kind);
 
                     continue;
                 }
 
-                throw $e;
+                $executed[$query->kind->value] = ($executed[$query->kind->value] ?? 0) + 1;
+                $breakdown->recordQuery($query->kind, count($items));
+
+                foreach ($items as $item) {
+                    $rawCount++;
+
+                    // Attributed to the template that found it, for the explanation panel (S13; the
+                    // gap S12 recorded as its second deviation). Stamped here rather than in the
+                    // provider because a provider is handed one query and has no reason to hold
+                    // the plan.
+                    $unique[$item->dedupeKey()] ??= $item->foundBy($query->q);
+                }
             }
+        } finally {
+            // **In a `finally`, which is the review's finding and a real one.** The cost used to be
+            // recorded in a second loop after this one, so a non-retryable failure on query N left
+            // `search()` before any of it was recorded — and the caller then wrote `cost_micros: 0`
+            // onto a failed run that had already paid for N-1 searches, while this method's own
+            // comment claimed the spend was kept.
+            //
+            // Asked of each source rather than multiplied here: a source knows its own pricing, one
+            // of the declared ones is free, and a future one may not bill per query at all. Still
+            // one call per source rather than one per query, so `estimatedCostMicros()` keeps
+            // seeing a count it can price non-linearly if it ever needs to.
+            foreach ($executed as $key => $count) {
+                $kind = SignalSourceKind::parse($key);
+                $provider = $kind === null ? null : $this->sources->find($kind);
 
-            $executed[$query->kind->value] = ($executed[$query->kind->value] ?? 0) + 1;
-            $breakdown->recordQuery($query->kind, count($items));
-
-            foreach ($items as $item) {
-                $rawCount++;
-
-                // Attributed to the template that found it, for the explanation panel (S13; the gap
-                // S12 recorded as its second deviation). Stamped here rather than in the provider
-                // because a provider is handed one query and has no reason to hold the plan.
-                $unique[$item->dedupeKey()] ??= $item->foundBy($query->q);
+                if ($kind instanceof SignalSourceKind && $provider instanceof SignalSourceProvider) {
+                    $breakdown->recordCost($kind, $provider->estimatedCostMicros($count));
+                }
             }
         }
 
-        // The money, asked of each source rather than multiplied here: a source knows its own
-        // pricing, one of the declared ones is free, and a future one may not bill per query at all.
-        foreach ($executed as $key => $count) {
-            $kind = SignalSourceKind::parse($key);
-
-            if ($kind instanceof SignalSourceKind) {
-                $breakdown->recordCost($kind, $this->sources->for($kind)->estimatedCostMicros($count));
-            }
-        }
+        $this->assertSourcesAnswered($breakdown, $watch);
 
         return [array_values($unique), $rawCount];
+    }
+
+    /**
+     * Fail the run if a source refused **everything** it was asked (review finding 1).
+     *
+     * ADR 0023 §4 said a run whose every query was rejected completes having found nothing, because
+     * nothing is broken — we asked badly. That holds when *some* queries were refused: the rest ran,
+     * the run worked, and the rejection is a note on the breakdown.
+     *
+     * It does not hold when a source answered **nothing at all**. Then either every template a
+     * member wrote is unusable, or — the case that matters — something systemic is wrong that
+     * happens to arrive as a 400: an exhausted account, a parameter we are sending wrongly, a
+     * provider that has changed its rules. Completing green with "0 signals" and no explanation is
+     * the "searched nothing and completed successfully" failure this module keeps legislating
+     * against, and it would do it silently, every run, for ever, with the breaker deliberately shut.
+     *
+     * So it fails, non-retryably, with the message that tells a member what to change. A failed run
+     * is visible on their own screen and on `/admin/signal-runs`; a green one is not.
+     */
+    private function assertSourcesAnswered(SignalSourceBreakdown $breakdown, SignalWatch $watch): void
+    {
+        foreach ($breakdown->sourcesThatAnsweredNothing() as $kind) {
+            Log::channel('signals')->error('A signal source refused every query in a run.', [
+                'team_id' => (int) $watch->team_id,
+                'signal_watch_id' => (int) $watch->getKey(),
+                'source' => $kind->value,
+                'rejected' => $breakdown->rejectionsFor($kind),
+            ]);
+
+            throw SignalsException::sourceQueryRejected($kind->value);
+        }
     }
 
     /**

@@ -32,6 +32,26 @@ return [
         // HTTP retry on connection errors / 5xx / 429 with linear backoff in ms.
         'retry_times' => (int) env('SIGNALS_SERPER_RETRY_TIMES', 2),
         'retry_sleep_ms' => (int) env('SIGNALS_SERPER_RETRY_SLEEP_MS', 250),
+
+        /*
+         * What a refused query *pattern* looks like in a 400 body (S13a, ADR 0023 §4).
+         *
+         * Matched case-insensitively against the whole response body. A 400 that matches is a
+         * verdict about **that query** — skipped, counted, breaker untouched. A 400 that does
+         * **not** match fails the run loudly, because a 400 is the most overloaded code a search
+         * API has: the same endpoint answers an exhausted account, a parameter we are sending
+         * wrongly, and a changed contract with one. Treating all of them as "the member's template
+         * was bad" would complete every run green with nothing found, for ever, silently — which
+         * is the failure this module keeps legislating against, and it is why this list exists
+         * rather than a bare status check.
+         *
+         * Here rather than as a constant so a provider's wording can change without a deploy. An
+         * empty list means "no 400 is ever a query rejection", which fails safe.
+         */
+        'query_rejection_markers' => [
+            // Serper, free tier, answering a `site:` or quoted-phrase query (S13a spike).
+            'query pattern not allowed',
+        ],
     ],
 
     // Circuit breaker for the news client (its own, separate from lead-sourcing's).
@@ -82,6 +102,12 @@ return [
     // The run trims to this ceiling in a deterministic order and **records that it trimmed**, which
     // the watch card shows: a silent trim is a lie about coverage. S8 keeps this ceiling and makes
     // it bite harder, since a watch there multiplies templates by locations.
+    //
+    // **S13a makes it bite harder again, and it now bounds a run _across_ sources rather than
+    // within one** (ADR 0023): a definition on two sources asks every template twice, so the same
+    // watch covers half as many places before the trim reaches it. That is the honest arithmetic
+    // rather than a regression — a source is real money — and the watch card already says coverage
+    // was trimmed. A per-plan limit is S16's job.
     'max_queries_per_run' => (int) env('SIGNALS_MAX_QUERIES_PER_RUN', 40),
 
     /*

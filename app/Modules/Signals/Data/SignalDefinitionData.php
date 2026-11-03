@@ -60,9 +60,17 @@ final class SignalDefinitionData extends Data
      * @param  list<string>  $includes
      * @param  list<string>  $excludes
      * @param  list<Market>|null  $markets  Null means "any market".
-     * @param  list<SignalSourceKind>  $sourceKinds  Which sources this type runs on (S13, ADR 0023).
-     *                                               Empty resolves to news, which is what a type
-     *                                               starts on and what every pre-S13 type is.
+     * @param  list<SignalSourceKind>|null  $sourceKinds  Which sources this type runs on (S13,
+     *                                                    ADR 0023). **Null means the caller did not
+     *                                                    mention sources at all**, which is not the
+     *                                                    same as choosing none: on create it means
+     *                                                    news (the pre-S13 behaviour every existing
+     *                                                    API client relies on), and on update it
+     *                                                    means **leave the stored choice alone**.
+     *                                                    Collapsing the two silently downgraded a
+     *                                                    web-search type to news whenever a client
+     *                                                    PATCHed it without the field (S13a review
+     *                                                    finding 5).
      */
     public function __construct(
         public readonly string $name,
@@ -78,7 +86,7 @@ final class SignalDefinitionData extends Data
         public readonly ?string $suggestedApproachHint = null,
         public readonly ?array $markets = null,
         public readonly bool $isActive = true,
-        public readonly array $sourceKinds = [],
+        public readonly ?array $sourceKinds = null,
     ) {}
 
     /**
@@ -107,7 +115,11 @@ final class SignalDefinitionData extends Data
             // A missing checkbox is absent rather than false in a form post, so "absent" has to
             // mean the default and not "switch it off" (the same reasoning as `SignalWatchData`).
             isActive: array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true,
-            sourceKinds: self::sources($validated['source_keys'] ?? null),
+            // `array_key_exists`, not `??`: absent and empty are different requests, and only
+            // the key's presence can tell them apart.
+            sourceKinds: array_key_exists('source_keys', $validated)
+                ? self::sources($validated['source_keys'])
+                : null,
         );
     }
 
@@ -122,7 +134,7 @@ final class SignalDefinitionData extends Data
      */
     public function toAttributes(): array
     {
-        return [
+        $attributes = [
             'name' => $this->name,
             'description' => $this->description,
             'category' => $this->category,
@@ -144,13 +156,21 @@ final class SignalDefinitionData extends Data
             'markets' => $this->markets === null
                 ? null
                 : array_map(static fn (Market $market): string => $market->value, $this->markets),
-            // Always written, never left absent: a type that searched nowhere would complete a run
-            // successfully having found nothing (ADR 0023 §2). An empty choice stores news.
-            'source_keys' => array_map(
+        ];
+
+        // **Only when the caller mentioned sources.** Absent from the array rather than written as
+        // news, so an update that does not mention them leaves the stored choice untouched — see
+        // the constructor's note. A *create* that does not mention them leaves the column null,
+        // which `SignalDefinition::sourceKinds()` reads as news, so the type still runs exactly
+        // where a pre-S13 one did.
+        if ($this->sourceKinds !== null) {
+            $attributes['source_keys'] = array_map(
                 static fn (SignalSourceKind $kind): string => $kind->value,
                 $this->sourceKinds === [] ? [SignalSourceKind::default()] : $this->sourceKinds,
-            ),
-        ];
+            );
+        }
+
+        return $attributes;
     }
 
     /**

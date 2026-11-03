@@ -9,6 +9,7 @@ use App\Modules\Signals\Data\SourceItem;
 use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Exceptions\SourceQueryRejected;
 use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Contracts\Cache\Repository;
@@ -309,4 +310,69 @@ it('uses the URL as the dedupe identity, because /search links are not redirecto
     // which is the shared normaliser's behaviour for a host that is not a known redirector.
     expect($items[0]->dedupeKey())->toBe($items[0]->urlHash)
         ->and($items[0]->contentHash)->not->toBeNull();
+});
+
+it('treats a 400 that is not a refused pattern as a run failure, not a skipped query', function (): void {
+    // **The S13a review's first finding.** A 400 is the most overloaded code a search API has: the
+    // same endpoint answers a refused query pattern, an exhausted account, a parameter we are
+    // sending wrongly, and a changed contract with one. Classifying all of them as "the member's
+    // template was bad" would complete every run green with nothing found, no retry and the breaker
+    // deliberately shut — for ever, silently.
+    Http::fake([
+        'google.serper.dev/*' => Http::response(
+            ['message' => 'Not enough credits', 'statusCode' => 400],
+            400,
+        ),
+    ]);
+
+    $thrown = null;
+
+    try {
+        webSearchSource()->fetch(webSearchQuery());
+    } catch (SignalsException $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->toBeInstanceOf(SignalsException::class)
+        // Not the per-query verdict, and therefore not swallowed by the run's loop.
+        ->and($thrown)->not->toBeInstanceOf(SourceQueryRejected::class)
+        ->and($thrown->errorCode())->toBe('signals.source_failed')
+        // Non-retryable: an exhausted account will not fix itself by being asked three more times.
+        ->and($thrown->isRetryable())->toBeFalse();
+});
+
+it('recognises a refused pattern by its body, which is where the marker lives', function (): void {
+    config()->set('signals.serper.query_rejection_markers', ['query pattern not allowed']);
+
+    Http::fake([
+        'google.serper.dev/*' => Http::response(
+            // Mixed case, to prove the comparison is not case-sensitive.
+            ['message' => 'Query Pattern Not Allowed for free accounts.', 'statusCode' => 400],
+            400,
+        ),
+    ]);
+
+    expect(fn () => webSearchSource()->fetch(webSearchQuery()))
+        ->toThrow(SourceQueryRejected::class);
+});
+
+it('treats every 400 as a failure when no marker is configured', function (): void {
+    // Fails safe: an empty list means "no 400 is ever a query rejection", so a deployment that
+    // cleared the config loses the skip-and-continue behaviour rather than gaining a silent outage.
+    config()->set('signals.serper.query_rejection_markers', []);
+
+    Http::fake([
+        'google.serper.dev/*' => Http::response(['message' => 'Query pattern not allowed.'], 400),
+    ]);
+
+    $thrown = null;
+
+    try {
+        webSearchSource()->fetch(webSearchQuery());
+    } catch (SignalsException $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeInstanceOf(SourceQueryRejected::class)
+        ->and($thrown->errorCode())->toBe('signals.source_failed');
 });

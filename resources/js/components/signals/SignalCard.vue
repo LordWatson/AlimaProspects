@@ -493,9 +493,13 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                              the line simply omits it rather than inventing one. -->
                         <template v-if="signal.matched_template">
                             ·
-                            <span class="font-mono" dir="ltr">{{
+                            <!-- `<bdi>` as well as `dir="ltr"`: the query is a search string and
+                                 must not mirror, and without the isolation its neighbouring `·`
+                                 separators reorder around it in an Arabic sentence (brand
+                                 review). -->
+                            <bdi class="font-mono" dir="ltr">{{
                                 signal.matched_template
-                            }}</span>
+                            }}</bdi>
                         </template>
                     </p>
                 </div>

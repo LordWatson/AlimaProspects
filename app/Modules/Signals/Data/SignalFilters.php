@@ -206,7 +206,11 @@ final class SignalFilters extends Data
         foreach ((array) $value as $candidate) {
             $kind = SignalSourceKind::parse($candidate);
 
-            if ($kind !== null && ! in_array($kind, $kinds, strict: true)) {
+            // `isAvailable()` as well as readable, which the S13a review found missing: a declared
+            // but unoffered case has no provider, so no row can carry it, and honouring it would
+            // answer a filtered request with an empty page — exactly what this method's docblock
+            // says it refuses to do.
+            if ($kind !== null && $kind->isAvailable() && ! in_array($kind, $kinds, strict: true)) {
                 $kinds[] = $kind;
             }
         }

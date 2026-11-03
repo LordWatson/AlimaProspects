@@ -11,7 +11,14 @@ use App\Modules\Core\Exceptions\DomainException;
  * user, a stable machine code for the API envelope. Each cause is a named constructor so the code is
  * set in one place.
  */
-final class SignalsException extends DomainException
+/*
+ * **Not `final`, and that is the only reason it is not.** Every other module's domain exception in
+ * this codebase is, and so was this one until S13a. `SourceQueryRejected` subclasses it so the run
+ * can dispatch on a *type* rather than on an error-code string in the one place that decides
+ * whether a provider failure is survivable (ADR 0023 §4) — and subclassing rather than branching is
+ * what keeps `catch (SignalsException)` elsewhere, such as the preview's, working unchanged.
+ */
+class SignalsException extends DomainException
 {
     protected string $errorCode = 'signals.invalid';
 
@@ -86,9 +93,11 @@ final class SignalsException extends DomainException
      * the rest of the plan proceeds. A run whose every query was rejected completes having found
      * nothing, rather than failing — nothing is broken; we asked badly.
      */
-    public static function sourceQueryRejected(string $source = 'news'): self
+    public static function sourceQueryRejected(string $source = 'news'): SourceQueryRejected
     {
-        $e = new self('The '.self::sourceLabel($source).' wouldn’t accept one of your search templates. Try plain keywords, without quotation marks or `site:`.');
+        // The **subclass**, so `RunSignalWatchAction` can catch it by type. Still built here, so the
+        // error code and the message stay where every other failure mode's are.
+        $e = new SourceQueryRejected('The '.self::sourceLabel($source).' wouldn’t accept one of your search templates. Try plain keywords, without quotation marks or `site:`.');
         $e->errorCode = 'signals.source_query_rejected';
         $e->status = 422;
         $e->source = $source;

@@ -205,9 +205,15 @@ function duration(ms: number | null): string {
                  the moment the fact matters: an operator looking at a column of failing runs should
                  not have to remember that a second screen would have told them the breaker is open.
                  /admin/providers remains the only place one can be reset. -->
+            <!-- `tabindex`/`role`/`aria-label` and the focus ring, like the runs table below:
+                 a horizontally scrolling region that cannot be reached or scrolled by keyboard is
+                 WCAG 2.1.1, and this screen already got that right once (brand review). -->
             <div
                 v-if="summary.sources.length > 0"
-                class="mt-4 overflow-x-auto rounded-2xl border border-border bg-card"
+                class="mt-4 overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                tabindex="0"
+                role="region"
+                aria-label="Cost and volume by signal source"
                 data-test="run-sources"
             >
                 <table class="w-full text-sm">
@@ -215,7 +221,7 @@ function duration(ms: number | null): string {
                         Cost and volume by signal source over this window
                     </caption>
                     <thead
-                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
                         <tr class="border-b border-border">
                             <th scope="col" class="px-4 py-2 text-start">
@@ -283,7 +289,11 @@ function duration(ms: number | null): string {
                                 >
                                     Closed
                                 </span>
-                                <span v-else class="text-muted-foreground">
+                                <span
+                                    v-else
+                                    class="text-muted-foreground"
+                                    title="This build has no circuit breaker for this source"
+                                >
                                     Not watched
                                 </span>
                             </td>

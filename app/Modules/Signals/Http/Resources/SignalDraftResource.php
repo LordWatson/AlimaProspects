@@ -61,7 +61,11 @@ final class SignalDraftResource extends JsonResource
                 // makes the draft a complete form state rather than one the client has to patch.
                 'source_keys' => array_map(
                     static fn (SignalSourceKind $kind): string => $kind->value,
-                    $definition->sourceKinds === [] ? [SignalSourceKind::default()] : $definition->sourceKinds,
+                    // Null (the composer never sets them) and empty both become news, so the draft
+                    // is a **complete** form state the client can open without patching it.
+                    $definition->sourceKinds === null || $definition->sourceKinds === []
+                        ? [SignalSourceKind::default()]
+                        : $definition->sourceKinds,
                 ),
             ],
         ];

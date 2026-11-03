@@ -104,6 +104,50 @@ final class SignalSourceBreakdown
     }
 
     /**
+     * The sources that were asked something and answered **nothing** (S13a review finding 1).
+     *
+     * "Refused every query" is a different statement from "refused a query", and the run treats them
+     * differently: the first is systemic and fails the run, the second is a note on this breakdown.
+     * See `RunSignalWatchAction::assertSourcesAnswered()` for why.
+     *
+     * A source with no rejections and no queries is **not** included: it was never asked, which is
+     * what a definition that names it while contributing no templates produces.
+     *
+     * @return list<SignalSourceKind>
+     */
+    public function sourcesThatAnsweredNothing(): array
+    {
+        $out = [];
+
+        foreach ($this->rows as $key => $row) {
+            $kind = SignalSourceKind::parse($key);
+
+            if ($kind instanceof SignalSourceKind && $row['queries'] === 0 && $row['rejected'] > 0) {
+                $out[] = $kind;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * How many queries this run actually **made** — answered plus refused, across every source.
+     *
+     * What `signal_runs.queries_count` is set from since the S13a review, which found the two
+     * disagreeing: the column was the *planned* count and so included refused queries and queries
+     * skipped for an unregistered source, while this breakdown counted only the answered ones. The
+     * admin screen showed both and they did not sum. A query that was refused **was** made (it just
+     * got no answer); a query skipped because its source is not registered was not, and is counted
+     * nowhere. `queries_requested` remains the separate "what the plan wanted before the ceiling"
+     * figure (ADR 0019 §4).
+     */
+    public function totalQueriesAttempted(): int
+    {
+        return array_sum(array_column($this->rows, 'queries'))
+            + array_sum(array_column($this->rows, 'rejected'));
+    }
+
+    /**
      * The total metered cost across every source — what `signal_runs.cost_micros` must agree with
      * for the search half of a run.
      */

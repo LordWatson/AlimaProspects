@@ -408,6 +408,8 @@ const fieldLabels = computed<Record<string, string>>(() => ({
     match_keywords: t('Buying-signal words'),
     min_confidence: t('How sure Alima must be'),
     min_relevance: t('How well it must fit you'),
+    // Without this the error summary would show the raw `source_keys` (brand review).
+    source_keys: t('Where to look'),
 }));
 
 /**
@@ -1342,7 +1344,7 @@ function confirmRemove(): void {
                         <DialogDescription>
                             {{
                                 t(
-                                    'Alima searches published news for these words, then keeps only what matches your rules.',
+                                    'Alima searches for these words, then keeps only what matches your rules.',
                                 )
                             }}
                         </DialogDescription>
@@ -1504,70 +1506,106 @@ function confirmRemove(): void {
 
                         <!-- Where to look (S13, ADR 0023). Checkboxes rather than a select,
                              because the sources are additive and a member may run both. News is
-                             pre-ticked and cannot be the only thing missing: the server stores news
-                             for an empty choice, so there is no state in which a saved type searches
+                             pre-ticked and cannot be the only thing missing: `toggleSource` puts it
+                             back when the last box is unticked, and the server stores news for an
+                             empty choice, so there is no state in which a saved type searches
                              nowhere. Each one carries its trade-off line from the enum, because the
                              honest answer to "should I add web search?" is "it finds more, and more
                              of it is noise" — and a member who learns that from their feed instead
-                             of from here will switch it off and not come back. -->
-                        <FormField
+                             of from here will switch it off and not come back.
+
+                             **A real `<fieldset>` and `<legend>` rather than a `FormField`**, which
+                             is the fix brand review asked for. `FormField` renders a `<Label for>`,
+                             and a label pointing at a `<div role="group">` names nothing — the
+                             group was announced unnamed. A legend is the native way to name a set
+                             of checkboxes and needs no ARIA at all; `FilterGroup` does the same
+                             thing for the feed's filter chips. The hint and the error are spelled
+                             out here to match what `FormField` renders, and the group carries
+                             `id`/`tabindex` so the error summary's link can focus it.
+
+                             No `required`: the field cannot be unmet, so saying so invites a worry
+                             that does not exist. -->
+                        <fieldset
                             id="type-sources"
-                            :label="t('Where to look')"
-                            required
-                            :error="form.errors.source_keys"
-                            :hint="
-                                t(
-                                    'Each source you add is a separate paid search per template, on every run.',
-                                )
-                            "
+                            tabindex="-1"
+                            class="space-y-2 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                         >
-                            <template #default="{ describedBy, invalid }">
+                            <legend class="text-sm leading-none font-medium">
+                                {{ t('Where to look') }}
+                            </legend>
+
+                            <div class="space-y-3 pt-1">
                                 <div
-                                    class="space-y-3"
-                                    role="group"
-                                    :aria-describedby="describedBy"
-                                    :aria-invalid="invalid"
+                                    v-for="source in options.sources"
+                                    :key="source.value"
+                                    class="flex items-start gap-3"
                                 >
-                                    <div
-                                        v-for="source in options.sources"
-                                        :key="source.value"
-                                        class="flex items-start gap-3"
-                                    >
-                                        <Checkbox
-                                            :id="`type-source-${source.value}`"
-                                            class="mt-0.5"
-                                            :model-value="
-                                                form.source_keys.includes(
-                                                    source.value,
-                                                )
-                                            "
-                                            :data-test="`source-${source.value}`"
-                                            @update:model-value="
-                                                toggleSource(
-                                                    source.value,
-                                                    $event === true,
-                                                )
-                                            "
-                                        />
-                                        <div class="min-w-0 flex-1 space-y-1">
-                                            <Label
-                                                :for="`type-source-${source.value}`"
-                                                class="font-medium"
-                                            >
-                                                {{ t(source.label) }}
-                                            </Label>
-                                            <p
-                                                v-if="source.description"
-                                                class="text-sm text-muted-foreground"
-                                                dir="auto"
-                                            >
-                                                {{ t(source.description) }}
-                                            </p>
-                                        </div>
+                                    <Checkbox
+                                        :id="`type-source-${source.value}`"
+                                        class="mt-0.5"
+                                        :model-value="
+                                            form.source_keys.includes(
+                                                source.value,
+                                            )
+                                        "
+                                        :aria-describedby="
+                                            source.description
+                                                ? `type-source-${source.value}-note`
+                                                : undefined
+                                        "
+                                        :data-test="`source-${source.value}`"
+                                        @update:model-value="
+                                            toggleSource(
+                                                source.value,
+                                                $event === true,
+                                            )
+                                        "
+                                    />
+                                    <div class="min-w-0 flex-1 space-y-1">
+                                        <!-- `font-normal`, so the row sits *under* the legend
+                                             rather than beside it. The `LeadTasks` rows do the
+                                             same. -->
+                                        <Label
+                                            :for="`type-source-${source.value}`"
+                                            class="font-normal"
+                                        >
+                                            {{ t(source.label) }}
+                                        </Label>
+                                        <!-- `aria-describedby`'d onto the checkbox above: this is
+                                             the line that says web search is noisier, and a screen
+                                             reader hearing only "Web search, checkbox" would miss
+                                             the whole point of showing it. -->
+                                        <p
+                                            v-if="source.description"
+                                            :id="`type-source-${source.value}-note`"
+                                            class="text-base text-muted-foreground"
+                                            dir="auto"
+                                        >
+                                            {{ t(source.description) }}
+                                        </p>
                                     </div>
                                 </div>
-                            </template>
-                        </FormField>
+                            </div>
+
+                            <p
+                                id="type-sources-hint"
+                                class="text-xs text-muted-foreground"
+                                dir="auto"
+                            >
+                                {{
+                                    t(
+                                        'Each source you add is a separate paid search per template, on every run.',
+                                    )
+                                }}
+                            </p>
+                            <p
+                                v-if="form.errors.source_keys"
+                                class="text-sm text-destructive"
+                                dir="auto"
+                            >
+                                {{ form.errors.source_keys }}
+                            </p>
+                        </fieldset>
 
                         <FormField
                             id="type-includes"

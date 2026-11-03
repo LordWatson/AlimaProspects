@@ -1759,7 +1759,6 @@
     "Add all of them": "Add all of them",
     "Adding one makes your own copy of it, so tuning it is yours alone and nothing we change later moves under you.": "Adding one makes your own copy of it, so tuning it is yours alone and nothing we change later moves under you.",
     "Edit type": "Edit type",
-    "Alima searches published news for these words, then keeps only what matches your rules.": "Alima searches published news for these words, then keeps only what matches your rules.",
     "Group it under": "Group it under",
     "What it means, in one line": "What it means, in one line",
     "Alima reads this too, so write it for a colleague: “A business is sold and the owner takes cash out.”": "Alima reads this too, so write it for a colleague: “A business is sold and the owner takes cash out.”",
@@ -2087,5 +2086,16 @@
     "Not enough history with this outlet yet.": "Not enough history with this outlet yet.",
     "The article named no role.": "The article named no role.",
     "Your profile has nothing to judge this event by.": "Your profile has nothing to judge this event by.",
-    "No active ideal customer profile.": "No active ideal customer profile."
+    "No active ideal customer profile.": "No active ideal customer profile.",
+    "Where to look": "Where to look",
+    "Each source you add is a separate paid search per template, on every run.": "Each source you add is a separate paid search per template, on every run.",
+    "News": "News",
+    "Press coverage. The most reliable source, and the one every signal type starts with.": "Press coverage. The most reliable source, and the one every signal type starts with.",
+    "The wider web — planning decisions, award announcements, a company’s own blog. Finds events the press missed, and finds more noise with them.": "The wider web — planning decisions, award announcements, a company’s own blog. Finds events the press missed, and finds more noise with them.",
+    "UK filings: ownership and officer changes, overdue accounts, insolvency. Structured and certain, so nothing is guessed.": "UK filings: ownership and officer changes, overdue accounts, insolvency. Structured and certain, so nothing is guessed.",
+    "A feed you choose": "A feed you choose",
+    "An industry newsletter, a regulator’s filings feed, a portal’s press releases.": "An industry newsletter, a regulator’s filings feed, a portal’s press releases.",
+    "Your own events": "Your own events",
+    "Events your own systems push to Alima.": "Events your own systems push to Alima.",
+    "Alima searches for these words, then keeps only what matches your rules.": "Alima searches for these words, then keeps only what matches your rules."
 }

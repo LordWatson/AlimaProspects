@@ -1759,7 +1759,6 @@
     "Add all of them": "أضفها كلها",
     "Adding one makes your own copy of it, so tuning it is yours alone and nothing we change later moves under you.": "إضافة أي نوع تنشئ نسختك الخاصة منه، فيبقى ضبطه لك وحدك ولا يتغيّر شيء من تحتك لاحقًا.",
     "Edit type": "تعديل النوع",
-    "Alima searches published news for these words, then keeps only what matches your rules.": "تبحث أليما في الأخبار المنشورة عن هذه الكلمات، ثم تحتفظ بما يطابق قواعدك فقط.",
     "Group it under": "ضعه تحت",
     "What it means, in one line": "ما يعنيه، في سطر واحد",
     "Alima reads this too, so write it for a colleague: “A business is sold and the owner takes cash out.”": "أليما تقرأ هذا أيضًا، فاكتبه كما تكتبه لزميل: «تُباع شركة ويحصل مالكها على سيولة».",
@@ -2087,5 +2086,16 @@
     "Not enough history with this outlet yet.": "لا يوجد سجل كافٍ مع هذه الجهة الناشرة بعد.",
     "The article named no role.": "لم يذكر المقال أي منصب.",
     "Your profile has nothing to judge this event by.": "لا يحتوي ملفك على ما يمكن الحكم على هذا الحدث به.",
-    "No active ideal customer profile.": "لا يوجد ملف عميل مثالي نشط."
+    "No active ideal customer profile.": "لا يوجد ملف عميل مثالي نشط.",
+    "Where to look": "أين نبحث",
+    "Each source you add is a separate paid search per template, on every run.": "كل مصدر تضيفه يعني بحثًا مدفوعًا منفصلًا لكل عبارة، في كل تشغيل.",
+    "News": "الأخبار",
+    "Press coverage. The most reliable source, and the one every signal type starts with.": "التغطية الصحفية. المصدر الأكثر موثوقية، وهو ما يبدأ به كل نوع إشارة.",
+    "The wider web — planning decisions, award announcements, a company’s own blog. Finds events the press missed, and finds more noise with them.": "الويب الأوسع — قرارات التخطيط، وإعلانات الجوائز، ومدونة الشركة نفسها. يجد أحداثًا فوّتتها الصحافة، ويجد معها ضجيجًا أكثر.",
+    "UK filings: ownership and officer changes, overdue accounts, insolvency. Structured and certain, so nothing is guessed.": "الإيداعات البريطانية: تغيّرات الملكية والمسؤولين، والحسابات المتأخرة، والإعسار. منظّمة ومؤكدة، فلا شيء يُخمّن.",
+    "A feed you choose": "خلاصة تختارها",
+    "An industry newsletter, a regulator’s filings feed, a portal’s press releases.": "نشرة قطاعية، أو خلاصة إيداعات جهة تنظيمية، أو بيانات صحفية لبوابة.",
+    "Your own events": "أحداثك الخاصة",
+    "Events your own systems push to Alima.": "الأحداث التي ترسلها أنظمتك إلى أليما.",
+    "Alima searches for these words, then keeps only what matches your rules.": "تبحث أليما عن هذه الكلمات، ثم تحتفظ بما يطابق قواعدك فقط."
 }

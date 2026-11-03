@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Modules\Signals\Enums\SignalSourceKind;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -58,8 +57,11 @@ return new class extends Migration
             // has an answer for every row that has ever existed: everything before S13 came from
             // the news, and a null would make the card and the feed filter cope with an absence
             // that is not real.
+            // The literal `'news'` rather than `SignalSourceKind::News->value`: a migration has to
+            // mean the same thing in five years, and an enum case renamed in app code must not be
+            // able to change what a replayed migration writes (S13a review finding 7).
             $table->string('source_kind', 32)
-                ->default(SignalSourceKind::News->value)
+                ->default('news')
                 ->after('source_name');
 
             // The query that found it (S13), which closes the gap S12 recorded as its second
@@ -87,7 +89,7 @@ return new class extends Migration
         // searches nowhere.
         DB::table('signal_definitions')
             ->whereNull('source_keys')
-            ->update(['source_keys' => json_encode([SignalSourceKind::News->value])]);
+            ->update(['source_keys' => json_encode(['news'])]);
     }
 
     public function down(): void

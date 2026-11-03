@@ -244,20 +244,83 @@ it('skips a query the source refuses and completes the run', function (): void {
         ->and($run->source_breakdown['news']['rejected'])->toBe(1);
 });
 
-it('completes with nothing found when every query is refused', function (): void {
+it('fails the run when a source refuses every query, rather than completing green', function (): void {
     $team = Team::factory()->create();
     $definition = definitionOn($team, [SignalSourceKind::News]);
 
     $this->news->willFail(SignalsException::sourceQueryRejected('news'));
 
-    // Nothing is broken; we asked badly. A failed run here would read as the news provider having
-    // gone down, and would retry.
+    // **The review's first finding, and the one that changed a decision.** ADR 0023 §4 originally
+    // said a run whose every query was refused completes having found nothing, because nothing is
+    // broken. That holds when *some* queries are refused — but a source that answers nothing at all
+    // is either a member whose every template is unusable, or something systemic arriving as a 400:
+    // an exhausted account, a parameter we send wrongly, a provider that changed its rules. A green
+    // run with "0 signals" and no explanation would hide all of those, silently, every run, with
+    // the breaker deliberately shut.
     $run = runWatch($team, watchOver($team, [$definition]));
 
-    expect($run->status)->toBe(SignalRunStatus::Completed)
+    expect($run->status)->toBe(SignalRunStatus::Failed)
+        // And it is **not retryable**, so the job does not re-pay to be told the same thing.
+        ->and($run->error)->toContain('wouldn’t accept')
         ->and($run->signals_created)->toBe(0)
+        // The spend is still recorded honestly: nothing was billed, because nothing was answered.
+        ->and($run->cost_micros)->toBe(0)
         ->and($run->source_breakdown['news']['rejected'])->toBe(count($definition->query_templates))
         ->and($run->source_breakdown['news']['queries'])->toBe(0);
+});
+
+it('keeps the spend of the queries that ran when a later source fails', function (): void {
+    $team = Team::factory()->create();
+    $definition = definitionOn($team, [SignalSourceKind::News, SignalSourceKind::WebSearch]);
+
+    // **Review finding 2.** The cost used to be recorded in a loop *after* every query, so a
+    // non-retryable failure left `search()` before any of it was kept — and the run was written
+    // with `cost_micros: 0` having already paid for the news queries, while the code's own comment
+    // claimed the spend was recorded. It is now recorded in a `finally`.
+    $this->news->willReturn([]);
+    $this->web->willFail(SignalsException::sourceMisconfigured('web_search'));
+
+    $run = runWatch($team, watchOver($team, [$definition]));
+
+    $news = $run->source_breakdown['news'];
+
+    // Asserted against the breakdown rather than a fixed count, because the plan **interleaves**
+    // the sources (one query per source per template), so how many news queries get in before the
+    // web-search one fails is a property of the builder's nesting rather than of this fix. What
+    // matters is that whatever ran is paid for and recorded.
+    expect($run->status)->toBe(SignalRunStatus::Failed)
+        ->and($news['queries'])->toBeGreaterThan(0)
+        ->and($news['cost_micros'])->toBe($news['queries'] * 1_000)
+        // The figure the rest of the product reads, and it is no longer zero.
+        ->and($run->cost_micros)->toBe($news['cost_micros'])
+        ->and($run->cost_micros)->toBeGreaterThan(0);
+});
+
+it('counts the queries it made, so the column and the breakdown reconcile', function (): void {
+    $team = Team::factory()->create();
+    $definition = definitionOn($team, [SignalSourceKind::News]);
+    $watch = watchOver($team, [$definition]);
+
+    $firstTemplate = app(TeamContext::class)->run($team, function () use ($watch, $definition): string {
+        return app(SignalQueryBuilder::class)->build($watch, [$definition])->queries[0]->q;
+    });
+
+    $this->news->willReturn([]);
+    $this->news->willFailQuery($firstTemplate, SignalsException::sourceQueryRejected('news'));
+    $this->fakeAi->queueStructured(['events' => []]);
+
+    $run = runWatch($team, $watch);
+
+    $breakdown = $run->source_breakdown['news'];
+
+    // **Review finding 3.** `queries_count` was the *planned* figure, so it counted the refused
+    // query alongside the ones that ran while the breakdown counted only the answered ones — and
+    // the admin screen showed both without them summing. A refused query **was** made; one skipped
+    // for an unregistered source was not, and is counted nowhere.
+    expect($run->queries_count)->toBe($breakdown['queries'] + $breakdown['rejected'])
+        ->and($breakdown['rejected'])->toBe(1)
+        // `queries_requested` stays the separate "what the plan wanted before the ceiling" figure.
+        ->and($run->queries_requested)->toBe(count($definition->query_templates));
 });
 
 it('still bubbles a genuinely unwell source so the job retries', function (): void {
@@ -386,9 +449,12 @@ it('stores news for a caller that does not mention sources', function (): void {
 
     $definition = SignalDefinition::withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
 
+    // **Left null rather than written as news**, which is the shape that makes review finding 5's
+    // fix possible: `toAttributes()` omits the key entirely when the caller did not mention
+    // sources, so an *update* that does not mention them cannot silently downgrade a web-search
+    // type. `sourceKinds()` reads null as news, so the type runs exactly where a pre-S13 one did.
     expect($definition->sourceKinds())->toBe([SignalSourceKind::News])
-        // Written explicitly rather than left null, so the column says what the type does.
-        ->and($definition->source_keys)->toBe(['news']);
+        ->and($definition->source_keys)->toBeNull();
 });
 
 it('refuses an explicitly empty source list', function (): void {
@@ -566,4 +632,53 @@ it('reads a run from before S13 as having no breakdown rather than crashing', fu
     ]));
 
     expect(SignalSourceBreakdown::fromRun($run))->toBe([]);
+});
+
+// --- An update must not silently downgrade a type (review finding 5) --------------------------
+
+it('leaves the stored sources alone when an update does not mention them', function (): void {
+    $user = createUserWithTeam();
+    $team = $user->currentTeam;
+
+    $this->actingAs($user)
+        ->post('/signals/types', definitionPayload(['source_keys' => ['news', 'web_search']]))
+        ->assertRedirect();
+
+    $definition = SignalDefinition::withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
+
+    // An older client — the mobile app, a customer's integration written before S13a — PATCHes the
+    // name and knows nothing about sources. Collapsing "absent" and "empty" meant this downgraded a
+    // web-search type to news: it changed what the type cost and what it found, with no error and
+    // nothing on screen. `toAttributes()` now omits the key entirely when the caller did not
+    // mention it.
+    $payload = definitionPayload(['name' => 'Office moves, renamed']);
+    unset($payload['source_keys']);
+
+    $this->actingAs($user)
+        ->patch('/signals/types/'.$definition->getKey(), $payload)
+        ->assertRedirect();
+
+    $definition->refresh();
+
+    expect($definition->name)->toBe('Office moves, renamed')
+        ->and($definition->sourceKinds())->toBe([SignalSourceKind::News, SignalSourceKind::WebSearch]);
+});
+
+it('changes the stored sources when an update does mention them', function (): void {
+    $user = createUserWithTeam();
+    $team = $user->currentTeam;
+
+    $this->actingAs($user)
+        ->post('/signals/types', definitionPayload(['source_keys' => ['news', 'web_search']]))
+        ->assertRedirect();
+
+    $definition = SignalDefinition::withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
+
+    // The other half: a member who unticks web search must have it unticked. "Absent means leave
+    // alone" is only safe because "present means this is the whole list".
+    $this->actingAs($user)
+        ->patch('/signals/types/'.$definition->getKey(), definitionPayload(['source_keys' => ['news']]))
+        ->assertRedirect();
+
+    expect($definition->refresh()->sourceKinds())->toBe([SignalSourceKind::News]);
 });
