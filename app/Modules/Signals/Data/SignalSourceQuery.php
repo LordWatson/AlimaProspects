@@ -80,7 +80,39 @@ final class SignalSourceQuery extends Data
          * ({@see SignalSourceKind::isQueryBased()}), which is the discriminator.
          */
         public ?SignalQueryEntity $entity = null,
+        /**
+         * Whether this query is a **preview** rather than part of a run (S13b review, finding 4).
+         *
+         * Only the feed source reads it, and it reads it to leave the *run's* state alone: a
+         * preview neither honours nor stamps the poll-interval floor and neither sends nor stores
+         * the conditional-GET validators. Previewing a feed type used to put its own address inside
+         * the hour-long floor and bank its ETag, so the member pressed Preview, saw the document,
+         * saved the type — and its first real run fetched nothing and reported an empty feed.
+         *
+         * A preview is not unbounded in exchange: it is capped three ways of its own and writes a
+         * `signal_previews` ledger row (ADR 0020), which is a tighter leash than the floor.
+         */
+        public bool $preview = false,
     ) {}
+
+    /** This query as a preview — see `$preview`. */
+    public function forPreview(): self
+    {
+        return new self(
+            eventKey: $this->eventKey,
+            q: $this->q,
+            region: $this->region,
+            gl: $this->gl,
+            hl: $this->hl,
+            tbs: $this->tbs,
+            num: $this->num,
+            ignoreDomains: $this->ignoreDomains,
+            kind: $this->kind,
+            config: $this->config,
+            entity: $this->entity,
+            preview: true,
+        );
+    }
 
     /**
      * The account this query addresses, or null when it addresses a search string instead.

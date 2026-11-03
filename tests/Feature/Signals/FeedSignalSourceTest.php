@@ -35,8 +35,12 @@ function feedSource(): SignalSourceProvider
     return app(SignalSourceRegistry::class)->for(SignalSourceKind::Feed);
 }
 
-function feedQuery(string $url = 'https://example.com/feed.xml', array $ignore = []): SignalSourceQuery
-{
+function feedQuery(
+    string $url = 'https://example.com/feed.xml',
+    array $ignore = [],
+    int $teamId = 7,
+    bool $preview = false,
+): SignalSourceQuery {
     return new SignalSourceQuery(
         eventKey: 'uk_funding',
         q: '',
@@ -47,8 +51,17 @@ function feedQuery(string $url = 'https://example.com/feed.xml', array $ignore =
         num: 20,
         ignoreDomains: $ignore,
         kind: SignalSourceKind::Feed,
-        config: ['feed' => ['url' => $url]],
+        // `team_id` the way `SignalQueryBuilder::pushDefinitionQueries()` stamps it: the poll floor
+        // and the ETag are cached per team, so a query without one would be fetched every time.
+        config: ['feed' => ['url' => $url], 'team_id' => $teamId],
+        preview: $preview,
     );
+}
+
+/** The poll-floor cache key for one team and one feed, as `FeedSignalSource::cacheKey()` builds it. */
+function feedPollKey(string $url = 'https://example.com/feed.xml', int $teamId = 7): string
+{
+    return 'signals:feed:polled:'.$teamId.':'.sha1($url);
 }
 
 function rssBody(string $items): string
@@ -141,7 +154,7 @@ it('sends the conditional-GET validators it was given last time', function (): v
 
     // The floor would otherwise refuse the second poll outright, which is a different test.
     config()->set('signals.sources.feed.min_poll_minutes', 0);
-    Cache::forget('signals:feed:polled:'.sha1('https://example.com/feed.xml'));
+    Cache::forget(feedPollKey());
 
     // A 304 is a success with no body: the publisher is telling us we already have it, which is the
     // whole point of sending the validators — and most polls answer this way.
@@ -156,11 +169,83 @@ it('does not poll the same feed twice inside the politeness floor', function ():
 
     expect(feedSource()->fetch(feedQuery()))->toHaveCount(1);
 
-    // Per **feed URL**, not per watch: three watches pointed at one newsletter should be three
-    // readings of one fetch, not three requests to a publisher who will reasonably block us.
+    // Per feed URL **within one team**, not per watch: three of one team's watches pointed at one
+    // newsletter should be three readings of one fetch, not three requests to a publisher who will
+    // reasonably block us.
     expect(feedSource()->fetch(feedQuery()))->toBe([]);
 
     Http::assertSentCount(1);
+});
+
+// **The S13b review's finding 4, and it was a tenancy bug wearing a politeness costume.** Both
+// cache entries were keyed by `sha1($url)` alone, so one team's poll stamped the floor and banked
+// the ETag for *everybody* — and because nothing caches the entries for a second reader to read,
+// the next team to watch the same public newsletter got an empty list and their signals simply
+// never existed. Silently, and for as long as the busier team kept polling.
+it('does not let one team\'s poll of a public feed blind another team', function (): void {
+    // A **sequence** of two identical responses rather than one repeated: the body is read off a
+    // stream now (finding 3), and a single faked response hands out one stream that the first read
+    // leaves at EOF. Two real responses carry two streams.
+    $body = rssBody('<item><title>One</title><link>https://example.com/1</link></item>');
+
+    Http::fake([
+        'example.com/*' => Http::sequence()
+            ->push($body, 200)
+            ->push($body, 200),
+    ]);
+
+    expect(feedSource()->fetch(feedQuery(teamId: 7)))->toHaveCount(1);
+
+    // The same address, a different team: their own fetch, their own floor, their own entries.
+    expect(feedSource()->fetch(feedQuery(teamId: 8)))->toHaveCount(1);
+
+    // ...and each is floored against itself afterwards.
+    expect(feedSource()->fetch(feedQuery(teamId: 7)))->toBe([]);
+    expect(feedSource()->fetch(feedQuery(teamId: 8)))->toBe([]);
+
+    Http::assertSentCount(2);
+});
+
+// A preview is a member at a screen checking an address they have just typed. If it consumed the
+// floor and banked the ETag, pressing Preview would leave the type's **first real run** fetching
+// nothing and reporting an empty feed — with the member having watched it work a minute earlier.
+it('keeps a preview out of the run\'s poll floor and validators', function (): void {
+    Http::fake([
+        'example.com/*' => Http::sequence()
+            ->push(rssBody('<item><title>One</title><link>https://example.com/1</link></item>'), 200, ['ETag' => '"abc123"'])
+            ->push(rssBody('<item><title>One</title><link>https://example.com/1</link></item>'), 200, ['ETag' => '"abc123"'])
+            ->push(rssBody('<item><title>One</title><link>https://example.com/1</link></item>'), 200, ['ETag' => '"abc123"']),
+    ]);
+
+    expect(feedSource()->fetch(feedQuery(preview: true)))->toHaveCount(1);
+
+    // Nothing was stamped, so a second preview still fetches...
+    expect(feedSource()->fetch(feedQuery(preview: true)))->toHaveCount(1);
+    expect(Cache::has(feedPollKey()))->toBeFalse();
+
+    // ...and the first real run is unaffected.
+    expect(feedSource()->fetch(feedQuery()))->toHaveCount(1);
+
+    Http::assertSentCount(3);
+
+    // No validator was sent on any of them, because none was ever stored.
+    Http::assertSent(fn ($request): bool => ! $request->hasHeader('If-None-Match'));
+});
+
+// **The byte cap was cosmetic until the S13b review** (finding 3): the request did not set
+// `stream`, so Guzzle buffered the whole body into memory before `readCapped()` could refuse any of
+// it, and a member could point a feed at a multi-gigabyte response and take the worker with it. The
+// cap itself is what this asserts — a truncated XML document is unparseable, which is the right
+// outcome: loud, non-retryable, and not a silent half-feed.
+it('reads no more than the byte cap off a feed', function (): void {
+    config()->set('signals.sources.feed.max_bytes', 2_048);
+
+    $padding = str_repeat('<item><title>'.str_repeat('x', 200).'</title><link>https://example.com/a</link></item>', 50);
+
+    Http::fake(['example.com/*' => Http::response(rssBody($padding))]);
+
+    expect(fn () => feedSource()->fetch(feedQuery()))
+        ->toThrow(SignalsException::class);
 });
 
 it('refuses a URL that resolves off the public internet', function (): void {
@@ -249,7 +334,7 @@ it('treats a deleted feed as a skipped query rather than an outage', function ()
 
     // A 404 on a feed is permanent. Treating it as a generic failure would have the run retry an
     // address that has been deleted — so it is a per-query rejection, counted on the breakdown.
-    expect($thrown?->errorCode())->toBe('signals.source_query_rejected')
+    expect($thrown?->errorCode())->toBe('signals.source_address_not_found')
         ->and($thrown?->isRetryable())->toBeFalse();
 });
 

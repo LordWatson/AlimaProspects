@@ -10,6 +10,7 @@ use App\Modules\Signals\Data\SignalSourceQuery;
 use App\Modules\Signals\Data\SourceItem;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Exceptions\SourceAddressNotFound;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Support\FeedDocument;
 use App\Modules\Signals\Support\IgnoredDomains;
@@ -40,23 +41,26 @@ use RuntimeException;
  *    reserved space. `169.254.169.254` is the cloud metadata endpoint and reaching it is how an
  *    SSRF becomes a credential leak. Redirects are **not followed**, because the first hop being
  *    public says nothing about the second and this client has no reason to chase one.
- * 2. **A conditional GET.** The `ETag` and `Last-Modified` of the last fetch are cached per feed
- *    URL, so a feed that has not changed answers `304` with no body — which is most polls, and the
- *    difference between being a good citizen of somebody else's bandwidth and being blocked by them.
+ * 2. **A conditional GET.** The `ETag` and `Last-Modified` of the last fetch are cached per team
+ *    **and** feed URL, so a feed that has not changed answers `304` with no body — which is most
+ *    polls, and the difference between being a good citizen of somebody else's bandwidth and being
+ *    blocked by them. Per team is the S13b review's finding and it is a tenancy rule rather than a
+ *    tuning choice: see {@see self::cacheKey()}.
  * 3. **A byte cap**, read off a streamed body, so a feed that is secretly a 2GB file cannot exhaust
  *    a queue worker.
  * 4. **A poll-interval floor.** A watch may run hourly; a feed is not re-fetched more often than
  *    `signals.sources.feed.min_poll_minutes` whatever the cadence, because the cost of being
- *    impolite to a small publisher is being banned.
+ *    impolite to a small publisher is being banned. Per team, for the same reason as the
+ *    validators, and bypassed by a preview ({@see SignalSourceQuery::$preview}).
  * 5. **A per-team feed count**, enforced on the save path, because every feed is a standing
  *    outbound request from our infrastructure to an address a customer chose.
  */
 final class FeedSignalSource extends AbstractHttpSignalSourceProvider
 {
-    /** Cache key prefix for the conditional-GET validators, per feed URL. */
+    /** Cache key prefix for the conditional-GET validators, per team **and** feed URL. */
     private const string VALIDATOR_PREFIX = 'signals:feed:validators:';
 
-    /** Cache key prefix for the poll-interval floor, per feed URL. */
+    /** Cache key prefix for the poll-interval floor, per team **and** feed URL. */
     private const string POLLED_PREFIX = 'signals:feed:polled:';
 
     public function __construct(
@@ -121,7 +125,13 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
             throw SignalsException::sourceMisconfigured($this->kind()->value);
         }
 
-        if ($this->polledTooRecently($url)) {
+        // **A preview holds none of the run's state** (S13b review, finding 4). It neither honours
+        // the floor nor stamps it, and `conditionalGet()` sends no validators for one, so pressing
+        // Preview cannot leave the feed 304-ing the first real run. Its own three caps and its
+        // ledger row are what bound it instead (ADR 0020).
+        $scope = $this->cacheKey($query, $url);
+
+        if ($scope !== null && $this->polledTooRecently($scope)) {
             Log::channel('signals')->info('Feed skipped: inside the poll-interval floor.', [
                 'source' => $this->kind()->value,
                 'host' => $this->ignored->hostOf($url),
@@ -130,21 +140,21 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
             return [];
         }
 
-        $response = $this->conditionalGet($url);
+        $response = $this->conditionalGet($url, $scope);
 
         // Nothing has changed since the last poll. Not an error and not an empty feed — the
         // publisher is telling us we already have it, which is the whole point of sending the
         // validators.
         if ($response->status() === 304) {
-            $this->rememberPoll($url);
+            $this->rememberPoll($scope);
 
             return [];
         }
 
         $body = $this->readCapped($response);
 
-        $this->rememberValidators($url, $response);
-        $this->rememberPoll($url);
+        $this->rememberValidators($scope, $response);
+        $this->rememberPoll($scope);
 
         $document = FeedDocument::parse($body);
 
@@ -168,7 +178,7 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
      * resolves DNS, and a host that was public when the member pasted it can point somewhere
      * internal by the time a worker fetches it.
      */
-    private function conditionalGet(string $url): Response
+    private function conditionalGet(string $url, ?string $scope): Response
     {
         $safe = SafeUrl::normalise($url);
 
@@ -177,7 +187,12 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
         }
 
         try {
-            SafeUrl::assert($safe);
+            // **The approved addresses, not just a yes** (S13b review, finding 5). `assert()`
+            // resolves the host and approves what it finds; the HTTP client then resolves it again
+            // when it connects, so a record with a one-second TTL can answer publicly for the check
+            // and `169.254.169.254` for the request. Re-checking immediately before the call —
+            // which is what this did — narrows that window to milliseconds without closing it.
+            $ips = SafeUrl::approvedIps($safe);
         } catch (RuntimeException $e) {
             Log::channel('signals')->warning('Feed refused by the SSRF guard.', [
                 'source' => $this->kind()->value,
@@ -189,14 +204,43 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
             throw SignalsException::sourceMisconfigured($this->kind()->value);
         }
 
+        // **A host we cannot resolve is one we cannot pin, so a feed refuses it.** `SafeUrl` treats
+        // an unresolvable host as safe to attempt, which is right for a lead's website field: a
+        // flaky lookup should not block a legitimate site, and the request just fails on connect.
+        // A feed is different in kind — it is the one address in this product that a customer
+        // supplies and we then fetch on a schedule with nobody watching — and "could not resolve"
+        // is also what a host answering only inside a rebinding window looks like from here.
+        if ($ips === []) {
+            Log::channel('signals')->warning('Feed refused: its host does not resolve, so it cannot be pinned.', [
+                'source' => $this->kind()->value,
+            ]);
+
+            throw SignalsException::sourceMisconfigured($this->kind()->value);
+        }
+
         $headers = ['Accept' => 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8'];
 
-        foreach ($this->validators($safe) as $header => $value) {
+        foreach ($this->validators($scope) as $header => $value) {
             $headers[$header] = $value;
         }
 
         return $this->guarded(fn (): Response => $this->http
             ->withHeaders($headers)
+            // **Pinned to the addresses the guard approved**, where curl is the handler. Null
+            // (no curl) passes through as no option, leaving the pre-request check that was always
+            // there; `Http::fake()` ignores it, which is why the guard's own tests assert the
+            // refusals and not this line.
+            ->withOptions(array_filter([
+                'curl' => ($resolve = SafeUrl::resolveOption($safe, $ips)) === null
+                    ? null
+                    : [CURLOPT_RESOLVE => [$resolve]],
+            ]))
+            // **`stream` on, which the S13b review found missing.** Without it Guzzle buffers the
+            // whole body into memory before `readCapped()` ever runs, so the byte cap was
+            // describing a protection that did not exist: a member could point a feed at a
+            // multi-gigabyte response and take the queue worker with it. `HttpWebContentFetcher`
+            // has always set this; this source was written from its shape and missed the line.
+            ->withOptions(['stream' => true])
             ->withUserAgent((string) config('signals.sources.feed.user_agent', 'AlimaProspects/1.0 (+signals)'))
             ->timeout((int) config('signals.sources.feed.timeout', 10))
             ->connectTimeout((int) config('signals.sources.feed.connect_timeout', 5))
@@ -213,20 +257,23 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
     }
 
     /**
-     * A 304 is a success, not a failure, and the base guard has to be told so.
+     * A **404 or 410 on a feed is a statement about the address**, and it is permanent.
      *
-     * `Response::failed()` is true for any status ≥ 400, so a 304 reaches
-     * {@see AbstractHttpSignalSourceProvider::guarded()} as a success already — this override exists
-     * for the opposite reason: a **404 or 410 on a feed is permanent**, and treating it as a generic
-     * failure would have the run retry an address that has been deleted.
+     * Publishers move feeds. The address is a member's configuration, not a query we composed, so
+     * the run must survive finding nothing at it — and it must not retry an address that has been
+     * deleted.
+     *
+     * **This used to say `isQueryRejection()`, which the S13b review caught.** A feed is asked
+     * exactly one query per definition (`SignalQueryBuilder::pushDefinitionQueries()`), so "refused
+     * a query" and "refused *every* query" are the same event for it, and
+     * `RunSignalWatchAction::assertSourcesAnswered()` therefore failed the whole run — news results
+     * included, already paid for — every single time a publisher moved a feed. The rule it tripped
+     * is right for an exhausted Serper account and wrong for a dead URL, which is why the third
+     * outcome exists: see {@see SourceAddressNotFound}.
      */
-    protected function isQueryRejection(Response $response): bool
+    protected function isAddressNotFound(Response $response): bool
     {
-        if (in_array($response->status(), [404, 410], strict: true)) {
-            return true;
-        }
-
-        return parent::isQueryRejection($response);
+        return in_array($response->status(), [404, 410], strict: true);
     }
 
     /**
@@ -360,13 +407,50 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
     }
 
     /**
+     * The cache scope for one team's polling of one feed, or null for a preview.
+     *
+     * **Per team, and that is a tenancy rule rather than a tuning choice** (S13b review, finding 4).
+     * Both entries used to be keyed by `sha1($url)` alone, on the reasoning in the class docblock:
+     * three watches pointed at one newsletter should be three readings of one fetch rather than
+     * three requests to a small publisher. That reasoning holds **inside** a team and fails across
+     * teams, because nothing caches the entries for the second reader to read — so team A's poll
+     * stamped the floor and banked the ETag, and team B's fetch of the same public newsletter
+     * returned an empty list or a 304 and their signals simply never existed. One tenant's
+     * politeness is not payable with another tenant's results.
+     *
+     * The price is N requests an hour to a popular feed for the N teams watching it, each still
+     * floored. The team id comes off the query's config, which
+     * {@see SignalQueryBuilder::pushDefinitionQueries()} stamps; a query with no team on it (which
+     * nothing emits) gets no stamping rather than a shared key, so the failure mode is an extra
+     * fetch and never a crossed one.
+     */
+    private function cacheKey(SignalSourceQuery $query, string $url): ?string
+    {
+        if ($query->preview) {
+            return null;
+        }
+
+        $teamId = $query->config['team_id'] ?? null;
+
+        if (! is_int($teamId) && ! (is_string($teamId) && ctype_digit($teamId))) {
+            return null;
+        }
+
+        return ((int) $teamId).':'.sha1($url);
+    }
+
+    /**
      * The conditional-GET headers for this feed's last fetch.
      *
      * @return array<string, string>
      */
-    private function validators(string $url): array
+    private function validators(?string $scope): array
     {
-        $stored = $this->cache->get(self::VALIDATOR_PREFIX.sha1($url));
+        if ($scope === null) {
+            return [];
+        }
+
+        $stored = $this->cache->get(self::VALIDATOR_PREFIX.$scope);
 
         if (! is_array($stored)) {
             return [];
@@ -393,8 +477,12 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
      * for them to evaporate when the cache is cleared — the same reasoning the circuit breaker's own
      * note gives for being cache-backed and advisory.
      */
-    private function rememberValidators(string $url, Response $response): void
+    private function rememberValidators(?string $scope, Response $response): void
     {
+        if ($scope === null) {
+            return;
+        }
+
         $etag = (string) $response->header('ETag');
         $lastModified = (string) $response->header('Last-Modified');
 
@@ -403,28 +491,33 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
         }
 
         $this->cache->put(
-            self::VALIDATOR_PREFIX.sha1($url),
+            self::VALIDATOR_PREFIX.$scope,
             ['etag' => $etag, 'last_modified' => $lastModified],
             now()->addDays(max(1, (int) config('signals.sources.feed.validator_ttl_days', 30))),
         );
     }
 
     /**
-     * Whether this feed was fetched too recently to fetch again.
+     * Whether this team fetched this feed too recently to fetch it again.
      *
-     * The floor is per **feed URL** and not per watch, which is the point: three watches pointed at
-     * the same newsletter should be three readings of one fetch, not three requests to a small
-     * publisher who will reasonably block us for it.
+     * Per **team and feed URL**: inside one team, three watches pointed at the same newsletter are
+     * three readings of one fetch rather than three requests to a small publisher who would
+     * reasonably block us for it. Across teams it cannot be, because the second reader has nothing
+     * to read — see {@see self::cacheKey()}.
      */
-    private function polledTooRecently(string $url): bool
+    private function polledTooRecently(string $scope): bool
     {
-        return $this->cache->has(self::POLLED_PREFIX.sha1($url));
+        return $this->cache->has(self::POLLED_PREFIX.$scope);
     }
 
-    private function rememberPoll(string $url): void
+    private function rememberPoll(?string $scope): void
     {
+        if ($scope === null) {
+            return;
+        }
+
         $minutes = max(1, (int) config('signals.sources.feed.min_poll_minutes', 60));
 
-        $this->cache->put(self::POLLED_PREFIX.sha1($url), true, now()->addMinutes($minutes));
+        $this->cache->put(self::POLLED_PREFIX.$scope, true, now()->addMinutes($minutes));
     }
 }

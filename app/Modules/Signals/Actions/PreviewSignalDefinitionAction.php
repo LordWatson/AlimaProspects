@@ -156,7 +156,13 @@ final class PreviewSignalDefinitionAction
 
         try {
             // --- External work, outside any transaction ---
-            [$items, $queriesByHash] = $this->search($plan->queries);
+            // **Marked as a preview** (S13b review, finding 4), which only the feed source acts
+            // on: it must not consume the poll floor or bank an ETag that a real run would then be
+            // 304'd by. Mapped here rather than built that way, so the builder stays one code path.
+            [$items, $queriesByHash] = $this->search(array_map(
+                static fn (SignalSourceQuery $query): SignalSourceQuery => $query->forPreview(),
+                $plan->queries,
+            ));
 
             if ($items === []) {
                 return $this->settle($preview, new SignalPreviewResult(
