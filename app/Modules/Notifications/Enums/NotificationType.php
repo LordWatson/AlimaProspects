@@ -226,8 +226,13 @@ enum NotificationType: string
             // In-app only. An announcement is us talking, not something the tenant has to act on
             // today, and emailing every tenant on every notice is how we become a filter rule.
             self::Announcement => [NotificationChannel::InApp],
-            // The member asked for it explicitly by turning it on.
-            self::Digest => [NotificationChannel::Mail],
+            // The member asked for it explicitly by turning it on — so it is the one type where a
+            // second channel needs no defending: somebody who switched a daily round-up on wants
+            // to be told it is there. **Push joined it in S15**, when the digest started naming the
+            // morning's hottest signal rather than counting it, which is worth a lock screen in a
+            // way "seven things happened" never was. In-app stays out: the digest is a summary of
+            // the bell, and putting it in the bell would be the bell summarising itself.
+            self::Digest => [NotificationChannel::Mail, NotificationChannel::Push],
             // Useful, not urgent. In-app by default; an email per finished search would train
             // people to filter us, and then they would miss the one above.
             self::DiscoveryComplete, self::TopLeads, self::SignalsDetected => [

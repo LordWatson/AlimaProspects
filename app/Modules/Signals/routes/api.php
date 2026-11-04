@@ -94,6 +94,34 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('signal-definitions/preview', [SignalDefinitionController::class, 'preview'])
         ->middleware(['throttle:signals-preview', 'ability:'.TokenAbility::SignalsWrite->value])
         ->name('signal-definitions.preview');
+    /*
+     * The library, both ways (S15 tasks 4 and 5). All four literals are declared **before**
+     * `{definition}`, like `presets` and `compose` above, so a literal segment is never read as an
+     * id.
+     *
+     * `preset-offers` and `submissions` are reads and take `SignalsRead`. Offering a type and
+     * taking a preset's change are writes: the first creates a submission, the second edits the
+     * team's own definition.
+     */
+    Route::get('signal-definitions/submissions', [SignalDefinitionController::class, 'submissions'])
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-definitions.submissions');
+    Route::delete('signal-definitions/submissions/{submission}', [SignalDefinitionController::class, 'withdrawSubmission'])
+        ->whereNumber('submission')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-definitions.submissions.withdraw');
+    Route::get('signal-definitions/preset-offers', [SignalDefinitionController::class, 'presetOffers'])
+        ->middleware('ability:'.TokenAbility::SignalsRead->value)
+        ->name('signal-definitions.preset-offers');
+    Route::post('signal-definitions/{definition}/submit', [SignalDefinitionController::class, 'submit'])
+        ->whereNumber('definition')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-definitions.submit');
+    Route::patch('signal-definitions/{definition}/adopt-preset', [SignalDefinitionController::class, 'adoptPreset'])
+        ->whereNumber('definition')
+        ->middleware('ability:'.TokenAbility::SignalsWrite->value)
+        ->name('signal-definitions.adopt-preset');
+
     Route::get('signal-definitions/{definition}', [SignalDefinitionController::class, 'show'])
         ->whereNumber('definition')
         ->middleware('ability:'.TokenAbility::SignalsRead->value)

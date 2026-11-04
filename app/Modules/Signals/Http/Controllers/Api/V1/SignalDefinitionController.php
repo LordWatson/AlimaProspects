@@ -5,23 +5,31 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Core\Support\TeamContext;
+use App\Modules\Signals\Actions\AdoptPresetChangesAction;
 use App\Modules\Signals\Actions\CloneSignalPresetsAction;
 use App\Modules\Signals\Actions\ComposeSignalDefinitionAction;
 use App\Modules\Signals\Actions\DeleteSignalDefinitionAction;
 use App\Modules\Signals\Actions\ListSignalDefinitionsAction;
 use App\Modules\Signals\Actions\PreviewSignalDefinitionAction;
 use App\Modules\Signals\Actions\SaveSignalDefinitionAction;
+use App\Modules\Signals\Actions\SubmitSignalDefinitionAction;
 use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
+use App\Modules\Signals\Http\Requests\AdoptPresetChangesRequest;
 use App\Modules\Signals\Http\Requests\CloneSignalPresetsRequest;
 use App\Modules\Signals\Http\Requests\ComposeSignalDefinitionRequest;
 use App\Modules\Signals\Http\Requests\PreviewSignalDefinitionRequest;
 use App\Modules\Signals\Http\Requests\SaveSignalDefinitionRequest;
+use App\Modules\Signals\Http\Requests\SubmitSignalDefinitionRequest;
 use App\Modules\Signals\Http\Resources\SignalDefinitionResource;
+use App\Modules\Signals\Http\Resources\SignalDefinitionSubmissionResource;
 use App\Modules\Signals\Http\Resources\SignalDraftResource;
 use App\Modules\Signals\Http\Resources\SignalPreviewResource;
+use App\Modules\Signals\Models\SignalDefinitionSubmission;
 use App\Modules\Signals\Policies\SignalDefinitionPolicy;
 use App\Modules\Signals\Services\PlatformPresetReader;
+use App\Modules\Signals\Services\PresetUpdateDiffer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -139,6 +147,115 @@ final class SignalDefinitionController extends Controller
         return SignalDefinitionResource::collection($cloned)
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
+    }
+
+    /**
+     * Offer a type to the shared library (S15 task 4, plan decision #3).
+     *
+     * A request, not a publication: the team's own type is untouched and an operator answers. 201,
+     * because a row is created — the submission, not a preset.
+     */
+    public function submit(
+        SubmitSignalDefinitionRequest $request,
+        int $definition,
+        SubmitSignalDefinitionAction $action,
+    ): JsonResponse {
+        $model = $this->definition($request, $definition);
+
+        // Authorised as an update, because offering a type is a statement about it that only
+        // somebody who could change it should be able to make.
+        $this->authorize('update', $model);
+
+        $submission = $action->handle($this->team($request), $this->user($request), $model, $request->note());
+
+        return (new SignalDefinitionSubmissionResource($submission->load('definition')))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
+    }
+
+    /**
+     * What this team has offered, newest first.
+     */
+    public function submissions(Request $request): AnonymousResourceCollection
+    {
+        $team = $this->team($request);
+
+        $this->authorize('viewAny', $this->transientDefinition($team));
+
+        $rows = app(TeamContext::class)->run($team, fn (): array => SignalDefinitionSubmission::query()
+            ->where('team_id', $team->getKey())
+            ->with('definition')
+            ->orderByDesc('id')
+            ->get()
+            ->all());
+
+        return SignalDefinitionSubmissionResource::collection($rows);
+    }
+
+    /**
+     * Take the offer back.
+     */
+    public function withdrawSubmission(
+        Request $request,
+        int $submission,
+        SubmitSignalDefinitionAction $action,
+    ): SignalDefinitionSubmissionResource {
+        $team = $this->team($request);
+
+        $model = app(TeamContext::class)->run($team, fn (): SignalDefinitionSubmission => SignalDefinitionSubmission::query()
+            ->where('team_id', $team->getKey())
+            ->findOrFail($submission));
+
+        // **Authorised against the team, not against the definition** (review). Resolving the
+        // definition would 404 for a team that deleted the type while the offer waited — leaving
+        // the offer Pending in the operator's queue for ever with nobody able to take it back. The
+        // row is already proven theirs by the scoped lookup above, and the policy question here is
+        // "may this member change this team's signal types?", which no particular row answers.
+        $this->authorize('update', $this->transientDefinition($team));
+
+        return new SignalDefinitionSubmissionResource(
+            $action->withdraw($team, $this->user($request), $model)->load('definition'),
+        );
+    }
+
+    /**
+     * What the library has changed since this team took their copy (S15 task 5).
+     *
+     * A read. Nothing is applied — the clone keeps running what the team chose until they ask for a
+     * field, which is ADR 0018 §3's whole argument.
+     */
+    public function presetOffers(Request $request, PresetUpdateDiffer $offers): JsonResponse
+    {
+        $team = $this->team($request);
+
+        $this->authorize('viewAny', $this->transientDefinition($team));
+
+        return response()->json([
+            'data' => [
+                'offers' => $offers->forTeam($team),
+                'fields' => PresetUpdateDiffer::FIELDS,
+            ],
+        ]);
+    }
+
+    /**
+     * Take some or all of the library's changes into a clone (S15 task 5).
+     *
+     * **An empty `fields` is a real request**: "seen it, keeping mine", which is what stops the
+     * offer coming back.
+     */
+    public function adoptPreset(
+        AdoptPresetChangesRequest $request,
+        int $definition,
+        AdoptPresetChangesAction $action,
+    ): SignalDefinitionResource {
+        $model = $this->definition($request, $definition);
+
+        $this->authorize('update', $model);
+
+        return new SignalDefinitionResource(
+            $action->handle($this->team($request), $this->user($request), $model, $request->fields()),
+        );
     }
 
     /**

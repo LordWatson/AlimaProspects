@@ -8,6 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Enums\Capability;
 use App\Modules\Core\Models\Team;
+use App\Modules\Core\Support\TeamContext;
+use App\Modules\Signals\Actions\AdoptPresetChangesAction;
 use App\Modules\Signals\Actions\CloneSignalPresetsAction;
 use App\Modules\Signals\Actions\ComposeSignalDefinitionAction;
 use App\Modules\Signals\Actions\DeleteSignalDefinitionAction;
@@ -15,24 +17,33 @@ use App\Modules\Signals\Actions\ListSignalDefinitionsAction;
 use App\Modules\Signals\Actions\PreviewSignalDefinitionAction;
 use App\Modules\Signals\Actions\RotateSignalWebhookSecretAction;
 use App\Modules\Signals\Actions\SaveSignalDefinitionAction;
+use App\Modules\Signals\Actions\SubmitSignalDefinitionAction;
+use App\Modules\Signals\Data\SignalDefinitionRoi;
 use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Enums\SignalCategory;
 use App\Modules\Signals\Enums\SignalIcon;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
+use App\Modules\Signals\Http\Requests\AdoptPresetChangesRequest;
 use App\Modules\Signals\Http\Requests\CloneSignalPresetsRequest;
 use App\Modules\Signals\Http\Requests\ComposeSignalDefinitionRequest;
 use App\Modules\Signals\Http\Requests\PreviewSignalDefinitionRequest;
 use App\Modules\Signals\Http\Requests\SaveSignalDefinitionRequest;
+use App\Modules\Signals\Http\Requests\SubmitSignalDefinitionRequest;
 use App\Modules\Signals\Http\Resources\SignalDefinitionResource;
 use App\Modules\Signals\Http\Resources\SignalDraftResource;
 use App\Modules\Signals\Http\Resources\SignalPreviewResource;
+use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Models\SignalDefinitionSubmission;
 use App\Modules\Signals\Policies\SignalDefinitionPolicy;
 use App\Modules\Signals\Services\PlatformPresetReader;
+use App\Modules\Signals\Services\PresetUpdateDiffer;
+use App\Modules\Signals\Services\SignalRoiReader;
 use App\Modules\Signals\Support\SignalCostEstimate;
 use App\Modules\Signals\Support\SignalCostEstimator;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
 use App\Modules\Signals\Support\SignalPresetPack;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -69,6 +80,8 @@ final class SignalDefinitionController extends Controller
         PlatformPresetReader $presets,
         SignalCostEstimator $cost,
         CapabilityGate $capabilities,
+        SignalRoiReader $roi,
+        PresetUpdateDiffer $offers,
     ): Response {
         $team = $this->team($request);
         $user = $this->user($request);
@@ -82,9 +95,12 @@ final class SignalDefinitionController extends Controller
             // Only the presets the team has not already taken: a library that keeps offering what
             // you already have is a library you stop reading.
             'presets' => SignalDefinitionResource::collection(
-                $presets->active(SignalWatchData::marketFor($team->market))
-                    ->reject(fn ($preset): bool => $mine->contains('preset_key', $preset->key))
-                    ->values(),
+                $this->marketFirst(
+                    $presets->active(SignalWatchData::marketFor($team->market))
+                        ->reject(fn ($preset): bool => $mine->contains('preset_key', $preset->key))
+                        ->values(),
+                    $team,
+                ),
             )->resolve($request),
             'options' => [
                 'categories' => array_map(static fn (SignalCategory $category): array => [
@@ -150,6 +166,28 @@ final class SignalDefinitionController extends Controller
             // each entry is still computed here, so the client owns only the sum and the
             // multiplication (ADR 0019 §4).
             'cost_by_source' => $this->costBySource($cost, $team),
+            // **What each type has actually done, and what it cost** (S15 task 2). Keyed by
+            // `event_key` rather than by id, because that is the identity a type's history is kept
+            // under (ADR 0018 §4) and the screen matches its own cards on it.
+            //
+            // On this screen rather than in Reporting, because this is where a type is *managed*:
+            // the figure is only useful next to the pause switch and the edit button. Reporting's
+            // own table (S12) still answers the comparative question across types; this answers
+            // "should I keep paying for this one?" where the answer can be acted on.
+            'roi' => array_map(
+                static fn (SignalDefinitionRoi $figures): array => $figures->toPayload(),
+                $roi->forTeam($team),
+            ),
+            'roi_minimum' => max(1, (int) config('signals.roi.retire.minimum_found', 30)),
+            // **"Your preset has moved on"** (S15 task 5), keyed by definition id. Nothing is
+            // applied: the clone keeps running exactly what the team chose until they take a
+            // change, per field — which is the whole reason ADR 0018 §3 made a clone a copy.
+            'preset_offers' => $offers->forTeam($team),
+            // The fields a change may be taken for, in the order the panel lists them. Sent so the
+            // screen never has to know the column names it is offering.
+            'preset_fields' => PresetUpdateDiffer::FIELDS,
+            // What the team has offered to the shared library, and what became of it (S15 task 4).
+            'submissions' => $this->submissions($team),
             'can' => [
                 'manage' => $user->can('create', $this->transientDefinition($team)),
                 // The AI shortcut is the paid half (plan decision #1). The screen asks the gate
@@ -157,6 +195,158 @@ final class SignalDefinitionController extends Controller
                 'compose' => $capabilities->allows($team, Capability::SignalComposer),
             ],
         ]);
+    }
+
+    /**
+     * Offer this type to the shared library (S15 task 4, plan decision #3).
+     *
+     * A **request**, not a publication: nothing about the team's own type changes, and an operator
+     * decides. The Action is where every refusal lives — a preset cannot be offered back, a type
+     * with no searches is nothing to start from, and one open offer per type.
+     */
+    public function submit(
+        SubmitSignalDefinitionRequest $request,
+        int $definition,
+        SubmitSignalDefinitionAction $action,
+    ): RedirectResponse {
+        $model = $this->definition($request, $definition);
+
+        // Authorised as an update, because offering a type is a statement about it that only
+        // somebody who could change it should be able to make.
+        $this->authorize('update', $model);
+
+        $action->handle($this->team($request), $this->user($request), $model, $request->note());
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => __('Thank you — we will take a look. Nothing about your own type changes while you wait.'),
+        ]);
+
+        return to_route('signal-definitions.index');
+    }
+
+    /**
+     * Take the offer back.
+     */
+    public function withdrawSubmission(
+        Request $request,
+        int $submission,
+        SubmitSignalDefinitionAction $action,
+    ): RedirectResponse {
+        $team = $this->team($request);
+        $model = app(TeamContext::class)->run($team, fn (): SignalDefinitionSubmission => SignalDefinitionSubmission::query()
+            ->where('team_id', $team->getKey())
+            ->findOrFail($submission));
+
+        // **Authorised against the team, not against the definition** (review). Resolving the
+        // definition would 404 for a team that deleted the type while the offer waited — leaving
+        // the offer Pending in the operator's queue for ever with nobody able to take it back. The
+        // row is already proven theirs by the scoped lookup above, and the policy question here is
+        // "may this member change this team's signal types?", which no particular row answers.
+        $this->authorize('update', $this->transientDefinition($team));
+
+        $action->withdraw($team, $this->user($request), $model);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Offer withdrawn.')]);
+
+        return to_route('signal-definitions.index');
+    }
+
+    /**
+     * Take some or all of the library's changes into this clone (S15 task 5).
+     *
+     * **Per field**, and taking nothing is a real answer — "I have seen it, I am keeping mine" —
+     * which is what stops the panel asking for ever.
+     */
+    public function adoptPreset(
+        AdoptPresetChangesRequest $request,
+        int $definition,
+        AdoptPresetChangesAction $action,
+    ): RedirectResponse {
+        $model = $this->definition($request, $definition);
+
+        $this->authorize('update', $model);
+
+        $fields = $request->fields();
+
+        $action->handle($this->team($request), $this->user($request), $model, $fields);
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $fields === []
+                // Said plainly, because it is the answer most likely to be misread as nothing
+                // having happened.
+                ? __('Kept yours. We will not ask about this update again.')
+                : __('Updated. Fields taken: :count', ['count' => count($fields)]),
+        ]);
+
+        return to_route('signal-definitions.index');
+    }
+
+    /**
+     * The team's own market first, then everything offered to everyone (S15 task 7).
+     *
+     * The market filter above decides what a team is *allowed* to see; this decides what they see
+     * **first**, and the two are different jobs. A UK team's library is a handful of UK presets
+     * spiked against UK news plus thirty market-agnostic ones, and in catalogue order the
+     * market-agnostic ones win — so the first thing a new UK team reads is the generic shelf and
+     * the pack written for them is somewhere below the fold. A library is read top-down or not at
+     * all.
+     *
+     * Stable within each half: `sortBy` preserves the catalogue's order for equal keys, so the
+     * sections still read in the order they were designed in rather than alphabetically.
+     *
+     * @param  Collection<int, SignalDefinition>  $presets
+     * @return Collection<int, SignalDefinition>
+     */
+    private function marketFirst(Collection $presets, Team $team): Collection
+    {
+        // The same resolution the filter above uses, so the two cannot disagree about which
+        // market a team is in.
+        $market = SignalWatchData::marketFor($team->market)->value;
+
+        return $presets
+            ->sortBy(static fn (SignalDefinition $preset): int => in_array($market, $preset->markets ?? [], true) ? 0 : 1)
+            ->values();
+    }
+
+    /**
+     * What this team has offered the library, newest first.
+     *
+     * Sent with the library screen rather than fetched, for the reason the tuning panel is: a
+     * section that loaded separately would flash empty on every visit for the one team in twenty
+     * that has anything in it.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function submissions(Team $team): array
+    {
+        /** @var list<array<string, mixed>> $rows */
+        $rows = app(TeamContext::class)->run($team, fn (): array => SignalDefinitionSubmission::query()
+            ->where('team_id', $team->getKey())
+            ->with('definition')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get()
+            ->map(static fn (SignalDefinitionSubmission $submission): array => [
+                'id' => (int) $submission->getKey(),
+                'definition_id' => (int) $submission->signal_definition_id,
+                'definition_name' => $submission->definition?->name,
+                'status' => $submission->status->value,
+                // Translation keys, not finished strings.
+                'status_label' => $submission->status->label(),
+                'status_description' => $submission->status->description(),
+                'is_open' => $submission->status->isOpen(),
+                // Prose, deliberately: these are two people's own words to each other and there is
+                // nothing to translate about them.
+                'note' => $submission->note,
+                'review_note' => $submission->review_note,
+                'created_at' => $submission->created_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all());
+
+        return $rows;
     }
 
     /**

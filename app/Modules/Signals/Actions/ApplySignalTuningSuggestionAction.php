@@ -59,6 +59,7 @@ final class ApplySignalTuningSuggestionAction
                 SignalTuningKind::RaiseConfidence,
                 SignalTuningKind::RaiseRelevance => $this->raiseThreshold($locked, $actor),
                 SignalTuningKind::RetireTemplate => $this->retireTemplate($locked, $actor),
+                SignalTuningKind::RetireDefinition => $this->pauseDefinition($locked, $actor),
             };
 
             return $this->settle($locked, SignalTuningStatus::Accepted, $actor);
@@ -213,6 +214,37 @@ final class ApplySignalTuningSuggestionAction
 
         $this->audit->log('signals.definition_updated', $definition, [
             'templates' => count($remaining),
+            'from_tuning_suggestion' => (int) $suggestion->getKey(),
+        ], $actor);
+    }
+
+    /**
+     * Pause the whole type (S15 task 3).
+     *
+     * **Paused, not deleted**, and the audit entry is the ordinary `signals.definition_updated` one
+     * a member toggling it by hand would have written — which is the S12 rule about what accepting a
+     * suggestion is: an ordinary edit, made by a named person, not a system action.
+     *
+     * The version is **not** bumped. Every other accept here changes what the type *looks for*, and
+     * a signal records which version classified it; pausing changes only whether it runs, and
+     * bumping would tell every clone of a preset that its definition had moved on when nothing
+     * about the definition had.
+     *
+     * A type already paused is stale rather than an error: somebody got there first, which is the
+     * outcome the proposal wanted.
+     */
+    private function pauseDefinition(SignalTuningSuggestion $suggestion, User $actor): void
+    {
+        $definition = $suggestion->definition;
+
+        if (! $definition instanceof SignalDefinition || $definition->trashed() || ! $definition->is_active) {
+            throw SignalsException::tuningSuggestionStale();
+        }
+
+        $definition->forceFill(['is_active' => false])->save();
+
+        $this->audit->log('signals.definition_updated', $definition, [
+            'is_active' => false,
             'from_tuning_suggestion' => (int) $suggestion->getKey(),
         ], $actor);
     }

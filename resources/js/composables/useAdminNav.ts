@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/vue3';
 import {
+    BookOpen,
     Building2,
     ChartNoAxesColumn,
     CircuitBoard,
@@ -108,6 +109,13 @@ export function useAdminNav(): UseAdminNav {
                         href: url('/signal-runs'),
                         icon: Radar,
                         keywords: 'signals watches cost failures',
+                    },
+                    {
+                        label: 'Signal library',
+                        href: url('/signal-library'),
+                        icon: BookOpen,
+                        keywords:
+                            'signals presets packs submissions promote curate library adoption',
                     },
                     {
                         label: 'Outreach',

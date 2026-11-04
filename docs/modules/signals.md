@@ -1,6 +1,6 @@
 # Signals
 
-> Status: **v1 complete (S0–S6) · v2 in progress (S7–S14 landed; S15–S16 planned, see `signals-v2-plan.md`)**
+> Status: **v1 complete (S0–S6) · v2 in progress (S7–S15 landed; S16 planned, see `signals-v2-plan.md`)**
 > Owner: Product · Last updated: 2026-11-03
 
 ## Purpose
@@ -581,6 +581,23 @@ now **follows the signal's own jurisdiction** rather than the watch's market.
   Outreach's half is one class, `Outreach\Services\PlaybookOutreachDrafter`, bound over this
   module's refusing default. Screens: `pages/signals/{Playbooks,PlaybookActivity}.vue`; the mobile
   inbox is `mobile/src/views/PlaybookInboxView.vue` (read-only — building stays on the web).
+- **ROI and the library (S15).** `Models/{SignalDefinitionSpend,SignalDefinitionSubmission}`;
+  `Enums/SignalSubmissionStatus`; `Data/SignalDefinitionRoi`;
+  `Support/SignalDefinitionBreakdown` (the mirror of `SignalSourceBreakdown`);
+  `Services/{SignalSpendLedger,SignalRoiReader,PresetUpdateDiffer}`;
+  `Actions/{SubmitSignalDefinitionAction,PromoteSignalDefinitionAction,SavePlatformPresetAction,AdoptPresetChangesAction}`;
+  `Http/{Requests/{SubmitSignalDefinitionRequest,AdoptPresetChangesRequest},Resources/SignalDefinitionSubmissionResource}`.
+  `PlatformPresetReader` gained **`keyIsTaken()`**, a trashed-aware companion to `byKey()`,
+  because the unique index does not soft-delete.
+  The retirement proposal is `SignalTuningKind::RetireDefinition` on the existing advisor.
+  Admin's half is a reader and a controller that call this module's Actions —
+  `Admin\Services\Platform\SignalLibrary`, `Admin\Http\Controllers\Web\SignalLibraryController`,
+  `Admin\Http\Requests\{PromoteSubmissionRequest,SavePlatformPresetRequest}` — plus four
+  `PlatformMetric` cases and two `PlatformReport` tables in Admin's own builders (ADR 0016).
+  Notifications' half is `Data/DigestHighlight` and `Services/PushDelivery` (extracted from
+  `PushChannel`, which is now an adapter over it). Screens: the ROI rail, the preset offer and the
+  submission list on `pages/signals/Types.vue`; `pages/admin/signals/Library.vue` (English only,
+  like the rest of the panel).
 - **Shared:** `resources/js/shared/types/signals.ts` (S5; S7 replaced the `SignalEventType`
   union with a `SignalEventKey` alias, added `SignalDefinition`, `SignalCategory` and
   `SignalIcon`, and `SignalWatch.event_types` became `SignalWatch.definitions`).
@@ -602,6 +619,11 @@ now **follows the signal's own jurisdiction** rather than the watch's market.
   and how long the row is kept — read through `SignalRejectionLedger::window()` by both the run and
   the sweep, because two copies of it would drift and then either delete a memory the run still
   trusts or keep one it has stopped trusting.
+  **S15 added `digest.highlights`** (3 — the cap on named headlines in a round-up, because the
+  risk this feature carries is noise) and **`roi`** (`window_days`, plus
+  `retire.{enabled,minimum_found,kept_rate_floor}`). The retirement floors are config rather than
+  constants for the ordinary reason — they are the line between evidence and an opinion, and that
+  line moves with how much a team runs.
   **S9 added `preview`** (`max_queries`, `results_per_query`, `rate_limit`,
   `daily_budget_micros`) and **`composer`** (`rate_limit`, `max_brief`) — the three caps of ADR 0020
   §5 plus the character bound on the brief, which is ADR 0017's rule rather than a form limit.
@@ -647,7 +669,7 @@ curated library and cost governance.
 
 ## Data model
 
-Twelve tables. A `signal_definition` defines _what a signal type is_; a `signal_watch` defines
+Sixteen tables. A `signal_definition` defines _what a signal type is_; a `signal_watch` defines
 _where and how often to look_, and reaches its types through the `signal_watch_definition` pivot;
 each run of it (`signal_run`) records cost and totals; each kept event is a `signal`, unique per
 team on **`dedupe_hash`** so one article never becomes two signals. A converted signal points
@@ -1013,6 +1035,43 @@ Five things in that sequence are the decisions rather than the plumbing:
   fill-gaps-never-overwrite rule and the `field_sources` stamping (ADR 0008) hold without a copy,
   and `ConvertSignalData::fromSignalForLead()` keeps **the lead's** company name rather than the
   article's.
+
+### What a type cost, and who offered what (S15)
+
+**Two tables, and they answer different questions.**
+
+**`signal_definition_spend`** is one row per `(team_id, event_key, day)` — queries, results, and the
+two cost columns. The identity is the type's **`event_key`**, not its id, so a type a team deleted
+still has a cost history (ADR 0018 §4); `signal_definition_id` is nullable live attribution and
+nothing more. `day` is a **date in UTC** and the window is compared as one: a `>=` against a
+timestamp drops the first day's rows on every driver that stores a date as midnight.
+
+The two cost columns are not interchangeable and the split is the design.
+`search_cost_micros` is **measured** — a query names exactly one type, so attributing what it cost
+needs no judgement. `ai_cost_micros` is **allocated** — one classification call is offered every
+type on the watch at once (that sharing is where S11's saving comes from), so there is nothing to
+measure, and `SignalDefinitionBreakdown::allocateAi()` apportions it by each type's share of the
+**results** it contributed, with the integer remainder going to the largest contributor so the parts
+sum to the whole. A screen that showed one total would be presenting an allocation as a measurement,
+and a figure that lost a few micros a run could not be reconciled against `signal_runs.cost_micros`.
+
+A **record, not a counter**: the row is written once per run, after the run has finished and its
+cost is known, by `SignalSpendLedger` — and with `insertOrIgnore` + `incrementEach` rather than an
+upsert whose update clause adds, because MySQL spells that `VALUES(col)` and SQLite spells it
+`excluded.col` (`memory/sqlite-tests-mysql-prod.md`). Two of a team's watches finishing in the same
+second both land; a read-modify-write would lose one.
+
+**`signal_definition_submissions`** is one team's **request** that a type of theirs join the shared
+library: `team_id`, `submitted_by`, `signal_definition_id` (**`cascadeOnDelete` — a request about a
+row has no meaning once the row is gone**), a status, the team's `note`, our `review_note`, the
+`preset_id` it produced and who answered when. `unique(signal_definition_id, status)` is what makes
+"one open offer per type" a constraint rather than a check, and a settled row is **deleted** on
+re-submission so the queue shows one question per type. Both notes are stored as **prose** — the one
+kind of text in this codebase that is not a translation key, because there is nothing to translate
+about one person's own sentence to another.
+
+Nothing was added for "your preset has moved on": `signal_definitions.version` and `.preset_version`
+have been the clone-lineage pair since S7, and S15 is the feature they were put there for.
 
 ### Playbooks: a rule that acts (S14)
 
@@ -1520,6 +1579,358 @@ _is_ news.
 **Also learned:** "people moves" and "this week in funding" round-ups are as common in UK news as
 the UAE equivalents the S0 spike found, so every UK preset's `excludes` names them. The AI's
 relevance score remains the main filter; the templates only decide what it gets to look at.
+
+## S15 — delivery, ROI and the curated library (2026-11-03)
+
+**Read "What the S15 reviews changed" below first.** The reviews found four bugs that would have
+shipped, two of them cross-tenant, and every one of them invisible in the happy path.
+
+Three things S7–S14 built and never answered: **does a signal reach anybody who is not looking at
+the screen**, **is a type worth what it costs**, and **does the library grow by curation or by
+deploy**. S15 answers all three, and the answers share one shape — Alima measures, proposes and
+offers; a member or an operator decides.
+
+### 1. The signal round-up (task 1)
+
+`DigestBuilder` gained **highlights** rather than a second digest path, which was the plan's
+instruction and the right one: a member who has set a weekly round-up at 8am on Monday in their
+team's timezone has already answered every question a signal digest would otherwise ask again.
+
+`Notifications\Data\DigestHighlight` is one named event — `signalId`, `headline`, `eventLabel`,
+`heat`, `approachNote`. Five decisions in it:
+
+- **The headline is prose.** It is the only thing in a notification payload that is not a
+  translation key, because a journalist wrote it. Everything Alima says about it is a key.
+- **The approach note travels with the headline.** The digest is read **outside the app**, where no
+  screen can tell somebody that the UAE prospect in front of them carries a prior-consent
+  restriction nothing published can satisfy (`docs/compliance.md` §3.11). So the restriction comes
+  with the line or the line does not go — and it is read from the **signal's own** resolved
+  jurisdiction, never the team's, which is ADR 0019's rule.
+- **Gated on the same preference as the count** (`NotificationType::SignalsDetected`). A round-up
+  that ignored it would be a way of re-enabling something a member switched off.
+- **Events, not articles** (`Signal::representatives()`), and **nulls last** on heat, because
+  unknown is not zero (ADR 0022) and MySQL and SQLite disagree about where a null sorts.
+- **Capped** at `signals.digest.highlights` (3). The risk this feature carries is noise.
+
+Push came with it, and it needed a small refactor rather than a copy: the digest is a Mailable with
+sections, not a one-line notification, so it cannot travel through `PushChannel`.
+`Notifications\Services\PushDelivery` was **extracted** from that channel — device lookup, invalid
+token deletion, `last_used_at` — and the channel is now an adapter over it. `SendDigestsCommand`
+pushes **after** the mail, inside its own `try`/`catch`: a provider having a bad morning must not
+cost every member their round-up. The body is the hottest headline itself where there is one, and a
+count where there is not; one message for the whole round-up, which is the aggregation rule
+`AnnounceTopLeadsJob` set.
+
+### 2. What a type found and what it cost (task 2)
+
+**Per-definition cost did not exist anywhere before S15.** A run's `cost_micros` covers every type
+on the watch, so "is this type worth it?" had no denominator. `signal_definition_spend` is the
+answer: one row per `(team, event_key, day)`, keyed by the type's **`event_key`** so a type a team
+deleted still has a cost history (ADR 0018 §4).
+
+The column split is the part worth holding on to:
+
+| Column               | Kind          | Why                                                                                                                                                                                         |
+| -------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_cost_micros` | **measured**  | A query names exactly one type (`SignalSourceQuery::$eventKey`). No judgement.                                                                                                              |
+| `ai_cost_micros`     | **allocated** | One classification call serves every type on the watch — that sharing is S11's saving — so there is nothing to measure. Apportioned by each type's share of the **results** it contributed. |
+
+Keeping them in separate columns is what stops a screen presenting an allocation as a measurement.
+`SignalDefinitionBreakdown` (the deliberate mirror of `SignalSourceBreakdown`) accumulates during a
+run and gives the integer-division remainder to the largest contributor, so the parts sum to the
+whole — a figure that quietly loses a few micros per run is one nobody can reconcile against
+`signal_runs.cost_micros`, which is exactly the complaint the table exists to answer. A run with an
+AI cost and **no** results allocates nothing: it cannot have classified anything.
+
+`SignalSpendLedger` writes it, with **two portable statements** rather than one clever upsert —
+`insertOrIgnore` claims the day's row under the unique index and `incrementEach` does the arithmetic
+in the database. An `upsert` whose update clause adds to the existing value has to name it, and the
+dialects disagree about how (`VALUES(col)` on MySQL, `excluded.col` on SQLite), which is precisely
+the class of difference a green SQLite suite says nothing about
+(`memory/sqlite-tests-mysql-prod.md`). It is still a **record, not a counter**: the addition happens
+once, after a run has finished and its cost is known, on all three paying paths (search failure,
+credit exhausted, completion).
+
+`SignalRoiReader` joins it to the funnel **in PHP, not in SQL**, and that is deliberate: a signal
+belongs to the window it was **found** in and a cost to the day it was **incurred** on. They agree
+for every run that is not straddling midnight; one query would force one clock onto both and make
+the figure wrong in a way nobody could see. The funnel's definitions are **S12's**, restated
+nowhere.
+
+`SignalDefinitionRoi::costPerConvertedMicros()` is **null when nothing converted**, which is the
+whole reason the type exists. A zero would read as "free"; the truth is the money bought no leads,
+and the card says so in words. Below `signals.roi.retire.minimum_found` the rail is **hidden rather
+than shown as zeros**: four signals and none kept says nothing, and a panel of noughts reads as a
+verdict.
+
+### 3. "Pause or retune?" (task 3)
+
+`SignalTuningKind::RetireDefinition`, proposed by the same `SignalTuningAdvisor` as everything else
+and therefore under the same promise: **it proposes and never applies.** Three guards, each a
+different kind of honesty — an evidence floor (`roi.retire.minimum_found`, 30), nothing converted
+(one lead in forty is a terrible keep rate and a perfectly good reason to keep running), and active
+only. The evidence carried is the numbers that make the argument: found, kept, rate, cost, days.
+Accepting pauses the type; it does **not** bump `version`, because pausing is not a change to what
+the type looks for.
+
+`TuningSuggestions.vue` grew three evidence labels (`found`, `cost_micros`, `days`) and a money
+formatter, which is the docblock's own warning coming true: a panel that only knew how to render one
+kind's evidence would quietly show nothing for the others, and `cost_micros` printed raw says "What
+it cost: 4820000" of eight pounds.
+
+### 4. The curated library (task 4, plan decision #3)
+
+A team **submits**; an operator **curates**. Three Actions in Signals, called by the panel, because
+the panel owns no business rule and what a preset _is_ — `team_id = null`, versioned, unique within
+the platform scope — is ADR 0018 §2's rule.
+
+- `SubmitSignalDefinitionAction` — a request, not a publication. Refuses a **platform** row (it _is_
+  the library) and a type with no searches; one open offer per type; a settled row is replaced so a
+  team can offer the same type again after changing it. A team's **clone** may be offered
+  deliberately: a team who took `funding_round` and spent three months improving its templates is
+  the best source of a better `funding_round`.
+- `PromoteSignalDefinitionAction` — **copies; it does not move.** The team's own type is untouched:
+  same row, same name, still running. Re-pointing it at `team_id = null` would take their type away
+  as a reward for sharing it. A **named** key folds the submission into that preset and bumps its
+  version; a **derived** key never collides, because two teams choosing the same obvious name must
+  not silently overwrite the library. `fieldsFrom()` omits `team_id`, `created_by`, `preset_key`,
+  `preset_version` and **`source_config`** — a feed URL and a webhook identity are one tenant's
+  integration, not a template anybody else could run.
+- `SavePlatformPresetAction` — CRUD. The version bumps on every change that alters what a preset
+  looks for and **not** on a pause, because whether the library advertises a type is not a change to
+  the type. A **key never changes**: clones point at it, signals record it, and the frozen seed
+  migrations name it.
+
+Both preset-writing paths set **`SignalDefinition::$isPlatformPreset`**, and that is the one thing
+in S15 worth reading twice. `'team_id' => null` **is not enough on its own**: `BelongsToTeam`'s
+`creating` hook fills a null `team_id` from the ambient `TeamContext`, so a preset written while a
+team happened to be active is silently _that team's own type_ — right columns, wrong owner, and a
+library that never shows it, because every consumer of a preset reads through the door that only
+sees `team_id is null`. Nothing downstream would notice. The model has carried that flag since S7
+for exactly this case, which is the better half of the story: the first fix here was a new helper
+that forgot and restored the context, and two doors onto one invariant defeat the point of having a
+door (see "What the S15 reviews changed"). `promote()` reads the submitted definition with
+`withoutGlobalScope('team')` explicitly, for the same reason: the relation is team-scoped, and
+naming the cross-tenant read is what makes it correct rather than dependent on its caller.
+
+`Admin\Services\Platform\SignalLibrary` is a **reader only**, and it owns the operator's two
+questions — which are not a tenant's questions with the scope removed (ADR 0016, applied to a
+curation screen): _how widely is this preset used and how far behind are the copies?_ and _how has
+this submitted type actually performed?_ The **author is anonymised and the evidence is not**: the
+row carries `team_id`, and this reader simply does not hand it over, because an operator choosing
+between two submissions should be choosing on the evidence.
+
+### 5. "Your preset has moved on" (task 5)
+
+**This is the feature ADR 0018 §3 made a clone a copy for.** A reference would have meant a platform
+edit silently changing what thirty teams pay to run, overnight, with no record of what changed.
+
+`PresetUpdateDiffer` compares a clone against its preset by `preset_version` and offers the changed
+fields — **eleven of them**, and the list is short on purpose: everything in `FIELDS` is a statement
+about _what this kind of event is_, and nothing in it is a statement about _how one team runs it_.
+`is_active`, `source_config` and anything else about a team's own use are never offered. The
+comparison ignores key order inside the json columns and treats **a null and an empty array as the
+same absence** — three of the diffable columns arrive as either depending on which code path last
+wrote them, and `===` offered a change whose two sides were both blank. A panel that cries wolf is a
+panel nobody reads.
+
+`AdoptPresetChangesAction` takes the ticked fields, narrowed **against the actual diff** so a stale
+form cannot copy a value over one the team edited in the meantime. **Taking nothing is a real
+answer**: `preset_version` is set in every case including the empty one, which is what stops the
+offer coming back, and `version` bumps only when something was actually taken — acknowledging an
+offer is not an edit to the type.
+
+### 6. Platform signal reporting (task 6)
+
+Two reports in **Admin's own builders** over `platform_daily_metrics` (ADR 0016), from four new
+metrics written by `PlatformRollup`: `signal_types_in_use`, `signals_found`, `signal_outcomes`,
+`signals_by_source`.
+
+- Attribution is to the **preset a type was cloned from**, so a hundred clones of `funding_round`
+  are one row — which is the whole point. A team's own type is `own`; a signal whose type has been
+  deleted is **`unattributed` rather than dropped**, so the platform's total agrees with the
+  tenants' and the difference is findable.
+- `signal_types_in_use` is **point-in-time only**. There is no record of when a type was switched
+  on, so writing it for a reconstructed day would be today's shape stamped with last month's date.
+- The **pack is derived in the builder** from `SignalPresetCatalogue::packFor()` rather than rolled
+  up as a dimension, because a pack is a property of the catalogue and not of the row (ADR 0020).
+  Rolled up it would freeze last month's packaging into the metrics table where a repackaging could
+  never be reflected; derived, "which packs should we invest in?" is always asked of today's
+  packaging over history's signals.
+- Sources are their **own table**, because a signal has one source and one type and crossing them
+  would be eighty mostly-empty cells.
+
+### 7. Library-first, market-first (task 7)
+
+The empty state already pointed at the library; what was wrong was the **order**. A UK team's
+library is a handful of UK presets spiked against UK news plus thirty market-agnostic ones, and in
+catalogue order the market-agnostic ones won — so the first thing a new UK team read was the generic
+shelf, with the pack written for them below the fold. `marketFirst()` sorts the team's own market to
+the front, stably, so the sections still read in the order they were designed in. A library is read
+top-down or not at all. Nudge, never hard-gate (`memory/onboarding-not-hard-gated.md`).
+
+## What the S15 reviews changed
+
+Two reviews, and between them they found **four bugs that would have shipped, two of them
+cross-tenant** — plus a handful of claims the code did not actually back up. The theme is worth
+naming because it is not the one S14's review had: every finding here was **invisible in the happy
+path**. A preset written to the wrong owner, a withdrawn key that 500s, one tenant's totals labelled
+as another's, a queue of nameless rows — none of them throws, and none is visible on a screen built
+by somebody who only ever had one team and never deleted anything.
+
+### `'team_id' => null` is not enough to write a row that belongs to nobody
+
+The one worth reading twice, and it generalises past Signals.
+
+A platform preset is a `signal_definitions` row with `team_id = null`. Both new Actions said exactly
+that, both documented that they "run outside any team context", and **`BelongsToTeam`'s `creating`
+hook fills a null `team_id` from the ambient `TeamContext`**. So a preset written while any team
+happened to be active silently became _that team's_ own type: right columns, wrong owner, unique
+against the wrong scope, and invisible to every reader of the library, because every consumer of a
+preset reads through the door that only sees `team_id is null`.
+
+It could not fire in production — `PlatformContext` drops the context on every admin request and an
+operator is in no team — and it fired on the first test fixture that created one with a team active.
+
+The first fix was a new `PlatformPresetReader::asPlatform()` that forgot and restored the context. The
+review was right to reject it: **`SignalDefinition::$isPlatformPreset` already existed**, with a
+docblock naming "the admin panel in S15" as its intended user, and the seeder and the factory already
+used it. Two doors defeat the point of having one, and the new one had a bug of its own (it restored
+only when `TeamContext::team()` resolved a model, so a context set by id was left forgotten). The
+flag is now what both creates use, and `asPlatform()` is gone.
+
+The lesson the architecture doc now carries: **removing a read scope and removing a write's
+auto-assignment are two different jobs.** A trait that _adds_ data on write is an independent
+mechanism from the scope that _hides_ it on read, and an intention expressed as a literal `null` is
+not enforcement.
+
+### An eager load is a second query, and it re-applies the scope
+
+The same shape, one level further out, and this one was reachable.
+
+`SignalLibrary::queue()` reads submissions `withoutGlobalScopes()` — cross-tenant on purpose, since
+the queue is every tenant's offers. The `definition` relation is a **separate query**, and it applied
+`BelongsToTeam` as usual. With any team in context, every row in the operator's queue came back with
+a null definition: no name, no description, no templates, "no longer available", and a performance
+figure of zero. An operator would have seen an empty-looking queue and had nothing to press.
+
+Production was saved by `PlatformContext` again. The test that found it is the one that now asserts
+the queue **with another team in context**, deliberately.
+
+### The evidence on a submission was every tenant's
+
+`performanceFor()` aggregated `Signal` by `event_key` alone, with no team. A clone carries the
+preset's own key, so `funding_round` is one `event_key` shared by dozens of tenants — and the figure
+labelled "how this type has done for the team that wrote it" was the platform's total. On the one
+screen whose entire purpose is to decide on the evidence, with the author anonymised so the evidence
+is all there is. It is keyed on `(team_id, event_key)` now, as one `orWhere` per pair rather than two
+`whereIn`s, because crossing the teams with the keys is the same bug wearing a different hat.
+
+### A withdrawn preset kept its key and stayed on the screen
+
+`SignalDefinition` soft-deletes and `unique(scope_id, key)` **does not**. So after withdrawing a
+preset, `PlatformPresetReader::byKey()` answered null, the `presetKeyTaken` guard passed, and the
+insert then failed on the index with a raw 500 — for `create`, for a promotion naming that key, and
+for `freeKey()`'s derived keys. Separately, `withoutGlobalScopes()` on the admin reads dropped the
+**soft-delete** scope as well as the team scope, so withdrawn presets stayed in the operator's list
+to be toggled and withdrawn again.
+
+Three changes. `keyIsTaken()` is a second, trashed-aware question — deliberately not folded into
+`byKey()`, because a read must _not_ hand back a withdrawn preset and the index must _not_ pretend
+its key is free. The admin reads name the one scope they mean (`withoutGlobalScope('team')`). And a
+promotion that names a withdrawn preset's key now **restores it** carrying the new content, which is
+the honest reading of the gesture: naming a key means "this _is_ that preset".
+
+### A promotion threw away the half of the work that does the most
+
+`fieldsFrom()` omitted `match_keywords`, `classification_rules` and `suggested_approach_hint` — all
+three of which are in `PresetUpdateDiffer::FIELDS`, so a clone may take them _from_ a preset. A team
+whose contribution was a well-tuned exclusion list (a funding tracker is kept out by an exclusion,
+not by a template) had that dropped on promotion, and every other clone was then shown a diff
+against a preset the submission had not actually changed. **The two lists have to agree**: anything a
+clone may take is something a promotion must carry.
+
+### The spend was lost on two paths, and could fail a run on a third
+
+A search is paid for the moment it is made, so a path that leaves without recording makes the ROI
+card understate the cost **and** makes the retry pay again. Two such paths: a **retryable** failure
+out of `search()` rethrew without recording, and an unexpected throw out of the classifier or the
+commit did the same. And the ledger write itself could fail a run that had already spent the team's
+allowance — the S14 review's listener hazard in a new place.
+
+All three are now one once-only, exception-safe `$recordSpend()` closure called on every way out,
+with the tail wrapped so nothing is swallowed and nothing is double-added. Losing a row of reporting
+is the lesser failure by a wide margin.
+
+### Claims the code did not back up
+
+Worth listing, because a comment that overstates is worse than no comment:
+
+- **"A record, not a counter."** `signal_definition_spend` is a running total with no `signal_run_id`
+  and nothing can recompute it from an underlying ledger, so it does not follow `usage_meters`'
+  pattern and borrowing its name borrowed its credibility. The comment now says what is true, what
+  the figure can be trusted for, and the column to add if the trade is ever revisited.
+- **"Results are what was classified."** `allocateAi()` apportions by **raw** per-query results, not
+  by what reached the batch — `dropAlreadySeen` and `dropRejected` take most of it on a steady-state
+  watch, and an article found by two types is classified once. It is an allocation by volume brought
+  to the run, which is defensible and is not the same claim. (It also has an idempotence guard now,
+  because a second call would add again and the breakdown would stop reconciling.)
+- **"A clone cannot be submitted."** Only a _platform_ row is refused, and allowing an improved clone
+  is right: a team who spent three months on a preset's templates is the best source of a better one.
+- **"The record that they asked survives."** It survives until they offer the same type again:
+  `unique(signal_definition_id, status)` holds one row per status, so re-offering has to replace the
+  settled row and the previous review note goes with it. Said plainly now, with the shape to change
+  to if the history is ever wanted.
+- **"`PlatformPresetReader` is the only thing allowed to remove the scope."** Two Admin services
+  remove it to ask platform-wide questions _about_ presets, which is ADR 0016's distinction. The
+  invariant that class actually protects is narrower and is now stated as such.
+
+### Withdrawing an offer for a type you had deleted returned 404
+
+`withdrawSubmission` authorised through the definition, which soft-deletes. A team that deleted the
+type while the offer waited could not take it back, and the offer sat Pending in the operator's queue
+for ever. It is authorised against the **team** now, which is what the policy question is actually
+about — the row is already proven theirs by the scoped lookup.
+
+### From the brand review
+
+- **The cost was printed in the wrong currency.** `money()` took `currency()`'s GBP default while the
+  providers bill in USD (`signals.cost_micros_per_request` is documented as ~$0.001 a query) — and
+  the same screen's S9 estimate already said `'USD'` three hundred lines down. A pound sign over a
+  dollar figure, on the one panel whose job is to be checkable. Fixed in both places, and isolated
+  for RTL like every other Latin run on that screen.
+- **The offer dialog's checkboxes were not tied to the values they decide.** The tick's accessible
+  name was the field label alone, so a screen-reader user in forms mode heard "Searches" and was
+  asked to agree to a change nobody had read them. Each change is a `fieldset` with the field as its
+  `legend`, the control says "Take the library's version", and `aria-describedby` points at both
+  columns. The native checkbox also got the brand focus ring back.
+- **`Heat` was a reused one-word key**, translated "الأهمية" in the email and "الحرارة" in the app —
+  the exact trap `TuningSuggestions.vue` records, which is also why the ROI rail says `Kept by you`
+  rather than `Kept` (that key already means S9's preview verdict, "will appear"). The email now says
+  `How hot` with a `/100` scale.
+- **The digest's headline and event label ran together** (markdown needs two trailing spaces), the
+  approach note was carried **only by italics** so a client that strips them showed an unlabelled
+  sentence, and the headline needed `<bdi>` inside an Arabic paragraph. All three fixed; the note now
+  carries "Before you reach out:" in the sentence.
+- **Arabic**: `Take it back` and the `Withdrawn` status used two different verbs for one action (and
+  `Withdrawn` was itself a key already taken by a compliance assessment, so the status has its own
+  now); `Pause this signal type` said "stop" rather than the app's own "pause"; the plural of
+  ":count things happened" was ungrammatical for everything but one, so it is a `trans_choice` with
+  explicit bands.
+- Smaller: the read-only member was invited to "take the parts you want" beside no button and now
+  reads a sentence about their own copy instead; the repeated per-card buttons carry the type's name
+  in their accessible names; the submit dialog's error is linked to its field and the button uses
+  `aria-disabled`; the admin editor opened with an **empty Searches box**, because the reader sent a
+  count rather than the templates; and a rejection's confirm button is no longer `destructive`,
+  because declining a submission destroys nothing.
+
+### Two things flagged, not taken
+
+A **native Arabic reader** is wanted for the compliance-adjacent approach copy in the email and for
+the submission statuses, which is the same flag `brand-tokens.md` §7 already carries for S13's and
+S14's new strings. And the push body is now bounded at 160 characters, because it is untrusted
+third-party text going to a lock screen — but nothing redacts a person's name from a headline, which
+is a product question rather than a bug.
 
 ## What the S14 reviews changed
 
@@ -2511,19 +2922,33 @@ The rest, briefly:
 
 ## Permissions
 
-| Ability                                       | Owner | Admin | Member | Read-only |
-| --------------------------------------------- | ----- | ----- | ------ | --------- |
-| View signals, watches + the type library      | ✅    | ✅    | ✅     | ✅        |
-| Create/update/delete watches; run-now         | ✅    | ✅    | ✅     | ❌        |
-| Create/update/delete signal types; clone one  | ✅    | ✅    | ✅     | ❌        |
-| Dismiss / restore / convert / attach a signal | ✅    | ✅    | ✅     | ❌        |
-| View the accounts the team watches            | ✅    | ✅    | ✅     | ✅        |
-| Create/update/delete a watchlist; sync one    | ✅    | ✅    | ✅     | ❌        |
+| Ability                                           | Owner | Admin | Member | Read-only |
+| ------------------------------------------------- | ----- | ----- | ------ | --------- |
+| View signals, watches + the type library          | ✅    | ✅    | ✅     | ✅        |
+| Create/update/delete watches; run-now             | ✅    | ✅    | ✅     | ❌        |
+| Create/update/delete signal types; clone one      | ✅    | ✅    | ✅     | ❌        |
+| Dismiss / restore / convert / attach a signal     | ✅    | ✅    | ✅     | ❌        |
+| View the accounts the team watches                | ✅    | ✅    | ✅     | ✅        |
+| Create/update/delete a watchlist; sync one        | ✅    | ✅    | ✅     | ❌        |
+| See a type's own figures and the library's offers | ✅    | ✅    | ✅     | ✅        |
+| Offer a type to the library; take an offer back   | ✅    | ✅    | ✅     | ❌        |
+| Take the library's changes into a clone           | ✅    | ✅    | ✅     | ❌        |
 
 **Nobody edits a platform preset.** It is not a role question — a preset belongs to the product,
 and a team clones it (ADR 0018 §3). `SignalDefinitionPolicy::update()`/`delete()` refuse one for
 every role, and the team-scoped read in `ResolvesSignals::definition()` makes the attempt a 404
 before the policy is even consulted.
+
+Offering a type and adopting a preset change are both authorised as **`update` on the definition**
+(S15), which is the right question in both directions: offering a type to the library is a statement
+about it that only somebody who could change it should be able to make, and taking the library's
+templates _is_ changing it. Reading the figures and the offers is a `viewAny`, so the most cautious
+person on the team can see what a type costs and what the library has changed without being able to
+act on either.
+
+**Curating the library is not a tenant role at all.** Promoting, rejecting and editing a preset live
+in `/admin` under `AdminAbility::ManageOperations` (see `docs/modules/admin.md`), because a preset
+belongs to the product and every team sees the result.
 
 `sync` is a **write** although it creates nothing of its own: it rewrites a list's entries from the
 pipeline, and a Read-only member pressing it would be changing what the team pays to search.
@@ -2534,6 +2959,30 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
 
 ## Known limitations / TODO
 
+- **A type's AI cost is an allocation, and the screen does not say so** (S15). The card shows one
+  "Cost", which is the measured search cost plus an apportioned share of the run's classification
+  cost. The two are stored in separate columns precisely so nothing presents an allocation as a
+  measurement, and then the card adds them, because a member asking "what did this type cost me?"
+  wants one number. The honest version is a tooltip or a split on the card; what is there now is
+  defensible and not fully transparent.
+- **Spending is dated by the run and finding by the signal** (S15). `signal_definition_spend.day` is
+  the UTC day the **run finished**; the funnel is scoped by when a **signal was found**. They agree
+  for every run that does not straddle midnight, and where they disagree a cost sits one day from
+  the signals it bought. Joining the two clocks in one query would be worse — it would force one of
+  them onto both — but the figures are not reconcilable to the day.
+- **A type with no spend row shows no cost** (S15). The ledger starts at S15, so a type a team has
+  run for months reports its whole funnel against **zero** cost until it next runs. There is no
+  backfill, because there is no per-type cost in the historical data to backfill from: a run's
+  `cost_micros` covers every type on the watch and cannot be split after the fact. It corrects
+  itself within one window; it is wrong in the flattering direction until it does.
+- **A submission is reviewed by hand and nothing chases it** (S15). There is no SLA, no reminder and
+  no notification to the operator: a team's offer sits in `/admin/signal-library` until somebody
+  opens the screen. The team's own screen says "waiting for review" honestly, which is the half that
+  matters, but an unattended queue is an offer nobody answers.
+- **A promoted preset is never credited** (S15). `signal_definition_submissions` records which team
+  offered what, and the library shows no attribution at all. That is the right default for a shared
+  asset — a preset is not a contribution graph — but a team who gave us a type that thirty others
+  now run has nothing to show for it.
 - **A pushed event appears on the watch's cadence, not instantly** (S13b). The webhook accepts and
   stores; the next run of a watch reads it. So an event pushed at 09:01 to a type on a daily watch
   waits until that watch runs, and an event pushed to a type **nobody has attached to a watch** is
@@ -2855,6 +3304,8 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
 
 | Date       | Phase | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-03 | S15+  | **What the S15 reviews changed** (see the section of that name). **Four bugs that would have shipped, two of them cross-tenant, and every one invisible in the happy path.** `'team_id' => null` does not write a row that belongs to nobody — `BelongsToTeam` fills a null `team_id` from the ambient context, so a preset written while a team was active became _that team's_ own type, right columns and wrong owner, invisible to every reader; the fix is `SignalDefinition::$isPlatformPreset`, which already existed for exactly this and which a new `asPlatform()` helper was duplicating (the helper is gone). The same shape one level out: an **eager load is a second query and re-applies the scope**, so the operator's queue came back with a null definition on every row — no name, no evidence, “no longer available”. The **evidence on a submission was every tenant's**: `performanceFor()` grouped by `event_key` alone, and a clone carries the preset's key, so “how this type has done for the team that wrote it” was the platform's total on the one screen where the author is anonymised so the evidence is all there is. And a **withdrawn preset kept its key** — the unique index does not soft-delete — so re-using it was a 500, while `withoutGlobalScopes()` on the admin reads dropped the soft-delete scope too and left withdrawn presets on the screen. Also: a promotion **dropped `match_keywords`, `classification_rules` and `suggested_approach_hint`**, all three of which a clone may take, so a team's best work was thrown away and every clone then saw a diff against a preset the submission had not changed; the spend was **lost on a retryable failure and on an unexpected throw** and could **fail a run** that had already paid, now one once-only exception-safe recorder on every exit; and withdrawing an offer for a type you had since deleted 404'd for ever. Five overstated comments corrected, including “a record, not a counter” (it is a running total with no run id) and “results are what was classified” (they are raw per-query results). From the brand review: the **cost printed in GBP** while the providers bill in USD; the offer dialog's checkboxes were not tied to the values they decide (a `fieldset` per change, a named control and `aria-describedby` now); `Heat` was a reused one-word key translated two different ways; the digest's headline and event label ran together and its approach note was carried **only by italics**; and the admin preset editor opened with an **empty Searches box** because the reader sent a count rather than the templates.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `app/Modules/Signals/{Actions/{SavePlatformPresetAction,PromoteSignalDefinitionAction,SubmitSignalDefinitionAction},Services/{PlatformPresetReader,SignalSpendLedger,PresetUpdateDiffer},Support/SignalDefinitionBreakdown,Actions/RunSignalWatchAction,Http/Controllers/**}.php`, `app/Modules/Admin/{Services/Platform/SignalLibrary,Http/Controllers/Web/SignalLibraryController}.php`, `app/Modules/Notifications/Console/SendDigestsCommand.php`, `resources/js/{pages/signals/Types,pages/admin/signals/Library,components/signals/TuningSuggestions}.vue`, `resources/views/emails/notifications/digest.blade.php`, `lang/{en,ar}.json`, `tests/Feature/Signals/{SignalLibraryCurationTest,RunSignalWatchActionTest}.php`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2026-11-03 | S15   | **Delivery, ROI and the curated library.** Two tables (`signal_definition_spend` — per-type daily cost, keyed by `event_key` so a deleted type keeps its history, with **measured** search cost and **allocated** AI cost in separate columns; `signal_definition_submissions` — a team's request that a type join the library). `DigestBuilder` gained **highlights** rather than a second digest path: the hottest events by name, per cluster, nulls last, capped — and the jurisdiction's **approach note travels with the headline**, because the digest is read outside the app where no screen can warn anybody. `PushDelivery` was extracted from `PushChannel` so the digest could push without a copy of the device logic. The definition card shows found → kept → converted → pipeline beside the cost and the cost per lead, which is **null and said in words when nothing converted** — a zero would read as “free”. `SignalTuningKind::RetireDefinition` proposes pausing a type that found plenty, kept almost none and converted nothing — and, like everything else on that panel, **never applies**. The library became curated: a team **submits**, an operator promotes or rejects with a note, and promotion **copies** (the team keeps their own type, still running) while a named key folds the submission into an existing preset and bumps its version. Every clone a version behind is **offered** the diff **per field**, and taking nothing is a real answer that stops the offer coming back (the feature ADR 0018 §3 made a clone a copy for). Four `PlatformMetric` cases and two reports in Admin's own builders (ADR 0016), with the **pack derived from the catalogue** rather than rolled up. And a preset write sets `SignalDefinition::$isPlatformPreset` rather than trusting `'team_id' => null`: `BelongsToTeam` fills a null `team_id` from the ambient context, so a preset written while a team was active would silently be that team's own type — right columns, wrong owner, invisible to every reader.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 2026-11-03 | S14+  | **What the S14 reviews changed** (see the section of that name). Three product bugs: a rule **converted a signal a member had dismissed** (now skipped before it is claimed — the same Action is permitted to a person and refused to a rule); a per-job spend cap **claimed the signal and refused it for ever**, so 175 of 200 were permanently refused by design, and the batch cap dropped its tail entirely (both are now **deferrals**, handed back by the Action and re-dispatched by the job after `signals.playbooks.defer_seconds`); and an exception in `RunPlaybooks` **failed the watch run that raised the event and re-billed its Serper search** (now caught). Plus: `completed_at`, so an interrupted run is tellable from one that matched nothing; a **rehearsing rule no longer stops the chain**, because a rehearsal must not change what the live rules do; `PlaybookActor` requires the creator to still hold a manage role; the drafting cap counts **attempts**, so an AI outage is bounded; `failed()` logs the exception's class rather than a message carrying its bindings; a handler-less step and a dropped tag are **recorded** rather than silently omitted from the log; and the claim retries a deadlock and survives the rule being deleted mid-flight. On the screens: the error summary's per-step links **resolved to nothing** (anchors and labels are now derived from the form), reordering a step lost focus twice over, the checkbox groups named nothing to a screen reader, a rehearsed step wore the applied tick, `watchlist_ids` was a condition only the API could set, and Arabic figures were set in DM Mono at 12px. Four findings were accepted rather than fixed, with reasons.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | 2026-11-03 | S14   | **Playbooks: a signal arriving became something a team can automate against** (ADR 0024). `signal_playbooks` (team-owned: conditions, ordered actions, `mode`, `stop_after_first_match`, `priority`) + `signal_playbook_runs` (one row per `(signal, playbook)` with every step's status, its reason key and **what was refused and why**). `SignalPlaybookEvaluator` is deterministic, pure over nine scalars and unit-tested as a table; one `PlaybookStepHandler` per kind behind `PlaybookStepRegistry`, each calling the **owning module's Action**. Four brakes: the `(signal_id, playbook_id)` unique, `PlaybookBudget`'s per-job conversion and drafting ceilings, `max_signals_per_run`, and the dry-run mode. `DraftOutreach` drafts **for review** through `Signals\Contracts\SignalOutreachDrafter` (declared here, bound by Outreach) and is refused outright where `OutreachGuard` says the prospect may not be approached — `docs/compliance.md` §3.12. Plus the rule builder with "what would this have done to last week's signals?", the run log with the refusals visible, `/api/v1/signal-playbooks*`, `NotificationType::PlaybookFired` (aggregated per rule per recipient) and the read-only mobile inbox.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 2026-11-03 | S13b+ | **What the S13b reviews changed** (see the section of that name; ADR 0023 gained **§4a**). Four findings would have shipped something broken and one of them completely: `WebhookSignalSource::fetch()` handed a `CarbonImmutable` to a `?Illuminate\Support\Carbon` parameter, so **every** run with a stored event raised a `TypeError` — found by writing the `fetch` test the review said was missing, and invisible to PHPStan because the two classes are siblings. The three that matter structurally are one omission: ADR 0023 §4 split a 4xx into _is the provider up_ and _was that a sensible thing to ask_, both questions about **us**, which was exhaustive while every source was addressed by a string we composed. A source addressed by a **subject** or by the **definition** has a third answer — the addressee is not there — and without it a struck-off company number failed a whole watch on every run for ever (the cursor only advances on completion), and a publisher moving a feed failed the run too, by the opposite route, because a feed is asked one query so “some refused” and “all refused” are the same event. Hence `SourceAddressNotFound`, counted under a new `skipped` column. Beside those: the feed's byte cap **did not exist** (no `stream => true`, so Guzzle buffered the whole body first); its poll floor and ETag were keyed by URL alone, so one team's poll of a public newsletter silently blinded every other team and a **preview** blinded the type's first real run; a burst of pushed events lost all but the newest fifty, because the cap was spent on events already turned into signals (hence `signal_inbound_events.dedupe_hash`, excluded in the query); a caller's `company_name` was accepted and never read by anything; the signature covered the body while `input()` reads the query string, so a replay could inject unsigned optional fields; DNS rebinding is now **closed** rather than narrowed (`SafeUrl::approvedIps()` + `CURLOPT_RESOLVE`, and a feed refuses a host it cannot resolve); the article enricher would have paid a language model to re-read a registry fact at confidence 100; the entity window was budgeted against the full ceiling while the definition-addressed queries were trimmed off the end of it; and the registry resolver spent its ten searches on the head of the list rather than on the window about to be searched. Two CLAUDE.md breaches: the rotation's audit row sat outside its transaction and `last_used_at` was stamped in `authorize()` before validation — both now inside the Action's commit, and the Action re-reads the definition in the team context so a foreign one cannot mint a credential against a pairing that should not exist. **Two bugs the tests found and neither review did:** `push()` emitted a query for every source a definition named, so a feed was asked once per template per place per region (the “forty fetches of one document” its own docblock warns about, hidden by the poll floor and paid for in trimmed news queries), and the same `! isQueryBased()` conflation added a `+1` per entity to the window for a registry query never emitted. **Brand:** the three new source descriptions had `lang` keys from an earlier draft of the enum, so Arabic members read English — a module-wide guard now holds every Signals enum string to a key in both bundles and found four older labels already untranslated; the feed field announced “invalid” with no reason; **every link in the error summary was dead** (`#name` vs `#type-name`); “Replace secret” now confirms; the revealed secret is a `role="status"` with a Copy button; and each Latin run in the “ends in … last used …” line is isolated in `<bdi>`. A ticked feed with no address is now **refused** rather than saved as a type that searches nowhere. 37 new tests (2417 total), all three S13b migrations verified against real MySQL 8.0.46.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `app/Modules/Signals/{Exceptions/{SourceAddressNotFound,SignalsException},Services/{AbstractHttpSignalSourceProvider,CompaniesHouseSignalSource,FeedSignalSource,WebhookSignalSource,SignalQueryBuilder,SignalArticleEnricher},Support/SignalSourceBreakdown,Actions/{RunSignalWatchAction,ResolveWatchlistCompanyNumbersAction,IngestSignalEventAction,RotateSignalWebhookSecretAction,PreviewSignalDefinitionAction},Models/SignalInboundEvent,Data/{SignalSourceQuery,SignalDefinitionData},Enums/SignalSourceKind,Http/{Requests/IngestSignalEventRequest,Controllers/Api/V1/SignalEventController}}`, `app/Modules/Core/Support/Security/SafeUrl.php`, `app/Modules/Admin/Services/Platform/SignalRunOversight.php`, `database/migrations/2026_11_06_100003_inbound_events_carry_their_dedupe_identity.php`, `resources/js/{pages/signals/Types,pages/admin/signals/Runs,types/admin}`, `lang/{en,ar}.json`, `docs/{api/README,decisions/0023-signal-sources-are-a-registry,modules/signals}.md`, `docs/api/openapi.json`, `tests/{Unit/Core/SafeUrlTest,Feature/Signals/{WebhookSignalSourceTest,SignalSourcesTest,FeedSignalSourceTest,CompaniesHouseSignalSourceTest,SignalEventWebhookTest}}.php`                                                                                                                                                                                                                                                                                    |

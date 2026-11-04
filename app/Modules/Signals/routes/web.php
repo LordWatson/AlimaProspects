@@ -77,6 +77,21 @@ Route::middleware(['auth', 'verified', 'capability:signals'])->group(function ()
     Route::post('signals/types/{definition}/webhook-secret', [SignalDefinitionController::class, 'rotateSecret'])
         ->whereNumber('definition')
         ->name('signal-definitions.webhook-secret');
+    // The library, both ways (S15 tasks 4 and 5).
+    //
+    // **Offering a type is a POST that changes nothing about it**: it writes a request an operator
+    // answers, which is plan decision #3. Taking a preset's changes is a PATCH on the team's own
+    // row, per field, because a clone is a copy and not a reference (ADR 0018 §3).
+    Route::post('signals/types/{definition}/submit', [SignalDefinitionController::class, 'submit'])
+        ->whereNumber('definition')
+        ->name('signal-definitions.submit');
+    Route::delete('signals/types/submissions/{submission}', [SignalDefinitionController::class, 'withdrawSubmission'])
+        ->whereNumber('submission')
+        ->name('signal-definitions.submissions.withdraw');
+    Route::patch('signals/types/{definition}/adopt-preset', [SignalDefinitionController::class, 'adoptPreset'])
+        ->whereNumber('definition')
+        ->name('signal-definitions.adopt-preset');
+
     Route::delete('signals/types/{definition}', [SignalDefinitionController::class, 'destroy'])
         ->whereNumber('definition')
         ->name('signal-definitions.destroy');

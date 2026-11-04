@@ -197,6 +197,48 @@ enum PlatformMetric: string
     /** Dimension: `<channel>:<outcome>`. */
     case OutreachOutcomes = 'outreach_outcomes';
 
+    /* --------------------------------------------------------------- Signals */
+
+    /**
+     * Signal types in use across the platform. Dimension: the **preset key** a type was cloned
+     * from, or `own` for one a team built themselves (S15 task 6).
+     *
+     * This is the figure that says which of the library's presets anybody is actually running —
+     * which, with the three below, is what tells the business which packs to invest in. A preset
+     * nobody has cloned in six months is a preset to retire from the library, and nothing else in
+     * the product can say so.
+     */
+    case SignalTypesInUse = 'signal_types_in_use';
+
+    /**
+     * Signals found on the day. Dimension: the preset key the type came from, or `own`.
+     *
+     * Counted per **cluster representative**, like every other signal figure in the product, so a
+     * story that gets picked up widely does not make a preset look eight times as productive as one
+     * whose stories are not.
+     */
+    case SignalsFound = 'signals_found';
+
+    /**
+     * How far those signals got. Dimension: `<preset key>:<kept|converted>`.
+     *
+     * One metric with a compound dimension rather than two, for the reason
+     * {@see self::OutreachOutcomes} is: the two numbers are only read beside each other, and
+     * splitting them would be two queries and two chances for a window to disagree.
+     *
+     * Scoped by when the signal was **found**, not by when it converted — the cohort rule every
+     * signal funnel in this codebase follows, so the platform's figures and a tenant's agree.
+     */
+    case SignalOutcomes = 'signal_outcomes';
+
+    /**
+     * The same signals by the **source** that found them. Dimension: a `SignalSourceKind` value.
+     *
+     * Separate from the preset dimension because the two answer different questions: one is about
+     * what we offer teams to look for, the other about where it is worth looking at all.
+     */
+    case SignalsBySource = 'signals_by_source';
+
     public function label(): string
     {
         return match ($this) {
@@ -240,6 +282,10 @@ enum PlatformMetric: string
             self::OutreachSent => 'Messages sent',
             self::OutreachAttempts => 'Approaches logged',
             self::OutreachOutcomes => 'Approach outcomes',
+            self::SignalTypesInUse => 'Signal types in use',
+            self::SignalsFound => 'Signals found',
+            self::SignalOutcomes => 'Signal outcomes',
+            self::SignalsBySource => 'Signals by source',
         };
     }
 
@@ -290,6 +336,10 @@ enum PlatformMetric: string
             self::OutreachSent => 'Messages Alima actually sent on the day, by channel.',
             self::OutreachAttempts => 'Approaches logged on the day, by channel — including the ones a member made themselves and recorded.',
             self::OutreachOutcomes => 'The same approaches by channel and recorded outcome, which is where bounces, complaints and opt-outs come from.',
+            self::SignalTypesInUse => 'Active signal types across every tenant, by the library preset they were cloned from — or “own” for one a team built themselves. A preset nobody has cloned is a preset to retire from the library, and nothing else in the product can say so.',
+            self::SignalsFound => 'Signals found on the day, by the preset their type came from. Counted per event rather than per article, like every other signal figure.',
+            self::SignalOutcomes => 'How far those signals got: kept, and converted into a lead. Scoped by when the signal was found, so a conversion counts under the day and the preset that found it.',
+            self::SignalsBySource => 'The same signals by the source that found them, which is the figure that says where it is worth looking at all.',
         };
     }
 
@@ -407,6 +457,9 @@ enum PlatformMetric: string
             self::TeamCostMicros => 'Tenant and currency',
             self::OutreachSent, self::OutreachAttempts => 'Channel',
             self::OutreachOutcomes => 'Channel and outcome',
+            self::SignalTypesInUse, self::SignalsFound => 'Library preset, or “own”',
+            self::SignalOutcomes => 'Library preset and outcome',
+            self::SignalsBySource => 'Signal source',
             default => null,
         };
     }

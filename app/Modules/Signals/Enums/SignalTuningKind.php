@@ -60,6 +60,22 @@ enum SignalTuningKind: string
      */
     case RetireTemplate = 'retire_template';
 
+    /**
+     * **Pause this whole type**, because over a full window it has not earned what it costs (S15
+     * task 3).
+     *
+     * The strongest thing the advisor can propose, and the one with the most evidence behind it:
+     * not a dismissal rate over one outlet or one template, but the type's own funnel and its own
+     * bill over `signals.roi.window_days`. A type with four hundred signals, three kept and
+     * nothing converted is the product telling the truth about itself.
+     *
+     * **Pause, never delete.** A paused type keeps its history, its templates and its clone
+     * lineage, and a team that disagrees turns it back on in one press. Deleting would throw away
+     * the evidence the proposal was made from — and `signal_definitions` is soft-deleted precisely
+     * because a type's record outlives the team's interest in it (ADR 0018 §4).
+     */
+    case RetireDefinition = 'retire_definition';
+
     /** A translation key naming the proposal. */
     public function label(): string
     {
@@ -68,6 +84,7 @@ enum SignalTuningKind: string
             self::RaiseConfidence => 'Ask for more certainty',
             self::RaiseRelevance => 'Ask for a closer match',
             self::RetireTemplate => 'Retire a search',
+            self::RetireDefinition => 'Pause this signal type',
         };
     }
 
@@ -79,6 +96,7 @@ enum SignalTuningKind: string
             self::RaiseConfidence => 'Raises how sure Alima has to be before it shows you this kind of event. Fewer, better cards.',
             self::RaiseRelevance => 'Raises how closely an event has to match you before it reaches your feed.',
             self::RetireTemplate => 'Removes one of this type’s searches. The others keep running.',
+            self::RetireDefinition => 'Stops this type being searched for. Nothing is deleted — its history stays, and you can switch it back on whenever you like.',
         };
     }
 

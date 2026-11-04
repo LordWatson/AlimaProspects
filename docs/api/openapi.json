@@ -5935,6 +5935,516 @@
                 }
             }
         },
+        "/signal-definitions/submissions": {
+            "get": {
+                "operationId": "v1.signal-definitions.submissions",
+                "summary": "What this team has offered, newest first",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `SignalDefinitionSubmissionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SignalDefinitionSubmissionResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-definitions/submissions/{submission}": {
+            "delete": {
+                "operationId": "v1.signal-definitions.submissions.withdraw",
+                "summary": "Take the offer back",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "parameters": [
+                    {
+                        "name": "submission",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`SignalDefinitionSubmissionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/SignalDefinitionSubmissionResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "definition_name"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-definitions/preset-offers": {
+            "get": {
+                "operationId": "v1.signal-definitions.preset-offers",
+                "description": "A read. Nothing is applied \u2014 the clone keeps running what the team chose until they ask for a\nfield, which is ADR 0018 \u00a73's whole argument.",
+                "summary": "What the library has changed since this team took their copy (S15 task 5)",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "offers": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "preset_key": {
+                                                                "type": "string"
+                                                            },
+                                                            "preset_version": {
+                                                                "type": "integer"
+                                                            },
+                                                            "from_version": {
+                                                                "type": [
+                                                                    "integer",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            "changes": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "type": "object",
+                                                                    "additionalProperties": {}
+                                                                }
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "preset_key",
+                                                            "preset_version",
+                                                            "from_version",
+                                                            "changes"
+                                                        ]
+                                                    }
+                                                },
+                                                "fields": {
+                                                    "type": "array",
+                                                    "prefixItems": [
+                                                        {
+                                                            "type": "string",
+                                                            "const": "name"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "description"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "query_templates"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "query_templates_i18n"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "match_keywords"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "classification_rules"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "thresholds"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "suggested_approach_hint"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "category"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "icon"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "const": "markets"
+                                                        }
+                                                    ],
+                                                    "minItems": 11,
+                                                    "maxItems": 11
+                                                }
+                                            },
+                                            "required": [
+                                                "offers",
+                                                "fields"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-definitions/{definition}/submit": {
+            "post": {
+                "operationId": "v1.signal-definitions.submit",
+                "description": "A request, not a publication: the team's own type is untouched and an operator answers. 201,\nbecause a row is created \u2014 the submission, not a preset.",
+                "summary": "Offer a type to the shared library (S15 task 4, plan decision #3)",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "parameters": [
+                    {
+                        "name": "definition",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SubmitSignalDefinitionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "`SignalDefinitionSubmissionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/SignalDefinitionSubmissionResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "definition_name"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/signal-definitions/{definition}/adopt-preset": {
+            "patch": {
+                "operationId": "v1.signal-definitions.adopt-preset",
+                "description": "**An empty `fields` is a real request**: \"seen it, keeping mine\", which is what stops the\noffer coming back.",
+                "summary": "Take some or all of the library's changes into a clone (S15 task 5)",
+                "tags": [
+                    "SignalDefinition"
+                ],
+                "parameters": [
+                    {
+                        "name": "definition",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AdoptPresetChangesRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`SignalDefinitionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/SignalDefinitionResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/signal-definitions/{definition}": {
             "get": {
                 "operationId": "v1.signal-definitions.show",
@@ -8762,6 +9272,36 @@
                     "entries"
                 ],
                 "title": "AddWatchlistEntriesRequest"
+            },
+            "AdoptPresetChangesRequest": {
+                "type": "object",
+                "description": "Taking the library's changes into a clone, per field (S15 task 5).\n\n**An empty list is valid and meaningful**: \"I have seen the update and I am keeping mine\", which\nis the answer that stops the panel asking again. A `required` rule here would make the only way\nto dismiss an offer be to take something from it.\n\nThe field names are checked against {@see PresetUpdateDiffer::FIELDS} \u2014 a closed list \u2014 because\nthey reach `forceFill` as column names. The Action narrows them again against the **actual diff**,\nso a stale form cannot copy a value over the top of one the team edited in the meantime; this is\nthe belt to that braces, and the one that keeps a request from naming a column at all.",
+                "properties": {
+                    "fields": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "name",
+                                "description",
+                                "query_templates",
+                                "query_templates_i18n",
+                                "match_keywords",
+                                "classification_rules",
+                                "thresholds",
+                                "suggested_approach_hint",
+                                "category",
+                                "icon",
+                                "markets"
+                            ]
+                        },
+                        "maxItems": 11
+                    }
+                },
+                "required": [
+                    "fields"
+                ],
+                "title": "AdoptPresetChangesRequest"
             },
             "ApiError": {
                 "type": "object",
@@ -12747,6 +13287,92 @@
                 ],
                 "title": "SignalDefinitionResource"
             },
+            "SignalDefinitionSubmissionResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "definition_id": {
+                        "type": "integer"
+                    },
+                    "definition_name": {
+                        "type": "string",
+                        "description": "From the relation where it is loaded, because the name is what a member recognises \u2014\nand `withTrashed` on the relation is what makes it render for a type they have since\nremoved while the offer waited."
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "promoted",
+                            "rejected",
+                            "withdrawn"
+                        ]
+                    },
+                    "status_label": {
+                        "type": "string",
+                        "enum": [
+                            "Waiting for review",
+                            "In the library",
+                            "Not accepted",
+                            "You withdrew it"
+                        ]
+                    },
+                    "status_description": {
+                        "type": "string",
+                        "enum": [
+                            "We have it and will look at it. Nothing about your own type changes while you wait.",
+                            "It is in the shared library for every team to start from. Thank you.",
+                            "We did not add it this time. Your own type is untouched and still running.",
+                            "You took this back. You can offer it again whenever you like."
+                        ]
+                    },
+                    "is_open": {
+                        "type": "boolean"
+                    },
+                    "can_resubmit": {
+                        "type": "boolean"
+                    },
+                    "note": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "review_note": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "reviewed_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "definition_id",
+                    "status",
+                    "status_label",
+                    "status_description",
+                    "is_open",
+                    "can_resubmit",
+                    "note",
+                    "review_note",
+                    "created_at",
+                    "reviewed_at"
+                ],
+                "title": "SignalDefinitionSubmissionResource"
+            },
             "SignalDraftResource": {
                 "type": "object",
                 "properties": {
@@ -14099,6 +14725,20 @@
                     "company_name"
                 ],
                 "title": "StoreLeadRequest"
+            },
+            "SubmitSignalDefinitionRequest": {
+                "type": "object",
+                "description": "Offering a signal type to the shared library (S15 task 4).\n\nOne optional field. Everything that decides whether a type *may* be offered \u2014 a preset cannot be\noffered back, a type with no searches is nothing to start from, one open offer per type \u2014 lives in\n{@see SubmitSignalDefinitionAction}, because the API posts here too and a rule in a request is a\nrule only one caller obeys.\n\nThe note is **prose**, which makes it the exception to this codebase's keys-not-sentences rule and\nfor the obvious reason: there is nothing to translate about one person's own words to another.\nBounded in characters, because it reaches a review screen and an operator reading an essay is an\noperator who stops reading.",
+                "properties": {
+                    "note": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 500
+                    }
+                },
+                "title": "SubmitSignalDefinitionRequest"
             },
             "SuppressIdentityRequest": {
                 "type": "object",

@@ -5,6 +5,84 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-11-03 — Signals: the library and the round-up, hardened
+
+Review of the three features below found several things worth knowing about, and all of them are
+fixed.
+
+**Two of them were about seeing somebody else's numbers, or your own in the wrong place.** On the
+admin side, the figures shown beside a signal type a business had offered us were the totals for
+every business running a type with that name, rather than that one business's — which is the only
+thing that decision is supposed to be made on. And a signal type added to the shared library while a
+business happened to be open in the same session was quietly saved as _their_ type instead of
+Alima's: it worked, it looked right, and nobody could find it afterwards. Both are closed, with
+tests that reproduce the conditions they needed.
+
+**The cost figure was in the wrong currency.** Each signal type's "what it cost" was shown with a
+pound sign over a dollar amount. The searches are billed in dollars and now say so.
+
+**Withdrawing a type from the library used to break its name for good** — adding anything under the
+same name afterwards failed outright, and withdrawn types stayed on the operator's screen. Both
+fixed; naming a withdrawn type's name when accepting a new submission now brings it back with the
+new content, which is what somebody typing it means.
+
+**An offered type kept more of your work.** Accepting a submission into the library was carrying its
+searches but not its include and exclude rules, its keywords or its suggested approach — which, for
+most types, is the part that does the work. It carries all of it now.
+
+**And if you deleted a type while your offer was waiting, you could not take the offer back.** You
+can now.
+
+Also: a signal check that failed and retried could end up billing twice for searches it had already
+recorded once; a problem writing the cost figures can no longer fail a check that has already paid
+for its searches.
+
+On the screens: in the "the library version of this has changed" panel, each change is now a
+properly labelled group, so a screen reader reads out what you are agreeing to rather than just the
+name of the part; the round-up email no longer runs the headline and the event together, and its
+"before you reach out" line now says so in words rather than relying on italics; buttons that repeat
+down the page carry the type's name; a read-only member is no longer invited to press a button they
+do not have; and the Arabic reads properly throughout — "pause" now says pause, "take it back" and
+"withdrawn" use one verb between them, and the round-up's count is grammatical for every number.
+
+### Added — 2026-11-03 — Signals: the round-up, the receipts, and a library that grows
+
+Three things at once, and they all answer the same complaint: Signals asked you to come and look at
+a screen, and never told you whether looking was worth it.
+
+**Your round-up now names the news.** The daily or weekly digest used to say "11 new signals
+waiting". It now names the ones worth your morning — the headline itself, the kind of event, how hot
+it is, and **how you may approach that prospect**, which matters because you are reading this in your
+inbox where nothing can warn you. One story is one line however many papers covered it, and it is
+capped at three, because a round-up you skim is a round-up you stop opening. It can come as a phone
+notification as well as an email; your existing round-up settings decide, and switching signals off
+switches them off here too.
+
+**Every signal type now shows what it found and what it cost.** On the signal types screen, each
+type you run carries its own figures: how much of what it brought you you kept, how many became
+leads, what it has cost, and what each lead cost. Where it has produced no leads, it says so in
+words rather than showing a nought — a nought would read as "free", and the truth is the money
+bought nothing. Types with too little history to judge stay quiet rather than showing you a panel of
+zeros.
+
+**And where a type is plainly not working, Alima says so.** A type that has found plenty, that you
+have kept almost none of and that has produced no leads gets a "pause this one?" card with the
+numbers behind it. As with every suggestion on that panel: it proposes, you decide, and nothing
+changes until you say so.
+
+**The library is now curated rather than shipped.** If you have built a signal type that works, you
+can **offer it to Alima's library** for other businesses to start from — with a note, and you can
+take the offer back. Nothing about your own type changes whatever we decide: it keeps its name, its
+history and its schedule, and it keeps running. We answer in writing either way.
+
+**And when the library improves something you took a copy of, you are asked rather than updated.**
+Your copy keeps running exactly as you set it up. You see what changed, side by side with what you
+have, and you take the parts you want — or keep yours, which is a real answer and stops us asking
+about that version again.
+
+Finally, if you are new, the library now leads with the pack written for **your** market rather than
+the general shelf.
+
 ### Fixed — 2026-11-03 — Signals: rules, hardened
 
 Review of the rules feature below found three things worth knowing about, and all of them are fixed.

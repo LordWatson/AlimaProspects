@@ -879,20 +879,20 @@ and turn the preset library into a curated asset rather than a seed file.
 
 ### Tasks
 
-1. [ ] **Signal digest** (v1 backlog) — daily or weekly, per member, honouring
+1. [x] **Signal digest** (v1 backlog) — daily or weekly, per member, honouring
        `NotificationPreferences` and `DigestFrequency`, built by extending
        `Notifications\Services\DigestBuilder` rather than adding a second digest path. Top
        signals by heat, clustered, with the jurisdiction's approach note. Mail + push (the mobile
        app has FCM wired). Aggregated — `AnnounceTopLeadsJob` is the pattern — and the stored
        payload stays keys-and-params, never prose.
-2. [ ] **Definition ROI, where a definition is managed** — the S12 figures on the definition
+2. [x] **Definition ROI, where a definition is managed** — the S12 figures on the definition
        card: signals, kept rate, converted, pipeline reached, **cost**, and a cost per converted
        lead. A definition with 400 signals, 3 kept and 0 converted over 60 days is the product
        telling the truth about itself, which is the only way a team learns to trust the ones that
        do work.
-3. [ ] **Retirement suggestions** — a definition below a kept-rate floor over a full window gets
+3. [x] **Retirement suggestions** — a definition below a kept-rate floor over a full window gets
        a _pause or retune?_ card with its numbers. Propose, never apply (the S12 rule).
-4. [ ] **Admin library curation** (decision #3) — in `/admin`, under
+4. [x] **Admin library curation** (decision #3) — in `/admin`, under
        `AdminAbility::ManageOperations`: CRUD over platform presets and packs; a **submission
        queue** of team-authored definitions a team offered to the library (author team
        anonymised, with that definition's cross-tenant performance); promote/reject with a note;
@@ -900,15 +900,15 @@ and turn the preset library into a curated asset rather than a seed file.
        All behind `PlatformContext` and the admin panel's own four controls;
        `AdminRouteContractTest` is the gate. The panel **owns no business rule** here — it calls
        Signals' own Actions (`docs/modules/admin.md`).
-5. [ ] **"Your preset has moved on"** — a team whose clone's `preset_version` is behind sees a
+5. [x] **"Your preset has moved on"** — a team whose clone's `preset_version` is behind sees a
        diff and can take the change, per field. No silent updates; the S7 clone-not-reference
        decision exists precisely so this is a choice.
-6. [ ] **Platform signal reporting** — adoption per preset, per pack and per source, plus
+6. [x] **Platform signal reporting** — adoption per preset, per pack and per source, plus
        cross-tenant kept/converted rates, in **Admin's own builders over
        `platform_daily_metrics`** (ADR 0016): platform reporting is not tenant reporting with the
        scope removed, and the nightly rollup must stay scheduled **before** the nightly sweeps.
        This is the data that tells the business which packs to invest in.
-7. [ ] **Marketing-grade empty states and onboarding** — a team with no definitions sees the
+7. [x] **Marketing-grade empty states and onboarding** — a team with no definitions sees the
        library with its packs and the composer, not an empty list; a team with a market set sees
        that market's pack first. The Onboarding nudge pattern applies
        (`memory/onboarding-not-hard-gated.md`): nudge, never hard-gate.
@@ -1029,13 +1029,137 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | S13a  | Pluggable sources: registry, web search         | ☑ **Done** 2026-11-03 | S7, S8       |
 | S13b  | Companies House, RSS feeds, inbound webhook     | ☑ **Done** 2026-11-03 | S13a         |
 | S14   | Playbooks                                       | ☑ **Done** 2026-11-03 | S7, S10, S12 |
-| S15   | Delivery, ROI & curated library                 | ☐ Not started         | S9, S12      |
+| S15   | Delivery, ROI & curated library                 | ☑ **Done** 2026-11-03 | S9, S12      |
 | S16   | Cost governance, limits, retention & close-out  | ☐ Not started         | S7–S15       |
 
 **Minimum viable v2:** S7 + S8 + S9 + S16 — the ask, made safe to sell.
 **Recommended first release:** S7–S11 + S16 — definitions, geography, the builder, account
 monitoring and clustering, which together change what the feature _is_. S12–S15 then compound
 on it.
+
+## S15, as shipped — one table the plan did not ask for, two deviations, and what the reviews found
+
+**Read `docs/modules/signals.md` → "S15 — delivery, ROI and the curated library" first.** All seven
+tasks landed as written. Four things are worth recording.
+
+### 1. The plan asked for ROI and there was no cost to report (the table it did not ask for)
+
+Task 2 lists "**cost**, and a cost per converted lead" among the S12 figures, and S12 did not have
+them. `signal_runs.cost_micros` is **per run**, and a run searches every type on the watch — so "is
+this type worth it?" had a numerator and no denominator. `signal_definition_spend` is the addition:
+one row per `(team, event_key, day)`.
+
+The part that is a design decision rather than a schema is the **two cost columns**. A search names
+exactly one type, so its cost is **measured**. One classification call is offered every type on the
+watch at once — that sharing is where S11's saving comes from — so the AI cost has nothing to
+measure and is **allocated** by share of results. Keeping them in separate columns is what stops a
+screen presenting an allocation as a measurement, and the remainder from the integer division goes
+to the largest contributor so the parts sum to the whole: a figure that loses a few micros a run is
+one nobody can reconcile against the run total, which is the complaint the table exists to answer.
+
+### 2. Deviation: a team's **clone** may be offered to the library
+
+The plan says "a team can only _submit_" (decision #3) and the Action's first draft refused a clone
+outright, on the reasoning that a clone is a copy of something already there. That is wrong in the
+one case that matters: a team who took `funding_round` and spent three months improving its
+templates is the **best** source of a better `funding_round`. Only a **platform** row is refused now
+— it _is_ the library — and an operator folds an improved clone back in by naming the preset's key
+on promotion, which bumps its version and offers the change to every other clone. The docblock was
+corrected rather than the code left to disagree with it.
+
+### 3. Deviation: "that market's pack first" became "that market's presets first"
+
+Task 7 asks that "a team with a market set sees that market's pack first". A **pack** is a vertical
+(luxury real estate, recruitment, construction) and a **market** is a jurisdiction (UK, UAE), so
+there is no such thing as a market's pack — the two are orthogonal, and the library screen already
+lets a member filter by pack. What was actually wrong was the **order**: a UK team's library is a
+handful of UK presets plus thirty market-agnostic ones, and in catalogue order the agnostic ones won,
+putting the presets written for that team below the fold. `marketFirst()` sorts the team's own market
+to the front, stably. The intent of the task is served; its wording was not literally implementable.
+
+Relatedly, task 6 asks for adoption "per preset, per pack and per source". The pack is **derived in
+the report builder** from `SignalPresetCatalogue::packFor()` rather than rolled up as its own
+dimension, because a pack lives in the catalogue and not on the row (ADR 0020 §7). Rolled up, it
+would freeze last month's packaging into `platform_daily_metrics` where a repackaging could never be
+reflected; derived, "which packs should we invest in?" is always asked of today's packaging over
+history's signals.
+
+### 4. What the reviews found: four bugs, and a pattern worth naming
+
+Both reviews ran, and between them they found **four bugs that would have shipped, two of them
+cross-tenant**. `docs/modules/signals.md` → "What the S15 reviews changed" has all of it. The
+pattern is the thing to carry forward, because it is not the one S14's review had: **every finding
+was invisible in the happy path.** A preset written to the wrong owner, a withdrawn key that 500s,
+one tenant's totals labelled as another's, a queue of nameless rows — none of them throws, and none
+is visible on a screen built by somebody who only ever had one team and never deleted anything.
+
+Two of the four are the same mistake at two levels, and both are now in `docs/architecture.md`:
+
+#### `team_id => null` is not enough
+
+Writing a platform preset means writing a row that belongs to nobody. Both new Actions said
+`'team_id' => null` and both documented that they "run outside any team context" — and
+**`BelongsToTeam`'s `creating` hook fills a null `team_id` from the ambient `TeamContext`**. A preset
+written while a team happened to be active would silently become _that team's own type_: right
+columns, wrong owner, unique against the wrong scope, and invisible in the library. Nothing
+downstream would have noticed.
+
+In production it could not fire, because an operator is in no team and `PlatformContext` drops the
+context on every admin request. It fired immediately in a test that created a preset with a team
+active — which is the useful kind of fixture failure, and the reason to write the fixture the honest
+way rather than around the behaviour.
+
+The first fix was a new `PlatformPresetReader::asPlatform()` that forgot and restored the context.
+The review was right to reject it: **`SignalDefinition::$isPlatformPreset` already existed**, with a
+docblock naming "the admin panel in S15" as its intended user, and the seeder and factory already
+used it. Two doors onto one invariant defeat the point of having a door — and the new one had a bug
+of its own, restoring the context only when `TeamContext::team()` resolved a model, so a context set
+by id was left forgotten. The flag is what both creates use now; `promote()` names its cross-tenant
+read explicitly; the helper is gone.
+
+Two rules out of it: **removing a read scope and removing a write's auto-assignment are two
+different jobs**, and a module that has solved the first has not solved the second. And **look for
+the existing mechanism before building a second one** — the thing that makes a single door valuable
+is that it is single.
+
+#### An eager load is a second query, and it re-applies the scope
+
+The same shape one level out, and this one was reachable. `SignalLibrary::queue()` read submissions
+cross-tenant and then eager-loaded each one's `definition`, which is a separate query with the
+model's own global scopes intact. With any team in context, every row in the operator's queue came
+back with a null definition: no name, no templates, "no longer available", an evidence panel of
+zeros. It looked like an empty queue. The constraint has to be named on the relation too, and the
+test that proves it has to run **with a team in context**, because that is the only state the bug
+exists in.
+
+#### The other two, briefly
+
+**The evidence on a submission was every tenant's** — `performanceFor()` grouped by `event_key`
+alone, and a clone carries the preset's key, so "how this type has done for the team that wrote it"
+was the platform's total, on the one screen where the author is hidden so the evidence is all there
+is. And **a withdrawn preset kept its key**, because `unique(scope_id, key)` does not soft-delete:
+re-using it was a 500 through three separate paths, while `withoutGlobalScopes()` on the admin reads
+dropped the soft-delete scope too and left withdrawn presets on the screen.
+
+Also worth recording: a promotion **dropped three of the eleven fields a clone may take**
+(`match_keywords`, `classification_rules`, `suggested_approach_hint`) — so a team's best work was
+thrown away and every other clone was then shown a diff against a preset the submission had not
+changed. **Anything a clone may take is something a promotion must carry.** The spend was lost on a
+retryable failure and on an unexpected throw, and a ledger failure could fail a run that had already
+paid. Five comments overstated what the code did, including "a record, not a counter" (it is a
+running total with no run id) and "results are what was classified" (they are raw per-query
+results) — a comment that overstates is worse than no comment, and the reviewer was right to push.
+
+The brand review's own list is in the module doc; the one that mattered most was the **cost printed
+in GBP** while the providers bill in USD, on the one panel whose job is to be checkable.
+
+### What the plan predicted correctly
+
+The risk register says "a digest that becomes noise. Default to weekly, cap the items, and make the
+unsubscribe path the same one every other notification uses." All three held: the highlights are
+capped at three by config, the round-up's frequency and hour are the member's existing settings, and
+the preference that silences signal notifications silences these too — so there was no new
+unsubscribe path to get wrong.
 
 ## S14, as shipped — one addition the plan did not ask for, four decisions it left open, and a
 

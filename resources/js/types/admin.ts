@@ -574,3 +574,57 @@ export type AdminWindowFilters = {
     from: string | null;
     to: string | null;
 };
+
+/**
+ * One platform preset, as the library screen reads it (S15 task 4).
+ *
+ * `clones` and `clones_behind` are the two figures that decide whether a preset is worth
+ * maintaining: how many teams run a copy, and how many of those have not taken the latest change.
+ * A preset with ninety clones all one version behind is a change nobody wanted.
+ */
+export type AdminSignalPreset = {
+    id: number;
+    key: string;
+    name: string;
+    description: string | null;
+    category: string;
+    icon: string;
+    /** Whether the library still offers it. Withdrawing one leaves every clone running. */
+    is_active: boolean;
+    version: number;
+    templates: number;
+    /** The templates themselves, so the editor can round-trip a preset. */
+    query_templates: string[];
+    min_confidence: number | null;
+    min_relevance: number | null;
+    markets: string[] | null;
+    source_keys: string[] | null;
+    clones: number;
+    clones_behind: number;
+    created_at: string | null;
+    updated_at: string | null;
+};
+
+/**
+ * A team's offer of their own signal type, as the review queue reads it (S15 task 4).
+ *
+ * **There is deliberately no team here.** An operator choosing between two submissions should be
+ * choosing on the evidence, and the evidence is `performance` — the type's own funnel. The row
+ * carries the author server-side, because the team has to be told the answer; the payload does not.
+ */
+export type AdminSignalSubmission = {
+    id: number;
+    name: string | null;
+    description: string | null;
+    key: string;
+    category: string | null;
+    templates: string[];
+    markets: string[] | null;
+    source_keys: string[] | null;
+    /** The author's own covering note. Prose, not a translation key. */
+    note: string | null;
+    performance: { found: number; kept: number; converted: number };
+    /** False when the team deleted the type while the offer waited — nothing left to promote. */
+    is_available: boolean;
+    created_at: string | null;
+};

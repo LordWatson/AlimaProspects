@@ -157,12 +157,41 @@ A first-party browser **session** is also accepted — that is how the web app's
 these endpoints — and carries no scopes, because the app it stands in for has none.
 
 Scopes are one read/write pair per resource group, defined in `App\Modules\Auth\Enums\TokenAbility`
+**A third one (Signals S15, 2026-11-03).** Five additive endpoints around the shared signal
+library, all under the existing `signals:*` scopes:
+
+| Method   | Path                                            | Scope           | What                                                     |
+| -------- | ----------------------------------------------- | --------------- | -------------------------------------------------------- |
+| `GET`    | `/signal-definitions/submissions`               | `signals:read`  | What this team has offered the library, newest first     |
+| `POST`   | `/signal-definitions/{definition}/submit`       | `signals:write` | Offer a type (optional `note`, 500 chars)                |
+| `DELETE` | `/signal-definitions/submissions/{submission}`  | `signals:write` | Take the offer back                                      |
+| `GET`    | `/signal-definitions/preset-offers`             | `signals:read`  | What the library changed since this team took their copy |
+| `PATCH`  | `/signal-definitions/{definition}/adopt-preset` | `signals:write` | Take some of it: `fields` (a list, **`present`**)        |
+
+Three things a client should know about them.
+
+**Offering a type changes nothing about it.** The team's own definition keeps its name, its history
+and its schedule whatever the answer is. A submission's `status` moves `pending` → `promoted` /
+`rejected` / `withdrawn`, and `status_label` and `status_description` are **translation keys** for
+the client to render; `note` and `review_note` are **prose**, because they are two people's own
+words to each other.
+
+**`fields: []` on `adopt-preset` is a real request, not a no-op.** It records that the member saw
+this version of the preset and is keeping theirs, which is what stops the offer coming back — hence
+`present` rather than `required`. A field named that has not actually changed is dropped rather than
+written, so a stale form cannot copy a value over one the team edited in the meantime.
+
+**A refusal is the module's own error envelope, not a validation bag.** Offering a type with no
+searches, offering one that already has an open offer, or adopting into something that is not a
+clone are `422`s with a `signals.*` code in `error.code` — whether a type is worth offering is a
+domain rule rather than a shape rule (ADR 0013).
+
 and enforced per route by `EnsureTokenAbility`:
 
 `leads:*` · `discovery:*` · `icp:*` · `scoring:*` · `outreach:*` · `signals:*` · `insights:*` ·
 
-> **`signals:*` covers signal definitions, watchlists and playbooks too** (S7/S10/S14 — ADR 0018,
-> 0021, 0024). A signal type is part of
+> **`signals:*` covers signal definitions, watchlists, playbooks and library submissions too**
+> (S7/S10/S14/S15 — ADR 0018, 0021, 0024). A signal type is part of
 > Signals, so `/signal-definitions` reuses `signals:read`/`signals:write` rather than getting
 > a scope of its own: a token that could read the feed but not the types it is grouped by is a
 > credential nobody would mean to issue. `GET /signal-definitions/presets` is the read-only

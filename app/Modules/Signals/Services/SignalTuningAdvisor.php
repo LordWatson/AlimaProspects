@@ -31,12 +31,18 @@ use Illuminate\Support\Facades\Log;
  *   which are different levers for different complaints and the thing a team would otherwise
  *   spend a month tightening the wrong one of.
  *
- * {@see SignalTuningKind::RetireTemplate} is **declared and not yet proposed**, and this note is
+ * S15 added the fourth and strongest: the type's own funnel and its own bill over the ROI window
+ * → **pause this type**, which is the only one of these arguing from what something cost rather
+ * than from a rate.
+ *
+ * {@see SignalTuningKind::RetireTemplate} is **still declared and not proposed**, and this note is
  * here rather than a claim that it is: the apply path exists and is tested, but nothing generates
  * one. Doing it properly needs per-template attribution — which template found which signal — and
- * `signals` records the definition rather than the query, so the evidence is not in the database
- * yet. That belongs with S15's retirement work, and a docblock that said otherwise would be the
- * most expensive kind of wrong: documentation somebody trusts.
+ * `signals.matched_template` records the template that *found* a kept signal but nothing records
+ * the templates that found nothing, which is exactly the evidence a retirement needs. S15 recorded
+ * per-**type** spend (`signal_definition_spend`) and stopped there deliberately: a per-template
+ * ledger multiplies that table by ten and nobody has asked for the row yet. A docblock that said
+ * otherwise would be the most expensive kind of wrong: documentation somebody trusts.
  *
  * Three rules keep it from being a nag:
  *
@@ -52,6 +58,8 @@ use Illuminate\Support\Facades\Log;
  */
 final class SignalTuningAdvisor
 {
+    public function __construct(private readonly SignalRoiReader $roi) {}
+
     /**
      * Look at this team and write any proposals that are due. Returns how many are now open.
      *
@@ -65,6 +73,7 @@ final class SignalTuningAdvisor
         $proposals = [
             ...$this->sourceProposals($teamId),
             ...$this->thresholdProposals($teamId),
+            ...$this->retirementProposals($team),
         ];
 
         foreach ($proposals as $proposal) {
@@ -379,6 +388,91 @@ final class SignalTuningAdvisor
             ->where('team_id', $teamId)
             ->where('status', SignalTuningStatus::Proposed->value)
             ->count();
+    }
+
+    /**
+     * Types that have not earned what they cost (S15 task 3).
+     *
+     * **The strongest proposal here, and the one with the most evidence behind it.** The others
+     * argue from a dismissal rate over an outlet or a threshold; this argues from the type's own
+     * funnel and its own bill over the whole ROI window, which is the only honest basis for saying
+     * "stop paying for this".
+     *
+     * Three guards, and all three are about not being wrong in front of somebody who likes the
+     * type:
+     *
+     * - **A floor on the evidence** (`signals.roi.retire.minimum_found`). A type with four signals
+     *   and none kept says nothing at all.
+     * - **Nothing converted.** A type with a poor kept rate that has nonetheless produced a deal is
+     *   earning its keep by the only measure that matters, and proposing its retirement would make
+     *   the whole panel untrustworthy.
+     * - **Only an active type.** Proposing a pause for something already paused is the product not
+     *   reading its own data.
+     *
+     * The fingerprint is the type and nothing else, so a team that declines this is never asked
+     * about that type again — which is right: they have told us they know and they want it anyway.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function retirementProposals(Team $team): array
+    {
+        if (! (bool) config('signals.roi.retire.enabled', true)) {
+            return [];
+        }
+
+        $minimum = max(1, (int) config('signals.roi.retire.minimum_found', 30));
+        $floor = min(1.0, max(0.0, (float) config('signals.roi.retire.kept_rate_floor', 0.1)));
+
+        $roi = $this->roi->forTeam($team);
+
+        /** @var array<string, SignalDefinition> $definitions */
+        $definitions = SignalDefinition::query()
+            ->where('team_id', $team->getKey())
+            ->where('is_active', true)
+            ->get()
+            ->keyBy('key')
+            ->all();
+
+        $proposals = [];
+
+        foreach ($definitions as $key => $definition) {
+            $figures = $roi[$key] ?? null;
+
+            if ($figures === null || ! $figures->hasEnoughHistory($minimum) || $figures->converted > 0) {
+                continue;
+            }
+
+            $keptRate = $figures->keptRate();
+
+            if ($keptRate === null || $keptRate > $floor) {
+                continue;
+            }
+
+            $proposals[] = [
+                'kind' => SignalTuningKind::RetireDefinition,
+                'definition_id' => (int) $definition->getKey(),
+                'payload' => ['event_key' => $key],
+                // The numbers the card leads with. A proposal a member cannot check is one they can
+                // only obey or ignore (ADR 0022's rule for this panel), and these are the ones that
+                // make the argument: it found this much, you kept this little, it cost this.
+                'evidence' => [
+                    'definition_name' => $definition->name,
+                    'event_key' => $key,
+                    'found' => $figures->found,
+                    'kept' => $figures->kept,
+                    'rate' => round($keptRate, 2),
+                    'cost_micros' => $figures->totalCostMicros(),
+                    'days' => $figures->days,
+                ],
+                'fingerprint' => $this->fingerprint(
+                    SignalTuningKind::RetireDefinition,
+                    (int) $definition->getKey(),
+                    'retire',
+                ),
+            ];
+        }
+
+        return $proposals;
     }
 
     /**

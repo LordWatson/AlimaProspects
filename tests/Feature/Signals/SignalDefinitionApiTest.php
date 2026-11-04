@@ -8,6 +8,7 @@ use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Auth\Enums\TokenAbility;
 use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\Signals\Actions\SubmitSignalDefinitionAction;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
@@ -305,4 +306,168 @@ it('validates a preview against the same rules as a save', function (): void {
     // question nobody asked.
     $this->postJson(route('api.v1.signal-definitions.preview'), ['query_templates' => []])
         ->assertApiValidationErrors(['name', 'description', 'category', 'icon', 'query_templates']);
+});
+
+// --- The library, over the API (S15 tasks 4 and 5) -----------------------------------------------
+
+/*
+ * The same Actions behind the API as behind the screen, which is this file's whole premise. The two
+ * things worth asserting separately are the **scopes** — reading what you offered is not the same
+ * credential right as offering something — and that an **empty `fields`** survives the round trip,
+ * because it is a real answer and `present` rather than `required` is what lets it through.
+ */
+
+/** A type of this team's own, with searches, so it may be offered. */
+function apiOwnType(array $attributes = []): SignalDefinition
+{
+    $team = test()->team;
+
+    return app(TeamContext::class)->run($team, fn (): SignalDefinition => SignalDefinition::factory()->create(array_merge([
+        'team_id' => $team->getKey(),
+        'key' => 'mine_to_offer',
+        'preset_key' => null,
+        'preset_version' => null,
+        'query_templates' => ['"{company}" raises'],
+    ], $attributes)));
+}
+
+it('offers a type to the library, lists what it offered and takes it back', function (): void {
+    Sanctum::actingAs($this->user, ['*']);
+
+    $definition = apiOwnType(['name' => 'Series B rounds']);
+
+    $created = $this->postJson(
+        route('api.v1.signal-definitions.submit', ['definition' => $definition->getKey()]),
+        ['note' => 'Three deals from this one.'],
+    )->assertCreated();
+
+    expect($created->json('data.status'))->toBe('pending')
+        ->and($created->json('data.definition_name'))->toBe('Series B rounds')
+        // Prose, deliberately: one person's words to another.
+        ->and($created->json('data.note'))->toBe('Three deals from this one.')
+        // Translation keys, so the client renders them in its own language.
+        ->and($created->json('data.status_label'))->toBe('Waiting for review');
+
+    $this->getJson(route('api.v1.signal-definitions.submissions'))
+        ->assertOk()
+        ->assertJsonCount(1, 'data');
+
+    $this->deleteJson(route('api.v1.signal-definitions.submissions.withdraw', [
+        'submission' => $created->json('data.id'),
+    ]))->assertOk()->assertJsonPath('data.status', 'withdrawn');
+
+    // And the type is untouched throughout.
+    expect($definition->fresh()->name)->toBe('Series B rounds');
+});
+
+it('refuses to offer a type with no searches', function (): void {
+    Sanctum::actingAs($this->user, ['*']);
+
+    $definition = apiOwnType(['query_templates' => []]);
+
+    // The module's own error envelope, not a validation bag: whether a type is worth offering is a
+    // domain rule rather than a shape rule.
+    $this->postJson(route('api.v1.signal-definitions.submit', ['definition' => $definition->getKey()]))
+        ->assertStatus(422)
+        ->assertJsonStructure(['error' => ['code', 'message']]);
+});
+
+it('keeps one team out of another team submissions over the API', function (): void {
+    $other = createUserWithTeam();
+    $otherTeam = $other->currentTeam()->firstOrFail();
+
+    $theirs = app(TeamContext::class)->run($otherTeam, fn (): SignalDefinition => SignalDefinition::factory()->create([
+        'team_id' => $otherTeam->getKey(),
+        'key' => 'theirs_to_offer',
+        'query_templates' => ['"{company}" raises'],
+    ]));
+
+    $submission = app(SubmitSignalDefinitionAction::class)->handle($otherTeam, $other, $theirs);
+
+    Sanctum::actingAs($this->user, ['*']);
+
+    $this->deleteJson(route('api.v1.signal-definitions.submissions.withdraw', [
+        'submission' => $submission->getKey(),
+    ]))->assertNotFound();
+
+    $this->getJson(route('api.v1.signal-definitions.submissions'))
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+});
+
+it('reads the library offer and takes one field of it', function (): void {
+    $preset = app(PlatformPresetReader::class)->byKey(SignalPresetCatalogue::FUNDING_ROUND);
+
+    // The library has moved on since this team took their copy.
+    $preset->forceFill([
+        'version' => $preset->version + 1,
+        'query_templates' => ['"{company}" closes funding round'],
+    ])->save();
+
+    $clone = app(TeamContext::class)->run($this->team, fn (): SignalDefinition => SignalDefinition::factory()
+        ->fromCatalogue(SignalPresetCatalogue::FUNDING_ROUND)
+        ->create([
+            'team_id' => $this->team->getKey(),
+            'preset_version' => 1,
+            'name' => 'What we call it',
+            'query_templates' => ['"{company}" funding'],
+        ]));
+
+    Sanctum::actingAs($this->user, ['*']);
+
+    $offers = $this->getJson(route('api.v1.signal-definitions.preset-offers'))->assertOk();
+
+    expect($offers->json('data.offers.'.$clone->getKey().'.preset_version'))->toBe($preset->version)
+        ->and($offers->json('data.fields'))->toContain('query_templates');
+
+    $this->patchJson(
+        route('api.v1.signal-definitions.adopt-preset', ['definition' => $clone->getKey()]),
+        ['fields' => ['query_templates']],
+    )->assertOk();
+
+    expect($clone->fresh()->query_templates)->toBe(['"{company}" closes funding round'])
+        // Their name is theirs. Taking the templates is a different decision.
+        ->and($clone->fresh()->name)->toBe('What we call it');
+});
+
+it('accepts an empty answer to a library offer', function (): void {
+    $preset = app(PlatformPresetReader::class)->byKey(SignalPresetCatalogue::FUNDING_ROUND);
+    $preset->forceFill(['version' => $preset->version + 1, 'query_templates' => ['something new']])->save();
+
+    $clone = app(TeamContext::class)->run($this->team, fn (): SignalDefinition => SignalDefinition::factory()
+        ->fromCatalogue(SignalPresetCatalogue::FUNDING_ROUND)
+        ->create([
+            'team_id' => $this->team->getKey(),
+            'preset_version' => 1,
+            'query_templates' => ['"{company}" funding'],
+        ]));
+
+    Sanctum::actingAs($this->user, ['*']);
+
+    // `present`, not `required`: "I have seen it and I am keeping mine" is the answer that stops
+    // the offer coming back, and a rule that rejected it would make the panel ask for ever.
+    $this->patchJson(
+        route('api.v1.signal-definitions.adopt-preset', ['definition' => $clone->getKey()]),
+        ['fields' => []],
+    )->assertOk();
+
+    expect($clone->fresh()->query_templates)->toBe(['"{company}" funding'])
+        ->and($clone->fresh()->preset_version)->toBe($preset->version);
+});
+
+it('asks for a write scope to offer a type and a read scope to see the offers', function (): void {
+    $definition = apiOwnType();
+
+    // A read credential may look at both sides of the library and change neither.
+    Sanctum::actingAs($this->user, [TokenAbility::SignalsRead->value]);
+
+    $this->getJson(route('api.v1.signal-definitions.preset-offers'))->assertOk();
+    $this->getJson(route('api.v1.signal-definitions.submissions'))->assertOk();
+
+    $this->postJson(route('api.v1.signal-definitions.submit', ['definition' => $definition->getKey()]))
+        ->assertForbidden();
+    $this->patchJson(
+        route('api.v1.signal-definitions.adopt-preset', ['definition' => $definition->getKey()]),
+        ['fields' => []],
+    )->assertForbidden();
 });

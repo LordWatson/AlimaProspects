@@ -315,6 +315,96 @@ class SignalsException extends DomainException
     }
 
     /**
+     * Another preset already holds this key (S15 task 4).
+     *
+     * Named rather than generic, because the operator's next move depends on it: they either meant
+     * to update that preset or they need a different key, and only the key tells them which.
+     */
+    public static function presetKeyTaken(string $key): self
+    {
+        $e = new self("A library preset already uses the key “{$key}”. Edit that one, or choose another key.");
+        $e->errorCode = 'signals.preset_key_taken';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * A platform preset cannot be offered back to the library (S15 task 4).
+     *
+     * A clone is a copy of something already there; the thing worth offering is a type the team
+     * made or changed into something of their own.
+     */
+    public static function presetNotSubmittable(): self
+    {
+        $e = new self('This type came from the library already. Offer one you built or changed yourself.');
+        $e->errorCode = 'signals.preset_not_submittable';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * A type with no searches is nothing another team could start from (S15 task 4).
+     */
+    public static function nothingToSubmit(): self
+    {
+        $e = new self('Add at least one search to this type before offering it to the library.');
+        $e->errorCode = 'signals.nothing_to_submit';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * The team has already offered this type and nobody has answered yet (S15 task 4).
+     */
+    public static function submissionPending(): self
+    {
+        $e = new self('You have already offered this one. We will come back to you about it.');
+        $e->errorCode = 'signals.submission_pending';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /** The type is already in the library, so there is nothing to offer (S15 task 4). */
+    public static function alreadyInLibrary(): self
+    {
+        $e = new self('This one is already in the shared library. Thank you again.');
+        $e->errorCode = 'signals.already_in_library';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * Somebody has already answered this submission (S15 task 4) — an operator reviewed it, or the
+     * team withdrew it.
+     */
+    public static function submissionSettled(): self
+    {
+        $e = new self('This offer has already been answered.');
+        $e->errorCode = 'signals.submission_settled';
+        $e->status = 409;
+
+        return $e;
+    }
+
+    /**
+     * A team's clone is already level with the preset it came from (S15 task 5), so there is
+     * nothing to take.
+     */
+    public static function presetUnchanged(): self
+    {
+        $e = new self('This type is already up to date with the library.');
+        $e->errorCode = 'signals.preset_unchanged';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
      * The team already has as many playbooks as they are allowed (S14).
      *
      * The same reasoning as every other ceiling in this module, with one addition: a rule is

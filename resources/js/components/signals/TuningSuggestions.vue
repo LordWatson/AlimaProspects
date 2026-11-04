@@ -4,6 +4,7 @@ import { Lightbulb } from '@lucide/vue';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import type { SignalTuningSuggestion } from '@/types';
 
@@ -34,6 +35,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const { currency } = useFormat();
 
 /** The row being answered, so two clicks cannot send two requests. */
 const answering = ref<number | null>(null);
@@ -83,6 +85,36 @@ function evidenceRows(
         rate: 'Share of them',
         source_name: 'Outlet',
         definition_name: 'Signal type',
+        // S15's retirement proposal counts different things again — the point the docblock above
+        // makes, now with a second kind to prove it. Without these three the card would have led
+        // with "you kept 2" and said nothing about the 40 it searched through or the money.
+        found: 'Stories found',
+        cost_micros: 'What it cost',
+        days: 'Days counted',
+    };
+
+    /**
+     * A count, a share and an amount of money do not read the same way.
+     *
+     * `cost_micros` is in **micros** (a millionth) because that is what the providers bill in, so
+     * it is a million times the number a member would recognise — printing it raw would say
+     * "What it cost: 4820000" of eight pounds. Micros to minor units is the one conversion, and
+     * `currency()` does the rest.
+     */
+    const formatted = (key: string, value: unknown): string => {
+        if (key === 'rate') {
+            return `${Math.round(Number(value) * 100)}%`;
+        }
+
+        if (key === 'cost_micros') {
+            // **USD**, not `currency()`'s GBP default: the providers bill in dollars
+            // (`signals.cost_micros_per_request` is documented as ~$0.001 a query), and the first
+            // draft printed a pound sign over a dollar figure on the one panel whose job is to be
+            // checkable (brand review).
+            return currency(Math.round(Number(value) / 10_000), 'USD');
+        }
+
+        return String(value);
     };
 
     return Object.entries(suggestion.evidence)
@@ -92,10 +124,7 @@ function evidenceRows(
             // label, and keying a `v-for` on it would give Vue two identical keys.
             key,
             label: labels[key],
-            value:
-                key === 'rate'
-                    ? `${Math.round(Number(value) * 100)}%`
-                    : String(value),
+            value: formatted(key, value),
         }));
 }
 </script>
@@ -146,7 +175,10 @@ function evidenceRows(
                             class="flex gap-1"
                         >
                             <dt>{{ t(row.label) }}:</dt>
-                            <dd class="text-foreground" dir="auto">
+                            <!-- `ltr` rather than `auto`: every value here is a count, a
+                                 percentage or an amount of money, and a figure beside Arabic text
+                                 has its sign and its digits swap sides without it. -->
+                            <dd class="text-foreground" dir="ltr">
                                 {{ row.value }}
                             </dd>
                         </div>

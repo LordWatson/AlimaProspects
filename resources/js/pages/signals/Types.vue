@@ -73,15 +73,18 @@ import type {
     SignalDefinition,
     SignalDefinitionDefaults,
     SignalDefinitionForm,
+    SignalDefinitionRoiFigures,
     SignalDraft,
     SignalIcon,
     SignalIconOption,
     SignalPackOption,
+    SignalPresetOffer,
     SignalPresetPack,
     SignalPreviewResult,
     SignalPreviewVerdict,
     SignalSourceKind,
     SignalSourceOption,
+    SignalSubmission,
 } from '@/types';
 
 defineOptions({
@@ -124,6 +127,26 @@ const props = defineProps<{
      * server's (ADR 0019 §4).
      */
     cost_by_source: Record<string, SignalCostFacts>;
+    /**
+     * What each type has found and what it cost, keyed by `event_key` (S15 task 2).
+     *
+     * On this screen rather than in Reporting, because this is where a type is *managed*: the
+     * figure is only useful next to the pause switch. Reporting still answers the comparative
+     * question across types; this answers "should I keep paying for this one?" where it can be
+     * acted on.
+     */
+    roi: Record<string, SignalDefinitionRoiFigures>;
+    /** Signals a type must have produced before its figures are shown as evidence. */
+    roi_minimum: number;
+    /**
+     * What the library has changed since this team took their copy, keyed by definition id
+     * (S15 task 5). Nothing is applied — a clone is a copy, not a reference (ADR 0018 §3).
+     */
+    preset_offers: Record<number, SignalPresetOffer>;
+    /** The fields a change may be taken for, in the order to list them. */
+    preset_fields: string[];
+    /** What this team has offered to the shared library, and what became of it (S15 task 4). */
+    submissions: SignalSubmission[];
     can: { manage: boolean; compose: boolean };
 }>();
 
@@ -340,6 +363,163 @@ const presetGroups = computed(() =>
         }))
         .filter((group) => group.presets.length > 0),
 );
+
+// --- What each type has done, and what it cost (S15 task 2) -----------------------------------
+/**
+ * This type's figures, or null where it has none.
+ *
+ * Keyed by `event_key` rather than id, because that is the identity a type's history is kept under
+ * (ADR 0018 §4) — and it is what lets a renamed type keep its numbers.
+ */
+function roiFor(
+    definition: SignalDefinition,
+): SignalDefinitionRoiFigures | null {
+    return props.roi[definition.key] ?? null;
+}
+
+/**
+ * A rate as a whole percentage, or an em dash.
+ *
+ * Null means "over nothing", which is not zero: a type that has found nothing has no kept rate,
+ * and printing 0% would read as a verdict rather than as an absence (ADR 0022's rule, one level up).
+ */
+function percent(rate: number | null | undefined): string {
+    return rate === null || rate === undefined
+        ? '—'
+        : `${Math.round(rate * 100)}%`;
+}
+
+/**
+ * Micro-units as money, **in US dollars**.
+ *
+ * Not the team's currency, and not `currency()`'s default: the providers bill in USD
+ * (`signals.cost_micros_per_request` is documented as ~$0.001 a query) and this screen's own S9
+ * estimate already says `'USD'` a few hundred lines down. The first draft took the default, which
+ * is GBP — so the rail printed a pound sign over a dollar figure, in the one panel whose job is to
+ * be checkable (brand review).
+ *
+ * Micros are a millionth, so the conversion to minor units is a division by 10,000 — spelled out
+ * rather than hidden, because getting it wrong by a factor of a hundred is the easiest mistake
+ * available here and it looks plausible either way. Wrapped in `isolate()` for the same reason
+ * every other Latin run on this screen is: a `$` beside Arabic digits swaps sides without it.
+ */
+function money(micros: number): string {
+    return isolate(currency(Math.round(micros / 10_000), 'USD'));
+}
+
+/** Whether this type has done enough for its figures to be worth showing as evidence. */
+function hasEvidence(figures: SignalDefinitionRoiFigures | null): boolean {
+    return figures !== null && figures.found >= props.roi_minimum;
+}
+
+// --- "Your preset has moved on" (S15 task 5) --------------------------------------------------
+const offering = ref<SignalDefinition | null>(null);
+
+/** The fields the member has ticked to take. Empty is a real answer — "keeping mine". */
+const takingFields = ref<string[]>([]);
+
+const offerFor = (definition: SignalDefinition) =>
+    props.preset_offers[definition.id] ?? null;
+
+function openOffer(definition: SignalDefinition): void {
+    offering.value = definition;
+    takingFields.value = [];
+}
+
+function toggleField(field: string): void {
+    takingFields.value = takingFields.value.includes(field)
+        ? takingFields.value.filter((value) => value !== field)
+        : [...takingFields.value, field];
+}
+
+function takeAll(): void {
+    const offer = offering.value === null ? null : offerFor(offering.value);
+
+    takingFields.value = (offer?.changes ?? []).map((change) => change.field);
+}
+
+/**
+ * Send the answer — including the empty one.
+ *
+ * `fields: []` is not a no-op: it records that the member saw this version and kept theirs, which
+ * is what stops the panel asking again. That is why there is no "dismiss" button separate from
+ * this one.
+ */
+function sendOffer(): void {
+    const target = offering.value;
+
+    if (!target) return;
+
+    router.patch(
+        `/signals/types/${target.id}/adopt-preset`,
+        { fields: takingFields.value },
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                offering.value = null;
+            },
+        },
+    );
+}
+
+/** A field's name in the member's words rather than the column's. */
+const presetFieldLabels: Record<string, string> = {
+    name: 'Name',
+    description: 'What it finds',
+    query_templates: 'Searches',
+    query_templates_i18n: 'Searches in other languages',
+    match_keywords: 'Words that must appear',
+    classification_rules: 'What to include and exclude',
+    thresholds: 'How sure Alima must be',
+    suggested_approach_hint: 'Suggested approach',
+    category: 'Category',
+    icon: 'Icon',
+    markets: 'Markets',
+};
+
+function fieldLabel(field: string): string {
+    return presetFieldLabels[field] ?? field;
+}
+
+// --- Offering a type to the library (S15 task 4) ----------------------------------------------
+const submitting = ref<SignalDefinition | null>(null);
+
+const offerForm = useForm<{ note: string }>({ note: '' });
+
+function openSubmit(definition: SignalDefinition): void {
+    submitting.value = definition;
+    offerForm.clearErrors();
+    offerForm.defaults({ note: '' });
+    offerForm.reset();
+}
+
+function sendSubmission(): void {
+    const target = submitting.value;
+
+    // The guard the button's `aria-disabled` relies on: it stays focusable while the request is in
+    // flight, so this is what stops a second one.
+    if (!target || offerForm.processing) return;
+
+    offerForm.post(`/signals/types/${target.id}/submit`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            submitting.value = null;
+        },
+    });
+}
+
+function withdrawSubmission(id: number): void {
+    router.delete(`/signals/types/submissions/${id}`, { preserveScroll: true });
+}
+
+/** The offer this type already has outstanding, if any — so the button can say so. */
+function submissionFor(definition: SignalDefinition): SignalSubmission | null {
+    return (
+        props.submissions.find(
+            (submission) => submission.definition_id === definition.id,
+        ) ?? null
+    );
+}
 
 const adding = ref<string[]>([]);
 
@@ -1332,6 +1512,28 @@ function confirmRemove(): void {
                                 >
                                     {{ t('Edit') }}
                                 </Button>
+                                <!-- Offering a type to the library changes nothing about it: an
+                                     operator decides, and the team keeps running theirs either
+                                     way (plan decision #3). Only on a type they made or changed —
+                                     a clone is a copy of something already there. -->
+                                <Button
+                                    v-if="
+                                        !definition.preset_key &&
+                                        definition.query_templates.length > 0 &&
+                                        !submissionFor(definition)?.is_open
+                                    "
+                                    variant="ghost"
+                                    size="sm"
+                                    :aria-label="
+                                        t('Offer :name to the library', {
+                                            name: label(definition),
+                                        })
+                                    "
+                                    :data-test="`offer-type-${definition.id}`"
+                                    @click="openSubmit(definition)"
+                                >
+                                    {{ t('Offer to the library') }}
+                                </Button>
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -1409,6 +1611,160 @@ function confirmRemove(): void {
                                 </dd>
                             </div>
                         </dl>
+
+                        <!-- **What it has actually done, and what it cost** (S15 task 2).
+                             A type with four hundred signals, three kept and nothing converted is
+                             the product telling the truth about itself, which is the only way a
+                             team learns to trust the ones that do work. Hidden below the evidence
+                             floor rather than shown as zeros: four signals and none kept says
+                             nothing, and a panel of noughts reads as a verdict. -->
+                        <dl
+                            v-if="hasEvidence(roiFor(definition))"
+                            class="grid gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-4"
+                            :aria-label="t('What it has done')"
+                            :data-test="`roi-${definition.id}`"
+                        >
+                            <div class="space-y-0.5">
+                                <dt
+                                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                                >
+                                    <!-- Not `Kept`: that key already exists meaning S9's preview
+                                         verdict and reads "will appear" in Arabic. A one-word key
+                                         is almost always already taken, and a reused one is a
+                                         translation bug nothing in the English build can see
+                                         (the lesson `TuningSuggestions.vue` records). -->
+                                    {{ t('Kept by you') }}
+                                </dt>
+                                <dd
+                                    class="font-mono text-base text-foreground tabular-nums"
+                                    dir="ltr"
+                                >
+                                    {{ percent(roiFor(definition)?.kept_rate) }}
+                                </dd>
+                            </div>
+                            <div class="space-y-0.5">
+                                <dt
+                                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                                >
+                                    {{ t('Became leads') }}
+                                </dt>
+                                <dd
+                                    class="font-mono text-base text-foreground tabular-nums"
+                                    dir="ltr"
+                                >
+                                    {{ roiFor(definition)?.converted ?? 0 }}
+                                </dd>
+                            </div>
+                            <div class="space-y-0.5">
+                                <dt
+                                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                                >
+                                    {{ t('Cost') }}
+                                </dt>
+                                <dd
+                                    class="font-mono text-base text-foreground tabular-nums"
+                                    dir="ltr"
+                                >
+                                    {{
+                                        money(
+                                            roiFor(definition)?.cost_micros ??
+                                                0,
+                                        )
+                                    }}
+                                </dd>
+                            </div>
+                            <div class="space-y-0.5">
+                                <dt
+                                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                                >
+                                    {{ t('Cost per lead') }}
+                                </dt>
+                                <!-- **Words, not a number, when nothing converted.** A zero would
+                                     read as "free"; the truth is the money bought no leads. -->
+                                <dd
+                                    v-if="
+                                        roiFor(definition)
+                                            ?.cost_per_converted_micros === null
+                                    "
+                                    class="text-base text-muted-foreground"
+                                >
+                                    {{ t('No leads yet') }}
+                                </dd>
+                                <dd
+                                    v-else
+                                    class="font-mono text-base text-foreground tabular-nums"
+                                    dir="ltr"
+                                >
+                                    {{
+                                        money(
+                                            roiFor(definition)
+                                                ?.cost_per_converted_micros ??
+                                                0,
+                                        )
+                                    }}
+                                </dd>
+                            </div>
+                        </dl>
+
+                        <!-- "Your preset has moved on" (S15 task 5). A copy, not a reference — so
+                             this is an offer and the team keeps running theirs until they take a
+                             field. -->
+                        <div
+                            v-if="offerFor(definition)"
+                            class="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-muted/40 p-4"
+                            :data-test="`preset-offer-${definition.id}`"
+                        >
+                            <div class="min-w-0 space-y-1">
+                                <p
+                                    class="text-base font-semibold text-foreground rtl:font-bold"
+                                >
+                                    {{
+                                        t(
+                                            'The library version of this has changed',
+                                        )
+                                    }}
+                                </p>
+                                <!-- Two sentences for a manager and one for everybody else. A
+                                     read-only member seeing "take the parts you want" beside no
+                                     button has been invited to do something they cannot (brand
+                                     review) — and what they are owed is the fact, which is that
+                                     their copy is still running exactly as it was. -->
+                                <p
+                                    v-if="can.manage"
+                                    class="max-w-prose text-base text-muted-foreground"
+                                >
+                                    {{
+                                        t(
+                                            'Yours is still running exactly as you set it up. Have a look and take the parts you want — or keep yours.',
+                                        )
+                                    }}
+                                </p>
+                                <p
+                                    v-else
+                                    class="max-w-prose text-base text-muted-foreground"
+                                >
+                                    {{
+                                        t(
+                                            'Yours is still running exactly as it was. An admin on your team can take the changes if you want them.',
+                                        )
+                                    }}
+                                </p>
+                            </div>
+                            <Button
+                                v-if="can.manage"
+                                variant="outline"
+                                size="sm"
+                                :aria-label="
+                                    t('See what changed in :name', {
+                                        name: label(definition),
+                                    })
+                                "
+                                :data-test="`see-offer-${definition.id}`"
+                                @click="openOffer(definition)"
+                            >
+                                {{ t('See what changed') }}
+                            </Button>
+                        </div>
 
                         <!-- The webhook's signing secret (S13b, ADR 0023 §7). Only on a type that
                              actually runs on pushed events, because a secret for a type nothing
@@ -1704,6 +2060,63 @@ function confirmRemove(): void {
                     </li>
                 </ul>
             </div>
+        </section>
+
+        <!-- What this team has offered the library, and what became of it (S15 task 4). Rendered
+             only when there is something: a section that said "you have offered nothing" would be
+             a permanent invitation nobody asked for. -->
+        <section
+            v-if="submissions.length"
+            class="space-y-3"
+            data-test="submissions"
+        >
+            <h2 class="text-lg font-semibold text-foreground rtl:font-bold">
+                {{ t('Offered to the library') }}
+            </h2>
+            <ul class="space-y-2">
+                <li
+                    v-for="submission in submissions"
+                    :key="submission.id"
+                    class="space-y-1 rounded-2xl border border-border bg-card px-4 py-3"
+                    :data-test="`submission-${submission.id}`"
+                >
+                    <p
+                        class="flex flex-wrap items-center gap-2 text-base font-semibold text-foreground rtl:font-bold"
+                        dir="auto"
+                    >
+                        {{ submission.definition_name }}
+                        <Badge variant="outline">
+                            {{ t(submission.status_label) }}
+                        </Badge>
+                    </p>
+                    <p class="max-w-prose text-base text-muted-foreground">
+                        {{ t(submission.status_description) }}
+                    </p>
+                    <!-- Our answer, in our own words. Prose, because there is nothing to translate
+                         about a sentence one person wrote for another. -->
+                    <p
+                        v-if="submission.review_note"
+                        class="max-w-prose border-s-2 border-border ps-3 text-base text-foreground"
+                        dir="auto"
+                    >
+                        {{ submission.review_note }}
+                    </p>
+                    <Button
+                        v-if="submission.is_open && can.manage"
+                        variant="ghost"
+                        size="sm"
+                        :aria-label="
+                            t('Take back the offer of :name', {
+                                name: submission.definition_name ?? '',
+                            })
+                        "
+                        :data-test="`withdraw-submission-${submission.id}`"
+                        @click="withdrawSubmission(submission.id)"
+                    >
+                        {{ t('Take it back') }}
+                    </Button>
+                </li>
+            </ul>
         </section>
 
         <!-- Editor. `DialogScrollContent`, not `DialogContent`: this form is ten fields and four
@@ -2554,6 +2967,223 @@ function confirmRemove(): void {
                     </Button>
                 </DialogFooter>
             </DialogContent>
+        </Dialog>
+        <!-- The per-field offer (S15 task 5). -->
+        <Dialog
+            :open="offering !== null"
+            @update:open="(value: boolean) => !value && (offering = null)"
+        >
+            <DialogScrollContent
+                class="sm:max-w-2xl"
+                data-test="preset-offer-dialog"
+            >
+                <form class="space-y-6" @submit.prevent="sendOffer">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {{ t('What the library changed') }}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {{
+                                t(
+                                    'Tick the parts you want. Anything you leave is kept exactly as you have it — and either way we will stop asking about this version.',
+                                )
+                            }}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <!-- **A `fieldset` per change, and the tick is described by both columns**
+                         (brand review). The tick's accessible name used to be the field label
+                         alone, so a screen-reader user in forms mode heard "Searches" and was
+                         asked to agree to a change nobody had read them. The legend names the
+                         part, the control says what ticking it does, and `aria-describedby`
+                         points at the two values so the decision and its evidence arrive
+                         together. -->
+                    <fieldset
+                        v-for="change in offerFor(offering!)?.changes ?? []"
+                        :key="change.field"
+                        class="space-y-2 rounded-2xl border border-border p-4"
+                    >
+                        <legend
+                            class="px-1 text-base font-semibold text-foreground rtl:font-bold"
+                        >
+                            {{ t(fieldLabel(change.field)) }}
+                        </legend>
+                        <Label
+                            class="flex cursor-pointer items-start gap-3"
+                            :data-test="`field-${change.field}`"
+                        >
+                            <!-- A native checkbox inside its `<Label>` rather than the product's
+                                 `Checkbox`, which is the §7i precedent — but the brand focus ring
+                                 has to be put back, because the native default is the browser's
+                                 and not `focus.ring`. -->
+                            <input
+                                type="checkbox"
+                                class="mt-1 size-4 accent-brand focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+                                :checked="takingFields.includes(change.field)"
+                                :aria-describedby="`mine-${change.field} theirs-${change.field}`"
+                                @change="toggleField(change.field)"
+                            />
+                            <span class="text-base text-foreground">
+                                {{ t('Take the library’s version') }}
+                            </span>
+                        </Label>
+
+                        <!-- Both sides, because a member deciding whether to take a change needs
+                             to see what they would be giving up. -->
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <div :id="`mine-${change.field}`" class="space-y-1">
+                                <p
+                                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                                >
+                                    {{ t('Yours') }}
+                                </p>
+                                <ul class="space-y-0.5">
+                                    <li
+                                        v-for="(line, index) in change.mine"
+                                        :key="index"
+                                        class="text-base text-muted-foreground"
+                                        dir="auto"
+                                    >
+                                        {{ line }}
+                                    </li>
+                                </ul>
+                                <p
+                                    v-if="!change.mine.length"
+                                    class="text-base text-muted-foreground"
+                                >
+                                    {{ t('Nothing set') }}
+                                </p>
+                            </div>
+                            <div
+                                :id="`theirs-${change.field}`"
+                                class="space-y-1"
+                            >
+                                <p
+                                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                                >
+                                    {{ t('The library’s') }}
+                                </p>
+                                <ul class="space-y-0.5">
+                                    <li
+                                        v-for="(line, index) in change.theirs"
+                                        :key="index"
+                                        class="text-base text-foreground"
+                                        dir="auto"
+                                    >
+                                        {{ line }}
+                                    </li>
+                                </ul>
+                                <p
+                                    v-if="!change.theirs.length"
+                                    class="text-base text-muted-foreground"
+                                >
+                                    {{ t('Nothing set') }}
+                                </p>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="takeAll"
+                        >
+                            {{ t('Tick everything') }}
+                        </Button>
+                        <Button type="submit" data-test="take-offer">
+                            {{
+                                takingFields.length
+                                    ? t('Take what I ticked')
+                                    : t('Keep mine')
+                            }}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogScrollContent>
+        </Dialog>
+
+        <!-- Offering a type to the library (S15 task 4). -->
+        <Dialog
+            :open="submitting !== null"
+            @update:open="(value: boolean) => !value && (submitting = null)"
+        >
+            <DialogScrollContent
+                class="sm:max-w-lg"
+                data-test="submit-type-dialog"
+            >
+                <form class="space-y-6" @submit.prevent="sendSubmission">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {{ t('Offer this to the library?') }}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {{
+                                t(
+                                    'We will look at it and let you know. Nothing about your own type changes — it keeps running exactly as it is, whatever we decide.',
+                                )
+                            }}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div class="space-y-2">
+                        <!-- "Optional" said in the label, not implied by the absence of an
+                             asterisk (§7h.8): this is the only field in the form, so somebody
+                             looking for the required one will look here. -->
+                        <Label for="submission-note">
+                            {{ t('Anything we should know? (optional)') }}
+                        </Label>
+                        <Textarea
+                            id="submission-note"
+                            v-model="offerForm.note"
+                            rows="3"
+                            :placeholder="
+                                t('e.g. This one has found us three deals.')
+                            "
+                            dir="auto"
+                            :aria-invalid="
+                                offerForm.errors.note ? 'true' : undefined
+                            "
+                            :aria-describedby="
+                                offerForm.errors.note
+                                    ? 'submission-note-error'
+                                    : undefined
+                            "
+                        />
+                        <!-- Linked to the field, or a screen-reader user reaching it never hears
+                             why it was refused (brand review). -->
+                        <p
+                            v-if="offerForm.errors.note"
+                            id="submission-note-error"
+                            class="text-base text-destructive"
+                        >
+                            {{ offerForm.errors.note }}
+                        </p>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="submitting = null"
+                        >
+                            {{ t('Cancel') }}
+                        </Button>
+                        <!-- `aria-disabled`, not `disabled`: a focused button that becomes
+                             disabled drops focus to `<body>`, inside a dialog
+                             (brand-tokens.md §7j.3). `sendSubmission()` guards instead. -->
+                        <Button
+                            type="submit"
+                            :aria-disabled="
+                                offerForm.processing ? 'true' : undefined
+                            "
+                            data-test="send-submission"
+                        >
+                            {{ t('Offer it') }}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogScrollContent>
         </Dialog>
     </div>
 </template>

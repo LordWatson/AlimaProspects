@@ -106,7 +106,7 @@ flowchart TD
 | 8   | Enrichment & Data Quality     | MVP                         | `modules/enrichment-data-quality.md`     |
 | 9   | Scoring & Matching            | MVP                         | `modules/scoring-matching.md`            |
 | 10  | Leads Workspace               | MVP                         | `modules/leads-workspace.md`             |
-| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S14      | `modules/signals.md`                     |
+| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S15      | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (built, Phase 11)       | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (built, Phase 13)       | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | MVP (built, Phase 14)       | `modules/ai-insights.md`                 |
@@ -250,6 +250,32 @@ flowchart TD
   many meanings as there are parties to the request** — the provider, the question, and the thing
   the question is about — and a rule that collapses any two of them is cheap until a source arrives
   whose addressee is somebody else's configuration.
+- **Removing a read scope and removing a write's auto-assignment are two different jobs (Signals,
+  S15):** a platform preset is a `signal_definitions` row that belongs to nobody, and the module had
+  solved reading one — `PlatformPresetReader` is the single door that drops the tenancy scope and
+  replaces it with the stricter `team_id is null`. Writing one looked solved by `'team_id' => null`
+  and a docblock saying the Action runs outside any team context. It was not: **`BelongsToTeam`'s
+  `creating` hook fills a null `team_id` from the ambient `TeamContext`**, so a preset written while
+  any team was active became that team's own type — right columns, wrong owner, unique against the
+  wrong scope, and never visible in the library. Nothing downstream would notice, because every
+  consumer of a preset reads through the door that only sees `team_id is null`. It could not fire in
+  production, because `PlatformContext` drops the context on every admin request and an operator is
+  in no team; it fired on the first test fixture that created one with a team active. The general
+  lesson is that a trait which **adds** data on write is a second, independent mechanism from the
+  scope that **hides** it on read, and an intention expressed as a literal `null` is not
+  enforcement. The second half is about the fix: the model already carried
+  `SignalDefinition::$isPlatformPreset` for exactly this case, and the first attempt added a new
+  helper that forgot and restored the context instead — two doors onto one invariant, where the
+  whole point of a door is that there is one. Look for the existing mechanism before building a
+  second.
+- **A measured figure and an allocated one belong in different columns (Signals, S15):** a signal
+  type's search cost is measured — a query names exactly one type — and its AI cost is an
+  apportionment, because one classification call serves every type on the watch at once and that
+  sharing is the saving. Both are legitimate; presenting their sum as one number would let a screen
+  show an allocation as a measurement, and the first question anybody asks of a cost-per-lead figure
+  is how it was arrived at. The companion rule is that an allocation's parts must **sum to the
+  whole** (the integer-division remainder goes to the largest contributor), because the point of a
+  breakdown is that it reconciles against the total it sits under.
 - **A cache key in a multi-tenant product is a tenancy decision (Signals, S13b review):** the feed
   source cached its poll-interval floor and its conditional-GET validators under the feed's URL
   alone, on reasoning that reads as obviously correct — three watches pointed at one newsletter

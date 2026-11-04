@@ -780,6 +780,33 @@ return [
         'suggested_dry_run_days' => (int) env('SIGNALS_PLAYBOOK_DRY_RUN_DAYS', 7),
     ],
 
+    // The round-up's signal section (S15 task 1). How many events the digest **names** rather
+    // than counts — the rest of the digest is counts, and this is the one place a count is not
+    // enough, because the product's most time-sensitive output is a specific event at a specific
+    // company. Capped low on purpose: three headlines is a digest, a dozen is a feed somebody
+    // unsubscribes from.
+    'digest' => [
+        'highlights' => (int) env('SIGNALS_DIGEST_HIGHLIGHTS', 3),
+    ],
+
+    // Return on investment, per signal type (S15 task 2). The window the library card reports
+    // over, and the floor below which its figures are not evidence of anything — a type with four
+    // signals and none kept says nothing, which is what keeps the retirement suggestion an
+    // argument rather than an opinion.
+    'roi' => [
+        'window_days' => (int) env('SIGNALS_ROI_WINDOW_DAYS', 60),
+
+        // Retirement suggestions: propose a pause when a type has been seen at least this many
+        // times over the window and kept at or below this share of them. Deliberately strict in
+        // both dimensions, because the proposal has to survive being read by somebody who likes
+        // the type.
+        'retire' => [
+            'enabled' => (bool) env('SIGNALS_ROI_RETIRE_ENABLED', true),
+            'minimum_found' => (int) env('SIGNALS_ROI_RETIRE_MINIMUM', 30),
+            'kept_rate_floor' => (float) env('SIGNALS_ROI_RETIRE_KEPT_FLOOR', 0.1),
+        ],
+    ],
+
     // Retention sweep (implemented in S6): hard-delete dismissed signals after N days and
     // unactioned (still New) signals after N days. Converted signals stay as long as their lead.
     'retention' => [

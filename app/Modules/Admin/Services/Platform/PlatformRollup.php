@@ -27,6 +27,8 @@ use App\Modules\Outreach\Models\ContactAttempt;
 use App\Modules\Outreach\Models\OutreachMessage;
 use App\Modules\Reporting\Support\DateRange;
 use App\Modules\Signals\Enums\SignalRunStatus;
+use App\Modules\Signals\Enums\SignalStatus;
+use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalRun;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -130,6 +132,7 @@ final class PlatformRollup
         $written += $this->rollUpRevenue($day, $pointInTime);
         $written += $this->rollUpCost($day);
         $written += $this->rollUpOutreach($day);
+        $written += $this->rollUpSignals($day, $pointInTime);
 
         if ($pointInTime) {
             $written += $this->rollUpPointInTimeState($day);
@@ -962,6 +965,154 @@ final class PlatformRollup
             PlatformMetric::OutreachAttempts->value => count($byChannel),
             PlatformMetric::OutreachOutcomes->value => count($outcomes),
         ];
+    }
+
+    /**
+     * What the platform's signal library is actually being used for (S15 task 6).
+     *
+     * **Platform reporting is not tenant reporting with the scope removed** (ADR 0016), and these
+     * four figures are the clearest example of it in the product: no tenant has ever wanted to know
+     * which library preset is cloned most, and the business cannot decide which packs to invest in
+     * without it. So the questions are the panel's own, and the figures come out of the ledgers the
+     * same way every other metric here does.
+     *
+     * The **dimension is the preset key, or `own`**. A type cloned from `uk_acquisition` is
+     * attributed to that preset for ever, including after a team has renamed and retuned it,
+     * because the question is "was this preset worth offering?" and the answer is yes if somebody
+     * started from it. A type a team built from scratch is `own`, which is itself a figure worth
+     * watching: a library nobody starts from is a library that is missing something.
+     *
+     * Two of them are **point-in-time** and two are of the day. Types in use is a count of rows
+     * that exist now — there is no history of when a type was switched on — so it is written for
+     * the day the rollup ran and a reconstructed day deliberately gets nothing, which is the same
+     * treatment {@see self::rollUpPointInTimeState()} gives seats. The signal counts are of the
+     * day and can be recomputed for any day in the window.
+     *
+     * @return array<string, int>
+     */
+    private function rollUpSignals(CarbonImmutable $day, bool $pointInTime): array
+    {
+        [$from, $to] = $this->bounds($day);
+
+        // The preset each definition descends from, so a signal's `signal_definition_id` can be
+        // attributed without joining three tables in every query below. Read once; the number of
+        // definitions across the platform is small by construction (`max_definitions_per_team`).
+        $presetOf = $this->presetKeysByDefinition();
+
+        $found = [];
+        $outcomes = [];
+
+        $rows = Signal::query()
+            ->withoutGlobalScopes()
+            ->representatives()
+            ->whereBetween('signals.created_at', [$from, $to])
+            ->groupBy('signals.signal_definition_id')
+            ->selectRaw(
+                'signals.signal_definition_id as definition_id, '
+                .'count(*) as found, '
+                .'sum(case when signals.status != ? then 1 else 0 end) as kept, '
+                .'sum(case when signals.status = ? then 1 else 0 end) as converted',
+                [SignalStatus::Dismissed->value, SignalStatus::Converted->value],
+            )
+            ->toBase()
+            ->get();
+
+        foreach ($rows as $row) {
+            // A signal whose definition has been deleted has a null id (`nullOnDelete`, ADR 0018
+            // §4) and is attributed to `unattributed` rather than dropped — the same treatment
+            // `TeamCostMicros` gives spend no tenant owns. Losing it would make the platform's
+            // total disagree with the tenants' and nobody would be able to find the difference.
+            $dimension = $row->definition_id === null
+                ? 'unattributed'
+                : ($presetOf[(int) $row->definition_id] ?? 'own');
+
+            $found[$dimension] = ($found[$dimension] ?? 0) + (int) $row->found;
+            $outcomes[$dimension.':kept'] = ($outcomes[$dimension.':kept'] ?? 0) + (int) $row->kept;
+            $outcomes[$dimension.':converted'] = ($outcomes[$dimension.':converted'] ?? 0) + (int) $row->converted;
+        }
+
+        $bySource = $this->groupedCounts(
+            Signal::query()
+                ->withoutGlobalScopes()
+                ->representatives()
+                ->whereBetween('signals.created_at', [$from, $to]),
+            'signals.source_kind',
+        );
+
+        $this->store->replaceDay($day, PlatformMetric::SignalsFound, $found);
+        $this->store->replaceDay($day, PlatformMetric::SignalOutcomes, $outcomes);
+        $this->store->replaceDay($day, PlatformMetric::SignalsBySource, $bySource);
+
+        $written = [
+            PlatformMetric::SignalsFound->value => count($found),
+            PlatformMetric::SignalOutcomes->value => count($outcomes),
+            PlatformMetric::SignalsBySource->value => count($bySource),
+        ];
+
+        // Point-in-time only. There is no record of when a type was switched on, so writing this
+        // for a reconstructed day would be yesterday's shape stamped with last month's date.
+        if ($pointInTime) {
+            $inUse = [];
+
+            foreach ($this->activeDefinitionPresets() as $dimension => $count) {
+                $inUse[$dimension] = $count;
+            }
+
+            $this->store->replaceDay($day, PlatformMetric::SignalTypesInUse, $inUse);
+            $written[PlatformMetric::SignalTypesInUse->value] = count($inUse);
+        }
+
+        return $written;
+    }
+
+    /**
+     * `signal_definitions.id` => the preset key it was cloned from, for the ones that were.
+     *
+     * Only the clones: anything absent from the map is a type a team built themselves, which the
+     * caller reads as `own`. Platform presets themselves are excluded — a preset is not in use by
+     * anybody, it is the thing being used.
+     *
+     * @return array<int, string>
+     */
+    private function presetKeysByDefinition(): array
+    {
+        $map = [];
+
+        foreach (DB::table('signal_definitions')
+            ->whereNotNull('team_id')
+            ->whereNotNull('preset_key')
+            ->select(['id', 'preset_key'])
+            ->get() as $row) {
+            $map[(int) $row->id] = (string) $row->preset_key;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Active tenant types now, counted by the preset they came from (or `own`).
+     *
+     * `whereNull('deleted_at')` as well as `is_active`, because a soft-deleted type is not in use
+     * and the global scope is off here.
+     *
+     * @return array<string, int>
+     */
+    private function activeDefinitionPresets(): array
+    {
+        $counts = [];
+
+        foreach (DB::table('signal_definitions')
+            ->whereNotNull('team_id')
+            ->whereNull('deleted_at')
+            ->where('is_active', true)
+            ->selectRaw('preset_key, count(*) as aggregate')
+            ->groupBy('preset_key')
+            ->get() as $row) {
+            $key = $row->preset_key === null ? 'own' : (string) $row->preset_key;
+            $counts[$key] = ($counts[$key] ?? 0) + (int) $row->aggregate;
+        }
+
+        return $counts;
     }
 
     /* ----------------------------------------------------------------- Helpers */

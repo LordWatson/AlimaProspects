@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Services;
 
 use App\Modules\Core\Enums\Market;
+use App\Modules\Core\Models\Team;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Database\Eloquent\Builder;
@@ -24,6 +25,17 @@ use Illuminate\Database\Eloquent\Collection;
  *
  * Every method here re-asserts `team_id is null` rather than trusting the caller, so a preset
  * lookup can never hand back a tenant's row — not even when asked for one by id.
+ *
+ * **Two deliberate exceptions to "the only place", both cross-tenant by design and neither a preset
+ * read.** `Admin\Services\Platform\SignalLibrary` and `Admin\Services\Platform\PlatformRollup`
+ * drop the scope to ask platform-wide questions *about* presets and the rows that descend from them
+ * — how many teams run a copy, how far behind they are, what each preset found across every tenant
+ * — which is ADR 0016's distinction: a platform question is not a tenant question with the scope
+ * removed, and routing it through a reader built for "give me this preset" would mean teaching that
+ * reader to aggregate. They sit behind the panel's `PlatformContext` and
+ * `AdminAbility::ManageOperations`. The invariant this class actually protects is narrower than
+ * "nobody else removes the scope": **nothing hands a caller a `SignalDefinition` it asked for by key
+ * or by market unless that row belongs to the platform.**
  */
 final class PlatformPresetReader
 {
@@ -84,6 +96,30 @@ final class PlatformPresetReader
             ->keyBy('key');
 
         return $presets;
+    }
+
+    /**
+     * Whether any preset holds this key — **including a withdrawn one**.
+     *
+     * Separate from {@see self::byKey()} because the two questions are genuinely different. A read
+     * must not hand back a withdrawn preset: the library has stopped offering it and every screen
+     * that lists one would start showing it again. But the **unique index does not soft-delete**,
+     * so `unique(scope_id, key)` still holds the withdrawn row's key, and asking the ordinary read
+     * whether a key is free gets "yes" followed by a 500 from the database.
+     *
+     * The alternative — force-deleting a withdrawn preset — is worse: clones keep `preset_key` and
+     * promoted submissions keep `preset_id`, so a hard delete would orphan both and lose the record
+     * of where a team's type came from.
+     */
+    public function keyIsTaken(string $key): bool
+    {
+        return SignalDefinition::query()
+            ->withoutGlobalScope('team')
+            ->withTrashed()
+            ->whereNull('team_id')
+            ->where('scope_id', SignalDefinition::PLATFORM_SCOPE)
+            ->where('key', $key)
+            ->exists();
     }
 
     /**

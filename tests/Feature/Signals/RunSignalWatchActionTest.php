@@ -16,14 +16,18 @@ use App\Modules\Signals\Events\SignalRunProgressed;
 use App\Modules\Signals\Events\SignalsDetected;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Models\SignalDefinitionSpend;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Services\SignalQueryBuilder;
 use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
 use App\Modules\Signals\Testing\FakeSignalSource;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Schema;
 use Tests\Support\BillingFixtures as Billing;
 
 uses(RefreshDatabase::class);
@@ -393,4 +397,77 @@ it('leaves the jurisdiction null when the article names nowhere it knows', funct
     // watch and then to the most restrictive of its regions.
     expect($signal->jurisdiction)->toBeNull()
         ->and($signal->resolved_market)->toBeNull();
+});
+
+// --- Per-type spend survives every way a run can end (S15, review findings) ----------------------
+
+/*
+ * **A search is paid for the moment it is made.** So the question these ask is not "is the figure
+ * right" — `SignalRoiTest` does that — but "does the figure survive", and the answer used to be no
+ * on two paths. A **retryable** failure rethrew without recording, and the retry then paid for the
+ * same searches again, so a flaky provider looked cheap. An unexpected throw out of the classifier
+ * or out of the commit did the same. And a ledger write that threw would have failed a run that had
+ * already spent the team's allowance, which is the hazard the S14 review found in a listener: the
+ * cost of losing one row of reporting is nothing beside the cost of re-billing a whole run.
+ */
+
+it('records what a run had already spent before a retryable failure', function (): void {
+    $team = Team::factory()->create();
+    // Two types, so the plan has two queries and the first can succeed before the second throws.
+    $watch = dubaiWatch($team, [SignalPresetCatalogue::FUNDING_ROUND, SignalPresetCatalogue::ACQUISITION]);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Deal', 'https://gulfbusiness.com/one')]);
+
+    $plan = app(TeamContext::class)->run($team, fn () => app(SignalQueryBuilder::class)
+        ->build($watch, app(TeamContext::class)->run($team, fn (): array => SignalDefinition::query()
+            ->where('team_id', $team->getKey())
+            ->orderBy('id')
+            ->get()
+            ->all())));
+
+    // Whichever query the plan puts second: the first is answered and paid for, then this one
+    // bubbles out of `search()` as retryable.
+    $this->fakeNews->willFailQuery($plan->queries[1]->q, SignalsException::sourceUnavailable());
+
+    expect(fn () => runWatchFor($team, $watch))->toThrow(SignalsException::class);
+
+    // The spend that had already been incurred is on the ledger, so the retry's second bill does
+    // not look like the whole cost of the run.
+    expect(SignalDefinitionSpend::query()->withoutGlobalScopes()->sum('search_cost_micros'))
+        ->toBeGreaterThan(0);
+});
+
+it('records the spend when the classifier throws unexpectedly', function (): void {
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Deal', 'https://gulfbusiness.com/one')]);
+    // Not a `SignalsException`: the point is that an *unexpected* failure past the paid searches
+    // still leaves the record of them.
+    $this->fakeAi->queueFailure(new RuntimeException('the model fell over'));
+
+    expect(fn () => runWatchFor($team, $watch))->toThrow(RuntimeException::class);
+
+    expect(SignalDefinitionSpend::query()->withoutGlobalScopes()->sum('search_cost_micros'))
+        ->toBeGreaterThan(0);
+});
+
+it('completes a run whose spend ledger write fails, rather than re-billing the search', function (): void {
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Acme closes $40m Series A', 'https://gulfbusiness.com/acme')]);
+    $this->fakeAi->queueStructured(aiEvents([fundingEvent()]));
+
+    // A ledger that cannot be written to — the realistic shape of "the ledger is down", and the
+    // one a stub cannot imitate because `SignalSpendLedger` is final. Losing a row of reporting is
+    // the lesser failure by a wide margin: the alternative is a failed run, a retry, and a second
+    // Serper bill.
+    Schema::drop('signal_definition_spend');
+
+    $run = runWatchFor($team, $watch);
+
+    expect($run->status)->toBe(SignalRunStatus::Completed)
+        ->and($run->signals_created)->toBe(1)
+        ->and($run->cost_micros)->toBeGreaterThan(0);
 });

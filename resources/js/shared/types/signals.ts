@@ -1056,3 +1056,86 @@ export type SignalPlaybookOptions = {
         suggested_dry_run_days: number;
     };
 };
+
+// --- Return on investment, the library offer and submissions (S15) -------------------------------
+
+/**
+ * What one signal type has found and what it cost over a window.
+ *
+ * **Two cost figures, not one, and they are different kinds of number.** `search_cost_micros` is
+ * measured — a query belongs to exactly one type. `ai_cost_micros` is *allocated* by share of
+ * results, because one classification call is offered every type on the watch at once. A screen
+ * showing a single total would be presenting an allocation as a measurement.
+ *
+ * `cost_per_converted_micros` is **null when nothing converted**, which is the whole point of the
+ * type: a zero would read as "free" when the truth is that the money bought no leads at all.
+ */
+export type SignalDefinitionRoiFigures = {
+    event_key: string;
+    days: number;
+    found: number;
+    kept: number;
+    converted: number;
+    /** Converted **and** moved off the default column of the team's own board. */
+    progressed: number;
+    queries: number;
+    /** 0–1, or null over nothing — a rate over nothing is not zero. */
+    kept_rate: number | null;
+    converted_rate: number | null;
+    search_cost_micros: number;
+    ai_cost_micros: number;
+    cost_micros: number;
+    cost_per_converted_micros: number | null;
+};
+
+/** One field the library has changed, with both sides so a member can see what they would give up. */
+export type SignalPresetChange = {
+    field: string;
+    /** The team's current value, rendered as lines so the screen need not know the column's shape. */
+    mine: string[];
+    theirs: string[];
+};
+
+/**
+ * What the library has changed since this team took their copy of a preset.
+ *
+ * Nothing here has been applied. A clone is a copy rather than a reference (ADR 0018 §3) precisely
+ * so this is an offer, taken per field — and taking **nothing** is a real answer that stops the
+ * panel asking again.
+ */
+export type SignalPresetOffer = {
+    preset_key: string;
+    preset_version: number;
+    /** The version the copy was taken from; null for one taken before the column existed. */
+    from_version: number | null;
+    changes: SignalPresetChange[];
+};
+
+export type SignalSubmissionStatus =
+    | 'pending'
+    | 'promoted'
+    | 'rejected'
+    | 'withdrawn';
+
+/**
+ * A type this team has offered to the shared library (S15 task 4, plan decision #3).
+ *
+ * An offer, not a publication: the team's own type keeps running whatever is decided. `note` and
+ * `review_note` are **prose** — two people's own words to each other, which is the one thing in a
+ * payload that is not a translation key.
+ */
+export type SignalSubmission = {
+    id: number;
+    definition_id: number;
+    definition_name?: string | null;
+    status: SignalSubmissionStatus;
+    /** Translation keys, not finished strings. */
+    status_label: string;
+    status_description: string;
+    is_open: boolean;
+    can_resubmit?: boolean;
+    note: string | null;
+    review_note: string | null;
+    created_at: string | null;
+    reviewed_at?: string | null;
+};

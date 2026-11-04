@@ -52,6 +52,8 @@ use App\Modules\Signals\Services\SignalQueryBuilder;
 use App\Modules\Signals\Services\SignalRejectionLedger;
 use App\Modules\Signals\Services\SignalScorer;
 use App\Modules\Signals\Services\SignalSourceRegistry;
+use App\Modules\Signals\Services\SignalSpendLedger;
+use App\Modules\Signals\Support\SignalDefinitionBreakdown;
 use App\Modules\Signals\Support\SignalSourceBreakdown;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
@@ -142,7 +144,29 @@ final class RunSignalWatchAction
         private readonly SignalScorer $scorer,
         private readonly SignalArticleEnricher $articles,
         private readonly ResolveWatchlistCompanyNumbersAction $companyNumbers,
+        private readonly SignalSpendLedger $spend,
     ) {}
+
+    /**
+     * `event_key` => the live definition's id, for the spend ledger's attribution.
+     *
+     * The ledger is keyed on the key rather than the id (ADR 0018 §4), and this is the live
+     * attribution beside it — so a cost history survives the type being deleted while a report
+     * grouping by definition still joins.
+     *
+     * @param  iterable<SignalDefinition>  $definitions
+     * @return array<string, int>
+     */
+    private function definitionIdsByKey(iterable $definitions): array
+    {
+        $ids = [];
+
+        foreach ($definitions as $definition) {
+            $ids[$definition->key] = (int) $definition->getKey();
+        }
+
+        return $ids;
+    }
 
     public function handle(SignalWatch $watch): SignalRun
     {
@@ -189,11 +213,55 @@ final class RunSignalWatchAction
         // are different things and only the loop can tell them apart.
         $breakdown = new SignalSourceBreakdown;
 
+        // And what each **type** cost and found (S15 task 2), which is the figure a team needs to
+        // answer "is this one worth paying for?" — a question a run-level or source-level cost
+        // cannot answer, because a run covers every type on the watch at once. Accumulated in the
+        // same loop for the same reason.
+        $spend = new SignalDefinitionBreakdown;
+
+        /*
+         * **Record the spend once, on every way out, and never let it fail the run.**
+         *
+         * Both halves of that were review findings and both cost real money. The searches are paid
+         * for the moment they are made, so a path that leaves without recording them makes the ROI
+         * card understate the cost and the retry pay again — which is what a **retryable** failure
+         * did, and what an unexpected throw out of the AI or the commit did. And a ledger write
+         * that threw would fail a run that had already spent the team's allowance, the same hazard
+         * the S14 review found in an after-commit listener: the cost of losing one row of reporting
+         * is nothing beside the cost of re-billing a whole run.
+         *
+         * Once-only, because the paths overlap: the inner handlers record and the outer `catch`
+         * records, and an addition applied twice is worse than one not applied.
+         */
+        $recorded = false;
+        $recordSpend = function () use (&$recorded, $watch, $spend, $definitions): void {
+            if ($recorded) {
+                return;
+            }
+
+            $recorded = true;
+
+            try {
+                $this->spend->record((int) $watch->team_id, $spend, $this->definitionIdsByKey($definitions));
+            } catch (Throwable $e) {
+                Log::channel('signals')->warning('Could not record the per-type spend for a run.', [
+                    'team_id' => (int) $watch->team_id,
+                    'signal_watch_id' => (int) $watch->getKey(),
+                    'exception' => $e::class,
+                ]);
+            }
+        };
+
         // --- External work: the sources (outside any transaction) ---
         try {
-            [$items, $resultsCount] = $this->search($plan->queries, $breakdown, $watch);
+            [$items, $resultsCount] = $this->search($plan->queries, $breakdown, $watch, $spend);
         } catch (SignalsException $e) {
             if ($e->isRetryable()) {
+                // **Recorded before the rethrow.** Whatever ran before the failure was paid for,
+                // and the retry will pay for it again — so dropping it here would make a flaky
+                // provider look cheap (review).
+                $recordSpend();
+
                 throw $e; // bubble → the job retries with backoff
             }
 
@@ -202,6 +270,10 @@ final class RunSignalWatchAction
             // is no longer necessarily zero — a plan can span sources and the second one may be the
             // one that broke. `search()` records each source's cost in a `finally` precisely so
             // this is true rather than merely claimed (S13a review finding 2).
+            // Whatever ran before the failure was still paid for. Same reasoning as
+            // `signal_runs.cost_micros` on this path.
+            $recordSpend();
+
             return $this->fail(
                 $run,
                 $watch,
@@ -237,12 +309,36 @@ final class RunSignalWatchAction
         $this->broadcast($run, SignalRunStatus::Running, 55, 'Analysing what we found');
 
         // --- External work: AI extraction (outside any transaction) ---
-        [$kept, $aiCostMicros, $creditExhausted] = $this->extract($watch, $definitions, $icp, $profile, $items, $fingerprint);
+        //
+        // **Everything from here on is wrapped, and the wrapper only records the spend.** The
+        // searches above have already been paid for, so an unexpected throw out of the classifier
+        // or out of the commit must not take the record of them with it: the job retries, pays
+        // again, and the ROI card shows one run's cost for two (review). Nothing is swallowed — the
+        // exception goes on exactly as before.
+        try {
+            [$kept, $aiCostMicros, $creditExhausted] = $this->extract($watch, $definitions, $icp, $profile, $items, $fingerprint);
+        } catch (Throwable $e) {
+            $recordSpend();
+
+            throw $e;
+        }
+
         $costMicros = $searchCostMicros + $aiCostMicros;
+
+        // The AI half is **allocated**, not measured: one classification call is offered every type
+        // on the watch at once, so each type carries its share of the results it put into the
+        // batch. Done here, where both halves of the cost are known and before either failure path
+        // below can take the spend with it.
+        $spend->allocateAi($aiCostMicros);
 
         if ($creditExhausted) {
             // "Not half-run": don't persist partial signals, but record the spend already incurred so
             // metering is accurate and the watch backs off instead of re-dispatching hourly.
+            // The spend is recorded even though no signals are kept: the searches were paid for,
+            // and a ROI card that forgot them would make an exhausted allowance look like a
+            // bargain.
+            $recordSpend();
+
             return $this->fail(
                 $run,
                 $watch,
@@ -256,6 +352,11 @@ final class RunSignalWatchAction
         }
 
         $this->broadcast($run, SignalRunStatus::Running, 85, 'Saving new signals');
+
+        // Recorded **before** the commit rather than after it, and deliberately: the spend is a
+        // fact about money already gone, not about whether the signals were saved. A run whose
+        // commit fails has still bought the searches.
+        $recordSpend();
 
         return $this->complete(
             run: $run,
@@ -355,13 +456,20 @@ final class RunSignalWatchAction
      * @param  list<SignalSourceQuery>  $queries
      * @return array{0: list<SourceItem>, 1: int} unique items and the raw result count across queries
      */
-    private function search(array $queries, SignalSourceBreakdown $breakdown, SignalWatch $watch): array
-    {
+    private function search(
+        array $queries,
+        SignalSourceBreakdown $breakdown,
+        SignalWatch $watch,
+        SignalDefinitionBreakdown $spend,
+    ): array {
         $unique = [];
         $rawCount = 0;
 
         /** @var array<string, int> $executed queries actually answered, per source */
         $executed = [];
+
+        /** @var array<string, array<string, int>> $perType answered queries, per source per type */
+        $perType = [];
 
         try {
             foreach ($queries as $query) {
@@ -405,6 +513,13 @@ final class RunSignalWatchAction
                 $executed[$query->kind->value] = ($executed[$query->kind->value] ?? 0) + 1;
                 $breakdown->recordQuery($query->kind, count($items));
 
+                // The same answered query, counted against the **type** that asked for it. Keyed
+                // on the query's own `eventKey`, which is why that field exists on the query rather
+                // than the definition being carried around.
+                $perType[$query->kind->value][$query->eventKey] =
+                    ($perType[$query->kind->value][$query->eventKey] ?? 0) + 1;
+                $spend->recordQuery($query->eventKey, count($items));
+
                 foreach ($items as $item) {
                     $rawCount++;
 
@@ -432,6 +547,14 @@ final class RunSignalWatchAction
 
                 if ($kind instanceof SignalSourceKind && $provider instanceof SignalSourceProvider) {
                     $breakdown->recordCost($kind, $provider->estimatedCostMicros($count));
+
+                    // The same price, split across the types whose queries made up that count.
+                    // Asked of the provider per type rather than divided here, so a source that
+                    // prices non-linearly is priced the same way in both breakdowns and the two
+                    // totals cannot drift apart by a rounding rule.
+                    foreach ($perType[$key] ?? [] as $eventKey => $typeCount) {
+                        $spend->recordSearchCost($eventKey, $provider->estimatedCostMicros($typeCount));
+                    }
                 }
             }
         }
