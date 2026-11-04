@@ -22,6 +22,7 @@ use App\Modules\Signals\Models\SignalPlaybook;
 use App\Modules\Signals\Models\SignalPlaybookRun;
 use App\Modules\Signals\Services\PlaybookStepRegistry;
 use App\Modules\Signals\Services\SignalPlaybookEvaluator;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use App\Modules\Signals\Support\Playbook\PlaybookActor;
 use App\Modules\Signals\Support\Playbook\PlaybookBudget;
 use App\Modules\Signals\Support\Playbook\PlaybookContext;
@@ -68,6 +69,7 @@ final class RunSignalPlaybooksAction
         private readonly PlaybookStepRegistry $handlers,
         private readonly PlaybookActor $actors,
         private readonly NotificationDispatcher $dispatcher,
+        private readonly SignalSpendGuard $spend,
     ) {}
 
     /**
@@ -84,6 +86,15 @@ final class RunSignalPlaybooksAction
     public function handle(Team $team, array $signalIds): array
     {
         if ($signalIds === []) {
+            return ['considered' => 0, 'fired' => 0, 'deferred' => []];
+        }
+
+        // **A downgrade stops the rules without failing the run** (S16 task 2). The save path
+        // refuses outright; this one returns quietly, because the caller is a listener on an
+        // after-commit event and therefore runs inside the watch's own job — a throw here would
+        // fail the run and the retry would re-bill the Serper search (the S14 review's finding,
+        // which is also why nothing is deferred: there is nothing to come back for).
+        if (! $this->spend->allowsPlaybooks($team)) {
             return ['considered' => 0, 'fired' => 0, 'deferred' => []];
         }
 

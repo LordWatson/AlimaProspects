@@ -14,6 +14,7 @@ use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Policies\SignalDefinitionPolicy;
 use App\Modules\Signals\Services\SignalDefinitionKeyAllocator;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -43,6 +44,7 @@ final class SaveSignalDefinitionAction
         private readonly TeamContext $teamContext,
         private readonly AuditLogger $audit,
         private readonly SignalDefinitionKeyAllocator $keys,
+        private readonly SignalSpendGuard $spend,
     ) {}
 
     public function handle(
@@ -63,6 +65,12 @@ final class SaveSignalDefinitionAction
             // create and update, because adding a feed to an existing type adds a feed.
             $this->assertRoomForFeed($team, $data, $definition);
 
+            // The events API is a plan switch (S16 task 1), and it is checked on create **and**
+            // update for the same reason the feed ceiling is: adding the source to an existing type
+            // is how a team would otherwise acquire it after a downgrade. The webhook endpoint
+            // refuses it too; this is the half that stops the credential ever being minted.
+            $this->assertWebhookSourceAllowed($team, $data, $definition);
+
             if ($definition instanceof SignalDefinition) {
                 $definition->forceFill([
                     ...$attributes,
@@ -74,7 +82,7 @@ final class SaveSignalDefinitionAction
                 return $definition;
             }
 
-            $this->assertRoomForAnother($team);
+            $this->spend->assertRoomForDefinition($team);
 
             /** @var SignalDefinition $created */
             $created = SignalDefinition::query()->create([
@@ -131,20 +139,38 @@ final class SaveSignalDefinitionAction
     }
 
     /**
-     * Refuse a new type once the team is at its ceiling.
+     * Refuse a type that runs on the events API when the team's plan does not include it (S16).
      *
-     * Create only — an existing type is already counted, so editing one must not fail because the
-     * team is at the limit. Soft-deleted rows do not count: they produce no searches.
+     * Only when the source is actually being asked for, so a team without the switch is unaffected
+     * by every other save. `sourceKinds === null` means the caller did not mention sources at all,
+     * which is the common edit and leaves whatever is stored alone.
      *
      * @throws SignalsException
      */
-    private function assertRoomForAnother(Team $team): void
-    {
-        $max = max(1, (int) config('signals.max_definitions_per_team', 25));
-
-        if (SignalDefinition::query()->where('team_id', $team->getKey())->count() >= $max) {
-            throw SignalsException::tooManyDefinitions($max);
+    private function assertWebhookSourceAllowed(
+        Team $team,
+        SignalDefinitionData $data,
+        ?SignalDefinition $definition,
+    ): void {
+        if ($data->sourceKinds === null) {
+            return;
         }
+
+        if (! in_array(SignalSourceKind::Webhook, $data->sourceKinds, true)) {
+            return;
+        }
+
+        // **Only when the source is being *added*** (`/code-review`). The edit form re-posts
+        // `source_keys` from the stored definition, so refusing any save that mentions the webhook
+        // meant a downgraded team could not edit a type they already had — the same trap the S16
+        // review removed for playbooks, arriving through a different door. A team keeping what they
+        // have is not acquiring anything; a team adding it is.
+        if ($definition instanceof SignalDefinition
+            && in_array(SignalSourceKind::Webhook, $definition->sourceKinds(), true)) {
+            return;
+        }
+
+        $this->spend->assertWebhookSourceAllowed($team);
     }
 
     /**

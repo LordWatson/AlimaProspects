@@ -15,6 +15,7 @@ use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Models\SignalWatchlist;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -48,6 +49,7 @@ final class SaveSignalWatchAction
     public function __construct(
         private readonly TeamContext $teamContext,
         private readonly AuditLogger $audit,
+        private readonly SignalSpendGuard $spend,
     ) {}
 
     public function handle(Team $team, User $actor, SignalWatchData $data, ?SignalWatch $watch = null): SignalWatch
@@ -82,7 +84,7 @@ final class SaveSignalWatchAction
                 return $watch->load('definitions');
             }
 
-            $this->assertRoomForAnother($team);
+            $this->spend->assertRoomForWatch($team);
 
             /** @var SignalWatch $created */
             $created = SignalWatch::query()->create([
@@ -123,25 +125,6 @@ final class SaveSignalWatchAction
         }
 
         return $posted;
-    }
-
-    /**
-     * Refuse a new watch once the team is at its ceiling.
-     *
-     * Checked on **create only** — an existing watch is already counted, so editing one must not
-     * fail because the team is at the limit. Inside the transaction, so two simultaneous creates
-     * can't both see room (the count is a read, not a lock, but the window is a single statement
-     * and the consequence of losing the race is one extra watch, not a runaway).
-     *
-     * @throws SignalsException when the team has no room.
-     */
-    private function assertRoomForAnother(Team $team): void
-    {
-        $max = max(1, (int) config('signals.max_watches_per_team', 10));
-
-        if (SignalWatch::query()->where('team_id', $team->getKey())->count() >= $max) {
-            throw SignalsException::tooManyWatches($max);
-        }
     }
 
     /**

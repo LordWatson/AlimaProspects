@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Signals\Actions;
 
+use App\Modules\Core\Models\Team;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalInboundEvent;
 use App\Modules\Signals\Models\SignalWebhookSecret;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use App\Modules\Signals\Services\WebhookSignalSource;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -35,6 +37,8 @@ use Illuminate\Support\Facades\Log;
  */
 final class IngestSignalEventAction
 {
+    public function __construct(private readonly SignalSpendGuard $spend) {}
+
     /**
      * Store an event, or recognise that it is already stored.
      *
@@ -52,6 +56,15 @@ final class IngestSignalEventAction
         SignalWebhookSecret $secret,
     ): array {
         $teamId = (int) $definition->team_id;
+
+        // **The plan switch** (S16 task 1), checked here rather than in `authorize()`: this is the
+        // one path where a refusal must not be the opaque `webhookRefused()`, because the caller is
+        // already authenticated as the team whose plan is being described — so there is no oracle
+        // to protect — and a machine integration refused without a reason is a support ticket.
+        //
+        // Before the insert and outside the transaction, so a refused event leaves no row, no
+        // `last_used_at` stamp and nothing for the next run to read.
+        $this->spend->assertWebhookSourceAllowed(Team::query()->findOrFail($teamId));
 
         try {
             $row = DB::transaction(function () use ($definition, $teamId, $idempotencyKey, $event, $payload, $secret): SignalInboundEvent {

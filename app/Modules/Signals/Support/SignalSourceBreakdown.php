@@ -183,6 +183,39 @@ final class SignalSourceBreakdown
     }
 
     /**
+     * How many of those queries went to a source we **pay** for (S16 review).
+     *
+     * `signal_runs.paid_queries_count`, and the reason it is a second figure rather than the same
+     * one: three of the five sources are free. Companies House shares Lead Sourcing's existing
+     * quota, and a feed and the webhook make no request we are billed for — all three configure
+     * `cost_micros_per_request => 0`. {@see self::totalQueriesAttempted()} is a *coverage* figure
+     * and is right to count them; the team's monthly allowance is a *cost* figure and metering it
+     * on coverage charged for requests that cost nothing, and produced overage on them.
+     *
+     * Decided by the configured price rather than by a list of source keys, so a source that
+     * becomes free — or one that starts costing — needs no change here.
+     */
+    public function totalPaidQueriesAttempted(): int
+    {
+        $paid = 0;
+
+        foreach ($this->rows as $key => $row) {
+            $kind = SignalSourceKind::tryFrom((string) $key);
+
+            // A key this build does not know is counted as paid: an unrecognised source is more
+            // likely one withdrawn between deploys than a free one, and under-counting an allowance
+            // is the expensive direction to be wrong in.
+            if ($kind instanceof SignalSourceKind && $kind->costMicrosPerRequest() <= 0) {
+                continue;
+            }
+
+            $paid += $row['queries'] + $row['rejected'] + $row['skipped'];
+        }
+
+        return $paid;
+    }
+
+    /**
      * The total metered cost across every source — what `signal_runs.cost_micros` must agree with
      * for the search half of a run.
      */

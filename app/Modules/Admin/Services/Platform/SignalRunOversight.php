@@ -117,7 +117,13 @@ final class SignalRunOversight
         $range->constrain($query, 'signal_runs.created_at');
 
         $total = (clone $query)->count();
-        $failed = (clone $query)->where('status', SignalRunStatus::Failed->value)->count();
+
+        // **Excluding the runs refused for a spent plan allowance** (S16 review). Those settle as
+        // `Failed` deliberately, because a team has to be able to see the cost event on the watch
+        // card — but a failure *rate* on this screen is read as "is the provider unwell", and every
+        // team on a ceiling would have been answering a question nobody asked. The per-status
+        // breakdown below still counts them, because that one is a census rather than a verdict.
+        $failed = (clone $query)->providerFailures()->count();
 
         return [
             'runs' => $total,

@@ -5,6 +5,62 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-04 — Signals: an allowance that means something, and nothing kept longer than it should be
+
+Signals has grown a lot in the last week, and every one of those additions was a new way to spend
+money on your behalf: a signal type is multiplied by every watch and every place it covers, a
+watchlist is a search for each company on it, a preview is a button that pays for searches, an
+automation is evaluated against every signal, and a feed is a request we make on your behalf to an
+address you chose. None of it was bounded by anything your plan could set. This is the release that
+fixes that, and it is deliberately boring — the best outcome here is that nobody notices.
+
+**Your plan now says what Signals may do, in eight numbers.** How many signal types and watches you
+may keep; how many companies on one watchlist; how many searches and how many previews a month; how
+much reading of full articles; and whether automations and the events API are included. The numbers
+for each plan are on the pricing page and your own are on **Plan & billing**, beside companies found
+and AI credits, as a bar with a figure on it.
+
+**And when a limit bites, you are told.** A watch that stops because the month's searches are gone
+says so, on the run, in a sentence you can act on — not an empty feed you have to work out for
+yourself. Near the ceiling a run gets **smaller rather than refused**, and says its coverage was
+trimmed: a team with twelve searches left gets a twelve-search run rather than nothing. Pressing
+"Run now" when there is nothing left tells you immediately and does not cost you your next press.
+Reading of full articles stops at its ceiling without stopping the signals, which keep arriving from
+the headline and the summary. On a paid plan, work continues past your included allowance and the
+extra is billed — up to twice the allowance, and no further, because an uncapped bill is not
+something anybody agreed to.
+
+**Nothing is kept longer than it needs to be.** Alima used to prune four of the tables behind
+Signals and now prunes all ten. Records that are about a person get the shortest window the product
+can work with: a dismissed signal after ninety days, an unactioned one after a hundred and eighty,
+and — new in this release — the record of what an automation did about somebody's event after a
+hundred and eighty, including for a signal that became a lead and is therefore never pruned itself.
+Figures that are about **cost** rather than people are kept far longer, because "what did Signals
+cost us last March" is a question asked in arrears. Everything else goes when the thing it was about
+goes: a preview's accounting row after a month, the tally for a news outlet nobody has seen for six
+months, and a watched company whose lead you deleted.
+
+**A data-subject request now reaches everywhere Signals holds a name.** It used to search the feed.
+It also searches the people on your watchlists — a name on a watchlist is a standing instruction to
+look for them, and erasing the stories while leaving the instruction would just find them again
+— and the body of any event one of your systems pushed to us, which we did not write and therefore
+have to read. The three are reported as three different kinds of record, because what somebody needs
+to be told is the difference between something we found, something we are looking for and something
+somebody else told us about them. Erasing a story that was one of several covering the same event
+now tidies that card up straight away, rather than at the following night's sweep.
+
+**You are not charged for the searches that cost us nothing.** Three of the five places Signals
+looks are free to us — Companies House, a feed you point us at, and events your own systems push —
+and the allowance counts only the ones we are billed for. A watchlist watched through the company
+register does not eat your month's searches.
+
+**Four smaller fixes you might have hit.** The signal-types and watchlist screens were showing the
+product's own maximum rather than your plan's, so a team allowed fifteen types was told
+twenty-five and found out by being refused. The "allowance is running low" message could have
+described your signal allowance as AI credit. The pricing line under your usage bars listed two
+things when there are now three. And if your plan stopped including automations, the only way to
+stop a rule being listed as live was to delete it — you can pause it now.
+
 ### Fixed — 2026-11-03 — Signals: the library and the round-up, hardened
 
 Review of the three features below found several things worth knowing about, and all of them are

@@ -60,7 +60,8 @@ const props = defineProps<{
             description: string;
         }[];
         stages: { id: number; name: string }[];
-        max_entries: number;
+        /** The team's plan's ceiling, or **null for no limit** (S16). */
+        max_entries: number | null;
         max_lists: number;
         /** How many accounts one check looks at, so the rotation can be explained rather than felt. */
         window: number;
@@ -420,9 +421,13 @@ function rotationDays(watchlist: SignalWatchlist): number {
             >
                 <div class="flex gap-1.5">
                     <dt>{{ t('Accounts') }}:</dt>
+                    <!-- Null is "no limit" (S16): an Enterprise plan declares no ceiling, and
+                         "12 / 9223372036854775807" is what sending one anyway looks like. -->
                     <dd dir="ltr">
-                        {{ watchlist.entries_count }} /
-                        {{ options.max_entries }}
+                        {{ watchlist.entries_count
+                        }}<template v-if="options.max_entries !== null">
+                            / {{ options.max_entries }}</template
+                        >
                     </dd>
                 </div>
                 <!-- The number alone, with the unit in the label: ":count days" cannot be
@@ -752,9 +757,11 @@ function rotationDays(watchlist: SignalWatchlist): number {
                         required
                         :error="namesForm.errors.names"
                         :hint="
-                            t('Up to :max on one list.', {
-                                max: options.max_entries,
-                            })
+                            options.max_entries === null
+                                ? t('One company per line.')
+                                : t('Up to :max on one list.', {
+                                      max: options.max_entries,
+                                  })
                         "
                     >
                         <template #default="{ id, describedBy, invalid }">

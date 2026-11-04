@@ -12,6 +12,7 @@ use App\Modules\Signals\Contracts\SignalOutreachDrafter;
 use App\Modules\Signals\Data\SignalPlaybookData;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalPlaybook;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -38,6 +39,7 @@ final class SaveSignalPlaybookAction
         private readonly TeamContext $teamContext,
         private readonly AuditLogger $audit,
         private readonly SignalOutreachDrafter $drafter,
+        private readonly SignalSpendGuard $spend,
     ) {}
 
     /**
@@ -50,6 +52,20 @@ final class SaveSignalPlaybookAction
         ?SignalPlaybook $playbook = null,
     ): SignalPlaybook {
         $this->assertComplete($data);
+
+        // **The plan switch** (S16 task 1): a team whose plan does not include automations cannot
+        // store one, or switch one back on.
+        //
+        // **Refused on an update too, but only one that would leave the rule running** (S16
+        // review). Refusing every update trapped a downgraded team: a rule stored before the
+        // downgrade is skipped by the evaluator and the only way to stop it being *listed* as live
+        // was to delete it, because the save path that would have paused it refused as well. A
+        // member must always be able to turn something off. So an edit that leaves the rule either
+        // inactive or rehearsing is allowed through — it cannot act — and only one that asks for it
+        // to perform is refused.
+        if ($playbook === null || $data->isActive && $data->mode->performs()) {
+            $this->spend->assertPlaybooksAllowed($team);
+        }
 
         return $this->teamContext->run($team, fn (): SignalPlaybook => DB::transaction(function () use ($team, $actor, $data, $playbook): SignalPlaybook {
             $attributes = $data->toAttributes();
@@ -76,7 +92,7 @@ final class SaveSignalPlaybookAction
                 return $playbook;
             }
 
-            $this->assertRoomForAnother($team);
+            $this->spend->assertRoomForPlaybook($team);
 
             /** @var SignalPlaybook $created */
             $created = SignalPlaybook::query()->create([
@@ -117,18 +133,6 @@ final class SaveSignalPlaybookAction
             // would have to render itself; the form path never reaches here, because its own
             // validator reported all of them at once against their fields.
             throw SignalsException::playbookIncomplete((string) reset($problems));
-        }
-    }
-
-    /**
-     * @throws SignalsException
-     */
-    private function assertRoomForAnother(Team $team): void
-    {
-        $max = max(1, (int) config('signals.playbooks.max_per_team', 10));
-
-        if (SignalPlaybook::query()->count() >= $max) {
-            throw SignalsException::tooManyPlaybooks($max);
         }
     }
 }

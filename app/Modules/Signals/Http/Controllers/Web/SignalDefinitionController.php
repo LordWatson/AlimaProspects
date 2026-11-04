@@ -39,6 +39,7 @@ use App\Modules\Signals\Policies\SignalDefinitionPolicy;
 use App\Modules\Signals\Services\PlatformPresetReader;
 use App\Modules\Signals\Services\PresetUpdateDiffer;
 use App\Modules\Signals\Services\SignalRoiReader;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use App\Modules\Signals\Support\SignalCostEstimate;
 use App\Modules\Signals\Support\SignalCostEstimator;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
@@ -82,6 +83,7 @@ final class SignalDefinitionController extends Controller
         CapabilityGate $capabilities,
         SignalRoiReader $roi,
         PresetUpdateDiffer $offers,
+        SignalSpendGuard $spend,
     ): Response {
         $team = $this->team($request);
         $user = $this->user($request);
@@ -146,14 +148,27 @@ final class SignalDefinitionController extends Controller
                     // quietly contribute nothing.
                     'needs_configuration' => $kind->needsConfiguration(),
                     'addresses_subject' => $kind->addressesSubject(),
-                ], SignalSourceKind::available()),
+                    // **Only the sources this team's plan actually includes** (`/code-review`). The
+                    // events API is a plan switch since S16, and offering it to a team whose plan
+                    // excludes it meant ticking a box, filling in the form and getting a 403 —
+                    // breaking the rule stated one field below about `max_definitions`: a number,
+                    // or an option, on a screen has to be the one the save path will apply.
+                ], array_values(array_filter(
+                    SignalSourceKind::available(),
+                    fn (SignalSourceKind $kind): bool => $kind !== SignalSourceKind::Webhook
+                        || $spend->allowsWebhookSource($team),
+                ))),
             ],
             // The floors that apply to a type that sets none, so the form's placeholders can say
             // what "leave this empty" actually means rather than showing a bare box.
             'defaults' => [
                 'min_confidence' => (int) config('signals.min_confidence', 60),
                 'min_relevance' => (int) config('signals.min_relevance', 40),
-                'max_definitions' => max(1, (int) config('signals.max_definitions_per_team', 25)),
+                // **The team's own ceiling, not the module's floor** (S16). The screen used to
+                // read `signals.max_definitions_per_team`, which is now only the fallback — so a
+                // team on a plan allowing fifteen was told twenty-five and found out by being
+                // refused. A number on a screen has to be the number the save path will apply.
+                'max_definitions' => $spend->allowanceFor($team)->maxDefinitions,
             ],
             // The cost of **one** template a month, for this team's actual watches. Sent per
             // template rather than as a total so the form can show the number changing as somebody

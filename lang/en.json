@@ -1294,6 +1294,8 @@
     "Drafted message": "Drafted message",
     "Logged approach": "Logged approach",
     "News signal": "News signal",
+    "Watched account": "Watched account",
+    "Reported event": "Reported event",
     "Do-not-contact entry": "Do-not-contact entry",
     "This is the provenance of a lead the team is working. Decide what happens to the lead first.": "This is the provenance of a lead the team is working. Decide what happens to the lead first.",
     "Removing this would let us contact them again. It holds a one-way hash, not their address.": "Removing this would let us contact them again. It holds a one-way hash, not their address.",
@@ -1579,7 +1581,6 @@
     ":used of :included used, and up to :ceiling allowed": ":used of :included used, and up to :ceiling allowed",
     "Switch any time — you only pay the difference for the days left.": "Switch any time — you only pay the difference for the days left.",
     "Go over and you pay for the extra rather than being stopped.": "Go over and you pay for the extra rather than being stopped.",
-    "Past your allowance you pay for the extra: :lead per company, :credit per :unit AI credits. Work stops at twice the allowance.": "Past your allowance you pay for the extra: :lead per company, :credit per :unit AI credits. Work stops at twice the allowance.",
     "Custom": "Custom",
     "Ask an Owner or Admin to update the card.": "Ask an Owner or Admin to update the card.",
     "Your plan: :plan": "Your plan: :plan",
@@ -2337,5 +2338,13 @@
     "See what changed in :name": "See what changed in :name",
     "Take back the offer of :name": "Take back the offer of :name",
     "You withdrew it": "You withdrew it",
-    ":count things happened. Here is the round-up.": "{1} One thing happened. Here is the round-up.|[2,*] :count things happened. Here is the round-up."
+    ":count things happened. Here is the round-up.": "{1} One thing happened. Here is the round-up.|[2,*] :count things happened. Here is the round-up.",
+    "Signal searches": "Signal searches",
+    "Watches stop looking for trigger events until the allowance resets or the plan changes.": "Watches stop looking for trigger events until the allowance resets or the plan changes.",
+    "Your signal allowance": "Your signal allowance",
+    "Past your allowance you pay for the extra, and work stops at twice the allowance:": "Past your allowance you pay for the extra, and work stops at twice the allowance:",
+    ":price per company": ":price per company",
+    ":price per :count AI credits": ":price per :count AI credits",
+    ":price per :count signal searches": ":price per :count signal searches",
+    "One company per line.": "One company per line."
 }

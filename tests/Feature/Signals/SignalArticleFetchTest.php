@@ -229,7 +229,12 @@ it('reads at most the configured number per run', function (): void {
 
 it('stops at the team’s monthly ceiling', function (): void {
     config()->set('signals.article_fetch.cost_micros_per_fetch', 2_000);
-    config()->set('signals.article_fetch.monthly_cap_micros', 2_000);
+
+    // **The plan's figure, not the module's config floor.** Since S16 the ceiling comes from
+    // `SignalQuotaSource`, and Billing's plan-backed source wins over
+    // `signals.article_fetch.monthly_cap_micros` — so capping that key alone would be capping the
+    // thing that gets overridden, and this test would quietly stop testing anything.
+    Billing::capSignalAllowance('article_fetch_micros', 2_000);
 
     $team = Team::factory()->create();
 

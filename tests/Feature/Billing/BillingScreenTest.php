@@ -76,8 +76,11 @@ it('syncs the meters on render, so the numbers are as of now', function (): void
     $this->actingAs($owner)->get('/billing')->assertOk();
 
     // A team whose Owner opens the screen once a month should still leave a meter row behind for
-    // the month, and the row should match what they were shown.
-    expect(UsageMeter::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->count())->toBe(2)
+    // the month, and the row should match what they were shown. One row per `BillingMetric`, so
+    // this count moves when a metric is added (S16 added signal searches) — asserted off the enum
+    // rather than a literal, because the number is not the thing being tested.
+    expect(UsageMeter::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->count())
+        ->toBe(count(BillingMetric::cases()))
         ->and(UsageMeter::query()->withoutGlobalScopes()
             ->where('team_id', $team->getKey())
             ->where('metric', BillingMetric::Leads->value)

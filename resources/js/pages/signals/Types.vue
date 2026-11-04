@@ -179,8 +179,12 @@ function explainer(definition: SignalDefinition): string {
         : definition.description;
 }
 
+// **Null is "no limit", not zero** (S16): an Enterprise plan declares no ceiling, and a team on one
+// is never at it.
 const atCeiling = computed(
-    () => props.definitions.length >= props.defaults.max_definitions,
+    () =>
+        props.defaults.max_definitions !== null &&
+        props.definitions.length >= props.defaults.max_definitions,
 );
 
 // --- The composer (S9) ------------------------------------------------------------------------
@@ -1369,7 +1373,10 @@ function confirmRemove(): void {
                     dir="ltr"
                 >
                     <span class="sr-only">{{ t('Signal types used') }}: </span>
-                    {{ definitions.length }} / {{ defaults.max_definitions }}
+                    {{ definitions.length
+                    }}<template v-if="defaults.max_definitions !== null">
+                        / {{ defaults.max_definitions }}</template
+                    >
                 </p>
             </div>
 
@@ -1377,7 +1384,9 @@ function confirmRemove(): void {
                  order. A member at the ceiling needs to know what to do, not just that they
                  cannot. -->
             <p
-                v-if="atCeiling && can.manage"
+                v-if="
+                    atCeiling && can.manage && defaults.max_definitions !== null
+                "
                 class="text-base text-muted-foreground"
                 data-test="at-ceiling"
             >

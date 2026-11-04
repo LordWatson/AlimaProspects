@@ -13,6 +13,7 @@ use App\Modules\Signals\Enums\WatchlistEntityType;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -38,6 +39,7 @@ final class AddWatchlistEntriesAction
     public function __construct(
         private readonly TeamContext $teamContext,
         private readonly AuditLogger $audit,
+        private readonly SignalSpendGuard $spend,
     ) {}
 
     /**
@@ -52,7 +54,8 @@ final class AddWatchlistEntriesAction
             throw SignalsException::watchlistIsSynced();
         }
 
-        $max = max(1, (int) config('signals.watchlist.max_entries', 250));
+        // The team's own ceiling (S16 task 2), which is their plan's once Billing is registered.
+        $max = $this->spend->maxWatchlistEntries($team);
 
         return $this->teamContext->run($team, fn (): array => DB::transaction(function () use ($team, $actor, $watchlist, $entries, $max): array {
             $taken = $watchlist->entries()->pluck('normalised_name')->all();

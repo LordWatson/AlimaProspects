@@ -166,6 +166,30 @@ the two deviations from the original design noted inline.
       without it a subject fingerprint would outlive every row it was derived from. The fingerprint
       is deliberately a company name and never a person's, which is why a signal naming only an
       individual is left unclustered rather than given a pseudonymous key nothing would sweep.
+    - **S16 gave a window to every other table the feature has** — ten in all, swept by the same
+      command. The windows are three different lengths because the tables answer three different
+      questions, and the **group** a table is in is what matters rather than the number:
+        - _A record about a person or a company_ gets the shortest window the product can live with.
+          That is the two signal windows above, plus **`signal_playbook_runs` at 180 days** — the
+          record of how an automation handled a prospect's event is data about that prospect. It
+          already dies **with** its signal by cascade; the window exists for the one case the
+          cascade cannot reach, which is a **converted** signal, never swept, whose log would
+          otherwise be kept for as long as the lead.
+        - _Cost history_ is kept in arrears: **`signal_runs` and `signal_definition_spend` at 400
+          days**. Both hold counts and money and name nobody. Only **finished** runs are swept, at
+          any age — a queued row is live state a worker is about to claim. `signals.signal_run_id`
+          is `nullOnDelete`, so a signal whose run is swept keeps its row and loses the link: the
+          signal is the record about a company and the run is the cost of having found it.
+        - _Working state_ is swept when the thing it was about goes, or on a rolling window.
+          **`signal_previews` at 30 days** (a draft hash, three counts and a cost — no headline, no
+          result); **`signal_source_stats` at 180 days from `last_seen_at`**, so an outlet the team
+          still reads is never swept however old the row is; **`signal_watchlist_entries`** on no
+          clock at all — an entry goes when the lead it mirrors goes, which the nightly pipeline
+          sync already does for a live list and deliberately does not for a **paused** one;
+          and **`signal_inbound_events` at 30 days** (S13b), the customer's own pushed body.
+        - Every sweep re-applies its eligibility query **at the `DELETE`**, through one shared
+          helper. Reading ids and then deleting by id alone is the bug this command has already had
+          once, and one helper is what stops the eleventh table reintroducing it.
 - **Data-subject rights.** `Signals\Services\SignalsPersonalDataExporter` locates
   signals by `subject_person_name` **within one team** (case-insensitive, with `LIKE`
   wildcards escaped so a name containing `%` searches for itself), for the Compliance
@@ -173,6 +197,52 @@ the two deviations from the original design noted inline.
   holds — there is no email or phone to report, because the module stores neither —
   with each row flagged `erasable`. `erase()` deletes the erasable matches and
   reports the rest.
+    - **Three tables since S16, not one**, because the feature grew two more places a name can sit
+      and a DSAR that searched one of three would be a false answer given confidently:
+        - **`signal_watchlist_entries`** can hold a _person_ (S10). A named individual on a
+          watchlist is a standing instruction to search the news for them, which is squarely the
+          sort of processing a subject would want stopped — and erasing the signals while leaving
+          the entry means the next run goes and finds them again, which is the one erasure outcome
+          worse than refusing. **Person entries only:** a company entry's name is a company, and
+          "J. Okafor Consulting" is a business whose name happens to contain a person's. Aliases are
+          searched too, because a subject held only under the name this team gave them is exactly
+          what a DSAR exists to surface.
+        - **`signal_inbound_events`** holds the body a customer pushed us, whole, for thirty days
+          (S13b). Alima did not choose what is in it, which is why it has to be searched: a request
+          saying "Jane Okafor has been appointed CFO" is personal data we are processing whether or
+          not our own classifier ever read it. The match is a contains-search over the serialised
+          JSON and therefore **over-reports** — the safe direction for candidates a human confirms,
+          and the right trade for erasure as well, since the row is a record of an HTTP request and
+          the signal it produced is a separate row with its own retention.
+          Each row carries a `record` key naming its table, and Compliance maps the three to **three
+          categories** — a news signal, a watched account and a reported event — because what a subject
+          needs to be told is the difference between something we found, something we are looking for,
+          and something somebody else told us about them.
+    - **An erasure repairs the cluster it broke, immediately.** Taking the article a cluster was
+      being shown as leaves the feed showing every remaining member as a separate card until the
+      nightly sweep reconciles it, and a subject access request is answered to a statutory deadline
+      rather than overnight. A cluster the erasure emptied is deleted, which is what stops its
+      company-name fingerprint outliving every row it came from.
+    - **Verified on MySQL, not only SQLite.** `tests/Feature/Signals/SignalsMysqlDialectTest.php`
+      runs the matching and the sweeps against the real engine, gated on an env var naming a
+      throwaway schema. It exists because the escape character in these very queries could not be a
+      backslash — in MySQL `'\'` is an unterminated string literal and in SQLite it is fine — a bug
+      that passed every test and would have failed every production query.
+    - **Two limits of the payload search, stated plainly.** Laravel's `array` cast serialises with
+      `json_encode`'s defaults, so on a driver with no native JSON type — SQLite, which the suite
+      runs on — an **Arabic** name is stored as `\u` escapes and a `LIKE` over the column matches
+      nothing. MySQL's `json` type normalises that away, so production is correct and only the
+      env-gated MySQL test demonstrates it; the three flat columns matched beside the payload
+      (`title`, `summary`, `source_name`) are plain strings and match either way, so the gap is an
+      event naming somebody only in a nested key **and** only in Arabic. And the export returns the
+      body **whole**, so an export answering for one person may contain a sentence about a
+      colleague — the alternative, redacting to the matching fragment, would mean telling a subject
+      less than we hold while claiming to have answered, which is the worse of the two failures, and
+      the human review step before anything is sent is what the design relies on instead.
+    - **One more limitation stated plainly:** erasing a _synced_ watchlist entry is undone by the
+      next pipeline sync if the `leads` row behind it survives. That row is Compliance's to erase, and
+      the same request's Leads Workspace pass is what handles it — so a request answered through
+      `EraseSubjectDataAction` covers both and one made by calling this exporter alone does not.
     - **Deviation from the original design:** a **converted** signal is reported but
       **not erased**. It is the provenance of a lead someone is actively working, and
       removing it would leave the team unable to say where that lead came from — the
@@ -218,4 +288,4 @@ DSAR identity-verification process for named individuals who are not our users.
 
 ## 6. Mapping to modules
 
-Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, no article body stored even behind S12's full-article fetch, own retention sweep + DSAR exporter, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID — **all built in Phase 11**, including the Signals UAE flag, which it honours at draft time as well as send time), Core (audit log), and Billing (nothing, but plan limits must not incentivise non-compliant volume).
+Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, no article body stored even behind S12's full-article fetch, a retention window on **every** one of its ten tables since S16 and a DSAR exporter reaching three of them, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID — **all built in Phase 11**, including the Signals UAE flag, which it honours at draft time as well as send time), Core (audit log), and Billing (nothing directly, but plan limits must not incentivise non-compliant volume — and since Signals S16 a plan is also what bounds how much news a team may have searched about named individuals, which makes the allowance a data-minimisation control as well as a margin one).

@@ -21,12 +21,14 @@ use App\Modules\Billing\Services\PlanLeadQuotaSource;
 use App\Modules\Billing\Services\PlanRegistry;
 use App\Modules\Billing\Services\PlanResolver;
 use App\Modules\Billing\Services\PlanSeatLimit;
+use App\Modules\Billing\Services\PlanSignalQuotaSource;
 use App\Modules\Billing\Services\StripeBillingGateway;
 use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\ModuleServiceProvider;
+use App\Modules\Signals\Contracts\SignalQuotaSource;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Http\Kernel;
@@ -39,11 +41,12 @@ use RuntimeException;
 /**
  * Billing & Plans module provider (Phase 16).
  *
- * This is where the three seams built in earlier phases are finally filled in. AI Platform's
- * `CreditSource`, Lead Sourcing's `LeadQuotaSource` and Auth's `SeatLimitSource` each shipped with
- * a permissive stub and a contract; replacing them here is a binding, not a change to any of those
- * modules — which is why nothing in AI Platform, Lead Sourcing or Auth imports
- * `App\Modules\Billing`. Registered **last** in bootstrap/providers.php so these bindings win.
+ * This is where the seams built in earlier phases are finally filled in. AI Platform's
+ * `CreditSource`, Lead Sourcing's `LeadQuotaSource`, Auth's `SeatLimitSource` and — since S16 —
+ * Signals' `SignalQuotaSource` each shipped with its own default and a contract; replacing them
+ * here is a binding, not a change to any of those modules, which is why nothing in AI Platform,
+ * Lead Sourcing, Auth or Signals imports `App\Modules\Billing`. Registered **last** in
+ * bootstrap/providers.php so these bindings win.
  */
 final class BillingServiceProvider extends ModuleServiceProvider
 {
@@ -101,6 +104,12 @@ final class BillingServiceProvider extends ModuleServiceProvider
         //  - **The AI credit allowance.** `StubCreditSource` is a *cost* guard every tenant has had
         //    since Phase 6 (`ai-platform.credits.*`), not a plan feature. Raise it there if it is
         //    in the way; it is deliberately not silently infinite.
+        //  - **Signals' own ceilings.** `StubSignalQuotaSource` reports the floors S6, S7, S10
+        //    and S12 shipped (`signals.max_watches_per_team` and the rest) for exactly the same
+        //    reason, which is why that stub is the one of the four that is not simply
+        //    unlimited: turning plan enforcement off must not turn four cost guards off with
+        //    it. What it does leave unbounded is the two monthly query allowances, which did
+        //    not exist before plans did.
         //  - **Plans themselves.** `PlanRegistry` and `PlanResolver` stay bound: the pricing page,
         //    the billing screen and platform reporting all still read what a team *is on*. Nothing
         //    *enforces* it.
@@ -117,10 +126,23 @@ final class BillingServiceProvider extends ModuleServiceProvider
                 ),
             );
 
-            // --- The three seams ---
+            // --- The four seams ---
             $this->app->bind(CreditSource::class, PlanCreditSource::class);
             $this->app->bind(LeadQuotaSource::class, PlanLeadQuotaSource::class);
             $this->app->bind(SeatLimitSource::class, PlanSeatLimit::class);
+
+            // Signals (S16) is the only one of the four that **decorates** rather than replaces:
+            // it answers eight figures instead of one, and a plan definition is allowed to be
+            // partial, so each figure a plan omits must leave the module's own floor standing
+            // rather than become unlimited. `extend` is what hands it the stub to fall back to —
+            // the same shape as the capability gate above and for the same reason.
+            $this->app->extend(
+                SignalQuotaSource::class,
+                fn (SignalQuotaSource $inner): SignalQuotaSource => new PlanSignalQuotaSource(
+                    $inner,
+                    $this->app->make(PlanResolver::class),
+                ),
+            );
         }
     }
 

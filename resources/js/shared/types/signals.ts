@@ -783,7 +783,8 @@ export type SignalDefinitionDefaults = {
     min_confidence: number;
     min_relevance: number;
     /** How many types this team may have. */
-    max_definitions: number;
+    /** The team's plan's ceiling, or **null for no limit** (S16). */
+    max_definitions: number | null;
 };
 
 /** The payload broadcast on `teams.{id}` as `signals.detected`. */

@@ -76,6 +76,23 @@ enum WatchlistSourceKind: string
     }
 
     /**
+     * The kinds a job rebuilds, as stored values — for a `whereIn` (S16's retention sweep).
+     *
+     * Derived from {@see self::isSynced()} rather than listed, so a third synced kind cannot be
+     * added to the enum and forgotten here. The distinction matters to the sweep: an entry with no
+     * lead is an **orphan** on a synced list and the normal case on a manual one.
+     *
+     * @return list<string>
+     */
+    public static function syncedValues(): array
+    {
+        return array_values(array_map(
+            static fn (self $kind): string => $kind->value,
+            array_filter(self::cases(), static fn (self $kind): bool => $kind->isSynced()),
+        ));
+    }
+
+    /**
      * @return list<self>
      */
     public static function offered(): array

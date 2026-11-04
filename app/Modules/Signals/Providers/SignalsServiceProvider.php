@@ -16,6 +16,7 @@ use App\Modules\Signals\Console\DispatchDueSignalWatchesCommand;
 use App\Modules\Signals\Console\PruneSignalsCommand;
 use App\Modules\Signals\Console\RescoreSignalsCommand;
 use App\Modules\Signals\Contracts\SignalOutreachDrafter;
+use App\Modules\Signals\Contracts\SignalQuotaSource;
 use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Events\SignalConverted;
@@ -48,6 +49,8 @@ use App\Modules\Signals\Services\SignalItemNormaliser;
 use App\Modules\Signals\Services\SignalLeadOriginProvider;
 use App\Modules\Signals\Services\SignalScorer;
 use App\Modules\Signals\Services\SignalSourceRegistry;
+use App\Modules\Signals\Services\SignalSpendGuard;
+use App\Modules\Signals\Services\StubSignalQuotaSource;
 use App\Modules\Signals\Services\WebhookSignalSource;
 use App\Modules\Signals\Services\WebSearchSignalSource;
 use App\Modules\Signals\Support\IgnoredDomains;
@@ -293,6 +296,9 @@ final class SignalsServiceProvider extends ModuleServiceProvider
             // the card would otherwise show a $40m deal beside a score that described the one
             // with no amount in it.
             $app->make(SignalScorer::class),
+            // And the spend guard, which owns the monthly article-fetch ceiling since S16 — the
+            // team's plan's figure once Billing is registered, the config cap otherwise.
+            $app->make(SignalSpendGuard::class),
         ));
 
         // `robots.txt`, read through the same SSRF-safe seam everything else fetches with. Bound
@@ -340,6 +346,21 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         // decorate: the question is "may this prospect be approached", and a default that answered
         // yes would be Signals settling a compliance question Outreach exists to settle.
         $this->app->bind(SignalOutreachDrafter::class, NoOutreachDrafting::class);
+
+        // **What a team may spend on Signals** (S16 task 1) — the fourth of the seams Billing fills
+        // in, and the same shape as `CreditSource`, `LeadQuotaSource` and `SeatLimitSource`. The
+        // default is this module's own config floors rather than "unlimited": those floors are cost
+        // guards the feature has shipped with since S6, so switching plan enforcement off must not
+        // switch them off too (see the stub's own docblock). Billing registers last and binds a
+        // plan-backed source over it; nothing here imports `App\Modules\Billing`.
+        $this->app->bind(SignalQuotaSource::class, StubSignalQuotaSource::class);
+
+        // **`scoped`, not `singleton`**, and the distinction is the one `PlanResolver` documents:
+        // the guard memoises a team's allowance, and a singleton would hold that memo for the life
+        // of a `queue:work` process — so the second watch run in that worker would be held to the
+        // first team's plan. `scoped` is one request or one job, which is exactly how long an
+        // allowance may be treated as fixed. Not `bind`, because the memo is the point.
+        $this->app->scoped(SignalSpendGuard::class);
 
         // Tell the Leads Workspace how to show a converted signal on the lead detail screen (S4).
         // The dependency points this way on purpose: Signals already knows about leads because it

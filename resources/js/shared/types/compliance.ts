@@ -75,6 +75,8 @@ export type SubjectDataCategory =
     | 'message'
     | 'attempt'
     | 'signal'
+    | 'watched_account'
+    | 'pushed_event'
     | 'suppression';
 
 /**

@@ -26,7 +26,6 @@ use App\Modules\Outreach\Enums\OutreachMessageStatus;
 use App\Modules\Outreach\Models\ContactAttempt;
 use App\Modules\Outreach\Models\OutreachMessage;
 use App\Modules\Reporting\Support\DateRange;
-use App\Modules\Signals\Enums\SignalRunStatus;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalRun;
@@ -825,8 +824,19 @@ final class PlatformRollup
         $signals = SignalRun::query()->withoutGlobalScopes()->whereBetween('created_at', [$from, $to]);
         $news = PlatformProvider::SerperNews->metricDimension();
 
+        // **A run refused for a spent plan allowance is not a provider failure** (S16 review). S16
+        // records that refusal as a `Failed` run on purpose — it is a cost event and the watch card
+        // is where a team should see it — but counting it here would make every team on a ceiling
+        // raise the platform's Serper failure rate once an hour per watch, and the alert an
+        // operator would then act on is about a provider that is perfectly healthy.
+        //
+        // Excluded by `error_code`, not by the message: the message is translated prose. Through
+        // `providerFailures()` rather than a `whereNotIn` here, because a null `error_code` does not
+        // match a `NOT IN` and almost every real failure has one — see the scope.
+        $providerFailures = (clone $signals)->providerFailures();
+
         $calls[$news] = (clone $signals)->count();
-        $failures[$news] = (clone $signals)->where('status', SignalRunStatus::Failed->value)->count();
+        $failures[$news] = $providerFailures->count();
         $cost[$news] = (int) (clone $signals)->sum('cost_micros');
 
         // Zeros are kept for the providers that have a ledger, so a provider that made no calls

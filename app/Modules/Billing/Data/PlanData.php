@@ -33,6 +33,12 @@ final class PlanData extends Data
         public readonly ?int $seats,
         public readonly ?int $leads,
         public readonly ?int $credits,
+        /**
+         * Paid signal searches a month (S16). Read from the plan's own `signals` block rather than
+         * from a key beside `leads` and `credits`, because the other seven figures a plan sets for
+         * Signals live there too and one of them split out would be the one that drifts.
+         */
+        public readonly ?int $signalQueries,
         /** Whether work continues past the allowance and is metered, or simply stops. */
         public readonly bool $overage,
         public readonly array $features,
@@ -56,6 +62,9 @@ final class PlanData extends Data
             seats: self::nullableInt($config['seats'] ?? null),
             leads: self::nullableInt($config['leads'] ?? null),
             credits: self::nullableInt($config['credits'] ?? null),
+            signalQueries: self::nullableInt(
+                is_array($config['signals'] ?? null) ? ($config['signals']['monthly_source_queries'] ?? null) : null,
+            ),
             overage: (bool) ($config['overage'] ?? false),
             features: $features,
         );
@@ -86,6 +95,11 @@ final class PlanData extends Data
             seats: $seats ?? $this->seats,
             leads: $leads ?? $this->leads,
             credits: $credits ?? $this->credits,
+            // **Not grantable, deliberately**: `plan_grants` has a column per allowance and signal
+            // searches has none, so there is nothing to read. A bespoke signal allowance is a line
+            // in `config/billing.php` under an Enterprise plan today; adding a column here without
+            // one to read would be a method that silently did nothing.
+            signalQueries: $this->signalQueries,
             overage: $this->overage,
             features: $this->features,
         );
@@ -99,6 +113,7 @@ final class PlanData extends Data
         return match ($metric) {
             BillingMetric::Leads => $this->leads,
             BillingMetric::AiCredits => $this->credits,
+            BillingMetric::SignalQueries => $this->signalQueries,
         };
     }
 

@@ -34,6 +34,26 @@ enum SubjectDataCategory: string
     /** A published-news signal naming them (Signals module, §5a). */
     case Signal = 'signal';
 
+    /**
+     * A standing instruction to watch the news for them by name (Signals S10, added in S16).
+     *
+     * Its own category rather than a second kind of `Signal`, and the difference is the one a
+     * subject would care about most: a signal is something we *found* and this is something we are
+     * *looking for*. Erasing the signals and leaving the watchlist entry would mean the next run
+     * went and found them again, which is the one erasure outcome that is worse than refusing.
+     */
+    case WatchedAccount = 'watched_account';
+
+    /**
+     * An event about them that one of our customers pushed to us (Signals S13b, added in S16).
+     *
+     * Distinct from `Signal` because the provenance is different and the subject is entitled to
+     * know which: a signal points at a published article anybody can read, and this is an assertion
+     * a named business made to us privately. "Where did you get that?" has two different answers,
+     * and only one of them is a link.
+     */
+    case PushedEvent = 'pushed_event';
+
     /** Their entry on the do-not-contact list. */
     case Suppression = 'suppression';
 
@@ -45,6 +65,8 @@ enum SubjectDataCategory: string
             self::Message => 'Drafted message',
             self::Attempt => 'Logged approach',
             self::Signal => 'News signal',
+            self::WatchedAccount => 'Watched account',
+            self::PushedEvent => 'Reported event',
             self::Suppression => 'Do-not-contact entry',
         };
     }

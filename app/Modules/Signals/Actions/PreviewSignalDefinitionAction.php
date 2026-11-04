@@ -32,6 +32,7 @@ use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalJurisdictionResolver;
 use App\Modules\Signals\Services\SignalQueryBuilder;
 use App\Modules\Signals\Services\SignalSourceRegistry;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use App\Modules\Signals\Support\IgnoredDomains;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
@@ -102,6 +103,7 @@ final class PreviewSignalDefinitionAction
         private readonly IgnoredDomains $ignored,
         private readonly TeamContext $teamContext,
         private readonly AiUsageLogger $usage,
+        private readonly SignalSpendGuard $spend,
     ) {}
 
     /**
@@ -152,7 +154,7 @@ final class PreviewSignalDefinitionAction
         // takes seconds, so without this every member of a team pressing at once read the same
         // "remaining" and all of them spent. The lock is held only across the two cheap statements,
         // not across the searches — the reservation is what bounds the rest.
-        $preview = $this->reserve($team, $actor, $definition, $searchCostMicros);
+        $preview = $this->reserve($team, $actor, $definition, $searchCostMicros, count($plan->queries));
 
         try {
             // --- External work, outside any transaction ---
@@ -221,6 +223,7 @@ final class PreviewSignalDefinitionAction
         User $actor,
         SignalDefinition $definition,
         int $searchCostMicros,
+        int $queries,
     ): SignalPreview {
         // The facade rather than an injected store, because `lock()` is on the cache *store* and
         // not on the `Repository` contract — the same reason `DB::transaction()` is a facade here.
@@ -231,6 +234,13 @@ final class PreviewSignalDefinitionAction
         $lock->block(5);
 
         try {
+            // **Two ceilings on one button, and they are different questions** (S16 task 2). The
+            // monthly one is what the plan sets; the daily one below is what stops twelve members,
+            // each inside their own rate limit, emptying it in an afternoon. Both inside the lock,
+            // and both reserved below rather than merely checked — which is what makes the lock
+            // worth holding: a check against a figure the row does not yet carry is a
+            // read-then-write however tight the lock is (found in the S16 review).
+            $this->spend->assertPreviewQueriesRemain($team);
             $this->assertBudgetRemains($team);
 
             return $this->teamContext->run($team, fn (): SignalPreview => DB::transaction(
@@ -238,9 +248,14 @@ final class PreviewSignalDefinitionAction
                     'team_id' => $team->getKey(),
                     'created_by' => $actor->getKey(),
                     'draft_hash' => $this->draftHash($definition),
-                    // The searches are about to happen, so their cost is already owed. The AI's is
-                    // added when the preview settles.
-                    'queries_count' => 0,
+                    // **Both figures are reserved, not left to the settle.** The searches are about
+                    // to happen, so their cost and their count are already owed — and
+                    // `signal_previews.queries_count` is what the *monthly* plan allowance is
+                    // measured over, so booking a zero here meant a preview in flight counted for
+                    // nothing, concurrent presses all read the same remaining figure, and a preview
+                    // that threw before settling was never counted at all (found in the S16
+                    // review). `settle()` overwrites both with what actually happened.
+                    'queries_count' => $queries,
                     'results_count' => 0,
                     'kept_count' => 0,
                     'cost_micros' => $searchCostMicros,

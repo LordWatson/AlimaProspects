@@ -13,6 +13,7 @@ use App\Modules\Signals\Jobs\SyncPipelineWatchlistsJob;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\BillingFixtures as Billing;
 use Tests\Support\LeadsWorkspaceFixtures as Fixtures;
 
 uses(RefreshDatabase::class);
@@ -78,7 +79,9 @@ it('shows the team’s lists, their accounts and what one check covers', functio
             // to type it.
             ->missing('watchlists.0.entries.0.normalised_name')
             ->has('options.source_kinds', 2)
-            ->where('options.max_entries', 250)
+            // **The team's plan's ceiling, not the module's config floor** (S16): the screen
+            // has to show the number the save path will actually apply.
+            ->where('options.max_entries', (int) config('billing.plans.team.signals.max_watchlist_entries'))
             // How many accounts one run looks at, so the rotation can be explained on screen.
             ->where('options.window', 40)
             ->where('can.manage', true));
@@ -433,7 +436,8 @@ it('keeps the most recently worked accounts when the pipeline outgrows the cap',
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
 
-    config()->set('signals.watchlist.max_entries', 2);
+    // The plan's figure — see `BillingFixtures::capSignalAllowance`.
+    Billing::capSignalAllowance('max_watchlist_entries', 2);
 
     pipelineLead($team, 'Worked today Ltd', null, hoursAgo: 1);
     pipelineLead($team, 'Worked yesterday Ltd', null, hoursAgo: 25);

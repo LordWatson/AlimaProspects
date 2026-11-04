@@ -1,8 +1,13 @@
-# Runbook — demoing Signals (UAE v1)
+# Runbook — demoing Signals (v2, UK + UAE)
 
 > For whoever is sitting in front of the Dubai real-estate client. Signals is the feature they
 > asked for, and it is the one that is easiest to oversell — this is how to show it honestly.
 > See `docs/modules/signals.md` for how it works and ADR 0011 for why it is built this way.
+>
+> **Updated for v2 (S7–S16).** The v1 script below still works and is still the right order; §4a,
+> §4b and §4c are the parts that close, and §5a is the plan conversation you will be asked for in
+> the same meeting. If you are short of time, do §4 and §4a and stop: a half-shown playbook is
+> worse than no playbook.
 
 ---
 
@@ -162,6 +167,42 @@ the hand-written form are on every plan, the **AI drafting** is not.
 
 ---
 
+## 4b. The accounts they already care about (S10) — three minutes
+
+The builder shows Alima looking for what they decided. This shows it looking at **who** they
+decided, which for most clients is the more obvious sell.
+
+1. **Signals → Watchlists → New list.** Choose **"Follow my pipeline"** and pick the stages. Say:
+   _"you don't type this list; it is your own pipeline, and it keeps itself up to date overnight."_
+2. **Point a watch at the list** instead of at places. The watch form offers one or the other and
+   never both — say why, because it is a good answer: _"a list of a hundred companies across four
+   cities would be four hundred searches a day, so Alima makes you pick the question."_
+3. **Show the rotation**, which they will ask about. A run searches about forty accounts and the
+   next one carries on from where it stopped — so 250 accounts are covered every six days or so,
+   rather than the first forty being searched every day and the rest never.
+4. **If the account has a matched signal**, open it: the card says which of **their own leads** the
+   event is about, in words, with the confidence spelled out. **"Convert anyway" is a real button**
+   on a weak match — say so. Alima will not pin an event to the wrong company quietly.
+
+## 4c. One event, one card, and a rule that acts (S11, S12, S14) — four minutes
+
+1. **Find a clustered card in the feed.** A story covered by six outlets is **one** card that says
+   so, and expanding it lists the coverage. Say: _"you get the event once, not six times — and the
+   article we show you is the first report, not the last re-write."_
+2. **Open "Why am I seeing this?"** The score is broken down into its components, with the ones
+   Alima could not judge **left out of the average rather than counted as zero**. This is the
+   sentence to use: _"it explains the decision it actually took, not the one today's settings would
+   take."_
+3. **Signals → Automations.** Build one rule live — _when a funding round lands for a company on my
+   pipeline list, assign it to me, tag it, and draft an intro for review_ — and **press Preview**,
+   which shows what it would have done to last week's signals and spends nothing.
+4. **Then set it to Rehearse, not Live**, and say why in one sentence, because this is the part a
+   cautious buyer needs to hear: _"for the first week it tells you what it would have done and does
+   nothing. When you believe it, you switch it on."_
+5. **Say the hard limit out loud:** a rule can **prepare** an approach and can never send one. Not a
+   setting, not a plan tier — there is no send button in the automation at all. Section 5 is where
+   that matters.
+
 ## 5. How to talk about compliance (do not improvise this)
 
 The client is in the UAE, so **PDPL applies**, and the honest answer is a strength rather than an
@@ -189,6 +230,33 @@ per-team export and erase for exactly that (see `docs/modules/compliance-privacy
 
 ---
 
+## 5a. When they ask what it costs (S16) — have this answer ready
+
+Every search Signals makes costs us money, so a plan carries an allowance and the product
+**enforces it rather than trusting anybody to be reasonable**. Say that plainly; a buyer who has
+been burned by a usage-based tool will believe a product that admits to having a ceiling long
+before one that claims not to need one.
+
+What is true, and safe to say:
+
+- **A plan sets eight things**: how many signal types and watches they may keep, how many accounts
+  on a watchlist, how many searches and previews a month, how much full-article reading, and whether
+  automations and the events API are included. The numbers for each plan are on the pricing page.
+- **A team at a monthly ceiling is told, on the run**, with a sentence they can act on — not a
+  silent empty feed. Watches start again when the month resets, or sooner on a larger plan.
+- **Near the ceiling, a run gets smaller rather than refused.** A team with twelve searches left
+  gets a twelve-search run that says its coverage was trimmed. Nothing stops dead with allowance
+  left on the table.
+- **Their allowance is on `/billing`**, beside leads and AI credits, as a bar with a number.
+- **A paid plan keeps working past its included allowance** and is billed for the excess, up to
+  twice the allowance. That cap is deliberate and worth volunteering: _"we will not hand you an
+  invoice you did not agree to."_
+
+**Do not say** that we will raise a limit for them in the meeting (that is a plan change, which is a
+pricing conversation), that overage for signal searches is being billed today (the price is set and
+the meter is not yet connected — see `docs/modules/billing-plans.md`), or that the allowance is
+visible on the Signals screens (it is on the billing screen only, for now).
+
 ## 6. When it goes wrong, live
 
 | What you see                                        | What it means                                                    | What to say / do                                                                                        |
@@ -215,17 +283,34 @@ before it shipped; the feed with filters; convert-to-lead into the existing pipe
 and scoring; dismiss with reasons; English and Arabic with full RTL; the API for their own tooling;
 retention and the data-subject export.
 
+**Also safe to promise, added in v2 and worth leading with:** **watchlists** over the accounts they
+already care about, including one that mirrors their own pipeline and keeps itself current (S10);
+**one card per event** however many outlets covered it, with the coverage listed (S11); a **ranked
+feed that explains each card's score** and proposes its own tuning without ever applying it (S12);
+**Companies House filings** and **their own RSS feeds** as signal sources, plus an **events API**
+they can push their own observations to (S13); **automations** that convert, assign, tag, task,
+notify and **draft an approach for review** — with a rehearsal mode and no send button anywhere
+(S14); a **weekly round-up email** that names the week's events rather than counting them, and a
+**per-type cost and conversion figure** so they can retire a type that is not earning its keep
+(S15); and a **plan allowance that is actually enforced**, with a sentence when it bites (S16, §5a).
+
+**Full-article reading exists but is off** by default and per deployment, not per plan — so do not
+show it and do not promise it unless somebody has turned it on for that environment.
+
 **Do not promise:** AI drafting on the cheaper plans (the library and the hand-written form are
 on every plan with Signals; the composer is not), previewing a whole watch rather than a sample from
-one place, unlimited previews (ten an hour each, plus a daily team ceiling),
-anywhere outside the UAE and the UK (Saudi, the US, India and Singapore are
-written and deliberately switched off until the legal position for each is taken — say "not yet",
-and do not offer a date), **Companies House filings** (the UK types read news, so a change of
-control shows up when a journalist writes about it; the registry itself is S13), Arabic-language
-_queries_ (the UI is Arabic and a watch can search Arabic-language news, but the search terms
-themselves are English until the templates are written by a native speaker), full-article reading
-(signals come from the headline and snippet, so amounts are best-effort), a weekly email digest,
-or contact details. Those are on the plan in `signals-v2-plan.md` — say "that's on the roadmap",
+one place, unlimited previews or unlimited searches (there is a monthly allowance per plan and an
+hourly limit per member — §5a), anywhere outside the UAE and the UK (Saudi, the US, India and
+Singapore are written and deliberately switched off until the legal position for each is taken — say
+"not yet", and do not offer a date), **Companies House filings on a topical watch** (the registry
+can only be polled per company, so it runs on a **watchlist** watch; a topical watch ticking it gets
+nothing and no error, and the type form says so), **a pushed event appearing instantly** (it is read
+by the next run of a watch, and an event pushed to a type nobody has attached to a watch is never
+classified at all), **anything in an automation that sends** (it drafts; Outreach sends, through its
+own consent guard), Arabic-language _queries_ (the UI is Arabic and a watch can search
+Arabic-language news, but the search terms themselves are English until the templates are written by
+a native speaker), or contact details. Those are either deliberate positions — see
+`docs/modules/signals.md` → "Known limitations" — or on the roadmap; say "that's on the roadmap",
 not "we can do that".
 
 **If they ask about multiple countries, say the honest version**, because it is the better story: a

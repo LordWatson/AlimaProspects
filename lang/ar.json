@@ -1294,6 +1294,8 @@
     "Drafted message": "رسالة مُصاغة",
     "Logged approach": "تواصل مُسجَّل",
     "News signal": "إشارة خبرية",
+    "Watched account": "حساب مُراقَب",
+    "Reported event": "حدث مُبلَّغ عنه",
     "Do-not-contact entry": "مُدخل عدم تواصل",
     "This is the provenance of a lead the team is working. Decide what happens to the lead first.": "هذا هو مصدر عميل محتمل يعمل عليه الفريق. حدّد أولًا ما سيحدث لذلك العميل.",
     "Removing this would let us contact them again. It holds a one-way hash, not their address.": "إزالته تتيح لنا التواصل معه مرة أخرى. وهو يحتفظ ببصمة أحادية الاتجاه، لا بعنوانه.",
@@ -1579,7 +1581,6 @@
     ":used of :included used, and up to :ceiling allowed": "استُهلك :used من :included، ويُسمح حتى :ceiling",
     "Switch any time — you only pay the difference for the days left.": "غيّر متى شئت — لا تدفع إلا فرق الأيام المتبقية.",
     "Go over and you pay for the extra rather than being stopped.": "إن تجاوزت الحصة تدفع مقابل الزائد بدل أن تتوقف.",
-    "Past your allowance you pay for the extra: :lead per company, :credit per :unit AI credits. Work stops at twice the allowance.": "بعد حصتك تدفع مقابل الزائد: :lead لكل شركة، و:credit لكل :unit رصيد ذكاء اصطناعي. ويتوقف العمل عند ضعف الحصة.",
     "Custom": "مخصّص",
     "Ask an Owner or Admin to update the card.": "اطلب من مالك أو مدير تحديث البطاقة.",
     "Your plan: :plan": "خطتك: :plan",
@@ -2337,5 +2338,13 @@
     "See what changed in :name": "اطّلع على ما تغيّر في :name",
     "Take back the offer of :name": "اسحب اقتراح :name",
     "You withdrew it": "سحبتَ هذا الاقتراح",
-    ":count things happened. Here is the round-up.": "{1} حدأ أمر واحد. هذه هي الخلاصة.|[2,10] حدثت :count أمور. هذه هي الخلاصة.|[11,*] حدث :count أمرًا. هذه هي الخلاصة."
+    ":count things happened. Here is the round-up.": "{1} حدأ أمر واحد. هذه هي الخلاصة.|[2,10] حدثت :count أمور. هذه هي الخلاصة.|[11,*] حدث :count أمرًا. هذه هي الخلاصة.",
+    "Signal searches": "عمليات بحث الإشارات",
+    "Watches stop looking for trigger events until the allowance resets or the plan changes.": "تتوقف المراقبات عن البحث عن الأحداث المحفزة حتى تُعاد تعيين الحصة أو تتغير الخطة.",
+    "Your signal allowance": "حصة الإشارات الخاصة بك",
+    "Past your allowance you pay for the extra, and work stops at twice the allowance:": "بعد استنفاد حصتك تدفع مقابل الزيادة، ويتوقف العمل عند ضعف الحصة:",
+    ":price per company": ":price لكل شركة",
+    ":price per :count AI credits": ":price لكل :count رصيد من أرصدة الذكاء الاصطناعي",
+    ":price per :count signal searches": ":price لكل :count عملية بحث عن الإشارات",
+    "One company per line.": "شركة واحدة في كل سطر."
 }

@@ -252,6 +252,15 @@ Two conventions worth knowing:
 
 - **A record on another team is `404`, never `403`.** Whether it exists is itself not yours to know.
   A `403` means "you, on this team, may not do this" — a different answer, and a different fix.
+- **A plan limit is a `429` or a `403`, and the two mean different things to a client.** `429` is a
+  _spent allowance_ — the month's signal searches are gone, today's preview budget is — so a retry
+  is pointless now and sensible later; `403` is a _plan does not include it_ — signal automations,
+  the events API — so a retry is pointless until somebody buys something. A standing ceiling (too
+  many watches, too many signal types) is a `422`, because the fix is to remove one. Signals' codes
+  for these are `signals.source_quota_spent`, `signals.preview_quota_spent`,
+  `signals.playbooks_unavailable`, `signals.webhook_source_unavailable` and the five
+  `signals.too_many_*` (S16). **No route changed and no version was bumped** — a new error code is
+  additive by §2.
 - **The envelope is scoped to `api/*` by path, not by `Accept`.** Inertia requests also expect JSON
   and every form in the web app reads its error bag from Laravel's native `{message, errors}`;
   widening the envelope to all JSON would break every one of them silently.

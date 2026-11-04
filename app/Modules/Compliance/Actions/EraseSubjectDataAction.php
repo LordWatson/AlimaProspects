@@ -180,10 +180,30 @@ final class EraseSubjectDataAction
         }
 
         // Signals answers for itself, by name, and decides what it may erase (§5a). Only asked
-        // when the member confirmed at least one signal, for the same reason the intersection
-        // above exists: its match is a name match too.
-        if ($report->matchedOn === 'name' && $this->ids($report, SubjectDataCategory::Signal, $confirmedIds) !== []) {
-            $counts[SubjectDataCategory::Signal->value] = (int) $this->signals->erase($team, $report->query)['erased'];
+        // when the member confirmed at least one of its records, for the same reason the
+        // intersection above exists: its match is a name match too.
+        //
+        // **One call for all three of its categories** (S16). The module erases by name across its
+        // signals, its watchlists and its pushed events in one pass — it is the only thing that
+        // knows a converted signal is a lead's provenance and must survive — so asking three times
+        // would do the work once and report it three times.
+        $signalCategories = [
+            SubjectDataCategory::Signal,
+            SubjectDataCategory::WatchedAccount,
+            SubjectDataCategory::PushedEvent,
+        ];
+
+        $confirmedAnySignalRecord = array_filter(
+            $signalCategories,
+            fn (SubjectDataCategory $category): bool => $this->ids($report, $category, $confirmedIds) !== [],
+        ) !== [];
+
+        if ($report->matchedOn === 'name' && $confirmedAnySignalRecord) {
+            $erased = $this->signals->erase($team, $report->query);
+
+            $counts[SubjectDataCategory::Signal->value] = $erased['erased'];
+            $counts[SubjectDataCategory::WatchedAccount->value] = $erased['watchlist_entries_erased'];
+            $counts[SubjectDataCategory::PushedEvent->value] = $erased['inbound_events_erased'];
         }
 
         return $counts;

@@ -943,53 +943,53 @@ means something, the new tables obey retention and DSAR, and the documentation t
 
 ### Tasks
 
-1. [ ] **`Signals\Contracts\SignalQuotaSource`** with a permissive `StubSignalQuotaSource` as
+1. [x] **`Signals\Contracts\SignalQuotaSource`** with a permissive `StubSignalQuotaSource` as
        the module default, and **Billing binding the real one over it** — the exact pattern
        `CreditSource` / `LeadQuotaSource` / `SeatLimitSource` already follow, with Billing
        registered last, so no module imports `App\Modules\Billing` (`CLAUDE.md` §3). Limits:
        `max_definitions`, `max_watches` (move the S7 config floor here),
        `max_watchlist_entries`, `monthly_source_queries`, `monthly_preview_queries`,
        `article_fetch_micros`, `playbooks_enabled`, `webhook_source_enabled`.
-2. [ ] **Enforcement in the guards, not in middleware** (ADR 0012) — a `SignalSpendGuard` asked
+2. [x] **Enforcement in the guards, not in middleware** (ADR 0012) — a `SignalSpendGuard` asked
        by `RunSignalWatchAction`, `TriggerSignalWatchAction`, `PreviewSignalDefinitionAction`,
        the sync job and every source provider. A scheduled watch and a queued job have no request
        behind them, so a middleware limit would miss exactly the spend that matters. A team at
        its ceiling gets a **clean refusal recorded on the run**, not a half-run.
-3. [ ] **`usage_meters` gains signal measures as a record over the ledgers** — never a counter
+3. [x] **`usage_meters` gains signal measures as a record over the ledgers** — never a counter
        the app increments (ADR 0012). `signal_runs`, `signal_previews` and the per-source
        breakdown are the ledgers; the meter is derived from them.
-4. [ ] **Plan definitions** in `config/billing.php` for every tier, plus
+4. [x] **Plan definitions** in `config/billing.php` for every tier, plus
        `Capability::SignalComposer` and any other new capability wired into the one
        `CapabilityGate`, with its enforcement point documented in the enum (the existing rule: a
        capability that is not actually enforced does not get a case).
-5. [ ] **Retention for every new table** — extend `SignalRetention` and `signals:prune`:
+5. [x] **Retention for every new table** — extend `SignalRetention` and `signals:prune`:
        `signal_previews` (30 days), `signal_rejections` (30 days), `signal_runs` (longer; it is
        cost history), `signal_playbook_runs` (180 days), `signal_source_stats` (rolling),
        `signal_watchlist_entries` (with their lead), `signal_clusters` (with their last member).
        Chunked, idempotent, counts-only logging, `--dry-run`, and the
        **re-apply-the-guards-at-delete-time** rule from the S6 fix (read ids then delete by id
        alone is the bug that already bit once).
-6. [ ] **DSAR and erasure across the new surface** — `SignalsPersonalDataExporter` must find a
+6. [x] **DSAR and erasure across the new surface** — `SignalsPersonalDataExporter` must find a
        data subject in `signal_watchlist_entries` and in clustered signals, and erasure must
        clear them. Mind the `LIKE ... ESCAPE` lesson already recorded in the module doc, and
        **test against MySQL**, not only SQLite (`memory/sqlite-tests-mysql-prod.md`).
-7. [ ] **`security:posture` and the CSP** — a new screen needing an inline script takes
+7. [x] **`security:posture` and the CSP** — a new screen needing an inline script takes
        `Vite::cspNonce()`; a new third-party host goes in `SECURITY_CSP_EXTRA_*`, never into a
        loosened directive (ADR 0017). New expected refusals go in `sentry.ignore_exceptions`
        **with a comment** — and never the base `DomainException`.
-8. [ ] **API v1 final sweep** — every new route named, `auth:sanctum`, scoped with an `ability:`
+8. [x] **API v1 final sweep** — every new route named, `auth:sanctum`, scoped with an `ability:`
        from `TokenAbility`, present in `openapi.json`, paginated via `PaginatedIndexRequest`,
        errors through `Core\Http\Responses\ApiError` only. `RouteContractTest` and
        `AdminRouteContractTest` are the gates. Bump the API version **only if something broke**
        (ADR 0013); document the additions in `docs/api/README.md`.
-9. [ ] **Docs, properly** — rewrite `docs/modules/signals.md` for v2 (purpose, code map, data
+9. [x] **Docs, properly** — rewrite `docs/modules/signals.md` for v2 (purpose, code map, data
        model ER diagram, key flows, the new limitations, a Changelog row per phase); update
        `docs/architecture.md`, `docs/compliance.md`, `docs/runbooks/signals-demo.md` (a v2 demo
        script: compose → preview → watchlist → cluster → playbook), `CHANGELOG.md`,
        `signals-plan.md` (point its backlog at this file and tick off what landed), `mvp.md`, and
        `CLAUDE.md` §3/§5 with ADRs 0018–0020. Strike every "Known limitations" entry this plan
        closed, and be honest about the ones it did not.
-10. [ ] **Final reviews** — `laravel-module-reviewer` over the whole module, `security-review`
+10. [x] **Final reviews** — `laravel-module-reviewer` over the whole module, `security-review`
         over the webhook, feed, composer and preview paths, `brand-reviewer` over every new
         screen, and `/code-review` at a high effort level across the branch. Fix the findings,
         and record what was accepted and why, the way ADR 0017 and
@@ -1030,12 +1030,210 @@ that stops a team running a £900 Serper bill on a Tuesday. Do not skip it.
 | S13b  | Companies House, RSS feeds, inbound webhook     | ☑ **Done** 2026-11-03 | S13a         |
 | S14   | Playbooks                                       | ☑ **Done** 2026-11-03 | S7, S10, S12 |
 | S15   | Delivery, ROI & curated library                 | ☑ **Done** 2026-11-03 | S9, S12      |
-| S16   | Cost governance, limits, retention & close-out  | ☐ Not started         | S7–S15       |
+| S16   | Cost governance, limits, retention & close-out  | ☑ **Done** 2026-11-04 | S7–S15       |
+
+**All of it shipped**, 2026-11-02 to 2026-11-04. The release advice below is kept as the record of
+what the plan thought the shape of a cut-down v2 would be.
 
 **Minimum viable v2:** S7 + S8 + S9 + S16 — the ask, made safe to sell.
 **Recommended first release:** S7–S11 + S16 — definitions, geography, the builder, account
 monitoring and clustering, which together change what the feature _is_. S12–S15 then compound
 on it.
+
+## S16, as shipped — one deviation, one decision the plan left open, and three bugs in other modules
+
+**Read `docs/modules/signals.md` → "S16 — cost governance, limits, retention and close-out" first.**
+All ten tasks landed as written. No new ADR, as this plan predicted: every decision here is an
+application of ADR 0012 (limits bite in the guards), ADR 0013 (no route changed, so no version
+bump), ADR 0015 (a capability that is not enforced does not get a case) and ADR 0017 (an expected
+refusal is filtered by type). Five things are worth recording.
+
+### 1. The deviation: the stub is not permissive, and it had to not be
+
+Task 1 asked for "a permissive `StubSignalQuotaSource` as the module default — the exact pattern
+`CreditSource` / `LeadQuotaSource` / `SeatLimitSource` already follow". Those three stubs are flatly
+unlimited. This one is not, and following the letter of the task would have made the phase
+**remove** four ceilings in the name of adding governance: the three standing ceilings in the stub
+are the floors S6, S7 and S10 shipped, so an installation with `BILLING_ENFORCE_PLANS=false` would
+have become one where a script can create two hundred watches.
+
+So the stub reports the module's own config floors, and the argument is one `config/billing.php`
+already makes in prose about the AI credit allowance: **a cost guard every tenant has had since the
+feature shipped is not a plan feature**, and switching plan enforcement off must not switch it off
+too. What the stub _is_ permissive about is the two monthly query allowances and the two switches,
+because none of those existed before this phase and there is no floor to keep.
+
+The same paragraph in the task said to "move the S7 config floor here", which is exactly what this
+is — the floor moved out of `SaveSignalWatchAction` and into the seam, where a plan can override it.
+"Permissive" and "move the floor here" were in tension in the task, and this is the reading that
+keeps the product safe.
+
+### 2. The decision the plan left open: three states per figure, not two
+
+A plan definition is allowed to be partial, so `PlanSignalQuotaSource` **decorates** rather than
+replaces — the first of the four to do so, because it answers eight figures rather than one. Which
+forces a question the plan did not ask: what does `null` mean in a plan's `signals` block?
+
+It cannot mean one thing, because both readings are needed. `config/billing.php` already reads a
+null `seats` or `leads` as **unlimited**, and the Enterprise plan has to be able to say that. But a
+plan that has simply not taken a position on `max_watchlist_entries` must fall back to the module's
+floor rather than become unlimited, or a half-written plan definition silently uncaps four
+dimensions.
+
+So there are **three** states and all three are used: a number, an explicit `null` meaning
+_unlimited_ and winning over the floor, and an **absent key** meaning no position taken, which is
+the only one that reaches the floor. This was caught by a test rather than by reasoning — the first
+implementation collapsed the last two, and an Enterprise plan spelling out `'max_watches' => null`
+was held to the module's ten with the config saying otherwise a line above. `BillingFixtures` has
+`capSignalAllowance()` and `forgetSignalAllowance()` as two helpers for the same reason: the
+difference is invisible at a call site otherwise.
+
+### 3. A refusal recorded on the run, and a refusal that leaves no row — both, deliberately
+
+The plan asked for "a clean refusal recorded on the run, not a half-run", which reads as a small
+detail and is the phase's one genuinely new product behaviour. It sits two lines below a capability
+check that does the **opposite** — throws before the run is claimed, leaving no `signal_runs` row at
+all — and the two being different is the point:
+
+- a **capability** refusal says Signals is not this team's feature, so a row would be a record of
+  something that should never have been scheduled;
+- a **spent allowance** is a cost event, and the watch card, the run list and the month's cost
+  history are exactly where a team needs to see it.
+
+Beside it, three refusals that are deliberately _not_ refusals, because a ceiling and an outage are
+different things: a partial allowance **clamps** the per-run ceiling rather than refusing (so a team
+with twelve searches left gets a twelve-search run that says it was trimmed); the article fetch
+returns a **number** because it is an enhancement and a team at its ceiling keeps receiving signals
+from the headline and snippet; and the playbook evaluator **skips silently**, because it is a
+listener on an after-commit event and a throw there would fail the watch run and the retry would
+re-bill the Serper search — S14's review finding, honoured rather than rediscovered.
+
+### 4. Two switches that are not capabilities, and why the enum stayed at seven cases
+
+Task 4 said "`Capability::SignalComposer` and any other new capability wired into the one
+`CapabilityGate`". `SignalComposer` already existed and was already wired; **no new capability was
+added**, and `playbooks` and `webhook_source` became quota switches instead.
+
+That is `Core\Enums\Capability`'s own rule applied rather than dodged: a capability that is not
+enforced does not get a case, both of these are enforced in `SignalSpendGuard` where every other
+Signals limit a plan sets is enforced, and two cases for one rule would have made the shorter list
+the one somebody reads. The enum stays at seven, every one of which still has an `enforcedAt()`.
+
+Both switches ship **on for every plan that has Signals**. The temptation was to hold the events API
+back for Scale — it is a developer integration, so it reads like an upmarket feature — but it
+shipped in S13b on every plan that had Signals, and holding it back would also have taken it off the
+**trial** plan, so nobody could evaluate it before buying. That is the rule `config/billing.php`
+already states about the capability lists starting permissive.
+
+### 5. The three bugs this phase nearly introduced in other modules, all one shape
+
+Adding a third `BillingMetric` case is a two-line change that broke three two-way ternaries, none of
+them in Signals, and all three were exhaustive right up until the day a third case arrived:
+
+- `NotificationPresenter::creditLow()` chose between "Your search allowance" and "AI credit" with
+  `$metric === Leads ? … : …`, so a team at its signal ceiling would have been told their **AI
+  credit** had run out. Now `BillingMetric::subjectLabel()`, a `match`, which cannot be wrong.
+- The billing screen priced overage with the same shape twice, so signal searches would have been
+  priced per thousand at the AI credit rate — on the one screen whose job is to say what things
+  cost. The `overage` prop is now a map keyed by metric, built from `BillingMetric::cases()`.
+- `PersonalDataLocator` read `$row['signal_id']` off every row Signals' DSAR exporter returned.
+  Two new row shapes would have made that a missing key, read as id zero, offering the operator a
+  row that erases nothing. It dispatches on an explicit `record` key now.
+
+**The generalisable lesson, and it is the fourth time this plan has met it:** the dangerous change is
+not the one that breaks the build. `whereNull`/`isQueryBased` in S13b, the cap-that-refuses in S14,
+`'team_id' => null` in S15 and the two-way ternary here are all the same shape — code that was
+exactly correct for the number of cases that existed when it was written. A `match` over an enum
+fails to compile; a ternary over one does not. Prefer the one that cannot be silently outgrown.
+
+### 6. What the reviews found: six findings, and the shape they all had
+
+`laravel-module-reviewer` returned ten findings and `brand-reviewer` two. Four of the ten were
+docblocks claiming more than the code did, which are recorded in `docs/modules/signals.md` → "What
+the S16 review changed". The six that were code are worth reading together, because **five of them
+are the same mistake in five places: a figure being asked a question it could not answer.**
+
+1. **`signal_previews.queries_count` was booked as zero** and written on settle, so the count the
+   _monthly_ ceiling is measured over did not exist while a preview was running and never existed
+   for one that threw. The comment above it said the lock covered both ceilings — true of the daily
+   cost, which was reserved, and false of the count.
+2. **`signal_runs.queries_count` was metered as if every query were paid**, and three of the five
+   sources are free. A watchlist watch on Companies House burned the allowance, and on a metered
+   plan produced overage on requests that cost nothing. It is a _coverage_ figure; the allowance
+   needed a _cost_ figure, so there are two columns now.
+3. **A `Failed` run meant two things** and `PlatformRollup` and `SignalRunOversight` only knew one.
+   S16 deliberately records a spent allowance as a failed run — it is a cost event and the watch
+   card is where a team should see it — and both readers counted it as the provider being unwell, so
+   every team on a ceiling would have raised the platform failure rate once an hour per watch.
+   `error_code` is the third column, and it is the code rather than the message because the message
+   is translated.
+4. **The entity cursor meant "searched"** and S16 made it mean "attempted". The ring always takes
+   the first account however expensive and then advances past it, which was right while the ceiling
+   was the config bound of forty — an account costing more than that is pathological, and holding
+   the cursor would stop the ring for ever. A clamped ceiling broke the reasoning: an account
+   costing two queries is affordable in general and not in the last hour of a month. The two cases
+   are told apart by the **unclamped** bound now.
+5. **`allowanceFor()` read a ceiling through a concern whose job is to compare a ceiling with
+   usage**, so every guard call — including ones that only wanted `maxWatches` — paid for a `SUM` it
+   discarded. The ceiling needs only the plan.
+
+And the sixth, which is the one that generalises furthest:
+
+6. **`SignalAllowance` imported `Billing\Services\PlanSignalQuotaSource`**, purely for a `{@see}`,
+   while three docblocks in the same change claimed nothing in Signals imports Billing. It cost
+   nothing at runtime and made the phase's headline architectural claim false. There is a test for
+   it now (`SignalsSeamTest`), and the lesson is the one this plan keeps relearning: **a rule that
+   only a convention enforces is a rule that has already been broken somewhere nobody looked.** The
+   seam was correct in every file where somebody was thinking about the seam.
+
+`security-review` found **no exploitable vulnerability** — and found a **seventh bug in this
+phase's own fix**, which is the one worth carrying furthest. The quota refusal was excluded from the
+provider failure rate with `whereNotIn('error_code', …)`, and `error_code NOT IN ('…')` is `NULL`,
+and therefore not a match, for a row whose code _is_ null: every failure from before the column
+existed, every run settled by `RunSignalWatchJob::failed()` (worker death, retries exhausted) and
+the AI-credit branch. A filter added to hide one refusal hid almost every real outage — and nobody
+would have noticed, **because a falling failure rate reads as good news.** `whereNull OR
+whereNotIn` is the shape SQL's three-valued logic requires, it is a scope on the model now, and the
+general rule is: a `NOT IN` or a `!=` against a **nullable** column is a filter with a hole in it,
+and the hole is always on the side you were not thinking about.
+
+A fourth pass (`/code-review` at high effort, over the finished phase) found **six more**, and
+three of those were one mistake again: **a second write somebody forgot.**
+`signal_watchlists.entries_count` is a cached counter, and both of the phase's new delete paths —
+the DSAR erasure and the retention sweep — issued a bulk `DELETE` and left it stale; the sweep's
+case could never self-heal, because that sweep exists for exactly the paused list the nightly sync
+returns early on. The AI-credit refusal was _still_ being counted as a provider failure, which is
+the defect `error_code` was added for, left in place for the sibling allowance. The Types screen
+offered the events API to teams whose plan excludes it, and a full edit of an existing
+webhook-sourced type was refused after a downgrade — the playbook trap again, through a different
+door. `retention.preview_days` was 30 while the allowance it feeds is a **calendar month**, so on
+the 31st the sweep handed a team part of its allowance back: **a retention window shorter than the
+period a figure is measured over is an allowance that refills itself.** And a Free team was shown a
+bar for a feature their plan has none of.
+
+**Four review passes, sixteen code findings, and the phase's own tests caught none of them** — which
+is the honest summary of what review is for here. Every one was a figure, a write or an option that
+was correct for the shape of the thing when it was written, and became wrong when this phase changed
+the shape.
+
+The brand review found the frontend half of the same thing. Four translation keys were missing from
+both language files — `vp check` formats JSON and does not know a key is referenced — and the price
+line used a shared `':price per :thing'` template with the metric's _name_ interpolated into it,
+which fixes English word order and makes a correct Arabic rendering impossible for the translator
+however well either half is written. The server sends one complete sentence key per metric now
+(`BillingMetric::overagePriceLine()`). **Two deviations from the plan's "no new tables" note**
+followed from the review rather than from the plan: `signal_runs` gained `paid_queries_count` and
+`error_code`.
+
+### What the plan predicted correctly
+
+Its risk note said "this is the phase that gets skipped when the demo already works", and the
+numbers say it was the right call to not skip it: before this phase a team on **any** plan could
+hold 25 signal types × 10 templates on 10 watches × any number of places, with no monthly bound at
+all, and the only thing standing between that and a four-figure Serper bill over a weekend was the
+per-run ceiling of forty — which bounds how _big_ a run is and not how many there are.
+
+---
 
 ## S15, as shipped — one table the plan did not ask for, two deviations, and what the reviews found
 

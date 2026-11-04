@@ -173,14 +173,33 @@ const recommendedPlan = computed<string | null>(() => {
 });
 
 function overagePriceFor(usage: MetricUsage): number | null {
-    return usage.metric === 'leads'
-        ? props.overage.leads
-        : props.overage.credits;
+    return props.overage.metrics[usage.metric]?.amount ?? null;
 }
 
 function overageUnitFor(usage: MetricUsage): number {
-    return usage.metric === 'leads' ? 1 : props.overage.credits_unit;
+    return props.overage.metrics[usage.metric]?.unit ?? 1;
 }
+
+/**
+ * The metrics a metered plan would be billed for, in the order the server sent them.
+ *
+ * Read from the usage bars rather than from the pricing map so the sentence below them lists what
+ * this team is actually metered on, in the same order they just read it. `price_line` is a whole
+ * translated sentence per metric rather than a noun dropped into a shared template — see
+ * `BillingMetric::overagePriceLine()` for why that is a translation requirement and not a style.
+ */
+const meteredMetrics = computed(() =>
+    props.usage
+        .map((usage) => ({
+            key: usage.metric,
+            priceLine: props.overage.metrics[usage.metric]?.price_line ?? '',
+            amount: props.overage.metrics[usage.metric]?.amount ?? 0,
+            unit: props.overage.metrics[usage.metric]?.unit ?? 1,
+        }))
+        // An unpriced metric is left out rather than listed at zero, and so is one the server did
+        // not describe — a missing entry would otherwise render as a raw slug.
+        .filter((entry) => entry.amount > 0 && entry.priceLine !== ''),
+);
 
 function statusVariant(status: string) {
     switch (status) {
@@ -396,21 +415,31 @@ function resume(): void {
                 />
             </div>
 
-            <p
-                v-if="subscription.plan.overage"
-                class="text-xs text-muted-foreground"
+            <div
+                v-if="subscription.plan.overage && meteredMetrics.length > 0"
+                class="flex flex-col gap-1 text-xs text-muted-foreground"
             >
-                {{
-                    t(
-                        'Past your allowance you pay for the extra: :lead per company, :credit per :unit AI credits. Work stops at twice the allowance.',
-                        {
-                            lead: currency(overage.leads, overage.currency),
-                            credit: currency(overage.credits, overage.currency),
-                            unit: number(overage.credits_unit),
-                        },
-                    )
-                }}
-            </p>
+                <p>
+                    {{
+                        t(
+                            'Past your allowance you pay for the extra, and work stops at twice the allowance:',
+                        )
+                    }}
+                </p>
+                <ul class="flex flex-col gap-0.5">
+                    <li v-for="metric in meteredMetrics" :key="metric.key">
+                        {{
+                            t(metric.priceLine, {
+                                price: currency(
+                                    metric.amount,
+                                    overage.currency,
+                                ),
+                                count: number(metric.unit),
+                            })
+                        }}
+                    </li>
+                </ul>
+            </div>
         </section>
 
         <!-- The price list -->

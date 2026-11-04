@@ -17,6 +17,12 @@ use App\Modules\Core\Exceptions\DomainException;
  * can dispatch on a *type* rather than on an error-code string in the one place that decides
  * whether a provider failure is survivable (ADR 0023 §4) — and subclassing rather than branching is
  * what keeps `catch (SignalsException)` elsewhere, such as the preview's, working unchanged.
+ *
+ * Three subclasses now, and each one exists because something outside this file has to dispatch on
+ * the **type**: `SourceQueryRejected` and `SourceAddressNotFound` for the run's two survivable
+ * per-query failures, and {@see SignalAllowanceExceeded} for every "your plan says no", which is
+ * what `sentry.ignore_exceptions` filters by (S16, ADR 0017). Adding a fourth is only warranted on
+ * the same test: would anything have to read an error-code string without it?
  */
 class SignalsException extends DomainException
 {
@@ -205,9 +211,9 @@ class SignalsException extends DomainException
      * feed is a standing outbound request from our infrastructure to an address a customer chose,
      * and polite rate limiting bounds how often one is fetched rather than how many exist.
      */
-    public static function tooManyFeeds(int $max): self
+    public static function tooManyFeeds(int $max): SignalAllowanceExceeded
     {
-        $e = new self('You can watch up to '.$max.' feeds. Remove one from another signal type first.');
+        $e = new SignalAllowanceExceeded('You can watch up to '.$max.' feeds. Remove one from another signal type first.');
         $e->errorCode = 'signals.too_many_feeds';
         $e->status = 422;
 
@@ -305,9 +311,9 @@ class SignalsException extends DomainException
      * script (or an enthusiastic member) can multiply a team's bill by creating watches rather
      * than by running them, which the per-watch run throttle does nothing about.
      */
-    public static function tooManyWatches(int $max): self
+    public static function tooManyWatches(int $max): SignalAllowanceExceeded
     {
-        $e = new self("You can have up to {$max} watches. Pause or remove one to add another.");
+        $e = new SignalAllowanceExceeded("You can have up to {$max} watches. Pause or remove one to add another.");
         $e->errorCode = 'signals.too_many_watches';
         $e->status = 422;
 
@@ -411,9 +417,9 @@ class SignalsException extends DomainException
      * evaluated against **every** signal, so each one is a standing cost on every run as well as a
      * standing instruction to act. Pausing is the way out, which is why the message says so.
      */
-    public static function tooManyPlaybooks(int $max): self
+    public static function tooManyPlaybooks(int $max): SignalAllowanceExceeded
     {
-        $e = new self("You can have up to {$max} rules. Pause or remove one to add another.");
+        $e = new SignalAllowanceExceeded("You can have up to {$max} rules. Pause or remove one to add another.");
         $e->errorCode = 'signals.too_many_playbooks';
         $e->status = 422;
 
@@ -462,9 +468,9 @@ class SignalsException extends DomainException
      * every location S8 lets a watch cover, so each one is a standing instruction to spend money on
      * searches. Pausing is the way out, which is why the message says so.
      */
-    public static function tooManyDefinitions(int $max): self
+    public static function tooManyDefinitions(int $max): SignalAllowanceExceeded
     {
-        $e = new self("You can have up to {$max} signal types. Remove or pause one to add another.");
+        $e = new SignalAllowanceExceeded("You can have up to {$max} signal types. Remove or pause one to add another.");
         $e->errorCode = 'signals.too_many_definitions';
         $e->status = 422;
 
@@ -524,11 +530,82 @@ class SignalsException extends DomainException
      * (S9): per-member rate limiting cannot express it, since twelve members each inside their own
      * limit can still empty an allowance in an afternoon.
      */
-    public static function previewBudgetSpent(): self
+    public static function previewBudgetSpent(): SignalAllowanceExceeded
     {
-        $e = new self('Your team has used its preview allowance for today. Previews reset tomorrow — you can still save this and try it on a watch.');
+        $e = new SignalAllowanceExceeded('Your team has used its preview allowance for today. Previews reset tomorrow — you can still save this and try it on a watch.');
         $e->errorCode = 'signals.preview_budget_spent';
         $e->status = 429;
+
+        return $e;
+    }
+
+    /**
+     * The team has spent its monthly allowance of paid source queries (S16 task 2).
+     *
+     * **Named rather than folded into a provider failure**, which is the whole point: a watch that
+     * stops because the month's allowance is gone must not report that we could not reach the news
+     * service. The first is fixable by the team in thirty seconds and the second is not fixable by
+     * them at all, and before this phase they were the same sentence on the watch card.
+     *
+     * Not retryable — a retry in ten minutes meets the same ceiling — so the queued run settles as
+     * one clean failure rather than burning three attempts, and the number is in the message because
+     * the next thing anybody asks is "out of how many?".
+     */
+    public static function sourceQuotaSpent(int $limit): SignalAllowanceExceeded
+    {
+        $e = new SignalAllowanceExceeded("Your team has used this month’s {$limit} signal searches. Watches start again when the allowance resets, or sooner on a larger plan.");
+        $e->errorCode = 'signals.source_quota_spent';
+        $e->status = 429;
+
+        return $e;
+    }
+
+    /**
+     * The team has spent its monthly allowance of preview searches (S16 task 2).
+     *
+     * Distinct from {@see self::previewBudgetSpent()}, and both exist because they are different
+     * answers: that one resets tomorrow and this one resets next month. Telling a member to "try
+     * again tomorrow" when the ceiling is monthly would be a lie they would discover tomorrow.
+     */
+    public static function previewQuotaSpent(int $limit): SignalAllowanceExceeded
+    {
+        $e = new SignalAllowanceExceeded("Your team has used this month’s {$limit} preview searches. You can still save this type and try it on a watch.");
+        $e->errorCode = 'signals.preview_quota_spent';
+        $e->status = 429;
+
+        return $e;
+    }
+
+    /**
+     * The team's plan does not include playbooks (S16 task 2).
+     *
+     * A quota switch rather than a `Core\Enums\Capability` case, because that enum is governed by
+     * "every case is actually enforced" and this is enforced here, where every other Signals limit
+     * a plan sets is. Two cases for one rule would have made the shorter list the one somebody
+     * reads.
+     */
+    public static function playbooksUnavailable(): SignalAllowanceExceeded
+    {
+        $e = new SignalAllowanceExceeded('Signal automations are not included on your plan.');
+        $e->errorCode = 'signals.playbooks_unavailable';
+        $e->status = 403;
+
+        return $e;
+    }
+
+    /**
+     * The team's plan does not include the inbound events API (S16 task 2).
+     *
+     * **Plainly worded, unlike {@see self::webhookRefused()}.** That one answers every reason with
+     * one sentence because the differences would be an oracle; this one is not an oracle, because
+     * the caller is already authenticated as the team whose plan is being described, and a machine
+     * integration that is silently refused is a support ticket.
+     */
+    public static function webhookSourceUnavailable(): SignalAllowanceExceeded
+    {
+        $e = new SignalAllowanceExceeded('The events API is not included on your plan.');
+        $e->errorCode = 'signals.webhook_source_unavailable';
+        $e->status = 403;
 
         return $e;
     }
@@ -552,9 +629,9 @@ class SignalsException extends DomainException
      * so the ceiling is on creating them as well as on their size — the same reasoning as the watch
      * and definition ceilings (S10).
      */
-    public static function tooManyWatchlists(int $max): self
+    public static function tooManyWatchlists(int $max): SignalAllowanceExceeded
     {
-        $e = new self("You can have up to {$max} watchlists. Remove one, or add these accounts to a list you already have.");
+        $e = new SignalAllowanceExceeded("You can have up to {$max} watchlists. Remove one, or add these accounts to a list you already have.");
         $e->errorCode = 'signals.too_many_watchlists';
         $e->status = 422;
 
@@ -655,9 +732,9 @@ class SignalsException extends DomainException
      * snippet-only, which is exactly what every signal was before S12. So this is raised only
      * where a caller asked for a fetch explicitly, never from inside a run.
      */
-    public static function articleFetchBudgetSpent(): self
+    public static function articleFetchBudgetSpent(): SignalAllowanceExceeded
     {
-        $e = new self('You have used this month’s allowance for reading full articles. Signals keep arriving with the summary from the headline and snippet.');
+        $e = new SignalAllowanceExceeded('You have used this month’s allowance for reading full articles. Signals keep arriving with the summary from the headline and snippet.');
         $e->errorCode = 'signals.article_budget_spent';
 
         return $e;

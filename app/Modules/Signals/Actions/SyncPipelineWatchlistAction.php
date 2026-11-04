@@ -12,6 +12,7 @@ use App\Modules\LeadsWorkspace\Models\LeadAssignment;
 use App\Modules\Signals\Enums\WatchlistEntityType;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -43,7 +44,10 @@ use Illuminate\Support\Facades\Log;
  */
 final class SyncPipelineWatchlistAction
 {
-    public function __construct(private readonly TeamContext $teamContext) {}
+    public function __construct(
+        private readonly TeamContext $teamContext,
+        private readonly SignalSpendGuard $spend,
+    ) {}
 
     /**
      * Bring one list in step with the pipeline, and return what changed.
@@ -59,7 +63,10 @@ final class SyncPipelineWatchlistAction
         }
 
         return $this->teamContext->run($team, function () use ($team, $watchlist): array {
-            $max = max(1, (int) config('signals.watchlist.max_entries', 250));
+            // The team's own ceiling (S16 task 2) — their plan's once Billing is registered. The
+            // sync **stops adding** at it rather than refusing, because a mirrored pipeline grows
+            // on its own and a refusal would be a nightly failure nobody asked for.
+            $max = $this->spend->maxWatchlistEntries($team);
 
             /** @var array<int, Lead> $wanted keyed by lead id */
             $wanted = [];

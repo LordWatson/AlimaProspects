@@ -275,26 +275,70 @@ final class PersonalDataLocator
         // Signals answers for itself (§5a). It is asked rather than queried, because Compliance
         // must not learn the shape of another module's personal data — and because Signals is the
         // only place that knows a converted signal is a lead's provenance and must survive.
+        //
+        // **Three kinds of row since S16**, and the `record` key is what says which. Dispatching on
+        // it rather than assuming `signal_id` is there is the point: the module grew two more places
+        // a name can sit (a watchlist entry, a pushed event body) and this loop would otherwise have
+        // read a missing key as id zero and offered the operator a row that erases nothing.
         foreach ($this->signals->export($team, $name) as $row) {
-            $erasable = (bool) ($row['erasable'] ?? false);
-
-            $records[] = new SubjectRecord(
-                category: SubjectDataCategory::Signal,
-                id: (int) $row['signal_id'],
-                leadId: isset($row['converted_to_lead_id']) ? (int) $row['converted_to_lead_id'] : null,
-                companyName: isset($row['subject_company_name']) ? (string) $row['subject_company_name'] : null,
-                detail: (string) ($row['headline'] ?? ''),
-                labels: [],
-                matchedOn: 'name',
-                recordedAt: isset($row['collected_at']) ? (string) $row['collected_at'] : null,
-                erasable: $erasable,
-                retainedReason: $erasable
-                    ? null
-                    : 'This is the provenance of a lead the team is working. Decide what happens to the lead first.',
-            );
+            $records[] = $this->signalsRecord($row);
         }
 
         return $records;
+    }
+
+    /**
+     * One row of Signals' own DSAR answer, as a {@see SubjectRecord}.
+     *
+     * The three kinds are deliberately three **categories** rather than three shapes of one, for
+     * the reason the enum's own cases give: what a subject needs to know is the difference between
+     * something we found, something we are looking for, and something somebody told us.
+     *
+     * Only a converted signal is non-erasable, which is Signals' own judgement arriving on the
+     * `erasable` key; a watchlist entry and a pushed event are always removable, because neither is
+     * the provenance of anything.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function signalsRecord(array $row): SubjectRecord
+    {
+        $erasable = (bool) ($row['erasable'] ?? false);
+        $kind = (string) ($row['record'] ?? 'signal');
+
+        [$category, $id, $detail] = match ($kind) {
+            'watchlist_entry' => [
+                SubjectDataCategory::WatchedAccount,
+                (int) ($row['watchlist_entry_id'] ?? 0),
+                // The list's name, which is what makes the row recognisable — "Key accounts"
+                // rather than a row id. Never the aliases: the screen is not the export.
+                (string) ($row['watchlist_name'] ?? ''),
+            ],
+            'inbound_event' => [
+                SubjectDataCategory::PushedEvent,
+                (int) ($row['inbound_event_id'] ?? 0),
+                (string) ($row['headline'] ?? ''),
+            ],
+            default => [
+                SubjectDataCategory::Signal,
+                (int) ($row['signal_id'] ?? 0),
+                (string) ($row['headline'] ?? ''),
+            ],
+        };
+
+        return new SubjectRecord(
+            category: $category,
+            id: $id,
+            leadId: isset($row['converted_to_lead_id']) ? (int) $row['converted_to_lead_id'] : null,
+            companyName: isset($row['subject_company_name']) ? (string) $row['subject_company_name'] : null,
+            detail: $detail,
+            labels: [],
+            matchedOn: 'name',
+            recordedAt: isset($row['collected_at']) ? (string) $row['collected_at'] : null,
+            erasable: $erasable,
+            retainedReason: $erasable
+                ? null
+                : 'This is the provenance of a lead the team is working. Decide what happens to the lead first.',
+        );
     }
 
     /**

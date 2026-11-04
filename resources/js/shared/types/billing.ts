@@ -92,8 +92,14 @@ export type Invoice = {
 
 /** The per-unit overage prices, in minor units, for the "what if I go over" line. */
 export type OveragePricing = {
-    leads: number;
-    credits: number;
-    credits_unit: number;
+    /**
+     * What a unit of overage costs, **keyed by metric** — `leads`, `ai_credits`, `signal_queries`.
+     * A map rather than a key per metric so a metric added to the price list is priced here without
+     * the screen changing; `unit` is how many of the metric one billed unit covers.
+     */
+    metrics: Record<
+        string,
+        { amount: number; unit: number; label: string; price_line: string }
+    >;
     currency: string;
 };

@@ -88,10 +88,14 @@ final class SignalQueryBuilder
      * The queries one run of a watch would ask for.
      *
      * @param  list<SignalDefinition>  $definitions  The types to build for, in priority order.
+     * @param  int|null  $maxQueries  The ceiling for this run, from `SignalSpendGuard` — the
+     *                                module's own bound clamped by what is left of the team's
+     *                                monthly allowance (S16). Null falls back to the config bound,
+     *                                which is what the cost estimator and the tests want.
      */
-    public function build(SignalWatch $watch, array $definitions, ?Icp $icp = null): SignalQueryPlan
+    public function build(SignalWatch $watch, array $definitions, ?Icp $icp = null, ?int $maxQueries = null): SignalQueryPlan
     {
-        return $this->buildFromSpec(SignalQuerySpec::forWatch($watch), $definitions, $icp);
+        return $this->buildFromSpec(SignalQuerySpec::forWatch($watch), $definitions, $icp, null, $maxQueries);
     }
 
     /**

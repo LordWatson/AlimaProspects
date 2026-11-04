@@ -106,7 +106,7 @@ flowchart TD
 | 8   | Enrichment & Data Quality     | MVP                         | `modules/enrichment-data-quality.md`     |
 | 9   | Scoring & Matching            | MVP                         | `modules/scoring-matching.md`            |
 | 10  | Leads Workspace               | MVP                         | `modules/leads-workspace.md`             |
-| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S15      | `modules/signals.md`                     |
+| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S16      | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (built, Phase 11)       | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (built, Phase 13)       | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | MVP (built, Phase 14)       | `modules/ai-insights.md`                 |
@@ -134,6 +134,7 @@ flowchart TD
   granting nothing. Platform-wide knobs live in `platform_settings`, **schema'd by
   `config/admin.php`** — an undeclared key throws, which is what keeps it from becoming a junk drawer
   and what lets the settings screen be generated rather than hand-written.
+- **A plan limit is asked for at the point of spend, and the fourth seam decorates (Signals, S16):** `Signals\Contracts\SignalQuotaSource` joins `CreditSource`, `LeadQuotaSource` and `SeatLimitSource` as a seam Billing fills in by binding over the owning module's own default — but it is the first that **decorates** rather than replaces, because it answers eight figures and a plan definition is allowed to be partial. So a figure has three states: a number, an explicit `null` meaning _unlimited_, and an **absent key** meaning the plan has taken no position, which is the only one that falls through to the module's own floor. Its stub is therefore the one of the four that is **not** permissive: the floors it reports are cost guards Signals shipped with, and turning plan enforcement off must not turn those off too. Enforcement is in `SignalSpendGuard`, not middleware, for ADR 0012's reason — the scheduler, a nightly sync and a queued run all spend a team's allowance with no request behind them — and a **ceiling refuses while a partial allowance clamps**, which is the difference between a team getting nothing and getting what they are still entitled to.
 - **Platform reporting (Admin, Phase 19c, ADR 0016):** the business's own figures — MRR and its movements,
   retention, the onboarding funnel, allowance consumption, provider cost and **gross margin per
   tenant** — come from `platform_daily_metrics`, a nightly rollup that is a **record over the

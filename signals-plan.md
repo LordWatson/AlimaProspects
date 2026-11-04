@@ -2,6 +2,11 @@
 
 > Companion to `mvp.md`. Feed this to Claude Code one phase at a time (each phase has a **Dispatch prompt**).
 > Scope for v1: **Dubai / UAE only**. Created 2026-10-29.
+>
+> **v1 is complete (S0–S6, 2026-10-29) and v2 is complete (S7–S16, `signals-v2-plan.md`,
+> 2026-11-04).** This file is the historical record of v1 and the place its spike findings and
+> cost model live; the current shape of the module is `docs/modules/signals.md`. The post-v1
+> backlog at the bottom is **closed** — see the note there for what landed where.
 
 ## Status
 
@@ -387,13 +392,37 @@ S5, and the API is S6 — S4 is the Actions, the data model and the lead-side su
 
 ---
 
-## Post-v1 backlog (Signals)
+## Post-v1 backlog (Signals) — **superseded by `signals-v2-plan.md`**
 
-- **UK market:** Companies House Streaming API (changes to people with significant control, i.e. company sales) as a second signal source; UK query templates.
-- **More event types:** senior appointments, IPOs/listings, large DLD off-plan launches (Dubai Pulse, as market context).
-- **Arabic-language queries** (`hl=ar`) and AR news sources.
-- **Full-article fetch** for high-relevance items via Core `WebContentFetcher` (better amounts and names), behind a cost cap.
-- **Weekly email digest** of top signals (Notifications, Phase 12).
-- **Learning from dismiss reasons** to tune thresholds and templates per team.
-- **Vertical presets:** template packs for recruiters (hiring surges, new offices) and B2B SaaS (new marketing directors, expansions).
-- **Premium wealth data:** an Altrata (Wealth-X / WealthEngine) enrichment provider for converted leads.
+> **This list is closed.** v2 (phases S7–S16, `signals-v2-plan.md`) is complete as of 2026-11-04 and
+> delivered all but one of the items below. The one survivor is the last, and it is a commercial
+> decision before it is an engineering one. Anything new belongs in that plan's own backlog or in
+> `docs/modules/signals.md` → "Known limitations", not here.
+
+- ✅ **UK market** — delivered differently and better. **S8** made the geography plural and the UK a
+  first-class market (ADR 0019); **S13b** added Companies House, by **polling filings per company
+  number** rather than the Streaming API, because the spike found 2,422 new London software
+  companies a month for one SIC code and no cross-company filings endpoint — so it runs on a
+  watchlist watch. UK query templates shipped with S8's preset pack, every one checked against live
+  news first.
+- ✅ **More event types** — overtaken entirely by **S7**: an event type is a row a team owns
+  (ADR 0018), so "senior appointments" is configuration rather than a deploy. **S9** shipped 30
+  presets in seven vertical packs and **S15** made the library curated, so a type a team invents can
+  become everybody's.
+- ◻️ **Arabic-language queries** — the plumbing is there (`SearchRegion::hl()`, per-language
+  templates with an English fallback, S8/ADR 0019 §5) and no Arabic templates are written. Still
+  open, still blocked on a native speaker rather than on code.
+- ✅ **Full-article fetch** — **S12**, through Core's `WebContentFetcher`, behind five bounds (heat
+  threshold, per-run cap, a **monthly cost ceiling** that is now a plan figure, the circuit breaker
+  and `robots.txt`), storing the extracted fields and **never the body**. Off by default.
+- ✅ **Weekly email digest** — **S15**, and it **names** the week's events rather than counting
+  them, carrying the jurisdiction's approach note with the headline because an email is read where
+  no screen can warn anybody.
+- ✅ **Learning from dismiss reasons** — **S12**, via `signal_source_stats` and
+  `SignalTuningAdvisor`, which **proposes and never applies** (ADR 0022). **S15** added the
+  retirement proposal over the per-type ROI figures.
+- ✅ **Vertical presets** — **S9**'s seven packs, including recruiting and B2B SaaS.
+- ◻️ **Premium wealth data** (Altrata / Wealth-X / WealthEngine) — still open, and still out of
+  scope on purpose: it is an **Enrichment** provider for converted leads rather than a signal
+  source, and a commercial decision before an engineering one (`signals-v2-plan.md` → "Deliberately
+  out of scope").

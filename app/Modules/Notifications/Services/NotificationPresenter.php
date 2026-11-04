@@ -255,7 +255,10 @@ final class NotificationPresenter
         $remaining = $this->count($payload, 'remaining_percent');
         $metric = BillingMetric::tryFrom((string) ($payload['metric'] ?? '')) ?? BillingMetric::AiCredits;
 
-        $thing = $metric === BillingMetric::Leads ? 'Your search allowance' : 'AI credit';
+        // **The enum names it, not a ternary here.** This was `$metric === Leads ? … : 'AI credit'`,
+        // which was exhaustive while there were two metrics and would have described S16's signal
+        // allowance as AI credit the day a third arrived — a `match` over the enum cannot.
+        $thing = $metric->subjectLabel();
 
         return new NotificationContent(
             type: NotificationType::CreditLow,

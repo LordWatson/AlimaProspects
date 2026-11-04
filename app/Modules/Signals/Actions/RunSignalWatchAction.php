@@ -52,6 +52,7 @@ use App\Modules\Signals\Services\SignalQueryBuilder;
 use App\Modules\Signals\Services\SignalRejectionLedger;
 use App\Modules\Signals\Services\SignalScorer;
 use App\Modules\Signals\Services\SignalSourceRegistry;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use App\Modules\Signals\Services\SignalSpendLedger;
 use App\Modules\Signals\Support\SignalDefinitionBreakdown;
 use App\Modules\Signals\Support\SignalSourceBreakdown;
@@ -145,6 +146,7 @@ final class RunSignalWatchAction
         private readonly SignalArticleEnricher $articles,
         private readonly ResolveWatchlistCompanyNumbersAction $companyNumbers,
         private readonly SignalSpendLedger $spend,
+        private readonly SignalSpendGuard $guard,
     ) {}
 
     /**
@@ -184,6 +186,22 @@ final class RunSignalWatchAction
         }
 
         $run = $this->claimOrCreateRun($watch);
+
+        // **The monthly source-query allowance** (S16 task 2), and unlike the capability check
+        // above it is recorded **on the run**. The difference is what the two refusals mean: a
+        // capability refusal says Signals is not this team's feature, so a `signal_runs` row would
+        // be a record of something that should never have been scheduled — while a spent allowance
+        // is a *cost* event, and the watch card, the run list and the month's cost history are
+        // exactly where a team needs to see it. One clean failed run per cadence with a sentence
+        // on it, rather than a half-run that reads as the news provider having broken.
+        try {
+            $this->guard->assertSourceQueriesRemain($team);
+        } catch (SignalsException $e) {
+            // The code travels with it, so the platform's failure rate and the operator's alerts
+            // can tell "this team is at its ceiling" from "the news provider is down".
+            return $this->fail($run, $watch, $e->getMessage(), errorCode: $e->errorCode());
+        }
+
         $this->broadcast($run, SignalRunStatus::Running, 10, 'Searching the news');
 
         // Resolved through a team-scoped query rather than read off the relation, because the
@@ -206,7 +224,18 @@ final class RunSignalWatchAction
         $icp = $this->activeIcp($watch->team_id);
         $profile = BusinessProfile::query()->where('team_id', $watch->team_id)->first();
 
-        [$plan, $nextCursor] = $this->planFor($watch, $definitions, $icp);
+        // The ceiling this run is held to: the module's own bound, clamped by what is left of the
+        // month. A team with 12 queries of allowance left gets a 12-query run that says it was
+        // trimmed, rather than a 40-query run that overspends or a refusal that gives them nothing.
+        $maxQueries = $this->guard->maxQueriesPerRun($team);
+
+        // And the **unclamped** bound, which the entity ring needs beside it. See `planFor()`: the
+        // ring has to tell "this account is too expensive for anybody, ever" from "this account is
+        // too expensive for what is left of this month", because it advances past the first and
+        // must not advance past the second.
+        $runCeiling = max(1, (int) config('signals.max_queries_per_run', 40));
+
+        [$plan, $nextCursor] = $this->planFor($watch, $definitions, $icp, $maxQueries, $runCeiling);
 
         // What each source cost and found (S13, task 8). Accumulated by `search()` as it goes rather
         // than multiplied out afterwards, because a rejected query and a query that found nothing
@@ -284,6 +313,7 @@ final class RunSignalWatchAction
                 $breakdown->totalCostMicros(),
                 $plan->requested,
                 $breakdown,
+                $e->errorCode(),
             );
         }
 
@@ -348,6 +378,13 @@ final class RunSignalWatchAction
                 $costMicros,
                 $plan->requested,
                 $breakdown,
+                // **A code, because this is a refusal and not an outage** (`/code-review`). It is
+                // the sibling of the source-query allowance two hundred lines up, and without a
+                // code it landed in the null set `providerFailures()` treats as a real provider
+                // failure — so a team out of AI credit with an hourly watch would inflate the
+                // Serper failure rate once an hour per watch. Exactly the defect `error_code` was
+                // added to prevent, left in place for the other allowance.
+                SignalRun::AI_CREDIT_EXHAUSTED,
             );
         }
 
@@ -1077,9 +1114,13 @@ final class RunSignalWatchAction
      * days rather than its first forty being searched every day and the rest never (ADR 0021).
      *
      * @param  list<SignalDefinition>  $definitions
+     * @param  int  $maxQueries  This run's ceiling: the module's bound clamped by the team's
+     *                           remaining monthly allowance (S16).
+     * @param  int  $runCeiling  The module's bound **unclamped**, which only the ring reads — see
+     *                           the cursor note at the end of this method.
      * @return array{0: SignalQueryPlan, 1: int|null} the plan, and the cursor to store on success
      */
-    private function planFor(SignalWatch $watch, array $definitions, ?Icp $icp): array
+    private function planFor(SignalWatch $watch, array $definitions, ?Icp $icp, int $maxQueries, int $runCeiling): array
     {
         $watchlist = $watch->watchlist;
 
@@ -1090,7 +1131,7 @@ final class RunSignalWatchAction
                 return [new SignalQueryPlan([], 0), null];
             }
 
-            return [$this->queries->build($watch, $definitions, $icp), null];
+            return [$this->queries->build($watch, $definitions, $icp, $maxQueries), null];
         }
 
         /** @var list<SignalWatchlistEntry> $all */
@@ -1147,10 +1188,20 @@ final class RunSignalWatchAction
         // off the end while the cursor stepped past that entity anyway. Silently, on every lap:
         // precisely the failure the ring exists to prevent, arriving through the one door it did
         // not watch. Floored at 1 so a pathological number of feeds cannot stop the ring entirely.
-        $budget = max(1, (int) config('signals.max_queries_per_run', 40)
-            - $this->queries->definitionQueryCount($definitions));
+        $definitionQueries = $this->queries->definitionQueryCount($definitions);
+        $budget = max(1, $maxQueries - $definitionQueries);
+
+        // The same arithmetic against the **unclamped** ceiling, used only to classify the first
+        // entity below. See the cursor note at the end of this method.
+        $unclampedBudget = max(1, $runCeiling - $definitionQueries);
         $regions = max(1, count(SignalQuerySpec::forEntities($watch, [])->regions));
         $spent = 0;
+
+        // How the **first** entity fared against the two ceilings, which is the only thing the
+        // cursor decision at the end of this method needs. Declared here rather than inside the
+        // loop so the decision reads the same whether or not the ring had anything in it.
+        $firstFits = true;
+        $firstEverFits = true;
 
         foreach ($slice as $entry) {
             if (count($entities) >= $window) {
@@ -1174,13 +1225,48 @@ final class RunSignalWatchAction
                 break;
             }
 
+            // **Whether that first one actually fit, and against which ceiling** — the one thing
+            // the cursor decision below needs (S16 review).
+            if ($entities === []) {
+                $firstFits = $cost <= $budget;
+                $firstEverFits = $cost <= $unclampedBudget;
+            }
+
             $entities[] = $entity;
             $spent += $cost;
         }
 
+        /*
+         * **The cursor advances past an entity nobody can ever afford, and waits for one this
+         * month cannot** (S16 review).
+         *
+         * The loop above always takes the first entity even when it does not fit, and the plan's
+         * trim then cuts its surplus queries — so the entity is searched *partially* and the cursor
+         * has always stepped past it anyway. That was right while `$maxQueries` was the config
+         * bound of forty, because an entity costing more than that is pathological and holding the
+         * cursor on it would stop the ring for ever, which is the failure the comment above guards.
+         *
+         * S16 made `$maxQueries` shrink with the team's remaining monthly allowance, and that broke
+         * the reasoning: an entity costing two queries is perfectly affordable in general and
+         * unaffordable in the last hour of a month, and stepping past it would lose it from this
+         * lap silently — which is the exact failure the ring exists to prevent, arriving through the
+         * door the clamp opened.
+         *
+         * So the two cases are told apart by the **unclamped** ceiling. Too expensive for the
+         * module's own bound: advance, as before. Too expensive only for what is left of the month:
+         * hold the cursor, so the next run — next month, or after an upgrade — starts here.
+         */
+        $taken = count($entities);
+
+        if ($taken === 1 && ! $firstFits && $firstEverFits) {
+            $nextCursor = $cursor;
+        } else {
+            $nextCursor = ($cursor + $taken) % count($all);
+        }
+
         return [
-            $this->queries->buildFromSpec(SignalQuerySpec::forEntities($watch, $entities), $definitions),
-            ($cursor + count($entities)) % count($all),
+            $this->queries->buildFromSpec(SignalQuerySpec::forEntities($watch, $entities), $definitions, null, null, $maxQueries),
+            $nextCursor,
         ];
     }
 
@@ -1368,6 +1454,9 @@ final class RunSignalWatchAction
             $run->forceFill([
                 'status' => SignalRunStatus::Completed,
                 'queries_count' => $queriesCount,
+                // What we were actually billed for, which is the figure the monthly allowance is
+                // metered on — three of the five sources are free (S16 review).
+                'paid_queries_count' => $breakdown?->totalPaidQueriesAttempted() ?? 0,
                 // What the plan wanted, so the watch card can say coverage was trimmed (S8). A
                 // silent trim is a lie about what was searched.
                 'queries_requested' => $queriesRequested,
@@ -1767,13 +1856,23 @@ final class RunSignalWatchAction
      * and advancing the watch's `last_run_at` — so a persistently failing watch (e.g. a team out of
      * AI credit) backs off to its cadence instead of being re-dispatched every hour.
      */
-    private function fail(SignalRun $run, SignalWatch $watch, string $message, int $queriesCount = 0, int $resultsCount = 0, int $costMicros = 0, int $queriesRequested = 0, ?SignalSourceBreakdown $breakdown = null): SignalRun
+    private function fail(SignalRun $run, SignalWatch $watch, string $message, int $queriesCount = 0, int $resultsCount = 0, int $costMicros = 0, int $queriesRequested = 0, ?SignalSourceBreakdown $breakdown = null, ?string $errorCode = null): SignalRun
     {
-        DB::transaction(function () use ($run, $watch, $message, $queriesCount, $resultsCount, $costMicros, $queriesRequested, $breakdown): void {
+        $paidQueries = $breakdown?->totalPaidQueriesAttempted() ?? 0;
+
+        DB::transaction(function () use ($run, $watch, $message, $errorCode, $queriesCount, $paidQueries, $resultsCount, $costMicros, $queriesRequested, $breakdown): void {
             $run->forceFill([
                 'status' => SignalRunStatus::Failed,
                 'error' => $message,
+                // **The code as well as the message** (S16 review). `error` is translated prose a
+                // member reads; this is the stable key the platform readers branch on, so a run
+                // refused for a spent allowance is not counted as a provider failure and cannot set
+                // off an alert about Serper being unwell.
+                'error_code' => $errorCode,
                 'queries_count' => $queriesCount,
+                // What we were actually billed for, which is not the same as what was asked: three
+                // of the five sources are free (see `SignalSourceBreakdown`).
+                'paid_queries_count' => $paidQueries,
                 'queries_requested' => $queriesRequested,
                 'results_count' => $resultsCount,
                 'cost_micros' => $costMicros,

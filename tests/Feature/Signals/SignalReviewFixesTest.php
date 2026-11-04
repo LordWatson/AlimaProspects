@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
+use Tests\Support\BillingFixtures as Billing;
 
 uses(RefreshDatabase::class);
 
@@ -154,7 +155,8 @@ it('does not prune a signal that was converted after the ids were read', functio
 // --- Module review 3: a team can't create watches without limit --------------------------------
 
 it('refuses a new watch once the team is at its ceiling', function (): void {
-    config(['signals.max_watches_per_team' => 2]);
+    // The plan's figure, not the module's config floor — see `BillingFixtures::capSignalAllowance`.
+    Billing::capSignalAllowance('max_watches', 2);
 
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
@@ -185,7 +187,8 @@ it('refuses a new watch once the team is at its ceiling', function (): void {
 });
 
 it('still lets an existing watch be edited at the ceiling', function (): void {
-    config(['signals.max_watches_per_team' => 1]);
+    // The plan's figure, not the module's config floor — see `BillingFixtures::capSignalAllowance`.
+    Billing::capSignalAllowance('max_watches', 1);
 
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
@@ -208,7 +211,8 @@ it('still lets an existing watch be edited at the ceiling', function (): void {
 });
 
 it('reports the ceiling through the API envelope', function (): void {
-    config(['signals.max_watches_per_team' => 1]);
+    // The plan's figure, not the module's config floor — see `BillingFixtures::capSignalAllowance`.
+    Billing::capSignalAllowance('max_watches', 1);
 
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();

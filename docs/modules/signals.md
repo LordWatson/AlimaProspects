@@ -1,6 +1,6 @@
 # Signals
 
-> Status: **v1 complete (S0–S6) · v2 in progress (S7–S15 landed; S16 planned, see `signals-v2-plan.md`)**
+> Status: **v1 complete (S0–S6) · v2 complete (S7–S16, see `signals-v2-plan.md`)**
 > Owner: Product · Last updated: 2026-11-03
 
 ## Purpose
@@ -598,6 +598,26 @@ now **follows the signal's own jurisdiction** rather than the watch's market.
   `PushChannel`, which is now an adapter over it). Screens: the ROI rail, the preset offer and the
   submission list on `pages/signals/Types.vue`; `pages/admin/signals/Library.vue` (English only,
   like the rest of the panel).
+- **Cost governance and retention (S16).** The fourth seam Billing fills in, built to the shape of
+  the other three: `Contracts/SignalQuotaSource` + `Data/SignalAllowance` (the eight figures) +
+  `Services/StubSignalQuotaSource` (this module's own floors — **not** "unlimited", see below),
+  with `Billing\Services\PlanSignalQuotaSource` bound over it. `Services/SignalSpendGuard` is the
+  one place a limit is decided and the only thing that should call the source;
+  `Services/SignalUsageCounter` answers what a team has spent, over this module's own ledgers, and
+  is what Billing's `UsageLedger` reads for the new `BillingMetric::SignalQueries`.
+  `Exceptions/SignalAllowanceExceeded` exists so `sentry.ignore_exceptions` can filter a plan
+  refusal by **type** without filtering a real provider fault. `Services/SignalRetention` gained
+  `eligiblePreviews()`, `eligibleRuns()`, `eligibleSpend()`, `eligiblePlaybookRuns()`,
+  `eligibleSourceStats()` and `orphanedWatchlistEntries()`, and `PruneSignalsCommand` sweeps all
+  six through **one** `sweep()` helper that re-applies the eligibility query at the `DELETE`.
+  `SignalsPersonalDataExporter` reaches two more tables, and Compliance gained two
+  `SubjectDataCategory` cases for them. No new tables and no new routes, but **two columns on
+  `signal_runs`** that the review forced: `paid_queries_count` (the allowance is metered on what we
+  are billed for, and three of the five sources are free) and `error_code` (so a run refused for a
+  spent allowance is not counted as a provider failure). No new screen: the allowance shows up on
+  `/billing`, because that screen renders every `BillingMetric`. `SignalsSeamTest` greps this module
+  for an import of `App\Modules\Billing`, because the rule had already been broken once by a
+  `use` statement that existed only for a `{@see}`.
 - **Shared:** `resources/js/shared/types/signals.ts` (S5; S7 replaced the `SignalEventType`
   union with a `SignalEventKey` alias, added `SignalDefinition`, `SignalCategory` and
   `SignalIcon`, and `SignalWatch.event_types` became `SignalWatch.definitions`).
@@ -663,8 +683,11 @@ S8 ✅ took the geography multi-market and moved the outreach restriction from t
 signal's own jurisdiction; S9 ✅ added the builder (six vertical preset packs, the plain-language
 composer, and preview-before-you-save); S10–S13 ✅ added watchlists, clustering, scoring and
 pluggable sources; S14 ✅ added **playbooks** — a signal arriving becomes an event a team can
-automate against, which drafts an approach and never sends one; S15–S16 add delivery, ROI, the
-curated library and cost governance.
+automate against, which drafts an approach and never sends one; S15 ✅ added delivery, ROI and the
+curated library; and S16 ✅ made all of it safe to sell — a plan-driven allowance behind
+`SignalQuotaSource`, every ceiling enforced at the point of spend by `SignalSpendGuard`, signal
+searches metered into `usage_meters`, a retention window on every table the feature has, and the
+DSAR surface closed across watchlists and pushed events.
 **Still post-v2 backlog:** premium wealth data (Altrata).
 
 ## Data model
@@ -1579,6 +1602,369 @@ _is_ news.
 **Also learned:** "people moves" and "this week in funding" round-ups are as common in UK news as
 the UAE equivalents the S0 spike found, so every UK preset's `excludes` names them. The AI's
 relevance score remains the main filter; the templates only decide what it gets to look at.
+
+## S16 — cost governance, limits, retention and close-out (2026-11-04)
+
+**The phase that gets skipped when the demo already works, and the one that stops a team running a
+£900 Serper bill on a Tuesday.** Everything S7–S15 added was a new way to spend money: a type is
+multiplied by every watch and every place, a watchlist is a search per account, a preview is a
+button, a playbook evaluates every signal, and a feed is an outbound request to an address a
+customer chose. None of it was bounded by anything a plan could set.
+
+### 1. The fourth seam (task 1)
+
+`Signals\Contracts\SignalQuotaSource` reports a `SignalAllowance` — eight figures — and Billing
+binds a plan-backed source over this module's default. The pattern is `CreditSource` /
+`LeadQuotaSource` / `SeatLimitSource` exactly, Billing is still registered last, and nothing in
+Signals imports `App\Modules\Billing` (`CLAUDE.md` §3).
+
+The eight are **three different kinds of thing**, which is the thing to know before adding a ninth:
+
+| Kind               | Figures                                                                     | Enforced                                              |
+| ------------------ | --------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Standing ceilings  | `max_definitions`, `max_watches`, `max_watchlist_entries`                   | on **creation** — each is a standing cost             |
+| Monthly allowances | `monthly_source_queries`, `monthly_preview_queries`, `article_fetch_micros` | at the **point of spend**, over this module's ledgers |
+| Switches           | `playbooks`, `webhook_source`                                               | on the save path **and** in the evaluator             |
+
+**Two deviations from the pattern, both deliberate.**
+
+`StubSignalQuotaSource` is **not** unlimited, unlike the three stubs it mirrors. The three standing
+ceilings it reports are the floors S6, S7 and S10 shipped (`signals.max_watches_per_team` and the
+rest) and the article-fetch cap is S12's. Returning `SignalAllowance::unlimited()` would have made
+this phase _remove_ four ceilings in the name of adding governance: an installation with
+`BILLING_ENFORCE_PLANS=false` would become one where a script can create two hundred watches. It is
+the argument `config/billing.php` already makes about the AI credit allowance — a cost guard every
+tenant has had since the feature shipped is not a plan feature. What the stub _is_ permissive about
+is the two monthly query allowances and the two switches, because none of those existed before this
+phase and there is no floor to keep.
+
+`PlanSignalQuotaSource` **decorates** rather than replaces, because it answers eight figures rather
+than one and a plan definition is allowed to be partial. So a figure has **three** states and all
+three are used:
+
+- a **number** is a limit;
+- an explicit **`null`** is a plan declaring _unlimited_ and wins over the floor — which is why the
+  Enterprise plan spells all eight out rather than omitting the block;
+- an **absent key** is a plan with no position, and only that one reaches the module's floor.
+
+Collapsing the last two is the bug this nearly shipped with: an Enterprise plan that spells out
+`'max_watches' => null` would have been silently held to the module's ten, with the config saying
+otherwise a line above. `BillingFixtures::capSignalAllowance()` and `forgetSignalAllowance()` are
+two helpers rather than one for the same reason.
+
+### 2. Enforcement in the guards, not in middleware (task 2)
+
+`SignalSpendGuard` is the one place a Signals limit is decided, and ADR 0012's argument is why it is
+not middleware: three of the four ways this module spends money have no request behind them — the
+hourly `signals:dispatch-due`, the nightly watchlist sync, and a queued `RunSignalWatchAction`. A
+middleware limit would guard the one case that is cheapest to guard.
+
+**A ceiling refuses; a partial allowance clamps**, and conflating the two is how a team near the
+edge of an allowance gets nothing instead of what they are still entitled to:
+
+- `assertSourceQueriesRemain()` refuses a run with nothing left, **before any external work**, and
+  the refusal is recorded on the run — not thrown away like the capability refusal above it. The
+  difference is what the two mean: a capability refusal says Signals is not this team's feature, so
+  a `signal_runs` row would record something that should never have been scheduled, while a spent
+  allowance is a **cost event** and the watch card, the run list and the month's cost history are
+  exactly where a team needs to see it. One clean failed run per cadence with a sentence on it,
+  rather than a half-run that reads as the news provider having broken.
+- `maxQueriesPerRun()` hands back a _smaller_ per-run ceiling when there is some allowance left, and
+  the run already reports a trimmed plan on the watch card — which is the condition under which
+  clamping is honest rather than silent. It is threaded through `planFor()` and
+  `SignalQueryBuilder::build()`, including the entity window's own budget arithmetic.
+- "Run now" refuses **before the fifteen-minute throttle token is spent**: a press that was never
+  going to search anything must not also cost the member their next press.
+- The article fetch asks for a **number**, not a refusal, because it is an enhancement — a team at
+  its ceiling keeps receiving signals with the headline and snippet, which is what every signal was
+  before S12. Refusing the run over it would turn a cost ceiling into an outage.
+- A playbook **save** refuses and the **evaluator skips silently**, because the evaluator is a
+  listener on an after-commit event and therefore runs inside the watch's own job: a throw there
+  would fail the run and the retry would re-bill the Serper search (S14's review finding, which this
+  phase had to honour rather than rediscover).
+
+### 3. The meter is a record over the ledgers (task 3)
+
+`BillingMetric::SignalQueries` is the third metric, read by `UsageLedger` from
+`SignalUsageCounter::sourceQueriesBetween()` — `signal_runs.queries_count`, through the module that
+owns the table, the same arrangement leads and AI credits already have. Nothing increments a
+counter (ADR 0012), so the figure cannot be stale through a forgotten increment or doubled through a
+retried one, and the meter row survives the retention sweep that prunes the runs behind it.
+
+Four things about the counting, two of which the review corrected:
+
+- **It is `paid_queries_count`, not `queries_count`.** `queries_count` is a _coverage_ figure across
+  every source, and since S13b three of the five are **free**: Companies House shares Lead
+  Sourcing's existing quota, and a feed and the webhook make no request we are billed for. The first
+  implementation metered the allowance on coverage, which charged a team for requests that cost
+  nothing and — on a metered plan — produced _overage_ on them. Two questions, two columns, and
+  `SignalSourceBreakdown::totalPaidQueriesAttempted()` decides by the configured price rather than by
+  a list of source keys, so a source that becomes free needs no change.
+- **A run that settles as `Failed` counts.** It paid Serper the moment it asked, so counting only
+  completed runs would make a flaky provider free — the hole `LeadUsageCounter` already closes for
+  discovery.
+- **Two windows where it under-counts, both stated rather than papered over.** A run still
+  `Running` has not written its figure, and the scheduler can start one run per active watch for a
+  team at once — so the overshoot is bounded by `max_watches` × the per-run ceiling rather than by
+  the allowance. And a worker killed outright settles the row through
+  `RunSignalWatchJob::failed()`, which has no tally to write, so those searches are given away.
+  Both are under-counts in the customer's favour and neither can double-count, which is the right
+  direction for an allowance to be wrong in; closing the first needs a reservation the run
+  reconciles, which is a counter rather than a record (ADR 0012).
+- **A preview's searches are counted separately**, over `signal_previews`, and bounded separately. A
+  run is a standing instruction a team configured; a preview is a button somebody is pressing now,
+  and folding them together would let an afternoon of iterating on wording eat a month of scheduled
+  coverage. The ledger row **reserves** both the cost and the count under the lock: the first
+  version booked a zero count and wrote the real one on settle, so a preview in flight counted for
+  nothing, concurrent presses all read the same remaining figure, and one that threw before settling
+  was never counted at all.
+
+`monthly_source_queries` being a `BillingMetric` is also why it is the one of the eight read as the
+plan's **ceiling** rather than its included allowance: a metered plan keeps watching past what it
+included and is billed for the excess, exactly as it keeps discovering past its lead allowance. The
+meter and the refusal cannot disagree, because both read the same counter for the usage
+(`SignalUsageCounter`) and the same `PlanData::ceilingFor()` for the ceiling.
+
+### 4. Plan definitions and one capability that did not get added (task 4)
+
+`config/billing.php` gained a `signals` block per plan. Free and Starter carry small numbers rather
+than none, because Signals is not on those plans at all and the figures are what an operator's
+capability override would entitle a pilot to — a sales conversation, not a plan edit (ADR 0015).
+Team is where the price list promises Signals, so that block is the shape of the offer.
+
+**`playbooks` and `webhook_source` are quota switches rather than `Capability` cases**, and that is
+the enum's own rule applied rather than an omission: a capability that is not enforced does not get
+a case, both of these are enforced here where every other Signals limit a plan sets is, and two
+cases for one rule would have made the shorter list the one somebody reads. `Capability::Signals`
+and `Capability::SignalComposer` are unchanged.
+
+Both switches are **on for every plan that has Signals**. The temptation was to hold the events API
+back for Scale — it is a developer integration, so it reads like an upmarket feature — but it
+shipped in S13b on every plan that had Signals, and holding it back would also have taken it off the
+**trial** plan, so nobody could evaluate it before buying. Tightening one is a line changed in
+`config/billing.php`, which is where a pricing decision belongs.
+
+### 5. Retention for every table the feature has (task 5)
+
+`signals:prune` swept four tables; it now sweeps ten. The windows are three different lengths
+because the tables answer three different questions, and the **group** a table is in is the thing to
+get right rather than the number:
+
+| Table                      | Window                                    | Why                                           |
+| -------------------------- | ----------------------------------------- | --------------------------------------------- |
+| `signals`                  | 90 / 180 days, converted never (S6)       | A record about a person                       |
+| `signal_playbook_runs`     | 180 days, **and** cascade with the signal | How we handled a prospect's event             |
+| `signal_runs`              | 400 days, **finished only**               | Cost history, named nobody                    |
+| `signal_definition_spend`  | 400 days, on `day`                        | The same cost history, per type               |
+| `signal_previews`          | 30 days                                   | A draft hash, three counts and a cost         |
+| `signal_source_stats`      | 180 days from `last_seen_at`, **rolling** | An outlet the team still reads is never swept |
+| `signal_rejections`        | the run's own 30-day memory (S11)         | Exactly as long as the run honours it         |
+| `signal_clusters`          | when the last member goes (S11)           | No clock of its own                           |
+| `signal_watchlist_entries` | when the lead goes                        | No clock of its own                           |
+| `signal_inbound_events`    | 30 days (S13b)                            | "What did they actually send us?"             |
+
+Four of those are worth the sentence:
+
+- **`signal_runs` is swept on `finished_at` and never on age.** A queued or running row is live
+  state — `claimOrCreateRun()` adopts a non-terminal run for the watch — so deleting one by age
+  would take the row a worker is about to claim, and a run sitting queued for four hundred days is a
+  stopped queue, which is somebody's problem to look at rather than the sweep's to tidy away.
+  `signals.signal_run_id` is `nullOnDelete`, so a signal whose run is swept keeps its row and loses
+  the link: the signal is the record about a company and the run is the cost of having found it.
+- **`signal_playbook_runs` has a second clock on a row that already has one.** The cascade covers
+  every signal the sweep takes; what it does not cover is a **converted** signal, which is never
+  swept, so its log would be kept for as long as the lead. This window is what makes the promise
+  true in the one case the cascade cannot.
+- **`signal_source_stats` is rolling.** Swept on age, the row for a team's best outlet would be
+  deleted on its birthday and the authority it had earned would start again from nothing.
+- **A watchlist entry has no clock at all.** `SyncPipelineWatchlistAction` already clears orphans on
+  the nightly sync, but only for a list it is allowed to touch — and it skips a **paused** one on
+  purpose. A paused synced list is exactly where an orphan would sit for ever, which is what this
+  covers. A manual list is left alone: a null `lead_id` there is the normal case.
+
+**Every sweep now goes through one `sweep()` helper**, and that is the fix for the bug this command
+has already had once: reading ids and then deleting **by id alone** deleted rows a member had acted
+on between the two statements. The eligibility query is passed back into the `DELETE`, in one place,
+so the next table to be swept gets the guard without anybody remembering.
+
+### 6. The DSAR surface (task 6)
+
+`SignalsPersonalDataExporter` reached one table and now reaches three, because the phase went
+looking for everywhere the feature had grown a name since S6:
+
+- **`signal_watchlist_entries`** can hold a _person_ (S10's `WatchlistEntityType::Person`). A named
+  individual on a watchlist is a standing instruction to search the news for them — and erasing the
+  signals while leaving the entry would mean the next run went and found them again, which is the
+  one erasure outcome worse than refusing. **Person entries only**: a company entry's name is a
+  company, and "J. Okafor Consulting" is a business whose name happens to contain a person's.
+- **`signal_inbound_events`** holds the payload a customer pushed, whole, for thirty days. Alima did
+  not choose what is in it, which is exactly why it has to be searched. The match is a
+  contains-search over the serialised body — cruder than a column that _is_ a name, and the safe
+  direction for a class that offers candidates for a human to confirm.
+
+Each row carries a `record` key naming which table it came from, and Compliance maps the three to
+**three categories** — `signal`, `watched_account`, `pushed_event` — because what a subject needs to
+know is the difference between something we found, something we are looking for, and something
+somebody told us. `PersonalDataLocator` dispatches on that key rather than assuming `signal_id` is
+present, which is the shape of bug the two new surfaces would otherwise have introduced (a missing
+key reads as id zero, and the operator is offered a row that erases nothing).
+
+**Erasing a signal now repairs its cluster immediately** rather than at the next nightly sweep: a
+cluster short of its primary shows every member as a separate card until it is reconciled, and a
+DSAR is answered to a statutory deadline rather than overnight. A cluster the erasure emptied is
+deleted, because `subject_fingerprint` is the one part of it derived from the rows that are gone.
+
+**Tested on MySQL, not only SQLite.** `tests/Feature/Signals/SignalsMysqlDialectTest.php` runs the
+six new raw `LIKE`s, the `whereDate` over a `date` column and the nested `orWhere` group against the
+real engine, gated on `SIGNALS_MYSQL_TEST_DATABASE` naming a throwaway schema so it can never point
+at anything by accident. It was run green on MySQL 8 on 2026-11-04. The reason it exists is on the
+record: the `LIKE ... ESCAPE` character here could not be a backslash, because `'\'` is an
+unterminated string literal in MySQL and perfectly fine in SQLite — a bug that passed every test and
+would have failed every production query (`memory/sqlite-tests-mysql-prod.md`).
+
+### 7. Posture and the error tracker (task 7)
+
+`security:posture` gained three checks, in the command rather than in a test for the reason that
+class already gives — each one is correct in `.env.example` and is exactly what gets switched on for
+a demo and left on:
+
+- **the article fetch has a ceiling**: on, with a zero config cap and plans not enforced, is the one
+  combination where nothing bounds it (the check `config/signals.php` nominates this command for);
+- **the signal preview budget is set**, because zero reads as "no budget configured" in the Action
+  and that is a user-driven spend loop;
+- **plan limits are enforced** — a warning, not a failure: off is the legitimate invoiced-customer
+  case, and nobody notices on their own.
+
+`SignalAllowanceExceeded` is a new subclass and the only thing on
+`sentry.ignore_exceptions`. Every plan refusal is the application **working** — this month's
+searches are gone, the team is at its watch ceiling — and the scheduled one would report itself once
+an hour per watch, for every team on a ceiling. The base `SignalsException` could never go on that
+list: a source returning something unreadable is a domain exception too, and that one we want to
+hear about. Eleven named constructors now return the subclass; the three source failures and the
+three addressing refusals deliberately do not.
+
+### 8. What the S16 review changed
+
+Ten findings; six were code and four were a docblock claiming more than the code did. The six:
+
+- **The monthly preview allowance could be bypassed.** `reserve()` booked `queries_count` as zero
+  and `settle()` wrote the real figure — so the count the ceiling is measured on did not exist until
+  the preview finished, and a preview that threw never created it at all. The comment above it said
+  "both inside the lock, so a race cannot slip past either", which was true of the daily _cost_
+  budget (reserved up front) and false of the monthly _count_. Both are reserved now.
+- **Signals imported Billing**, in `SignalAllowance`, purely for a `{@see}` — while three docblocks
+  claimed nothing in the module did. `SignalsSeamTest` greps for it now, because a convention that
+  has been broken once will be broken again.
+- **The meter counted free queries as paid**, and billed overage on them. See §3.
+- **A quota refusal was counted as a provider failure.** `PlatformRollup` and `SignalRunOversight`
+  both read `Failed` runs as Serper being unwell, so every team on a ceiling would have raised the
+  platform failure rate once an hour per watch. `signal_runs.error_code` and
+  `SignalRun::refusalCodes()` separate the two — by code, never by the message, which is translated.
+- **The entity ring could step past an account it had not searched.** The window always takes the
+  first entity "however expensive" and the cursor then advances past it, which was right while the
+  ceiling was the config bound of forty — an entity costing more than that is pathological, and
+  holding the cursor would stop the ring for ever. S16's clamp broke that reasoning: an account
+  costing two queries is affordable in general and not in the last hour of a month. The two cases
+  are now told apart by the **unclamped** ceiling, so the ring advances past the first and waits for
+  the second.
+- **`allowanceFor()` paid for a `SUM` it discarded on every call**, because it read the ceiling
+  through `EnforcesPlanLimits` — whose job is to compare a ceiling with usage. The ceiling needs
+  only the plan. The guard also memoises per team and is bound `scoped()`, for the reason
+  `PlanResolver` documents: a singleton would hold one team's allowance for the life of a worker.
+
+And one finding taken as a **product** fix rather than a correction: refusing _every_ playbook
+update after a downgrade trapped a team into deleting a rule to stop it being listed as live, since
+the save path that would have paused it refused too. An edit that leaves the rule paused or
+rehearsing is allowed through; only one asking for it to perform is refused. A member must always be
+able to turn something off.
+
+**A fourth pass (`/code-review` at high effort) found six more, all small**, and they are in
+"What `/code-review` changed" below. **`security-review` found no exploitable vulnerability** — it checked the raw `LIKE`s (the column
+names are literal and only the pattern is bound; `escapeLike()` neutralises `%`, `_` and the escape
+character itself, in that order, which is the complete set for `LIKE` on both engines), the tenancy
+of every new query and sweep, whether the three new plan gates can be reached around, whether the
+webhook's signature and replay controls were weakened (they are untouched, and the new refusal is
+only reachable by a caller who has already proved the team's own HMAC, so it is not an enumeration
+oracle), whether a customer's pushed payload escapes into a screen or a log (it does not —
+`PersonalDataLocator` drops it, and the diff adds no `Log::` call at all), and the frontend for
+`v-html` or a user-controlled translation key (neither exists).
+
+**It did find one real bug, in this phase's own fix, and it is the best lesson of the lot.**
+`whereNotIn('error_code', …)` was how the quota refusal was excluded from the provider failure rate
+— and `error_code NOT IN ('…')` evaluates to **`NULL`**, so it does not match, for a row whose code
+_is_ null. That is every failure from before the column existed, **every run settled by
+`RunSignalWatchJob::failed()`** — worker death and retries exhausted, the failures that matter most
+— and the AI-credit branch. So a filter added to hide one refusal hid almost every real outage, and
+it would never have been noticed, because a falling failure rate reads as good news. It is a
+`providerFailures()` scope on the model now (`whereNull OR whereNotIn`, the shape SQL's three-valued
+logic requires), with a test naming all three cases. The same review's robustness note was **tried and
+reverted**, which is worth recording: it suggested the guard's three counting queries take
+`SignalUsageCounter`'s `withoutGlobalScopes()` + explicit `team_id` shape, so a guard called from a
+job could not be made permissive by whichever team is ambient. It is not a drop-in — dropping the
+global scopes also drops the **soft-delete** scope, and of the three models counted only
+`SignalDefinition` soft-deletes, so a blanket `whereNull('deleted_at')` is an unknown column on two
+of them and a count that cannot run is a ceiling that does not bite (three tests caught it inside a
+minute). Doing it per model would mean the guard knowing which of its callers soft-delete, which is
+the knowledge a global scope exists to hold. The concern is answered where it belongs instead: every
+caller is an Action already inside `TeamContext::run()`, and the explicit `team_id` means the scope
+can only narrow to the same team or to nothing.
+
+### 9. What `/code-review` changed, after the other three
+
+A fourth pass over the finished phase found six more, none of them a repeat and all of them small.
+Three are the same mistake and it is a different one from the review above's: **a second write
+somebody forgot.**
+
+- **`signal_watchlists.entries_count` is a cached counter, and two new delete paths left it
+  behind** — the DSAR erasure of a watched person, and the retention sweep of an orphaned entry.
+  Every other path has always maintained it in the same breath;
+  `RemoveWatchlistEntryAction`'s docblock says so in as many words. The sweep's case is the one that
+  matters, because it **can never self-heal**: that sweep exists for the _paused_ synced list
+  `SyncPipelineWatchlistAction` returns early on, which is precisely the path that never recomputes.
+  A list of forty would have reported forty over twenty-eight rows for ever, and
+  `SignalWatchController` offers lists by `entries_count > 0`. One `SignalWatchlist::recountEntries()`
+  now, called by both, recomputing from the rows rather than decrementing.
+- **The AI-credit refusal was still being counted as a provider failure.** It is the sibling of the
+  source-query allowance and it settled its run with no `error_code`, so it sat in the null set
+  `providerFailures()` deliberately treats as a real outage — which is the exact defect this phase
+  added `error_code` to prevent, left in place for the other allowance. It carries
+  `SignalRun::AI_CREDIT_EXHAUSTED` and is on `refusalCodes()`; what is left in the null set is now
+  only what we want counted, which is a worker that died.
+- **The Types screen offered the events API to teams whose plan excludes it**, so a Starter team
+  could tick it, fill in the form and collect a 403 — breaking the rule stated one field below about
+  `max_definitions`: _a number, or an option, on a screen has to be the one the save path will
+  apply._ And the tail behind it: the edit form re-posts `source_keys` from the stored definition, so
+  **every full edit of an existing webhook-sourced type was refused after a downgrade** — the same
+  trap the review above removed for playbooks, arriving through a different door. The save path now
+  refuses only a webhook source being _added_; a team keeping what they have is not acquiring
+  anything.
+- **`retention.preview_days` was 30 and the allowance it feeds is a calendar month.** On the 31st of
+  a long month the sweep deleted the previews from the 1st, and a team that had spent its monthly
+  preview allowance early got part of it back. **A retention window shorter than the period a figure
+  is measured over is an allowance that refills itself.** Forty days now; `run_days` and `spend_days`
+  at 400 were never close to it.
+- **A Free team was shown a "Signal searches" bar** for a feature their plan does not include at
+  all, because `UsageLedger::summary()` loops every metric and the screen rendered them all. The
+  meter still keeps a row per metric per team — it is a billing record, and a gap in one is worse
+  than a zero — and `BillingMetric::requiresCapability()` is what the _screen_ filters on, asked of
+  the one `CapabilityGate` (ADR 0015). On the enum so a fourth metric cannot be added without
+  answering the question.
+
+### 10. What changed outside Signals
+
+Three small fixes, all the same shape — **a two-way ternary over an enum that was about to grow a
+third case**:
+
+- `NotificationPresenter::creditLow()` chose between "Your search allowance" and "AI credit" with
+  `$metric === Leads ? … : …`, which would have described a signal allowance as AI credit.
+  `BillingMetric::subjectLabel()` is a `match`, which cannot.
+- The billing screen priced overage with the same shape twice. The `overage` prop is now a map keyed
+  by metric, built from `BillingMetric::cases()`, and the sentence under the bars is a list rather
+  than a hard-coded pair.
+- The signal-type and watchlist screens sent the module's **config floor** as `max_definitions` and
+  `max_entries`. A team on a plan allowing fifteen types was told twenty-five and found out by being
+  refused; both now ask the guard. A number on a screen has to be the number the save path will
+  apply.
 
 ## S15 — delivery, ROI and the curated library (2026-11-03)
 
@@ -2959,6 +3345,71 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
 
 ## Known limitations / TODO
 
+- **A DSAR cannot find an Arabic name that sits only inside a pushed JSON body** (S16 review).
+  Laravel's `array` cast serialises with `json_encode`'s defaults, so on a driver with no native
+  JSON type — SQLite, which is what the suite runs on — an Arabic name is stored as `\uXXXX`
+  escapes and a `LIKE` over the column matches nothing. **MySQL's `json` type normalises the escapes
+  away, so production is correct and the suite cannot demonstrate it**; the env-gated
+  `SignalsMysqlDialectTest` is what does. The three flat columns matched beside the payload (`title`,
+  `summary`, `source_name`) are plain strings and match on both, so the gap is an event naming
+  somebody **only** in a nested key **and** only in Arabic — which, in a product sold into the UAE,
+  is worth writing down rather than hoping about.
+- **A DSAR export of a pushed event returns the body whole** (S16 review), so an export answering
+  for one person may contain a sentence about a colleague. The alternative — redacting to the
+  matching fragment — would mean telling a subject _less_ than we hold while claiming to have
+  answered, which is the worse of the two failures; the review step before anything is sent is what
+  the design relies on instead.
+- **Concurrent runs can overshoot the monthly allowance** (S16 review). Only a settled run has
+  written its query figure, so `signals:dispatch-due` starting one run per active watch for a team
+  has each of them check the allowance against the same number. The overshoot is bounded by
+  `max_watches` × the per-run ceiling rather than by the allowance. Exactly the trade
+  `DiscoveryLimitGuard` has made since Phase 16, and closing it needs a reservation the run then
+  reconciles — a counter rather than a record (ADR 0012).
+- **A worker killed mid-run gives its searches away** (S16 review). The tally lives in memory until
+  the run settles, and `RunSignalWatchJob::failed()` has nothing to write — so a run that paid
+  Serper and then had its process killed is invisible to the allowance. An under-count in the
+  customer's favour, and it cannot double-count.
+- **A plan switch bounds taking a sub-feature up rather than switching it off retroactively**
+  (S16 review). A playbook stored before a downgrade is skipped by the evaluator and may still be
+  edited as long as the edit leaves it paused or rehearsing — a member must be able to turn
+  something off. And an event pushed while the team was entitled is still read by the next run
+  inside the source's seven-day window: they sent it in good faith and the endpoint has already
+  stopped taking new ones.
+- **A pushed event is matched for a DSAR by searching its whole body** (S16). The other two surfaces
+  have a column that _is_ the person's name; a pushed payload is whatever the customer's integration
+  sent, so the only honest search is a contains-match over the serialised JSON. It **over-reports** —
+  a body mentioning "Smith Holdings" matches a request about Ada Smith — which is the safe direction
+  for candidates a human confirms, and the right trade for erasure too: the row is a thirty-day
+  record of an HTTP request, the signal it produced is separate with its own retention, and nothing
+  downstream reads it again. A false positive costs an operator the ability to answer "what exactly
+  did they send us?" about one event; a false negative costs us a failed erasure.
+- **Erasing a watched person is undone by the next sync if the lead survives** (S16). A synced
+  watchlist entry is an _output_ of the team's pipeline, so `SyncPipelineWatchlistAction` will put it
+  back from the `leads` row. That row is Compliance's to erase and not this module's, and the same
+  request's Leads Workspace pass is what handles it — so the honest report is that Signals has
+  removed what Signals holds. A request answered through `EraseSubjectDataAction` covers both; one
+  made by calling this exporter alone does not, and nothing warns you.
+- **A plan grant cannot change a signal allowance** (S16). `plan_grants` has a column per allowance
+  — seats, leads, credits — and signal searches has none, so `PlanData::withAllowances()` leaves
+  `signalQueries` alone rather than pretending. A bespoke Enterprise signal allowance is a line in
+  `config/billing.php` per environment today, which works and is not self-serve.
+- **Signal searches have a list price and no Stripe meter** (S16). `billing.overage.signal_queries`
+  carries a `unit` of 100 and an `amount`, and no `stripe_price` by default — the same arrangement
+  leads and credits have had since Phase 16 and for the same reason (a placeholder price would be
+  attached to every checkout session). So a metered plan's excess searches are **permitted up to the
+  ceiling and never billed** until the meter exists. The multiplier still caps the spend, so the
+  margin is protected; the revenue is not collected.
+- **The allowance is not on a Signals screen** (S16). `/billing` shows it, because that screen
+  renders every `BillingMetric` and gained a bar and a label automatically. The watch list, the feed
+  and the type form all discuss cost in micro-units per search and none of them says "412 of 2,000
+  searches this month". The refusal, when it comes, is a sentence on the run — which is late. A
+  remaining-allowance line on the watch index is the obvious next thing and is a screen, so it is a
+  brand-reviewed change rather than a footnote to this phase.
+- **The monthly allowance counts finished runs only** (S16). A run writes `queries_count` when it
+  settles, so a run in flight is not yet counted and a team can start a run that takes them over.
+  Bounded by the per-watch fifteen-minute throttle and the per-member rate limit rather than by the
+  guard — the same shape `LeadUsageCounter` has had since Phase 16. Counting a reservation up front
+  would need a row the run then reconciles, which is a counter rather than a record (ADR 0012).
 - **A type's AI cost is an allocation, and the screen does not say so** (S15). The card shows one
   "Cost", which is the measured search cost plus an apportioned share of the run's classification
   cost. The two are stored in separate columns precisely so nothing presents an allocation as a
@@ -3017,14 +3468,17 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
   registry number, so a member whose filings never arrive has no way to see why. The number and the
   checked-at timestamp are on the row and would make a reasonable column on the watchlist screen.
 
-- **`max_queries_per_run` now bounds a run across sources, so adding one halves a watch's reach**
+- **`max_queries_per_run` bounds a run across sources, so adding one halves a watch's reach**
   (S13a). A definition on two sources asks every template twice, and the ceiling is still forty — so
   a watch over five places that was comfortably inside budget on news alone can be trimmed the
   moment web search is ticked. The arithmetic is honest rather than broken (a source is real money)
   and the watch card already says coverage was trimmed, but nothing on the **type** form warns that
   ticking a second source may cost a place on a watch somebody else configured. The cost line says
-  what the searches cost and not what they displace. A per-plan ceiling is S16's job and is where
-  this should be resolved.
+  what the searches cost and not what they displace. **S16 did not change this ceiling**: it added a
+  _monthly_ plan allowance above it, and `SignalSpendGuard::maxQueriesPerRun()` only ever lowers the
+  per-run figure. A plan-driven per-run ceiling was considered and left out — the per-run number is
+  about how big one search is, which is a tuning decision, and the plan's job is how much a team may
+  spend in a month.
 - **Platform reporting still attributes every signal provider call to `signals_news`** (S13a).
   `PlatformRollup` counts `signal_runs` rows and sums `cost_micros` onto that one dimension, which
   was exact while a run meant one provider and is now a run-level figure filed under its commonest
@@ -3053,7 +3507,10 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
 - **Nothing shows the AI saving** (S11). `signal_runs.results_count` is the article count and
   `signals_created` is the event count, so the gap between them hints at it — but there is no
   "classifications avoided" figure anywhere, so the phase's cost win is visible only in the AI
-  ledger. It belongs with S16's cost governance, where the other spend numbers are.
+  ledger. **S16 did not add it**, and on reflection it does not belong with the allowances: those
+  bound what a team may spend and this is a claim about how clever we are, which is a figure for a
+  board slide rather than a ceiling. `signal_definition_spend.ai_cost_micros` is the honest version
+  and it is already there.
 - **A cluster short of its primary shows all of its members until the nightly sweep** (S11). The
   feed predicate is deliberately tolerant — see "What the S11 review changed" — so retention taking
   a primary makes a story briefly look like seven cards rather than vanish. `signals:prune` repairs
@@ -3101,10 +3558,15 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
   query; a 429 or a connection error sends a second HTTP call, and whether the provider bills it is
   unconfirmed. The same arrangement a real run has had since S2, flagged here because S9 is the
   phase that made searches a thing a member triggers by hand.
-- **The composer has no team-wide daily cap**, unlike the preview. Its ceiling is the _monthly_ AI
-  allowance, so several members looping it could spend a month of a team's AI budget in an
-  afternoon and starve insights, drafting and scoring. The per-member limit is 10/hour to narrow
-  that; the per-team budget belongs with S16's other cost ceilings (ADR 0020 §5).
+- **The composer still has no team-wide daily cap**, unlike the preview, and **S16 deliberately did
+  not add one**. Its ceiling is the _monthly_ AI allowance, so several members looping it could
+  spend a month of a team's AI budget in an afternoon and starve insights, drafting and scoring; the
+  per-member limit is 10/hour to narrow that. It was left out because the composer has no ledger of
+  its own — the spend lands in `ai_requests` with no subject, which is what made the preview need
+  `signal_previews` before it could be capped (ADR 0020 §5) — and adding a ninth figure to
+  `SignalAllowance` plus a table to count it against is a phase's worth of work for a path already
+  bounded twice. The fix, when it comes, is a ledger row per draft and then a figure, in that
+  order.
 - **A preview is a sample from one place.** One region and one place, up to four queries, one AI
   batch — the three caps of ADR 0020 §5 exist because a preview is a user-triggered spend loop. So a
   thin preview is not proof a definition is bad, and the panel says so in words. Previewing across a
@@ -3304,6 +3766,8 @@ Policies `SignalWatchPolicy` + `SignalPolicy` + `SignalDefinitionPolicy` + `Sign
 
 | Date       | Phase | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-04 | S16+  | **What the S16 review changed** (see the section of that name). **Six code findings, four over-claiming docblocks, and every one of the six was a figure being asked a question it could not answer.** The **monthly preview allowance could be bypassed**: `reserve()` booked `queries_count` as zero and `settle()` wrote the real figure, so the count the ceiling is measured on did not exist until the preview finished and never existed for one that threw — while the comment above it claimed the lock covered both ceilings, which was true of the cost and false of the count. The **meter counted free queries as paid** and billed overage on them: `queries_count` is coverage across every source and three of the five cost nothing, so `signal_runs.paid_queries_count` is now a second column and `SignalSourceBreakdown::totalPaidQueriesAttempted()` decides by the configured price rather than by a list of keys. A **quota refusal was counted as a provider failure** by both `PlatformRollup` and `SignalRunOversight`, so every team on a ceiling would have raised the platform's Serper failure rate once an hour per watch — `signal_runs.error_code` plus `SignalRun::refusalCodes()` separate them, by code and never by the translated message. The **entity ring could step past an account it had not searched**: the window always takes the first entity however expensive and the cursor advances past it, which was right while the ceiling was forty and wrong the moment S16 let the ceiling shrink to what is left of a month, so the two cases are told apart by the **unclamped** bound. **Signals imported Billing** in `SignalAllowance`, for a `{@see}`, while three docblocks said nothing did — `SignalsSeamTest` greps for it now. And `allowanceFor()` **paid for a `SUM` it discarded on every call** by reading the ceiling through `EnforcesPlanLimits`, whose job is to compare a ceiling with usage; the ceiling needs only the plan, and the guard memoises per team bound `scoped()`, for the reason `PlanResolver` documents. One product fix: refusing **every** playbook update after a downgrade trapped a team into deleting a rule to stop it being listed as live, so an edit that leaves it paused or rehearsing is allowed through. From the brand review: four translation keys were missing from both language files, and a shared `':price per :thing'` template with the metric's name interpolated into it cannot be rendered correctly in Arabic — the server now sends one complete sentence key per metric (`BillingMetric::overagePriceLine()`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `app/Modules/Signals/{Actions/{PreviewSignalDefinitionAction,RunSignalWatchAction,SaveSignalPlaybookAction},Services/{SignalSpendGuard,SignalUsageCounter,SignalsPersonalDataExporter},Support/SignalSourceBreakdown,Models/SignalRun,Data/SignalAllowance,Providers/SignalsServiceProvider}.php`, `app/Modules/Billing/{Services/PlanSignalQuotaSource,Enums/BillingMetric,Providers/BillingServiceProvider,Http/Controllers/Web/BillingController}.php`, `app/Modules/Admin/Services/Platform/{PlatformRollup,SignalRunOversight}.php`, `database/migrations/2026_11_09_100001_signal_runs_separate_paid_queries_and_error_codes.php`, `resources/js/{pages/billing/Index.vue,shared/types/billing.ts}`, `lang/{en,ar}.json`, `tests/Feature/Signals/{SignalCostGovernanceTest,SignalsSeamTest,SignalWatchlistTest}.php`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 2026-11-04 | S16   | **Cost governance, plan limits, retention and close-out — v2 complete.** The fourth seam Billing fills in: `Signals\Contracts\SignalQuotaSource` reports a `SignalAllowance` of **eight figures** (three standing ceilings, three monthly allowances, two switches) with `StubSignalQuotaSource` as this module's default and `Billing\Services\PlanSignalQuotaSource` bound over it, registered last, nothing here importing Billing. **Two deviations, both deliberate:** the stub is **not** unlimited, because the three standing ceilings are cost guards S6/S7/S10 shipped and `BILLING_ENFORCE_PLANS=false` must not remove them; and the plan source **decorates** per figure, so a figure has three states — a number, an explicit `null` meaning unlimited (what Enterprise declares), and an **absent key** meaning no position taken, which is the only one that reaches the floor. `SignalSpendGuard` is the one place a limit is decided, asked at the **point of spend** (ADR 0012) because the scheduler, the nightly sync and a queued run have no request behind them: a spent monthly allowance is a **clean refusal recorded on the run** rather than a half-run, a partial allowance **clamps** the per-run ceiling instead of refusing, "Run now" refuses before the throttle token is spent, the article fetch returns a number rather than a refusal because it is an enhancement, and a playbook save refuses while the evaluator skips silently (a throw in an after-commit listener would re-bill the run). `BillingMetric::SignalQueries` is the third metric, derived by `UsageLedger` from `signal_runs.queries_count` through `SignalUsageCounter` — a record over the ledger, never a counter — counting **failed** runs (they were paid for) and not runs in flight, with previews counted separately over their own ledger and their own ceiling. `config/billing.php` gained a `signals` block per plan; `playbooks` and `webhook_source` are quota switches rather than `Capability` cases, because that enum's rule is that every case is enforced and these are enforced here, and both are on for every plan that has Signals so nothing a customer can do today stops working. **Retention went from four tables to ten:** `signal_previews` (30d), `signal_playbook_runs` (180d, a second clock over the cascade, because a converted signal is never swept), `signal_runs` and `signal_definition_spend` (400d cost history, **finished runs only** — a queued row is live state), `signal_source_stats` (180d **rolling** from `last_seen_at`, so a team's best outlet is never swept on its birthday) and `signal_watchlist_entries` (no clock: they go when the lead does, which the nightly sync cannot do for a **paused** list). All six go through **one `sweep()` helper** that re-applies the eligibility query at the `DELETE` — the fix for the read-ids-then-delete-by-id bug this command has already had. **The DSAR surface closed across two more tables:** a _person_ on a watchlist and the body of a pushed event, mapped to **two new `SubjectDataCategory` cases** because a subject needs the difference between what we found, what we are looking for and what somebody told us; erasing a signal now **repairs its cluster immediately** rather than at the next sweep, and empties it rather than leaving a fingerprint behind. Verified on **MySQL** (`SignalsMysqlDialectTest`, gated on `SIGNALS_MYSQL_TEST_DATABASE`) for the six new raw `LIKE`s, the `whereDate` and the nested `orWhere` — the `LIKE ... ESCAPE` lesson applies to every one of them. `security:posture` gained three checks (the article fetch's ceiling, the preview budget, and a warning when plan limits are off) and `SignalAllowanceExceeded` is a new subclass so `sentry.ignore_exceptions` can filter a plan refusal by type without filtering a provider fault — never the base `SignalsException`. Outside the module, three two-way ternaries over `BillingMetric` that a third case would have broken: the credit-low notification (now `subjectLabel()`), the billing screen's overage pricing (now a map keyed by metric) and the type and watchlist screens, which were showing the config floor as the team's ceiling.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `app/Modules/Signals/{Contracts/SignalQuotaSource,Data/SignalAllowance,Services/{StubSignalQuotaSource,SignalSpendGuard,SignalUsageCounter,SignalRetention,SignalArticleEnricher,SignalQueryBuilder},Exceptions/{SignalAllowanceExceeded,SignalsException},Console/PruneSignalsCommand,Enums/WatchlistSourceKind,Providers/SignalsServiceProvider,Actions/**,Http/Controllers/Web/{SignalDefinitionController,SignalWatchlistController}}.php`, `app/Modules/Billing/{Services/{PlanSignalQuotaSource,UsageLedger},Enums/BillingMetric,Data/PlanData,Providers/BillingServiceProvider,Http/Controllers/Web/BillingController}.php`, `app/Modules/Compliance/{Enums/SubjectDataCategory,Services/PersonalDataLocator,Actions/EraseSubjectDataAction}.php`, `app/Modules/Core/Console/SecurityPostureCommand.php`, `app/Modules/Notifications/Services/NotificationPresenter.php`, `config/{billing,signals,sentry}.php`, `resources/js/{pages/billing/Index.vue,shared/types/{billing,compliance}.ts}`, `lang/{en,ar}.json`, `tests/Feature/Signals/{SignalCostGovernanceTest,SignalsMysqlDialectTest,SignalsRetentionTest,SignalsPersonalDataTest}.php`, `tests/Support/BillingFixtures.php`                                                                                                                                                                                                                                                                                                  |
 | 2026-11-03 | S15+  | **What the S15 reviews changed** (see the section of that name). **Four bugs that would have shipped, two of them cross-tenant, and every one invisible in the happy path.** `'team_id' => null` does not write a row that belongs to nobody — `BelongsToTeam` fills a null `team_id` from the ambient context, so a preset written while a team was active became _that team's_ own type, right columns and wrong owner, invisible to every reader; the fix is `SignalDefinition::$isPlatformPreset`, which already existed for exactly this and which a new `asPlatform()` helper was duplicating (the helper is gone). The same shape one level out: an **eager load is a second query and re-applies the scope**, so the operator's queue came back with a null definition on every row — no name, no evidence, “no longer available”. The **evidence on a submission was every tenant's**: `performanceFor()` grouped by `event_key` alone, and a clone carries the preset's key, so “how this type has done for the team that wrote it” was the platform's total on the one screen where the author is anonymised so the evidence is all there is. And a **withdrawn preset kept its key** — the unique index does not soft-delete — so re-using it was a 500, while `withoutGlobalScopes()` on the admin reads dropped the soft-delete scope too and left withdrawn presets on the screen. Also: a promotion **dropped `match_keywords`, `classification_rules` and `suggested_approach_hint`**, all three of which a clone may take, so a team's best work was thrown away and every clone then saw a diff against a preset the submission had not changed; the spend was **lost on a retryable failure and on an unexpected throw** and could **fail a run** that had already paid, now one once-only exception-safe recorder on every exit; and withdrawing an offer for a type you had since deleted 404'd for ever. Five overstated comments corrected, including “a record, not a counter” (it is a running total with no run id) and “results are what was classified” (they are raw per-query results). From the brand review: the **cost printed in GBP** while the providers bill in USD; the offer dialog's checkboxes were not tied to the values they decide (a `fieldset` per change, a named control and `aria-describedby` now); `Heat` was a reused one-word key translated two different ways; the digest's headline and event label ran together and its approach note was carried **only by italics**; and the admin preset editor opened with an **empty Searches box** because the reader sent a count rather than the templates.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `app/Modules/Signals/{Actions/{SavePlatformPresetAction,PromoteSignalDefinitionAction,SubmitSignalDefinitionAction},Services/{PlatformPresetReader,SignalSpendLedger,PresetUpdateDiffer},Support/SignalDefinitionBreakdown,Actions/RunSignalWatchAction,Http/Controllers/**}.php`, `app/Modules/Admin/{Services/Platform/SignalLibrary,Http/Controllers/Web/SignalLibraryController}.php`, `app/Modules/Notifications/Console/SendDigestsCommand.php`, `resources/js/{pages/signals/Types,pages/admin/signals/Library,components/signals/TuningSuggestions}.vue`, `resources/views/emails/notifications/digest.blade.php`, `lang/{en,ar}.json`, `tests/Feature/Signals/{SignalLibraryCurationTest,RunSignalWatchActionTest}.php`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 2026-11-03 | S15   | **Delivery, ROI and the curated library.** Two tables (`signal_definition_spend` — per-type daily cost, keyed by `event_key` so a deleted type keeps its history, with **measured** search cost and **allocated** AI cost in separate columns; `signal_definition_submissions` — a team's request that a type join the library). `DigestBuilder` gained **highlights** rather than a second digest path: the hottest events by name, per cluster, nulls last, capped — and the jurisdiction's **approach note travels with the headline**, because the digest is read outside the app where no screen can warn anybody. `PushDelivery` was extracted from `PushChannel` so the digest could push without a copy of the device logic. The definition card shows found → kept → converted → pipeline beside the cost and the cost per lead, which is **null and said in words when nothing converted** — a zero would read as “free”. `SignalTuningKind::RetireDefinition` proposes pausing a type that found plenty, kept almost none and converted nothing — and, like everything else on that panel, **never applies**. The library became curated: a team **submits**, an operator promotes or rejects with a note, and promotion **copies** (the team keeps their own type, still running) while a named key folds the submission into an existing preset and bumps its version. Every clone a version behind is **offered** the diff **per field**, and taking nothing is a real answer that stops the offer coming back (the feature ADR 0018 §3 made a clone a copy for). Four `PlatformMetric` cases and two reports in Admin's own builders (ADR 0016), with the **pack derived from the catalogue** rather than rolled up. And a preset write sets `SignalDefinition::$isPlatformPreset` rather than trusting `'team_id' => null`: `BelongsToTeam` fills a null `team_id` from the ambient context, so a preset written while a team was active would silently be that team's own type — right columns, wrong owner, invisible to every reader.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 2026-11-03 | S14+  | **What the S14 reviews changed** (see the section of that name). Three product bugs: a rule **converted a signal a member had dismissed** (now skipped before it is claimed — the same Action is permitted to a person and refused to a rule); a per-job spend cap **claimed the signal and refused it for ever**, so 175 of 200 were permanently refused by design, and the batch cap dropped its tail entirely (both are now **deferrals**, handed back by the Action and re-dispatched by the job after `signals.playbooks.defer_seconds`); and an exception in `RunPlaybooks` **failed the watch run that raised the event and re-billed its Serper search** (now caught). Plus: `completed_at`, so an interrupted run is tellable from one that matched nothing; a **rehearsing rule no longer stops the chain**, because a rehearsal must not change what the live rules do; `PlaybookActor` requires the creator to still hold a manage role; the drafting cap counts **attempts**, so an AI outage is bounded; `failed()` logs the exception's class rather than a message carrying its bindings; a handler-less step and a dropped tag are **recorded** rather than silently omitted from the log; and the claim retries a deadlock and survives the rule being deleted mid-flight. On the screens: the error summary's per-step links **resolved to nothing** (anchors and labels are now derived from the form), reordering a step lost focus twice over, the checkbox groups named nothing to a screen reader, a rehearsed step wore the applied tick, `watchlist_ids` was a condition only the API could set, and Arabic figures were set in DM Mono at 12px. Four findings were accepted rather than fixed, with reasons.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |

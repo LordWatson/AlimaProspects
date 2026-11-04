@@ -807,11 +807,68 @@ return [
         ],
     ],
 
-    // Retention sweep (implemented in S6): hard-delete dismissed signals after N days and
-    // unactioned (still New) signals after N days. Converted signals stay as long as their lead.
+    /*
+     * Retention sweep (S6, extended across every table this plan added in S16).
+     *
+     * `signals:prune` is the one thing that deletes, `SignalRetention` is the one thing that
+     * decides, and the feed's "deletes in N days" reads the same numbers — a screen promising 90
+     * days while the sweep used 30 would be worse than saying nothing.
+     *
+     * **The windows are three different lengths because the tables answer three different
+     * questions, and that is the thing to keep hold of when adding a fourth:**
+     *
+     * - **Records about a person or a company** get the shortest window the product can live with,
+     *   because that is what data minimisation is. Dismissed signals go after 90 days (the team
+     *   said no, and the reason is already in the audit log, which is what tuning reads) and
+     *   unactioned ones after 180 (a six-month-old funding round is not a trigger event, and
+     *   keeping a named person's details because nobody clicked is exactly the retention a
+     *   minimisation policy exists to prevent). `signal_playbook_runs` is in this group rather
+     *   than with the cost history: it is the record of how we handled a prospect's event, which
+     *   is data about that prospect, and the row already dies **with** the signal by cascade.
+     * - **Cost history** is kept far longer, because "what did Signals cost us last March" is a
+     *   question asked in arrears and `usage_meters` only carries the monthly total. `signal_runs`
+     *   and `signal_definition_spend` hold counts and money and name nobody.
+     * - **Working state** has no clock of its own and is swept when the thing it was about goes:
+     *   a rejection memory lasts exactly as long as the run honours it, a cluster goes when its
+     *   last signal does, and a synced watchlist entry goes when its lead does.
+     *
+     * A **converted** signal has no window at all. It is the provenance of a real lead, so it lives
+     * as long as that lead does.
+     */
     'retention' => [
         'dismissed_days' => (int) env('SIGNALS_RETENTION_DISMISSED_DAYS', 90),
         'unactioned_days' => (int) env('SIGNALS_RETENTION_UNACTIONED_DAYS', 180),
+
+        // A preview's ledger row (S9) holds a draft **hash**, counts and a cost — no headline, no
+        // name and no result, which is what makes it cheap to keep.
+        //
+        // **Forty days, and it has to be more than thirty-one** (`/code-review`). This is the
+        // ledger the *monthly* preview allowance is summed over
+        // (`SignalUsageCounter::previewQueriesThisMonth()`, from the start of the calendar month in
+        // UTC), so a thirty-day window meant that on the 31st of a long month the sweep deleted the
+        // previews from the 1st and a team that had spent its allowance early got part of it back.
+        // A retention window shorter than the period a figure is measured over is an allowance that
+        // refills itself. `run_days` and `spend_days` at 400 are comfortably clear of it.
+        'preview_days' => (int) env('SIGNALS_RETENTION_PREVIEW_DAYS', 40),
+
+        // Cost history. Thirteen months, so a year-on-year comparison and a late invoice query
+        // both still have something to read. Only **finished** runs are swept, whatever their age:
+        // a queued or running row is live state, and deleting one would orphan the job that is
+        // about to claim it.
+        'run_days' => (int) env('SIGNALS_RETENTION_RUN_DAYS', 400),
+        'spend_days' => (int) env('SIGNALS_RETENTION_SPEND_DAYS', 400),
+
+        // What a rule did to somebody's pipeline (S14). Kept longer than a dismissed signal and
+        // shorter than the cost history: the log has to outlive the argument about whether the
+        // automation was a good idea, and it is still data about a prospect.
+        'playbook_run_days' => (int) env('SIGNALS_RETENTION_PLAYBOOK_RUN_DAYS', 180),
+
+        // Per-outlet tallies (S12), swept on `last_seen_at` rather than on age: this is a
+        // **rolling** window, so an outlet the team still sees every week is never swept however
+        // old the row is, and one that stopped publishing stops voting in the scorer's source
+        // authority. Six months, which is the same order as the unactioned-signal window — the
+        // evidence should not outlive the signals it was derived from by much.
+        'source_stat_days' => (int) env('SIGNALS_RETENTION_SOURCE_STAT_DAYS', 180),
     ],
 
 ];

@@ -11,6 +11,7 @@ use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWebhookSecret;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -34,6 +35,7 @@ final class RotateSignalWebhookSecretAction
     public function __construct(
         private readonly TeamContext $teamContext,
         private readonly AuditLogger $audit,
+        private readonly SignalSpendGuard $spend,
     ) {}
 
     /**
@@ -41,6 +43,11 @@ final class RotateSignalWebhookSecretAction
      */
     public function handle(Team $team, User $actor, SignalDefinition $definition): string
     {
+        // A credential for a source the team's plan does not include is a credential nothing will
+        // ever accept (S16 task 1). Refused here as well as at the endpoint, so the screen says so
+        // before somebody wires an integration against it.
+        $this->spend->assertWebhookSourceAllowed($team);
+
         return $this->teamContext->run($team, function () use ($team, $actor, $definition): string {
             // **Re-read inside the context rather than trusting the model handed in** (S13b
             // review). The write below is an `updateOrCreate` on `(team_id, signal_definition_id)`,

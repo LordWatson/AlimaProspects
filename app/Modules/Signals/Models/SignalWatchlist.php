@@ -141,6 +141,58 @@ class SignalWatchlist extends Model
     }
 
     /**
+     * Recompute the cached `entries_count` for one or more lists, from the rows that now exist.
+     *
+     * **A cached counter is a second write, and two S16 delete paths forgot it** (`/code-review`):
+     * the DSAR erasure of a watched person and the retention sweep of an orphaned entry both issue
+     * a bulk `DELETE` and neither maintained the count. `RemoveWatchlistEntryAction`'s docblock has
+     * always said this is "**two** writes — the row, and the list's cached `entries_count`"; what it
+     * could not say is what a *third* and *fourth* caller should do, so this is that, in one place.
+     *
+     * The sweep's case is the one that matters, because it can never self-heal: it exists precisely
+     * for the **paused** synced list `SyncPipelineWatchlistAction` returns early on, which is the
+     * one path that never recomputes. A list stuck reporting forty accounts with twenty-eight rows
+     * is a screen that lies and a `SignalWatchController` that keeps offering an empty list,
+     * because that one filters on `entries_count > 0`.
+     *
+     * Recomputed with a `count()` rather than decremented, for the reason the other callers already
+     * use one: a figure derived from the rows cannot drift, and a decrement applied twice can.
+     * Scoped by `team_id` as well as by key, and silent about a key that is not this team's.
+     *
+     * Takes any int-keyed array of ids rather than a `list`, because it normalises one itself — a
+     * `Collection::map()->all()` keeps its source keys, and demanding a list here would push that
+     * detail onto every caller for no gain.
+     *
+     * @param  array<int, int>  $ids
+     * @return int how many lists were recounted
+     */
+    public static function recountEntries(array $ids, ?int $teamId = null): int
+    {
+        $ids = array_values(array_unique(array_filter($ids, static fn (int $id): bool => $id > 0)));
+
+        if ($ids === []) {
+            return 0;
+        }
+
+        $lists = self::query()
+            ->withoutGlobalScopes()
+            ->whereIn('id', $ids)
+            ->when($teamId !== null, static fn ($query) => $query->where('team_id', $teamId))
+            ->get();
+
+        foreach ($lists as $list) {
+            $list->forceFill([
+                'entries_count' => SignalWatchlistEntry::query()
+                    ->withoutGlobalScopes()
+                    ->where('signal_watchlist_id', $list->getKey())
+                    ->count(),
+            ])->save();
+        }
+
+        return $lists->count();
+    }
+
+    /**
      * Whether a scheduled sync should touch this list.
      *
      * A paused list is left exactly as it is rather than emptied: pausing is "stop searching", not

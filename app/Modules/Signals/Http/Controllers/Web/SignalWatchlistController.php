@@ -19,6 +19,7 @@ use App\Modules\Signals\Http\Requests\SaveSignalWatchlistRequest;
 use App\Modules\Signals\Http\Resources\SignalWatchlistResource;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Policies\SignalWatchlistPolicy;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -45,7 +46,7 @@ final class SignalWatchlistController extends Controller
 {
     use ResolvesSignals;
 
-    public function index(Request $request): Response
+    public function index(Request $request, SignalSpendGuard $spend): Response
     {
         $team = $this->team($request);
         $user = $this->user($request);
@@ -79,7 +80,15 @@ final class SignalWatchlistController extends Controller
                         'name' => $stage->name,
                     ])
                     ->all()),
-                'max_entries' => max(1, (int) config('signals.watchlist.max_entries', 250)),
+                // The team's own ceiling since S16 — their plan's where it sets one — because the
+                // sync and the manual add are both held to that rather than to the config floor.
+                //
+                // **The allowance's own nullable figure, not `maxWatchlistEntries()`.** That method
+                // floors an unlimited allowance at `PHP_INT_MAX` so the Action's clamp has an
+                // integer to compare against; sending it to a screen would print
+                // 9,223,372,036,854,775,807 to an Enterprise team (S16 review). Null is "no limit",
+                // and the screen says so in words.
+                'max_entries' => $spend->allowanceFor($team)->maxWatchlistEntries,
                 'max_lists' => max(1, (int) config('signals.watchlist.max_lists_per_team', 5)),
                 // How many accounts one run looks at, so the screen can explain the rotation
                 // rather than leaving somebody to wonder why a 250-account list is quiet.

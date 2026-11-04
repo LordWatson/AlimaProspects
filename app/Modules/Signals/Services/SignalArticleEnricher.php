@@ -9,6 +9,7 @@ use App\Modules\AiPlatform\Exceptions\AiCreditExceededException;
 use App\Modules\AiPlatform\Exceptions\AiPlatformException;
 use App\Modules\AiPlatform\Support\UntrustedContent;
 use App\Modules\Core\Contracts\WebContentFetcher;
+use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\Core\Support\RobotsPolicy;
 use App\Modules\Signals\Data\ExtractedSignal;
@@ -65,6 +66,7 @@ final class SignalArticleEnricher
         private readonly AiClient $ai,
         private readonly CircuitBreaker $breaker,
         private readonly SignalScorer $scorer,
+        private readonly SignalSpendGuard $guard,
     ) {}
 
     /**
@@ -413,29 +415,28 @@ final class SignalArticleEnricher
     /**
      * What is left of this team's monthly allowance, or null when there is no ceiling.
      *
-     * Measured over `signal_runs.cost_micros`? No — that is the run's **whole** cost, Serper and
-     * AI included, and a ceiling read off it would shrink as the rest of the feature got busier.
-     * It is measured by counting the articles actually read this calendar month, which is what
-     * `signals.article_fetched_at` is for: a flag that is also a ledger.
+     * **Asked of {@see SignalSpendGuard} since S16**, rather than computed from config here. The
+     * arithmetic is unchanged and still lives in one place — articles read this calendar month ×
+     * the per-fetch price, never `signal_runs.cost_micros`, which is the run's *whole* cost and
+     * would make this ceiling shrink as the rest of the feature got busier — but the *ceiling* is
+     * now the team's, which is their plan's once Billing is registered. A config cap of zero still
+     * means "no ceiling configured" and arrives here as null.
      */
     private function remainingBudget(int $teamId, int $perFetch): ?int
     {
-        $cap = max(0, (int) config('signals.article_fetch.monthly_cap_micros', 0));
-
-        if ($cap === 0 || $perFetch === 0) {
+        if ($perFetch === 0) {
             return null;
         }
 
-        $readThisMonth = Signal::query()
-            ->where('team_id', $teamId)
-            ->whereNotNull('article_fetched_at')
-            // The calendar month in UTC, which is the same window Billing's allowances run on
-            // (ADR 0012) — so a team reading their bill and a team hitting this ceiling are
-            // talking about the same period.
-            ->where('article_fetched_at', '>=', now()->utc()->startOfMonth())
-            ->count();
+        $team = Team::query()->find($teamId);
 
-        return max(0, $cap - ($readThisMonth * $perFetch));
+        if (! $team instanceof Team) {
+            // The team was deleted between the run's commit and this after-commit pass. Nothing to
+            // bill and nobody to bill it to; the loop is about to find no candidates either.
+            return 0;
+        }
+
+        return $this->guard->remainingArticleFetchMicros($team);
     }
 
     private function enabled(): bool

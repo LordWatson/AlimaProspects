@@ -23,6 +23,7 @@ use Database\Seeders\SignalPresetSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Tests\Support\BillingFixtures as Billing;
 
 /*
  * The signal-type library (S7, ADR 0018): the phase that turned v1's three-case `SignalEventType`
@@ -305,7 +306,11 @@ it('rejects a blank search line rather than dropping it silently', function (): 
 });
 
 it('refuses a new type once the team is at its ceiling', function (): void {
-    config(['signals.max_definitions_per_team' => 1]);
+    // **The plan's figure, not the module's config floor.** Since S16 the ceiling comes from
+    // `SignalQuotaSource` and Billing's plan-backed source wins over
+    // `signals.max_definitions_per_team`, so capping that key alone would cap the thing that gets
+    // overridden.
+    Billing::capSignalAllowance('max_definitions', 1);
 
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
@@ -328,7 +333,11 @@ it('refuses a new type once the team is at its ceiling', function (): void {
 });
 
 it('still lets an existing type be edited at the ceiling', function (): void {
-    config(['signals.max_definitions_per_team' => 1]);
+    // **The plan's figure, not the module's config floor.** Since S16 the ceiling comes from
+    // `SignalQuotaSource` and Billing's plan-backed source wins over
+    // `signals.max_definitions_per_team`, so capping that key alone would cap the thing that gets
+    // overridden.
+    Billing::capSignalAllowance('max_definitions', 1);
 
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
