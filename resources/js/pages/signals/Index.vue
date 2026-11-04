@@ -523,7 +523,7 @@ onBeforeUnmount(() => {
                         class="rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                         :class="
                             scope === option.value
-                                ? 'border-brand bg-brand/10 font-semibold text-brand rtl:font-bold'
+                                ? 'border-brand bg-brand/10 font-semibold text-foreground rtl:font-bold'
                                 : 'border-border font-medium text-muted-foreground hover:text-foreground'
                         "
                     >

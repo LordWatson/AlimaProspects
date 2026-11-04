@@ -170,6 +170,7 @@ const headline = computed(() =>
 );
 
 const sourcesId = computed(() => `signal-sources-${props.signal.id}`);
+const headlineId = computed(() => `signal-headline-${props.signal.id}`);
 
 const cardTestId = computed(() => `signal-${props.signal.id}`);
 const attachTestId = computed(() => `attach-${props.signal.id}`);
@@ -180,7 +181,11 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
 </script>
 
 <template>
-    <Card as="article" :data-test="cardTestId">
+    <!-- `aria-labelledby` so the `<article>` is announced by its headline. A feed of unnamed
+         articles is a list of "article, article, article" in a screen reader's landmark and
+         element lists, which is the one view that exists to let somebody skip to the story they
+         want. -->
+    <Card as="article" :aria-labelledby="headlineId" :data-test="cardTestId">
         <CardContent class="flex flex-col gap-4">
             <!-- Event type, place, relevance, date. The chip is the card's one accent; relevance
                  belongs here because it is the number the feed is ordered by. -->
@@ -261,6 +266,7 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
             <!-- The event. The headline is the article's own words, so no brand full stop. -->
             <div class="space-y-2">
                 <h2
+                    :id="headlineId"
                     class="text-lg font-semibold text-foreground rtl:font-bold"
                     dir="auto"
                 >
@@ -615,8 +621,18 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                     </p>
 
                     <template v-if="canAction && isNew">
+                        <!-- The accessible name carries the headline. Every card shipped the
+                             same three button names, so a screen reader's element list read
+                             "Dismiss, Dismiss, Dismiss" with no way to tell which story each
+                             belonged to. The visible word is unchanged and stays the prefix, so
+                             voice control still matches what is on screen. -->
                         <Button
                             variant="ghost"
+                            :aria-label="
+                                t('Dismiss :headline', {
+                                    headline: signal.headline,
+                                })
+                            "
                             :data-test="dismissTestId"
                             @click="emit('dismiss', signal)"
                         >
@@ -651,6 +667,11 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
 
                         <Button
                             v-else
+                            :aria-label="
+                                t('Convert :headline to a lead', {
+                                    headline: signal.headline,
+                                })
+                            "
                             :data-test="convertTestId"
                             @click="emit('convert', signal)"
                         >
@@ -661,6 +682,11 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                     <Button
                         v-if="canAction && isDismissed"
                         variant="outline"
+                        :aria-label="
+                            t('Bring back :headline', {
+                                headline: signal.headline,
+                            })
+                        "
                         :data-test="restoreTestId"
                         @click="emit('restore', signal)"
                     >

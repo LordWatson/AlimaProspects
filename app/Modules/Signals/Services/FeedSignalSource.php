@@ -194,6 +194,11 @@ final class FeedSignalSource extends AbstractHttpSignalSourceProvider
             // which is what this did — narrows that window to milliseconds without closing it.
             $ips = SafeUrl::approvedIps($safe);
         } catch (RuntimeException $e) {
+            // The message is safe to log **here and only here**: `SafeUrl` throws fixed strings
+            // ("Disallowed port.", "URL resolves to a non-public address.") and never interpolates
+            // the address, so this says which rule refused without echoing a customer's URL — and
+            // which rule it was is the whole diagnostic value. Not a precedent for logging
+            // `getMessage()` off an HTTP client exception, which does carry the URL.
             Log::channel('signals')->warning('Feed refused by the SSRF guard.', [
                 'source' => $this->kind()->value,
                 'reason' => $e->getMessage(),

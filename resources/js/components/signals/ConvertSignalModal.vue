@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import { ShieldCheck } from '@lucide/vue';
-import { nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,7 +28,8 @@ import type { ConvertSignalForm, PipelineStage, Signal } from '@/types';
  * the form asks for their business or holding entity rather than inventing one. The hint says why,
  * since a required field with no explanation reads as a bug.
  *
- * The UAE notice is not dismissible and not a warning the member can click past: it is the basis on
+ * The restriction notice is not dismissible and not a warning the member can click past: it is the
+ * basis on
  * which this lead is allowed to exist (UAE PDPL, ADR 0007). It uses `warning`, never Signal Orange.
  */
 const props = defineProps<{
@@ -37,6 +38,15 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ close: []; converted: [] }>();
+
+/**
+ * How this prospect may be approached, as the server resolved it — null for no restriction.
+ *
+ * Deliberately not worked out here from `resolved_market`: that is one of three steps (the watch's
+ * market and then the strictest of its regions follow when the article named nowhere), so a copy
+ * of the rule on this side would disagree with the save exactly in the cases that matter.
+ */
+const restriction = computed(() => props.signal?.outreach_restriction ?? null);
 
 const { t } = useI18n();
 
@@ -116,9 +126,18 @@ function onOpenChange(open: boolean): void {
                     </DialogDescription>
                 </DialogHeader>
 
-                <!-- The basis on which this lead may exist. Not dismissible. -->
+                <!-- The basis on which this lead may exist. Not dismissible.
+
+                     **Shown only where a restriction actually applies.** This used to render
+                     unconditionally with the UAE PDPL sentence hard-coded, which was true while
+                     Signals was UAE-only (ADR 0011) and became a false statement of law the moment
+                     S8 made the geography plural: a UK signal carries no blanket restriction at
+                     all, and telling a member they may not cold-email one is wrong. The server
+                     resolves it — the rule has three steps and `resolved_market` is only the first
+                     — and sends null when there is none. -->
                 <div
-                    class="flex items-start gap-3 rounded-2xl bg-warning/12 p-4"
+                    v-if="restriction"
+                    class="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/12 p-4"
                     role="note"
                     data-test="convert-consent-notice"
                 >
@@ -132,16 +151,13 @@ function onOpenChange(open: boolean): void {
                         <p
                             class="text-sm font-semibold text-foreground rtl:font-bold"
                         >
-                            {{
-                                t('Reach out on LinkedIn or through a referral')
-                            }}
+                            {{ t(restriction.label) }}
                         </p>
-                        <p class="text-sm text-muted-foreground">
-                            {{
-                                t(
-                                    'Not cold email — UAE data law needs their say-so first.',
-                                )
-                            }}
+                        <!-- `text-foreground/80`, not `text-muted-foreground`: muted over a
+                             12% status tint is about 4.4:1, and §7h.2 settled product-wide that
+                             body copy on a tint takes the foreground colour. -->
+                        <p class="text-sm text-foreground/80">
+                            {{ t(restriction.guidance) }}
                         </p>
                     </div>
                 </div>

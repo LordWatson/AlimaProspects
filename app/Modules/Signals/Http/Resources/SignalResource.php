@@ -11,6 +11,7 @@ use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalCluster;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Services\SignalRetention;
+use App\Modules\Signals\Support\SignalOutreachRestriction;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -81,6 +82,14 @@ final class SignalResource extends JsonResource
             // presenting it as a fact with no provenance.
             'jurisdiction' => $signal->jurisdiction,
             'resolved_market' => $signal->resolved_market,
+            // **The restriction conversion would actually apply**, not just the jurisdiction it is
+            // derived from. `resolved_market` is step one of a three-step rule, so a screen that
+            // read it alone got the wrong answer for every signal whose article named nowhere the
+            // place map knows — and the convert dialog was reading neither: it stated UAE PDPL
+            // unconditionally, which on a UK signal is a false statement of law. Same shape as
+            // `LeadResource::outreachRestriction()`, so one component could render either;
+            // `label` and `guidance` are translation keys, not finished sentences.
+            'outreach_restriction' => self::restriction($signal),
             'confidence' => $signal->confidence,
             'relevance' => $signal->relevance,
             'suggested_approach' => $signal->suggested_approach,
@@ -293,5 +302,26 @@ final class SignalResource extends JsonResource
         $definition = $signal->relationLoaded('definition') ? $signal->definition : null;
 
         return ! $definition instanceof SignalDefinition || $definition->usesPlatformWording();
+    }
+
+    /**
+     * The outreach restriction a lead converted from this signal would carry, or null for none.
+     *
+     * @return array{value: string, label: string, guidance: string, allows_direct_marketing: bool}|null
+     */
+    private static function restriction(Signal $signal): ?array
+    {
+        $restriction = SignalOutreachRestriction::for($signal);
+
+        if ($restriction === null) {
+            return null;
+        }
+
+        return [
+            'value' => $restriction->value,
+            'label' => $restriction->label(),
+            'guidance' => $restriction->guidance(),
+            'allows_direct_marketing' => $restriction->allowsDirectMarketing(),
+        ];
     }
 }

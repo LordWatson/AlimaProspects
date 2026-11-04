@@ -90,18 +90,26 @@ abstract class AbstractHttpSignalSourceProvider implements SignalSourceProvider
         } catch (ConnectionException $e) {
             // A genuine network failure is transient — trip the breaker.
             $this->breaker->recordFailure($key);
+            // **The class, never the message** (CLAUDE.md §2; the same discipline
+            // `RunSignalWatchJob::failed()` spells out). A feed's address is supplied by the
+            // customer and often carries a token, and a cURL connect or timeout message embeds the
+            // whole URL — so the message is the one part of this that cannot be logged. The source
+            // and the breaker state are what an operator actually needs here; the address is
+            // recoverable from the definition.
             Log::channel('signals')->warning('Signal source connection failed.', [
                 'source' => $source,
-                'exception' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
 
             throw SignalsException::sourceUnavailable($source);
         } catch (Throwable $e) {
             // Anything else (a programming error, a thrown RequestException) is not a signal the
             // source is down — fail without opening the circuit for every team.
+            // Likewise, and more so: a thrown `RequestException` carries the **response body** in
+            // its message.
             Log::channel('signals')->error('Signal source request errored.', [
                 'source' => $source,
-                'exception' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
 
             throw SignalsException::sourceFailed($source);

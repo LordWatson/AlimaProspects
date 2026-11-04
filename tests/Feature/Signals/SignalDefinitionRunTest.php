@@ -43,31 +43,6 @@ beforeEach(function (): void {
 });
 
 /**
- * @param  array<string, mixed>  $overrides
- * @return array<string, mixed>
- */
-function aiEventFor(string $eventKey, array $overrides = []): array
-{
-    return [
-        'item_index' => 0,
-        'is_event' => true,
-        'event_type' => $eventKey,
-        'subject_person_name' => 'Jane Founder',
-        'subject_person_role' => 'Founder & CEO',
-        'subject_company_name' => 'Acme DMCC',
-        'counterparty_name' => null,
-        'amount' => null,
-        'currency' => null,
-        'location' => 'Dubai',
-        'confidence' => 90,
-        'relevance' => 80,
-        'summary' => 'Acme did something notable.',
-        'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
-        ...$overrides,
-    ];
-}
-
-/**
  * A watch over the given definitions, run once against a single canned article.
  *
  * @param  list<SignalDefinition>  $definitions

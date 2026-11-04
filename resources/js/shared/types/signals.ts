@@ -1,5 +1,7 @@
 // Signals (trigger-event prospecting) shared types — ADR 0011, phases S4–S7.
 
+import type { OutreachRestriction } from './lead-sourcing';
+
 /**
  * A signal definition's stable key — `funding_round`, `hiring_surge`, whatever a team called theirs.
  *
@@ -212,6 +214,15 @@ export type Signal = {
     jurisdiction: string | null;
     /** The compliance regime that follows from it, or null where none is recorded. */
     resolved_market: string | null;
+    /**
+     * How a lead converted from this signal may be approached, or null for no restriction.
+     *
+     * **Resolved by the server, not derived from `resolved_market` here.** That field is only step
+     * one of three — the watch's market and then the strictest of its regions follow when the
+     * article named nowhere — so a screen that worked it out from the jurisdiction alone would be
+     * wrong exactly when it matters. `label` and `guidance` are translation keys.
+     */
+    outreach_restriction: OutreachRestriction | null;
     /** 0–100: how sure the AI is this is a real, correctly-classified event. */
     confidence: number;
     /** 0–100: how likely this person is a high-net-worth prospect for this team. */

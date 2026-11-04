@@ -22,6 +22,7 @@ use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalConverted;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Http\Resources\SignalResource;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
@@ -976,4 +977,131 @@ it('restricts a lead whose article named two places, the stricter one winning', 
 
     expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent)
         ->and($lead->raw['jurisdiction'])->toBe('AE');
+});
+
+/*
+ * **What the convert dialog says is what the save applies.**
+ *
+ * The dialog used to state the UAE PDPL restriction unconditionally. That was true while Signals
+ * was UAE-only (ADR 0011) and became a false statement of law the moment S8 made the geography
+ * plural — a UK founder shown a consent requirement that does not apply to them, on the one screen
+ * where a member decides how to approach somebody. The fix was to send the resolved restriction
+ * rather than let a screen infer it from `resolved_market`, which is one step of three.
+ *
+ * These assert the *agreement* rather than either answer on its own, because agreement is the
+ * property that keeps them from drifting apart again.
+ */
+
+it('tells the convert dialog there is no restriction on a UK signal', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    $signal = app(TeamContext::class)->run($team, fn (): Signal => Signal::factory()->create([
+        'team_id' => $team->getKey(),
+        'signal_watch_id' => SignalWatch::factory()
+            ->covering(['London'], [SearchRegion::Gb])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk])
+            ->getKey(),
+        'location' => 'London',
+        'jurisdiction' => 'GB',
+        'resolved_market' => Market::Uk->value,
+    ]));
+
+    $payload = app(TeamContext::class)->run(
+        $team,
+        fn (): array => SignalResource::make($signal->fresh())->resolve(request()),
+    );
+
+    // Null, so the panel does not render at all — rather than rendering with softer words.
+    expect($payload['outreach_restriction'])->toBeNull();
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme Ltd',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBeNull();
+});
+
+it('tells the convert dialog the restriction a UAE signal carries, in the words the lead will use', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    $signal = app(TeamContext::class)->run($team, fn (): Signal => Signal::factory()->create([
+        'team_id' => $team->getKey(),
+        'signal_watch_id' => SignalWatch::factory()
+            ->covering(['London'], [SearchRegion::Gb])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk])
+            ->getKey(),
+        'location' => 'Dubai',
+        'jurisdiction' => 'AE',
+        'resolved_market' => Market::Uae->value,
+    ]));
+
+    $payload = app(TeamContext::class)->run(
+        $team,
+        fn (): array => SignalResource::make($signal->fresh())->resolve(request()),
+    );
+
+    expect($payload['outreach_restriction'])->not->toBeNull()
+        ->and($payload['outreach_restriction']['value'])
+        ->toBe(OutreachRestriction::UaePriorConsent->value)
+        ->and($payload['outreach_restriction']['allows_direct_marketing'])->toBeFalse()
+        // Translation keys, not finished sentences — the dialog runs them through `t()`.
+        ->and($payload['outreach_restriction']['label'])
+        ->toBe(OutreachRestriction::UaePriorConsent->label())
+        ->and($payload['outreach_restriction']['guidance'])
+        ->toBe(OutreachRestriction::UaePriorConsent->guidance());
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme DMCC',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent);
+});
+
+it('does not let the dialog read the jurisdiction alone, where that would be the wrong answer', function (): void {
+    // The case a screen computing this from `resolved_market` would get wrong: the article named
+    // nowhere, so step one has no answer and the watch's regions supply one. A dialog that showed
+    // nothing here would be telling a member they may cold-email somebody they may not — the
+    // dangerous direction, and the whole reason this is resolved server-side.
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    $signal = app(TeamContext::class)->run($team, fn (): Signal => Signal::factory()->create([
+        'team_id' => $team->getKey(),
+        'signal_watch_id' => SignalWatch::factory()
+            ->covering(['London', 'Dubai'], [SearchRegion::Gb, SearchRegion::Ae])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk])
+            ->getKey(),
+        'location' => 'remote',
+        'jurisdiction' => null,
+        'resolved_market' => null,
+    ]));
+
+    $payload = app(TeamContext::class)->run(
+        $team,
+        fn (): array => SignalResource::make($signal->fresh())->resolve(request()),
+    );
+
+    expect($payload['resolved_market'])->toBeNull()
+        ->and($payload['outreach_restriction']['value'])
+        ->toBe(OutreachRestriction::UaePriorConsent->value);
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme Ltd',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent);
 });

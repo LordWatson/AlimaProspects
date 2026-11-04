@@ -111,10 +111,29 @@ final class RunSignalPlaybooksJob implements ShouldBeUnique, ShouldQueue
         // It terminates: every pass handles at least one signal or defers strictly fewer than it
         // received, so the list shrinks. The **delay** is what makes it useful rather than a loop —
         // the spend ceilings are per job, so the next pass needs to be a later one.
-        if ($result['deferred'] !== [] && count($result['deferred']) < count($this->signalIds)) {
+        if ($result['deferred'] === []) {
+            return;
+        }
+
+        if (count($result['deferred']) < count($this->signalIds)) {
             self::dispatch($this->teamId, $result['deferred'])
                 ->delay(now()->addSeconds(max(60, (int) config('signals.playbooks.defer_seconds', 900))));
+
+            return;
         }
+
+        // **No progress at all, so the chain stops here — and says so.** The guard above is
+        // load-bearing and stays: re-dispatching a batch that deferred every one of its signals
+        // is an infinite loop, and a loop that spends an AI budget on each pass. But the condition
+        // it protects against is reachable without any ceiling being hit by this batch — a single
+        // rule whose step set is larger than one job may do can never make progress from any
+        // starting point — and the first version simply dropped the batch, so the signals were
+        // never automated and nothing anywhere recorded it. One line, because an automation that
+        // silently does nothing is the hardest kind of bug to be told about.
+        Log::channel('signals')->warning('Playbook batch made no progress and was not re-queued.', [
+            'team_id' => $this->teamId,
+            'signals' => count($this->signalIds),
+        ]);
     }
 
     public function failed(?Throwable $exception): void

@@ -67,7 +67,16 @@ final class ListSignalsAction
                 // down with the page. Columns only — a member is a link and a date on this screen,
                 // never a second copy of the summary.
                 ->with([
-                    'watch:id,name',
+                    // **`market` and `regions` as well as the label.** The card names the watch,
+                    // so `id,name` was all it needed — but `SignalResource` now also reports the
+                    // outreach restriction a conversion would apply, and resolving that falls back
+                    // to the watch's own market and then to its regions when the article named
+                    // nowhere (ADR 0019 §2). Narrowing a relation's columns is a contract with
+                    // every resource that reads it: with `shouldBeStrict()` on, the two missing
+                    // columns are a `MissingAttributeException` rather than a null, which is the
+                    // good outcome — the feed 500s in development instead of quietly telling
+                    // somebody a UK prospect needs consent.
+                    'watch:id,name,market,regions',
                     'lead:id,company_name',
                     'matchedLead:id,company_name',
                     'definition',

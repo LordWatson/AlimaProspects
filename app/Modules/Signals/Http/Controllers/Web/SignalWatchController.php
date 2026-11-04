@@ -26,6 +26,7 @@ use App\Modules\Signals\Http\Resources\SignalWatchResource;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatchlist;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use App\Modules\Signals\Services\SignalTuningAdvisor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,6 +51,7 @@ final class SignalWatchController extends Controller
         ListSignalDefinitionsAction $listDefinitions,
         GetIcpsAction $getIcps,
         SignalTuningAdvisor $advisor,
+        SignalSpendGuard $spend,
     ): Response {
         $team = $this->team($request);
         $user = $this->user($request);
@@ -80,6 +82,12 @@ final class SignalWatchController extends Controller
                 // On screen rather than only in the validator: a member who pastes a dozen cities
                 // has to be told the cap before the save, not have the extras quietly dropped.
                 'max_locations' => (int) config('signals.max_locations_per_watch', 10),
+                // The same rule one level up, and the screen this module's other three already
+                // obey: `SaveSignalWatchAction` asks the plan whether there is room for another
+                // watch, so a team at its ceiling could fill in the whole editor — the tallest
+                // form in the product — and meet the refusal only on submit. **Null is "no
+                // limit", not zero**: an Enterprise plan declares no ceiling.
+                'max_watches' => $spend->allowanceFor($team)->maxWatches,
                 'cadences' => array_map(static fn (SignalWatchCadence $cadence): array => [
                     'value' => $cadence->value,
                     'label' => $cadence->label(),

@@ -151,14 +151,16 @@ final class CompaniesHouseNumberLookup
             $response = $request();
         } catch (ConnectionException $e) {
             $this->breaker->recordFailure($key);
+            // The class, never the message: this endpoint is addressed with the company name in
+            // the query string, so a cURL message prints the name we were searching for.
             Log::channel('signals')->warning('Companies House name lookup connection failed.', [
-                'exception' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
 
             throw SignalsException::sourceUnavailable('companies_house');
         } catch (Throwable $e) {
             Log::channel('signals')->error('Companies House name lookup errored.', [
-                'exception' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
 
             throw SignalsException::sourceFailed('companies_house');

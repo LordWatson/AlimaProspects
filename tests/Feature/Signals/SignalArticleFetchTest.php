@@ -21,7 +21,6 @@ use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\BillingFixtures as Billing;
-use Throwable;
 
 /*
  * Reading the full article for the top of the feed (S12), and `robots.txt`.

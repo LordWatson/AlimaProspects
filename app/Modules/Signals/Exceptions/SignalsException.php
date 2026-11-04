@@ -304,6 +304,32 @@ class SignalsException extends DomainException
     }
 
     /**
+     * Somebody else on the team held the preview lock for the whole wait.
+     *
+     * The preview reserve serialises a count and an insert per team, because the daily preview
+     * budget is only enforceable if two presses cannot both read the same remaining figure. It
+     * waits five seconds rather than refusing, since two members previewing in the same second is
+     * a normal Tuesday — but the wait can expire, and `block()` throws
+     * `LockTimeoutException` when it does. Unhandled, that is an HTTP 500 and a Sentry event for
+     * what is really "try again in a moment": the one outcome where the product is working and the
+     * member is told it is broken.
+     *
+     * A 429 like {@see self::runThrottled()}, and for the same reason — the answer is *wait*,
+     * not *stop*. Deliberately a plain `SignalsException` rather than a subclass, which means it
+     * is **not** filtered out of Sentry: the base class can never go on `ignore_exceptions`
+     * (ADR 0017), and a team hitting this often enough to be noisy is something worth knowing,
+     * because it means the reserve is being held longer than it should be.
+     */
+    public static function previewBusy(): self
+    {
+        $e = new self('Someone else on your team is previewing right now. Try again in a moment.');
+        $e->errorCode = 'signals.preview_busy';
+        $e->status = 429;
+
+        return $e;
+    }
+
+    /**
      * The team already has as many watches as the plan allows.
      *
      * A cap exists because a watch is a standing instruction to spend money: every active one runs

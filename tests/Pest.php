@@ -221,3 +221,63 @@ function summaryTemplate(): AiPromptTemplate
         ],
     ]);
 }
+
+/*
+|--------------------------------------------------------------------------
+| Cross-file fixtures
+|--------------------------------------------------------------------------
+|
+| Both of these were declared inside one test file and called from others, which works only
+| because a serial run loads every file into one process. Under `--parallel` the files are dealt
+| out to separate workers, so the caller got "Call to undefined function" and five tests errored
+| — a suite that passes one way and not the other. A helper used by more than one file belongs
+| here, where every file gets it either way.
+|
+*/
+
+/**
+ * One classified event in the shape `signals.extract_event` returns, keyed to a definition.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function aiEventFor(string $eventKey, array $overrides = []): array
+{
+    return [
+        'item_index' => 0,
+        'is_event' => true,
+        'event_type' => $eventKey,
+        'subject_person_name' => 'Jane Founder',
+        'subject_person_role' => 'Founder & CEO',
+        'subject_company_name' => 'Acme DMCC',
+        'counterparty_name' => null,
+        'amount' => null,
+        'currency' => null,
+        'location' => 'Dubai',
+        'confidence' => 90,
+        'relevance' => 80,
+        'summary' => 'Acme did something notable.',
+        'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
+        ...$overrides,
+    ];
+}
+
+/**
+ * A complete, signable legitimate-interests assessment.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function liaPayload(array $overrides = []): array
+{
+    return [
+        'market' => 'uk',
+        'purpose' => 'To identify UK businesses whose published characteristics match our ideal-customer profile and approach them about a relevant service.',
+        'necessity' => 'Public company and business-listing data is the only way to identify these businesses; we hold role-based contact points in preference to personal ones.',
+        'balancing' => 'Business contact data, a relevant approach, an opt-out honoured platform-wide, and nothing retained past its window.',
+        'safeguards' => 'Role-based data preferred; retention windows enforced nightly.',
+        'signals_scope' => null,
+        'sign' => true,
+        ...$overrides,
+    ];
+}

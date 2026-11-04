@@ -5,6 +5,48 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-11-04 — Signals: an audit, and the things it found
+
+A pass over the whole of Signals rather than over one change, looking for the places where
+something true when it was written stopped being true as the module grew.
+
+**The convert dialog was telling some people the wrong law.** It said "not cold email — UAE data law
+needs their say-so first" on _every_ conversion. That was right when Signals only watched the UAE,
+and wrong from the moment a watch could cover London: a UK prospect may be approached by email, and
+a team was being told otherwise on the one screen where they decide how to make contact. The dialog
+now shows the restriction that actually applies to that prospect, and nothing at all where there is
+none — resolved by the same code the save uses, so the two cannot disagree.
+
+**The watch screen now tells you when you are at your plan's limit**, before you fill in the form
+rather than after. The signal-types, accounts and automations screens already did.
+
+**Deleting a watch no longer leaves miscounted cards behind.** Where two watches covered the same
+story, removing one left the card claiming more outlets than it could show, and sometimes split one
+event into several. It is now put right as the watch goes, rather than overnight.
+
+**A feed's web address can no longer reach our logs.** Some addresses carry a private token, and a
+failed fetch was recording the whole address. It records what kind of failure it was and nothing
+else.
+
+**Two things that looked broken and were not.** Previewing a signal type at the same moment as a
+colleague showed an error page; it now says "someone else on your team is previewing right now, try
+again in a moment". And an automation that could never finish a batch now says so in the log instead
+of stopping quietly.
+
+**Faster housekeeping.** The nightly tidy-up and the monthly allowance figures had no database
+indexes behind them, which costs nothing at small scale and a great deal at large. Added.
+
+**Smaller things.** The "running" badge and some notice text failed contrast guidelines; three
+dropdowns on the watch form were missing their focus outline and their disabled state; every card in
+the feed offered a screen reader three buttons called "Dismiss", "Convert to lead" and "Bring it
+back" with no indication of which story they belonged to, and now names the story. In Arabic, one
+misspelled word, our own name spelled two different ways, and one phrase reworded to match how the
+rest of the product already says it. Some Arabic wording still needs a native speaker's eye and is
+listed in the module notes.
+
+**For developers:** the test suite could not run in parallel at all — it exited having run zero
+tests — for two separate reasons, both now fixed. It runs in 21 seconds instead of 122.
+
 ### Added — 2026-11-04 — Signals: an allowance that means something, and nothing kept longer than it should be
 
 Signals has grown a lot in the last week, and every one of those additions was a new way to spend

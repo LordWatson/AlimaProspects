@@ -62,6 +62,14 @@ const props = defineProps<{
         regions: SignalRegionOption[];
         /** The cap on places, so the field can say it rather than the server enforcing it alone. */
         max_locations: number;
+        /**
+         * How many watches the team's plan allows, or **null for no limit** (S16).
+         *
+         * Here for the same reason `max_locations` is: `SaveSignalWatchAction` asks the plan
+         * before it saves, and the editor below is the tallest form in the product — a team at
+         * their ceiling should not fill it in to find out.
+         */
+        max_watches: number | null;
         cadences: SignalCadenceOption[];
         icps: { id: number; name: string; is_active: boolean }[];
         /**
@@ -451,13 +459,26 @@ const runStatusLabel: Record<SignalRunStatus, string> = {
     failed: 'Failed',
 };
 
+// **Null is "no limit", not zero** (S16): an Enterprise plan declares no ceiling, and a team on
+// one is never at it. Same shape as the Types screen.
+const atCeiling = computed(
+    () =>
+        props.options.max_watches !== null &&
+        props.watches.length >= props.options.max_watches,
+);
+
 const runStatusVariant: Record<
     SignalRunStatus,
-    'success' | 'info' | 'outline' | 'error'
+    'success' | 'outline' | 'error'
 > = {
     // Queued is waiting, not a problem — `outline`, not `warning`.
     queued: 'outline',
-    running: 'info',
+    // Running is also not a problem, and **not `info`**: `status.info` over its own 12% tint is
+    // about 4.4:1, so §7g.2 allows it as a non-text icon and not as a badge until §7.6 approves
+    // the token. §7h.2 already moved the leads list and the lead's rail off it, to an `outline`
+    // badge with a `Spinner` — which says "in progress" without leaning on the colour at all.
+    // This screen was the last one still setting it.
+    running: 'outline',
     completed: 'success',
     failed: 'error',
 };
@@ -535,6 +556,7 @@ onBeforeUnmount(() => {
                 <Button
                     v-if="can.manage && watches.length"
                     variant="lime"
+                    :disabled="atCeiling"
                     @click="openNew"
                 >
                     {{ t('New watch') }}
@@ -607,6 +629,31 @@ onBeforeUnmount(() => {
 
         <!-- The watches -->
         <div v-else class="space-y-4" data-test="watch-list">
+            <p
+                v-if="options.max_watches !== null"
+                class="font-mono text-xs text-muted-foreground tabular-nums"
+                dir="ltr"
+            >
+                <span class="sr-only">{{ t('Watches used') }}: </span>
+                {{ watches.length }} / {{ options.max_watches }}
+            </p>
+
+            <!-- Said in words, because a disabled button explains nothing and drops out of the
+                 tab order. A member at the ceiling needs to know what to do, not just that they
+                 cannot. -->
+            <p
+                v-if="atCeiling && can.manage && options.max_watches !== null"
+                class="text-base text-muted-foreground"
+                data-test="at-ceiling"
+            >
+                {{
+                    t(
+                        'You have as many watches as your plan allows (:max). Remove or pause one to add another.',
+                        { max: options.max_watches },
+                    )
+                }}
+            </p>
+
             <Card
                 v-for="watch in watches"
                 :key="watch.id"
@@ -635,7 +682,7 @@ onBeforeUnmount(() => {
                                 </Badge>
                                 <Badge
                                     v-if="isRunning(watch)"
-                                    variant="info"
+                                    variant="outline"
                                     data-test="watch-running"
                                 >
                                     <!-- Decorative: the badge's own text is the status, and
@@ -988,11 +1035,17 @@ onBeforeUnmount(() => {
                             <Label for="watch-follows">{{
                                 t('What this watch follows')
                             }}</Label>
-                            <select
+                            <!-- `NativeSelect`, not a hand-rolled `<select>`. The three on this
+                                 screen each carried their own copy of `Input`'s class string and
+                                 had already drifted apart from each other — two at
+                                 `focus-visible:ring-ring/50`, which is below the 3:1 WCAG 1.4.11
+                                 minimum for a focus indicator, and all three missing the
+                                 `disabled` and `aria-invalid` states. That is the component's own
+                                 reason for existing. -->
+                            <NativeSelect
                                 id="watch-follows"
                                 v-model="form.signal_watchlist_id"
                                 name="signal_watchlist_id"
-                                class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                                 aria-describedby="watch-follows-hint"
                                 data-test="watch-follows"
                             >
@@ -1013,7 +1066,7 @@ onBeforeUnmount(() => {
                                         })
                                     }}
                                 </option>
-                            </select>
+                            </NativeSelect>
                             <p
                                 id="watch-follows-hint"
                                 class="text-base text-muted-foreground"
@@ -1204,11 +1257,10 @@ onBeforeUnmount(() => {
                                 <Label for="watch-cadence">{{
                                     t('How often')
                                 }}</Label>
-                                <select
+                                <NativeSelect
                                     id="watch-cadence"
                                     v-model="form.cadence"
                                     name="cadence"
-                                    class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:text-sm"
                                 >
                                     <option
                                         v-for="cadence in options.cadences"
@@ -1217,7 +1269,7 @@ onBeforeUnmount(() => {
                                     >
                                         {{ t(cadence.label) }}
                                     </option>
-                                </select>
+                                </NativeSelect>
                                 <InputError :message="form.errors.cadence" />
                             </div>
 
@@ -1225,11 +1277,10 @@ onBeforeUnmount(() => {
                                 <Label for="watch-icp">{{
                                     t('Shaped by (optional)')
                                 }}</Label>
-                                <select
+                                <NativeSelect
                                     id="watch-icp"
                                     v-model="form.icp_id"
                                     name="icp_id"
-                                    class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:text-sm"
                                 >
                                     <option :value="null">
                                         {{ t('No ideal customer profile') }}
@@ -1241,7 +1292,7 @@ onBeforeUnmount(() => {
                                     >
                                         {{ icp.name }}
                                     </option>
-                                </select>
+                                </NativeSelect>
                                 <InputError :message="form.errors.icp_id" />
                             </div>
                         </div>

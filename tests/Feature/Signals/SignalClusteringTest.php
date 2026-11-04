@@ -10,6 +10,7 @@ use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Enums\LeadActivityType;
 use App\Modules\LeadsWorkspace\Models\LeadActivity;
+use App\Modules\Signals\Actions\DeleteSignalWatchAction;
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
 use App\Modules\Signals\Data\SignalFilters;
@@ -540,4 +541,129 @@ it('writes one timeline entry per event on a matched lead, not one per article',
     // Eight identical entries in one morning is the feed's old defect moved somewhere a member
     // cannot dismiss it.
     expect($entries)->toBe(1);
+});
+
+/*
+ * Deleting a watch and the cluster it was half of.
+ *
+ * A cluster is keyed by the **event**, not by the watch that found it, so two watches covering the
+ * same story share one row. The delete is a query delete — no model events — so nothing downstream
+ * notices the members going, and the figures the card is drawn from are left describing rows that
+ * are gone.
+ */
+
+it('recounts a shared cluster when one of its watches is deleted', function (): void {
+    $user = createUserWithTeam();
+    $team = $user->currentTeam()->firstOrFail();
+
+    [$doomed, $cluster] = app(TeamContext::class)->run($team, function () use ($team): array {
+        $doomed = SignalWatch::factory()->create(['team_id' => $team->getKey()]);
+        $survivor = SignalWatch::factory()->create(['team_id' => $team->getKey()]);
+
+        $cluster = SignalCluster::factory()->create(['team_id' => $team->getKey()]);
+
+        // Two outlets found through each watch, one event.
+        $signals = collect([$doomed, $doomed, $survivor, $survivor])
+            ->map(fn (SignalWatch $watch, int $i): Signal => Signal::factory()->create([
+                'team_id' => $team->getKey(),
+                'signal_watch_id' => $watch->getKey(),
+                'signal_cluster_id' => $cluster->getKey(),
+                'url_hash' => sha1("shared-{$i}"),
+                'dedupe_hash' => sha1("shared-{$i}"),
+                'source_name' => "Outlet {$i}",
+            ]));
+
+        // The primary is one of the rows about to be deleted, which is the half that goes wrong
+        // silently: `Signal::representatives()` falls back to showing *every* member when the
+        // primary is missing, so one event becomes several cards.
+        $cluster->forceFill([
+            'sources_count' => 4,
+            'primary_signal_id' => $signals->first()->getKey(),
+        ])->save();
+
+        return [$doomed, $cluster];
+    });
+
+    app(DeleteSignalWatchAction::class)->handle($doomed, $user);
+
+    $cluster->refresh();
+    $survivingIds = Signal::query()->withoutGlobalScopes()
+        ->where('signal_cluster_id', $cluster->getKey())
+        ->pluck('id')
+        ->all();
+
+    expect($survivingIds)->toHaveCount(2)
+        ->and($cluster->sources_count)->toBe(2)
+        ->and($cluster->primary_signal_id)->not->toBeNull()
+        // And it points at a row that still exists, not at one of the deleted ones.
+        ->and($survivingIds)->toContain((int) $cluster->primary_signal_id);
+});
+
+it('deletes a cluster left with no members at all', function (): void {
+    // The fingerprint is derived from the rows that have gone, so an empty cluster is a row with
+    // nothing left to explain it — reconciling it would keep it for ever at `sources_count` 0.
+    $user = createUserWithTeam();
+    $team = $user->currentTeam()->firstOrFail();
+
+    [$watch, $clusterId] = app(TeamContext::class)->run($team, function () use ($team): array {
+        $watch = SignalWatch::factory()->create(['team_id' => $team->getKey()]);
+        $cluster = SignalCluster::factory()->create(['team_id' => $team->getKey()]);
+
+        $signal = Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'signal_cluster_id' => $cluster->getKey(),
+        ]);
+
+        $cluster->forceFill([
+            'sources_count' => 1,
+            'primary_signal_id' => $signal->getKey(),
+        ])->save();
+
+        return [$watch, $cluster->getKey()];
+    });
+
+    app(DeleteSignalWatchAction::class)->handle($watch, $user);
+
+    expect(SignalCluster::query()->withoutGlobalScopes()->whereKey($clusterId)->exists())->toBeFalse();
+});
+
+it('keeps a converted signal and the cluster that explains it', function (): void {
+    // A converted signal outlives its watch — it is a lead's provenance — so its cluster must not
+    // be swept up with the rest.
+    $user = createUserWithTeam();
+    $team = $user->currentTeam()->firstOrFail();
+
+    [$watch, $cluster] = app(TeamContext::class)->run($team, function () use ($team): array {
+        $watch = SignalWatch::factory()->create(['team_id' => $team->getKey()]);
+        $cluster = SignalCluster::factory()->create(['team_id' => $team->getKey()]);
+
+        $converted = Signal::factory()->converted()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'signal_cluster_id' => $cluster->getKey(),
+            'url_hash' => sha1('kept'),
+            'dedupe_hash' => sha1('kept'),
+        ]);
+
+        Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'signal_cluster_id' => $cluster->getKey(),
+            'url_hash' => sha1('dropped'),
+            'dedupe_hash' => sha1('dropped'),
+        ]);
+
+        $cluster->forceFill([
+            'sources_count' => 2,
+            'primary_signal_id' => $converted->getKey(),
+        ])->save();
+
+        return [$watch, $cluster];
+    });
+
+    app(DeleteSignalWatchAction::class)->handle($watch, $user);
+
+    expect(SignalCluster::query()->withoutGlobalScopes()->whereKey($cluster->getKey())->exists())->toBeTrue()
+        ->and($cluster->refresh()->sources_count)->toBe(1);
 });

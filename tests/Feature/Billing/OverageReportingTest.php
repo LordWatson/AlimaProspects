@@ -16,7 +16,6 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
-use DateTimeInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\BillingFixtures as Fixtures;
 

@@ -260,7 +260,12 @@ final class SignalRetention
     {
         return SignalDefinitionSpend::query()
             ->withoutGlobalScopes()
-            ->whereDate('day', '<', now()->subDays($this->days('spend_days', 400))->toDateString());
+            // **`where`, not `whereDate`.** `day` is already a `date` column, so `whereDate` only
+            // wraps it in `date(day)` — which costs nothing in correctness and everything in plan:
+            // a function on the column makes the index on it unusable, and this sweep re-runs its
+            // query once per chunk. Comparing a date column to a date string is exactly what the
+            // index is for.
+            ->where('day', '<', now()->subDays($this->days('spend_days', 400))->toDateString());
     }
 
     /**

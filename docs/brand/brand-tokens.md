@@ -779,3 +779,62 @@ deliberate:
   rule above an operations table" is not one of the three named uses, so it is not taken here.
 - Everything already pending still is: `status.info` (§7f.4), the dark-mode `warning` / `info` /
   `destructive` values (§7.10), and the off-scale spacing steps inherited product-wide (§7c).
+
+### 7l. Added 2026-11-04 (the post-S16 Signals audit)
+
+Nothing new was decided here. **Every one of these was an existing rule in this file that the
+Signals screens had not been brought in line with** — which is the useful finding, because it says
+the rules are right and the propagation is what fails.
+
+- **`status.info` is not a badge, and the running watch was the last one setting it.** §7g.2
+  restricts info to a non-text icon until §7.6 approves the token, because it is about 4.4:1 over
+  its own 12% tint; §7h.2 had already moved the leads list and the lead's rail to "an `outline`
+  badge with a `Spinner`". `Watches.vue` was setting `variant="info"` on a badge **that already
+  contained the Spinner**, so the fix was one word. `GradeBadge`'s grade B remains the only
+  deliberate holdout, as §7h.1 records.
+- **Body copy on a status tint is `text-foreground/80`.** §7h.2 settled this product-wide and
+  `ConvertSignalModal`'s compliance notice was still `text-muted-foreground` on `bg-warning/12`.
+  The panel was also missing the `border-warning/30` that every other status panel in the module
+  carries (`Playbooks.vue`, `PlaybookActivity.vue`), so it read as a flat wash rather than a notice.
+- **A brand tint does not carry its own words** (§7h.1). The feed's active scope pill was
+  `text-brand` on `bg-brand/10`; the brand colour stays on the border and the tint, and the label
+  is `text-foreground`. The status tabs beside it set `text-brand` on plain canvas, which is fine
+  and was left.
+- **A focus indicator is the ring at full strength.** Three hand-rolled `<select>` elements in
+  `Watches.vue` — in a file that _already imported_ `NativeSelect` for its others — had drifted
+  apart from each other on shadow and text size, two were at `focus-visible:ring-ring/50` which is
+  below the 3:1 WCAG 1.4.11 minimum, and all three had dropped the `disabled` and `aria-invalid`
+  states. `NativeSelect`'s own docblock predicted exactly this ("several screens were already
+  hand-rolling this element ... which the hand-rolled copies had all quietly dropped"). All three
+  now use the component.
+- **An action's accessible name has to say what it acts on.** Every card in the feed offered
+  "Dismiss", "Convert to lead" and "Bring it back" with the same name on every row, so a screen
+  reader's element list was a column of identical buttons. The name now carries the headline, with
+  the visible word kept as its **prefix** so voice control still matches what is on screen, and the
+  `<article>` names itself with `aria-labelledby` pointing at its `h2`.
+
+**The Arabic brand name had drifted and is now consistent again.** §7a fixes `أليما` for running
+copy. 181 lines used it and **16 — all from S14–S16 — had introduced `عليمة`**, so a member could
+meet both spellings on one screen. Normalised to `أليما`. **The open question is unchanged and still
+the brand owner's:** whether an Arabic _wordmark_ is approved at all, or whether the transliteration
+is the intended rendering. Three Arabic strings also want a native reader's eye rather than a
+mechanical fix, and are listed in `docs/modules/signals.md` under the audit section.
+
+**Judgement calls offered and not taken** — these need a brand-owner decision, not a developer's:
+
+- **Four hues on the watch list.** Each card carries a `success` "On" badge, the running badge,
+  lilac type chips and a lime hero CTA. Collapsing "On" to a quiet `outline` or a plain text label
+  would bring it back to one accent plus the type chips, as `SignalCard` does. Left as it is.
+- **Lilac icon circles in the Types body**, beside a lilac hero peek and a lime CTA — the
+  three-accent combination §5 approved for `PageHero` specifically. Either confirm it for the body
+  or switch the circles to `bg-accent`.
+- **`warning` for the compliance notice on conversion.** It is a legal restriction rather than a
+  degradation, so §7f.5 argues against spending amber on it while §7i.3 accepts amber for a real
+  legal consequence. It now only appears where a restriction actually applies, which makes the case
+  for amber stronger than it was.
+- **Bare `rounded`** (Tailwind's 4px, below the brand scale's `sm` = 8) at eight sites across the
+  module, plus `rounded-md` and `rounded-xl` off-scale at two more. `SignalCard` already notes this
+  for its own disclosure buttons and uses `rounded-sm`. A sweep, whenever those files are next
+  touched.
+- **The 24px remove button** on the accounts list meets WCAG 2.5.8 exactly; §7h.2 asks for a 40px
+  hit area via an invisible `before` pseudo-element when it is next touched.

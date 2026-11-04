@@ -35,6 +35,7 @@ use App\Modules\Signals\Services\SignalSourceRegistry;
 use App\Modules\Signals\Services\SignalSpendGuard;
 use App\Modules\Signals\Support\IgnoredDomains;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -231,7 +232,15 @@ final class PreviewSignalDefinitionAction
 
         // Waits briefly rather than refusing: two members previewing in the same second is a normal
         // Tuesday, and the only thing being serialised is a count and an insert.
-        $lock->block(5);
+        //
+        // The wait can still expire, and `block()` throws for that — which is a refusal the member
+        // can act on ("try again in a moment"), not a fault. Uncaught it was an HTTP 500 and a
+        // Sentry event for the application working exactly as designed.
+        try {
+            $lock->block(5);
+        } catch (LockTimeoutException) {
+            throw SignalsException::previewBusy();
+        }
 
         try {
             // **Two ceilings on one button, and they are different questions** (S16 task 2). The

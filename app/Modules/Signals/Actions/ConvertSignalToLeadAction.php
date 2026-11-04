@@ -26,8 +26,8 @@ use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalConverted;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
-use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalClusterer;
+use App\Modules\Signals\Support\SignalOutreachRestriction;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -318,70 +318,15 @@ final class ConvertSignalToLeadAction
     }
 
     /**
-     * The outreach restriction a converted lead carries, resolved in three steps (ADR 0019 §2).
+     * The outreach restriction a converted lead carries.
      *
-     * 1. **The signal's own resolved market**, from the jurisdiction the extraction put on it. This
-     *    is the answer in the normal case and the whole point of the phase.
-     * 2. **The watch's market** — the team's declared regime — when the article named nowhere the
-     *    place map knows.
-     * 3. **The most restrictive restriction across the watch's regions**, which only ever *adds* one
-     *    the first two did not supply. A watch over Dubai and London whose signal names neither
-     *    gets the UAE restriction, because that is the more restrictive of the two it could have
-     *    found, and the direction to fail in is obvious.
-     *
-     * A region the business holds no compliance position for contributes nothing — it cannot, and
-     * `OutreachRestriction` has exactly one case, specifically about UAE PDPL. Stamping it on a
-     * Singapore lead would make Outreach do the right thing for a reason that is false and tell a
-     * member a lie about why. Those regions are not offered for that reason (ADR 0019 §3).
-     *
-     * A **deleted watch** leaves the signal with no watch at all (`nullOnDelete`, S6 migration), in
-     * which case steps 2 and 3 have nothing to read and step 1 is all there is. Converted signals
-     * survive their watch on purpose, so this is reachable.
+     * The three-step rule itself lives in {@see SignalOutreachRestriction}, because the convert
+     * dialog has to show the member what this is about to apply and a compliance rule with two
+     * copies is a compliance rule with one of them wrong.
      */
     private function restrictionFor(Signal $signal): ?OutreachRestriction
     {
-        $market = $signal->resolvedMarket();
-
-        if ($market instanceof Market) {
-            return $market->outreachRestriction();
-        }
-
-        $watch = $signal->watch;
-
-        if (! $watch instanceof SignalWatch) {
-            return null;
-        }
-
-        return $this->mostRestrictive($watch->candidateMarkets());
-    }
-
-    /**
-     * The strictest restriction among a set of markets, or null when none imposes one.
-     *
-     * "Strictest" is **not** a hard-coded ordering of the cases: it asks each one whether it allows
-     * direct marketing at all, which is the question Outreach asks and the only one that currently
-     * distinguishes them. A second restriction added later is ranked by what it forbids rather than
-     * by where somebody remembered to put it in a `match`.
-     *
-     * @param  list<Market>  $markets
-     */
-    private function mostRestrictive(array $markets): ?OutreachRestriction
-    {
-        $strictest = null;
-
-        foreach ($markets as $market) {
-            $restriction = $market->outreachRestriction();
-
-            if ($restriction === null) {
-                continue;
-            }
-
-            if ($strictest === null || (! $restriction->allowsDirectMarketing() && $strictest->allowsDirectMarketing())) {
-                $strictest = $restriction;
-            }
-        }
-
-        return $strictest;
+        return SignalOutreachRestriction::for($signal);
     }
 
     /**
