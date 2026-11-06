@@ -50,11 +50,17 @@ final class LeadSourcingException extends DomainException
     }
 
     /**
-     * The provider is missing required configuration (e.g. an API key) — never retryable.
+     * The provider is missing something an operator has to supply — an API key for the HTTP
+     * providers, the seeded prompt template for the AI one — and is therefore **never retryable**.
+     *
+     * The message deliberately no longer names the API key. A provider can be unconfigured in more
+     * than one way, and the first time this fired for the AI source the cause was an unseeded
+     * prompt row: "an administrator needs to add its API key" sent the reader looking for a key
+     * that was already there. Which piece is missing is in the log, with its error code.
      */
     public static function providerMisconfigured(string $source): self
     {
-        $e = new self('That lead source isn’t set up yet. An administrator needs to add its API key.');
+        $e = new self('That lead source isn’t set up yet. An administrator needs to finish setting it up.');
         $e->errorCode = 'lead_sourcing.provider_misconfigured';
         $e->status = 503;
 
@@ -106,6 +112,21 @@ final class LeadSourcingException extends DomainException
         $e = new self('Your legitimate-interest assessment is due for review. Confirm it still holds and sourcing will reopen.');
         $e->errorCode = 'lead_sourcing.lia_expired';
         $e->status = 403;
+
+        return $e;
+    }
+
+    /**
+     * The team has used up its **AI** allowance, and the selected source is the AI one. Distinct
+     * from {@see self::quotaExhausted()} — that is the lead allowance — because the two are fixed by
+     * doing different things, and telling a member the wrong one sends them to the wrong screen.
+     * Never retryable: the next attempt would be refused for the same reason.
+     */
+    public static function aiAllowanceExhausted(): self
+    {
+        $e = new self('You’ve used up your AI allowance for this period, so AI research can’t run. The other lead sources still can.');
+        $e->errorCode = 'lead_sourcing.ai_allowance_exhausted';
+        $e->status = 429;
 
         return $e;
     }

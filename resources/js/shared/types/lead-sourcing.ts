@@ -14,6 +14,7 @@ export type LeadSource =
     | 'companies_house'
     | 'google_places'
     | 'web_search'
+    | 'ai'
     | 'import'
     | 'manual'
     | 'signal';
@@ -22,7 +23,8 @@ export type LeadSource =
 export type RunnableLeadSource =
     | 'companies_house'
     | 'google_places'
-    | 'web_search';
+    | 'web_search'
+    | 'ai';
 
 /** A legal limit on how a lead may be approached (ADR 0007), when one applies. */
 export type OutreachRestriction = {

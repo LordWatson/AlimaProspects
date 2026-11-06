@@ -5,6 +5,62 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-06 — Phase 7c: the AI lead source, and why a discovered lead could not reach an A
+
+A fourth source in the discovery picker, behind the same `LeadSourceProvider` contract as the other
+three and the first with **no index behind it**: `AiLeadSourceProvider` asks the model to name the
+companies itself (`lead_sourcing.ai_discovery`, reasoning tier), with a trade, an approximate
+headcount band, a place, an ISO-2 country, a homepage and one line of why each fits.
+
+The reason it exists is a scoring fact, not an AI one. Companies House, Places and web search return
+a **name and a website and little else** — a register publishes an SIC code, a listing a category,
+neither a trade or a headcount — so an ICP's Industry and Company size criteria were `Unknown` on
+every freshly discovered lead, and `DeterministicScorer`'s rule 2 keeps an Unknown row out of _both_
+sides of its ratio. A lead was therefore being graded on its geography alone, which is why nothing
+came back above a C before enrichment had run. `SourcedLead` now carries `industry` and
+`employeeRange` for that reason, flowing through the existing merge rules untouched: a null never
+overwrites, a weaker source only fills gaps.
+
+Four decisions in it are the interesting part, and three generalise.
+
+**It ranks last on purpose** (`LeadSource::rank()` = 0, below web search and a converted signal).
+Every other source reports what a register or a crawler holds; this one reports what a model
+recalls, and it is the only source in the product that can be _fluently wrong about a company that
+does not exist_. Ranking it below every index means any other source that finds the same company
+corrects its fields on the merge, it may only ever fill a gap, and — at or below rank 1 — Enrichment
+already treats the name it stored as **provisional** and replaces it from the company's own site.
+The claim itself is kept on the row (`leads.raw.claim`, with the model and prompt version), because
+a lead whose only provenance is "a model said so" has to say which model, and when.
+
+**`costMicros()` returns 0, and not because the call is free.** The spend is already recorded, per
+team and per model, on `ai_requests` — which is exactly where `PlatformRollup` reads Claude cost
+from. Recording it again on `discovery_runs.cost_micros` would count one request **twice** in the
+platform margin, under two provider dimensions. A second ledger for one event is not redundancy, it
+is a disagreement waiting to be discovered by whoever trusts the wrong one.
+
+**An AI failure fails the run, where query shaping degrades.** `DiscoveryQueryShaper` falls back to
+a deterministic query on any AI error, including exhausted credits, because discovery still works
+without it. Here the AI _is_ the source: there is no degraded answer, and an empty list would read
+to the member as "no companies match you" when nothing was ever asked. An exhausted allowance gets
+its own `lead_sourcing.ai_allowance_exhausted` code rather than reusing `quota_exhausted`, because
+the AI allowance and the lead allowance are fixed by doing different things and the wrong message
+sends somebody to the wrong screen.
+
+**The schema has no person on it at all** (ADR 0025) — not a founder, not a contact — so there is
+nothing to filter out afterwards. And a country that is not two letters, or a website that is not
+shaped like a host, is **dropped rather than stored**: `leads.country` is a two-character column, so
+"United Kingdom" asked for would have been kept as `UN` and read as a country by the next person to
+look at the row.
+
+What it cannot do is verify. A fabricated company is a fabricated prospect and looks exactly like a
+real lead; the prompt's repeated instruction to name fewer rather than pad, the rank, the stored
+claim and the dropped fields bound the damage without checking anything. Enrichment fetching the
+site is the de facto check, and a lead whose site cannot be fetched is the signal worth watching. A
+web-search-grounded variant is the obvious next step and is not built.
+
+No migration, and no frontend work beyond the shared type and a label: the discovery picker has
+always been rendered from the enum.
+
 ### Added — 2026-11-06 — Phase Q4: a lead has two numbers, and they answer two questions
 
 `lead_scores.score` answers **should we want them**, and it is deliberately blind to missing data — a

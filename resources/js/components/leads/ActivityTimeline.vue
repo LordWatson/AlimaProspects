@@ -151,6 +151,7 @@ function sourceLabel(source: string): string {
             companies_house: 'Companies House',
             google_places: 'Google Places',
             web_search: 'Web search',
+            ai: 'AI research',
             import: 'Imported',
             manual: 'Added by hand',
             signal: 'Signal',

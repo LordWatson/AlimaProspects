@@ -43,6 +43,14 @@ final class SourcedLead extends Data
         public ?string $companyType = null,
         public ?string $incorporatedOn = null,
         public ?string $website = null,
+        // Two fields no index-backed provider fills, because a register publishes an SIC code and a
+        // places listing a category, not a trade and a headcount. They are here for the AI source,
+        // and they are the reason it can change a grade: `DeterministicScorer` reads `industry` and
+        // `employee_range` directly, and a lead carrying neither leaves the ICP's Industry and
+        // Company size criteria Unknown — out of *both* sides of the ratio — so a discovered lead
+        // was being graded on its geography alone.
+        public ?string $industry = null,
+        public ?string $employeeRange = null,
         public ?string $locality = null,
         public ?string $region = null,
         public ?string $postalCode = null,
@@ -126,6 +134,8 @@ final class SourcedLead extends Data
             // URLs are rendered as links in the UI — only http(s) is stored (a `javascript:` or other
             // scheme is dropped), and the value is length-clamped to the column.
             'website' => $this->safeUrl($this->website),
+            'industry' => $this->text($this->industry),
+            'employee_range' => $this->text($this->employeeRange),
             'locality' => $this->text($this->locality),
             'region' => $this->text($this->region),
             'postal_code' => $this->text($this->postalCode),

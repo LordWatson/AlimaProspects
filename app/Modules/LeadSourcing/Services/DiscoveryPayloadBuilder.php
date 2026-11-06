@@ -150,6 +150,16 @@ final class DiscoveryPayloadBuilder
                 'Aim at pages that list or describe customer companies. Directory, social and '
                     .'aggregator domains are discarded automatically, so do not target them.',
             ]),
+            LeadSource::Ai => implode("\n", [
+                'This is not a search engine at all: the terms are handed to a model that names the '
+                    .'companies it knows of, from its own knowledge of the market.',
+                'So describe the KIND of company to name, in the words a person would use — '
+                    .'"independent boutique hotels", "mid-size private dental groups". No search '
+                    .'operators, no quoted phrases, no site: filters; they mean nothing here.',
+                'It has no index to miss things in, but it also cannot look anything up, so a very '
+                    .'narrow niche or a very small local trade will return few companies rather than '
+                    .'wrong ones. The location is used, and exclusions are honoured in the answer.',
+            ]),
             // Import, Manual and Signal label where a lead came from; none of them is a provider that
             // can be searched, and StartDiscoveryRequest only accepts the runnable sources. Reached
             // only by a programming error, so say nothing useful rather than invent a brief.

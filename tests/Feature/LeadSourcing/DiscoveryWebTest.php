@@ -106,8 +106,9 @@ it('offers only the providers in the discovery picker', function (): void {
         ->get(route('lead-sourcing.index'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->has('sources', 3)
+            ->has('sources', 4)
             ->where('sources.0.value', 'companies_house')
             ->where('sources.1.value', 'google_places')
-            ->where('sources.2.value', 'web_search'));
+            ->where('sources.2.value', 'web_search')
+            ->where('sources.3.value', 'ai'));
 });

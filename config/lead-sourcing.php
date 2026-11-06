@@ -97,6 +97,13 @@ return [
             ],
         ],
 
+        'ai' => [
+            // The most companies one answer may contain. A ceiling on **output tokens**, not on
+            // requests: the run's own limit still applies and the job slices to it. No API key of
+            // its own — the AI Platform owns the Anthropic credentials (config/ai.php).
+            'max_results' => (int) env('AI_LEAD_SOURCE_MAX_RESULTS', 20),
+        ],
+
     ],
 
 ];

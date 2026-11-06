@@ -26,6 +26,16 @@ function cannedResponses(): array
             'target_customers' => ['SMEs'], 'decision_maker_titles' => ['Marketing Director'],
             'competitors' => ['Rival Ltd'], 'confidence' => 0.8,
         ],
+        'lead_sourcing.ai_discovery' => [
+            'companies' => [
+                [
+                    'company_name' => 'Northern Rooms', 'industry' => 'Boutique hotel',
+                    'employee_range' => '11-50', 'website' => 'https://northernrooms.test',
+                    'locality' => 'Manchester', 'region' => 'Greater Manchester', 'country' => 'GB',
+                    'why' => 'An independent hotel group that rebrands regularly.',
+                ],
+            ],
+        ],
         'lead_sourcing.shape_query' => [
             'terms' => 'boutique hotels', 'customer_description' => 'Independent hotels that rebrand.',
             'exclude_terms' => ['graphic design'], 'reasoning' => 'Hospitality buys design work.',
@@ -88,7 +98,7 @@ function cannedResponses(): array
 it('seeds every prompt from docs/ai-prompts.md', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    // Twelve **rows** for nine keys. Three have a v2, and all three v1 rows stay seeded so a
+    // Thirteen **rows** for ten keys. Three have a v2, and all three v1 rows stay seeded so a
     // report, message or signal that recorded `prompt_version: 1` can still be traced back to what
     // produced it; the registry resolves the highest active version.
     //
@@ -100,12 +110,16 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
     //
     // `signals.compose_definition` (S9) is the ninth key: the builder's drafting prompt, and the
     // only one on the reasoning tier that writes **configuration** rather than prose.
-    expect(AiPromptTemplate::query()->count())->toBe(12)
+    //
+    // `lead_sourcing.ai_discovery` (Phase 7c) is the tenth, and the only one whose output becomes
+    // **rows a team acts on** rather than a judgement about rows that already exist.
+    expect(AiPromptTemplate::query()->count())->toBe(13)
         ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.refine_suggestions',
             'insights.periodic_digest',
             'lead.enrich_extract',
+            'lead_sourcing.ai_discovery',
             'lead_sourcing.shape_query',
             'outreach.draft_message',
             'scoring.qualitative_fit',
@@ -144,5 +158,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(12);
+    expect(AiPromptTemplate::query()->count())->toBe(13);
 });

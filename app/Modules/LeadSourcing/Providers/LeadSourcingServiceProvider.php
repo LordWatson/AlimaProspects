@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\LeadSourcing\Providers;
 
+use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\LeadSourcing\Contracts\LeadInterestGate;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
@@ -11,6 +12,7 @@ use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadSourcing\Policies\DiscoveryRunPolicy;
 use App\Modules\LeadSourcing\Policies\LeadPolicy;
+use App\Modules\LeadSourcing\Services\AiLeadSourceProvider;
 use App\Modules\LeadSourcing\Services\AllowAllLeadInterestGate;
 use App\Modules\LeadSourcing\Services\CompaniesHouseProvider;
 use App\Modules\LeadSourcing\Services\DiscoveryLimitGuard;
@@ -58,6 +60,9 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
             $registry->register(new CompaniesHouseProvider($http, $breaker));
             $registry->register(new GooglePlacesProvider($http, $breaker));
             $registry->register(new WebSearchProvider($http, $breaker));
+            // No HTTP client and no breaker: this one goes through the AI Platform, which owns the
+            // transport, the retries, the credit allowance and the cost ledger.
+            $registry->register(new AiLeadSourceProvider($app->make(AiClient::class)));
 
             return $registry;
         });

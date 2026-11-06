@@ -5,13 +5,14 @@ declare(strict_types=1);
 use App\Modules\LeadSourcing\Enums\LeadSource;
 
 it('lists every source a lead can have', function (): void {
-    expect(LeadSource::values())->toBe(['companies_house', 'google_places', 'web_search', 'import', 'manual', 'signal']);
+    expect(LeadSource::values())->toBe(['companies_house', 'google_places', 'web_search', 'ai', 'import', 'manual', 'signal']);
 });
 
-it('marks the three providers available, and the three non-providers not', function (): void {
+it('marks the four providers available, and the three non-providers not', function (): void {
     expect(LeadSource::CompaniesHouse->isAvailable())->toBeTrue()
         ->and(LeadSource::GooglePlaces->isAvailable())->toBeTrue()
         ->and(LeadSource::WebSearch->isAvailable())->toBeTrue()
+        ->and(LeadSource::Ai->isAvailable())->toBeTrue()
         // None of `import`, `manual` or `signal` is a provider — one is how a team's own CSV gets
         // in, one how a single company they met does, the third how a signal they chose to act on
         // does — so none can ever be picked for a discovery run, even though all three are
@@ -19,7 +20,7 @@ it('marks the three providers available, and the three non-providers not', funct
         ->and(LeadSource::Import->isAvailable())->toBeFalse()
         ->and(LeadSource::Manual->isAvailable())->toBeFalse()
         ->and(LeadSource::Signal->isAvailable())->toBeFalse()
-        ->and(LeadSource::availableValues())->toBe(['companies_house', 'google_places', 'web_search']);
+        ->and(LeadSource::availableValues())->toBe(['companies_house', 'google_places', 'web_search', 'ai']);
 });
 
 it('ranks an import above every provider', function (): void {
@@ -39,7 +40,17 @@ it('ranks a hand-added lead with an import, above every provider', function (): 
         ->and(LeadSource::Manual->rank())->toBeGreaterThan(LeadSource::CompaniesHouse->rank());
 });
 
-it('ranks a signal at the bottom, with web search', function (): void {
+it('ranks the AI source below every index', function (): void {
+    // The others report what a register or a crawler holds; this one reports what a model recalls,
+    // and it is the only source that can be confidently wrong about a company that does not exist.
+    // Last means every other source corrects its fields on a merge and it may only fill a gap --
+    // and, at or below rank 1, that Enrichment treats the name it stored as provisional.
+    expect(LeadSource::Ai->rank())->toBeLessThan(LeadSource::WebSearch->rank())
+        ->and(LeadSource::Ai->rank())->toBeLessThan(LeadSource::GooglePlaces->rank())
+        ->and(LeadSource::Ai->rank())->toBeLessThan(LeadSource::Import->rank());
+});
+
+it('ranks a signal with web search, above only the AI source', function (): void {
     // A converted signal's company fields are what an article said and what the member typed into
     // the convert form in a hurry. Every other source may correct them on a merge; a signal may
     // only fill their gaps (ConvertSignalToLeadAction).

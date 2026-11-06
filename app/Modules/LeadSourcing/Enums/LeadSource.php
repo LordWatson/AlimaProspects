@@ -18,6 +18,8 @@ enum LeadSource: string
     case CompaniesHouse = 'companies_house';
     case GooglePlaces = 'google_places';
     case WebSearch = 'web_search';
+    /** The model's own knowledge of the market, rather than an index of it (Phase 7c). */
+    case Ai = 'ai';
     /** Not a provider: a lead the team brought in themselves (Phase 10b CSV import). */
     case Import = 'import';
     /** Not a provider: one company a member typed in themselves — met at an event, say (Phase 10c). */
@@ -31,6 +33,7 @@ enum LeadSource: string
             self::CompaniesHouse => 'Companies House',
             self::GooglePlaces => 'Google Places',
             self::WebSearch => 'Web search',
+            self::Ai => 'AI research',
             self::Import => 'Imported',
             self::Manual => 'Added by hand',
             self::Signal => 'Signal',
@@ -46,6 +49,7 @@ enum LeadSource: string
             self::CompaniesHouse => 'UK official company registry — free, authoritative company records.',
             self::GooglePlaces => 'Local and small businesses by location and category (strong for the UAE).',
             self::WebSearch => 'General web discovery across the open internet.',
+            self::Ai => 'Companies our AI knows fit your customer profile, with its reasons — no index in between.',
             self::Import => 'Leads your team brought in from a CSV.',
             self::Manual => 'A company one of your team added themselves.',
             self::Signal => 'Created from a wealth/liquidity event in your Signals feed.',
@@ -64,7 +68,7 @@ enum LeadSource: string
     {
         return match ($this) {
             self::Import, self::Manual, self::Signal => false,
-            self::CompaniesHouse, self::GooglePlaces, self::WebSearch => true,
+            self::CompaniesHouse, self::GooglePlaces, self::WebSearch, self::Ai => true,
         };
     }
 
@@ -98,6 +102,12 @@ enum LeadSource: string
             self::CompaniesHouse => 3,
             self::GooglePlaces => 2,
             self::WebSearch, self::Signal => 1,
+            // **Below every index.** The other providers report what a register or a crawler holds;
+            // this one reports what a model recalls, which is the only source here that can be
+            // confidently wrong about a company that does not exist. Ranking it last means any
+            // other source that finds the same company corrects its fields on the merge, and it may
+            // only ever fill a gap.
+            self::Ai => 0,
         };
     }
 

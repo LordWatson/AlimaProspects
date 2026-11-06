@@ -9950,6 +9950,7 @@
                             "companies_house",
                             "google_places",
                             "web_search",
+                            "ai",
                             "import",
                             "manual",
                             "signal"
@@ -9961,6 +9962,7 @@
                             "Companies House",
                             "Google Places",
                             "Web search",
+                            "AI research",
                             "Imported",
                             "Added by hand",
                             "Signal"
@@ -10597,6 +10599,7 @@
                             "companies_house",
                             "google_places",
                             "web_search",
+                            "ai",
                             "import",
                             "manual",
                             "signal"
@@ -10608,6 +10611,7 @@
                             "Companies House",
                             "Google Places",
                             "Web search",
+                            "AI research",
                             "Imported",
                             "Added by hand",
                             "Signal"
@@ -11183,11 +11187,12 @@
             },
             "LeadSource": {
                 "type": "string",
-                "description": "The external providers a lead can be discovered from, behind the {@see LeadSourceProvider} contract (ADR 0008). All three ship in the MVP: Companies House (Phase 7), Google Places and web search (Phase 7b, the latter backed by Serper \u2014 ADR 0010). Values are stable storage keys; {@see self::label()} is the display name. No magic strings.\n| |\n|---|\n| `companies_house` <br/>  |\n| `google_places` <br/>  |\n| `web_search` <br/>  |\n| `import` <br/> Not a provider: a lead the team brought in themselves (Phase 10b CSV import). |\n| `manual` <br/> Not a provider: one company a member typed in themselves \u2014 met at an event, say (Phase 10c). |\n| `signal` <br/> Not a provider: a lead converted from a wealth/liquidity event in the Signals feed (ADR 0011, S4). |",
+                "description": "The external providers a lead can be discovered from, behind the {@see LeadSourceProvider} contract (ADR 0008). All three ship in the MVP: Companies House (Phase 7), Google Places and web search (Phase 7b, the latter backed by Serper \u2014 ADR 0010). Values are stable storage keys; {@see self::label()} is the display name. No magic strings.\n| |\n|---|\n| `companies_house` <br/>  |\n| `google_places` <br/>  |\n| `web_search` <br/>  |\n| `ai` <br/> The model's own knowledge of the market, rather than an index of it (Phase 7c). |\n| `import` <br/> Not a provider: a lead the team brought in themselves (Phase 10b CSV import). |\n| `manual` <br/> Not a provider: one company a member typed in themselves \u2014 met at an event, say (Phase 10c). |\n| `signal` <br/> Not a provider: a lead converted from a wealth/liquidity event in the Signals feed (ADR 0011, S4). |",
                 "enum": [
                     "companies_house",
                     "google_places",
                     "web_search",
+                    "ai",
                     "import",
                     "manual",
                     "signal"
@@ -14607,11 +14612,12 @@
                             "enum": [
                                 "companies_house",
                                 "google_places",
-                                "web_search"
+                                "web_search",
+                                "ai"
                             ]
                         },
                         "minItems": 1,
-                        "maxItems": 3,
+                        "maxItems": 4,
                         "uniqueItems": true
                     },
                     "icp_id": {
