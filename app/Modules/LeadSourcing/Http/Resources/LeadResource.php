@@ -44,6 +44,9 @@ final class LeadResource extends JsonResource
             'region' => $this->region,
             'postal_code' => $this->postal_code,
             'country' => $this->country,
+            'locations' => $this->locations ?? [],
+            // How ready the lead is to be contacted (Q4). Null means not computed, never zero.
+            'readiness' => $this->readiness,
             'sic_codes' => $this->sic_codes ?? [],
             'source_url' => $this->source_url,
             'collected_at' => $this->collected_at?->toIso8601String(),

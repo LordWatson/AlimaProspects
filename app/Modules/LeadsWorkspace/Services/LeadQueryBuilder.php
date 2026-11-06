@@ -207,6 +207,14 @@ final class LeadQueryBuilder
             // The lead's fit against the active ICP, as a correlated sub-query so an ungraded lead
             // sorts as null rather than being dropped from the list by a join.
             LeadSort::Fit => $query->orderBy($this->activeScoreSubQuery(), $direction)->orderByDesc('leads.id'),
+            // How ready the lead is to be CONTACTED (Q4) - a different question from fit, which is
+            // blind to missing data by design. Nulls are "not computed yet" rather than zero, and
+            // MySQL and SQLite disagree about where they sort, so the order is stated explicitly
+            // (the lesson `SignalSortOrder` already learned about `signals.heat`).
+            LeadSort::Readiness => $query
+                ->orderByRaw('case when leads.readiness is null then 1 else 0 end')
+                ->orderBy('leads.readiness', $direction)
+                ->orderByDesc('leads.id'),
             // "Recently updated" means recently re-sourced or re-enriched, which is the freshness a
             // member is actually asking about — not when someone last added a note.
             LeadSort::Freshness => $query

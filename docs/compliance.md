@@ -62,10 +62,33 @@
     - **Alima's words are keys; the article's are not.** The headline is stored as prose because a journalist wrote it; everything the product says about it is a translation key, so an Arabic reader gets the guidance in Arabic even though the headline is in English.
       The general rule for anything added later: **a surface that can name a prospect must be able to carry the restriction on approaching them, or it does not get to name one.** That applies to a future SMS, a Slack delivery or a webhook as much as it does to this email.
 
+14. **A public register is a register of companies _and_ of people, and we take only the first.** 📋 **Decided (L0, ADR 0025 §3); enforced per source as each is built.** The free sources this plan adds are public by law, which answers whether we may read them and says nothing about which parts we may keep.
+    - **A `LeadSourceProvider` stores no named individual, ever.** Officers, PSCs, trustees, registered managers, partners, approved persons and licence holders are dropped **at the mapping step**, where a field is never populated, rather than filtered downstream — a filter is something a later change can forget. This is stricter than the law requires and it is deliberate: a company register's value to us is the company.
+    - **A `SignalSourceProvider` may still store a name, a public role and a source URL** and nothing else. ADR 0011's rule, unchanged, and §5a is still the lawful-basis analysis for it. What is new is that a **structured** source can now assert an event, and two of them name people — Companies House filings (already live since S13b) and corporate insolvency notices (L11) — so the §5a minimisation applies to a registry extraction exactly as it does to a journalist's sentence.
+    - **Never ingested at all, by either seam:** personal (non-corporate) insolvency notices; individual planning applicants; residential proprietors; any register's named-individual endpoint; and any buyer or seller identity from a property transaction dataset (Dubai Pulse publishes none, and that is why it is usable as market context).
+    - **Three sources make this a licence condition rather than a preference.** The Charity Commission's terms oblige us to delete an individual's personal data **on notice** and forbid using it for marketing without consent; the **Open Government Licence does not cover personal data at all**, which is the clause that decides the Gazette's shape rather than our taste; and the FCA's register is in large part a register of approved persons. A rule we would have chosen anyway is cheaper to keep when it is also the one we promised.
+    - **Attribution is part of the record, not the footer.** Each source's required acknowledgement (OGL v3 Crown copyright; "© OpenStreetMap contributors" under ODbL) is stored on the row and shown wherever the row is shown — the lead screen, the export, the API resource. Same rule as §3.13, one layer down: a surface that can show the data can show where it came from, or it does not get to show the data.
+    - **One source's data expires in a way that matters legally.** An FSA hygiene rating is a point-in-time fact and presenting a stale one as current may be an offence, so the rating is stored with its `RatingDate` and is never rendered as a current rating. A register entry we keep as a company record is not the same thing as a rating we republish.
+    - **Retention: a platform reference dataset is replaced, not aged.** CCOD/OCOD and anything like it hold no personal data and belong to no team, so they have no retention window in the §3 sense; what they have instead is a **version**. A refresh imports a new version, flips a pointer and deletes the previous one, so the only copy we hold is the current published one, and `reference_dataset_imports` is the ledger that proves which that is. The nightly retention sweeps deliberately do not touch them — there is nothing in them to age out, and a sweep over a table with no `team_id` would be a sweep with no tenant to answer for.
+
 ## 4. Scraping / acquisition ethics
 
 - **No scraping of sites whose terms forbid it** (e.g. LinkedIn). Lead sourcing uses official APIs (Companies House, Google Places) and a compliant web-search API; the AI treats scraped/public web content as **data, never instructions** (prompt-injection safety — see AI Platform module).
 - Respect `robots.txt` and provider ToS in every `LeadSourceProvider` implementation.
+- **A `Disallow` is an answer, and L0 took three of them as one** (ADR 0025 §4). The free-sources
+  spike dropped **PlanIt** (`Disallow: /api/applics/`, `/ukplapi/` to every agent), **DMCC** (its
+  directory is a Salesforce site whose `robots.txt` is `Disallow: /` for everyone but googlebot) and
+  **DIFC** (`Disallow: /search/`, `/api/`), and dropped **Adzuna** on terms that name "sales
+  prospecting or lead generation" as needing a written agreement. Two of those would have worked
+  perfectly. That is the point of asking first.
+- **Silence is not permission.** Reed publishes no API terms at all; an undocumented endpoint is not
+  a licence to store a third party's content in a commercial database, so it is dropped pending a
+  written answer. The same test applies to anything added later: if nobody has said we may, we may
+  not, and the place to resolve that is an email rather than a deploy.
+- **Politeness is per source, from the source's own words.** The Gazette's `robots.txt` sets
+  `Crawl-delay: 10`; the public Overpass endpoint states it is "intended for browser-based and
+  human-operated tools" and that automated use should run its own instance. Both are honoured in
+  configuration rather than in a comment — see the L0 findings in `docs/modules/lead-sourcing.md`.
 
 ## 5. Open legal questions (⚖️ for counsel)
 
@@ -75,6 +98,22 @@
 - Free-zone (DIFC/ADGM) overlay for UAE tenants.
 - **The regimes for Saudi Arabia, the United States, India, Singapore and an unbiased "global" search** (added Signals S8, ADR 0019). `SearchRegion` can already search all five — a `gl` and an `hl` are search facts — and all five are **switched off** (`config('signals.regions.*.offered')`), because the platform holds a legal position for exactly two markets (§1). Offering one needs a view on its direct-marketing rules and on what `OutreachRestriction` case, if any, a lead from it should carry. Until then a watch cannot name them, which is the safe half of the trade rather than an oversight.
 - **Whether "jurisdiction unknown" should be its own `OutreachRestriction` case.** Today an unresolvable place falls back to the most restrictive restriction the watch could imply, and where that is none, none. The cleaner answer is a case meaning "approach by introduction only, basis unestablished" — but what it would _oblige_ is a question for counsel, and inventing its semantics in code would be a compliance claim made by a programmer. Recorded in ADR 0019 §3.
+- **The HM Land Registry CCOD/OCOD licence's commercial terms** (added L0, ADR 0025 §2). The
+  dataset listing says "See individual licence" rather than the OGL, and the licence is readable only
+  inside an account we have not yet created. Third-party summaries describe audit rights, an
+  obligation to keep records of end users, and a restriction on the **address** fields because they
+  derive from Ordnance Survey and Royal Mail data. Until counsel has read the actual licence, L3
+  plans on the **count** of titles a company owns and not on their addresses — the conservative half
+  of the trade, chosen because the permissive half would be a licence claim made by a programmer.
+- **The FCA's silence on commercial reuse** (added L0). Its Register API is free and its terms say
+  nothing about commercial use or attribution, while the FCA separately sells register data extracts.
+  Silence beside a paid product is not the same as silence beside an open dataset. A written answer
+  from `RegisterAPISupport@fca.org.uk` is a precondition of shipping that source, not a follow-up.
+- **Companies House has never stated a licence to us** (noted L0, not new). The developer guidelines
+  set rate limits and a ban-on-abuse clause and say nothing about commercial use, storage or
+  attribution; the data is Crown copyright. We have operated the REST API on that basis since Phase 7
+  and the streaming API (L7) adds no new question — but it is an unanswered one rather than a settled
+  one, and it is written down here so nobody mistakes the silence for a permission.
 - Retention defaults that satisfy both "storage limitation" and tenants' commercial needs.
 - **Sentry as a sub-processor** (added Phase 20, ADR 0017). Error reporting is a processing activity
   and Sentry is a sub-processor, so it needs listing in the processing record and in the DPA's
@@ -288,4 +327,4 @@ DSAR identity-verification process for named individuals who are not our users.
 
 ## 6. Mapping to modules
 
-Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, no article body stored even behind S12's full-article fetch, a retention window on **every** one of its ten tables since S16 and a DSAR exporter reaching three of them, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID — **all built in Phase 11**, including the Signals UAE flag, which it honours at draft time as well as send time), Core (audit log), and Billing (nothing directly, but plan limits must not incentivise non-compliant volume — and since Signals S16 a plan is also what bounds how much news a team may have searched about named individuals, which makes the allowance a data-minimisation control as well as a margin one).
+Compliance & Privacy module owns suppression, retention jobs, DSAR tooling, privacy-notice hosting and the LIA record. Enforcement hooks live in Lead Sourcing (ToS/robots — and since L0, per-source attribution on the row and a no-named-individuals rule at the mapping step, ADR 0025 §3), Enrichment (source attribution), **Signals** (data minimisation — name/role/URL only, no article body stored even behind S12's full-article fetch, a retention window on **every** one of its ten tables since S16 and a DSAR exporter reaching three of them, UAE prior-consent flag on conversion — §5a), Outreach (suppression + opt-out + sender ID — **all built in Phase 11**, including the Signals UAE flag, which it honours at draft time as well as send time), Core (audit log), and Billing (nothing directly, but plan limits must not incentivise non-compliant volume — and since Signals S16 a plan is also what bounds how much news a team may have searched about named individuals, which makes the allowance a data-minimisation control as well as a margin one).

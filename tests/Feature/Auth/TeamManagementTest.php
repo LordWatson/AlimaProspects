@@ -9,6 +9,7 @@ use App\Modules\Auth\Support\TeamMembership;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
@@ -34,10 +35,24 @@ it('switches the active team for a member', function (): void {
 
     $this->actingAs($user)
         ->post(route('teams.switch', $second))
-        ->assertRedirect();
+        ->assertRedirect(route('dashboard'));
 
     expect($user->fresh()->currentTeamId())->toBe((int) $second->getKey())
         ->not->toBe($original);
+});
+
+it('shares every membership so the switcher can offer them', function (): void {
+    $user = createUserWithTeam();
+    $second = app(CreateTeamAction::class)
+        ->handle($user, new CreateTeamData(name: 'Second'));
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('auth.teams', 2)
+            ->where('auth.teams.1.id', (int) $second->getKey())
+            ->where('auth.teams.0.is_current', true)
+            ->where('auth.teams.1.is_current', false));
 });
 
 it('forbids switching to a team the user does not belong to', function (): void {

@@ -4,30 +4,46 @@
 > (each phase has a **Dispatch prompt**). Created 2026-11-02.
 > Scope: **free** data sources only. Paid enrichment (Apollo / PDL / Hunter / Cognism / Crunchbase)
 > stays post-MVP per ADR 0008 and is **out of scope here**.
+>
+> **Two corrections from L0, which apply to every phase below.** First, the decision this plan calls
+> "ADR 0018" is **ADR 0025** (`docs/decisions/0025-free-lead-sources.md`) — 0018 was taken by
+> _signal definitions are data_ while this plan sat unexecuted, and Signals v2 has since run to 0024.
+> Every "ADR 0018" in the phases below means 0025. Second, **L0 dropped five sources on their own
+> terms and found L6 already built**, so L4, L8 and L10 are ❌ and L6 is superseded. The evidence is
+> in `docs/modules/lead-sourcing.md` → _Free sources — spike findings (L0)_; read it before starting
+> any phase, because several phases' designs changed with it.
 
 ## Status
 
-| Phase | Title                                                         | Status     | Completed |
-| ----- | ------------------------------------------------------------- | ---------- | --------- |
-| L0    | Decisions, licence/ToS spike & docs                           | ⬜ Pending |           |
-| L1    | Lead Sourcing foundations: new sources, reference datasets    | ⬜ Pending |           |
-| L2    | UK sector registers (FSA, CQC, FCA, Charity Commission)       | ⬜ Pending |           |
-| L3    | HM Land Registry CCOD/OCOD (companies that own property)      | ⬜ Pending |           |
-| L4    | UAE free-zone registers (DIFC, ADGM, DMCC)                    | ⬜ Pending |           |
-| L5    | OpenStreetMap (Overpass) provider                             | ⬜ Pending |           |
-| L6    | Signals: the `SignalSource` seam (refactor, no new behaviour) | ⬜ Pending |           |
-| L7    | Signals: Companies House Streaming (UK signals)               | ⬜ Pending |           |
-| L8    | Signals: hiring signals (Adzuna, Reed)                        | ⬜ Pending |           |
-| L9    | Signals: public contracts (Contracts Finder, Find a Tender)   | ⬜ Pending |           |
-| L10   | Signals: planning applications (PlanIt)                       | ⬜ Pending |           |
-| L11   | The Gazette: insolvency signals + lead hygiene                | ⬜ Pending |           |
-| L12   | Dubai Pulse DLD transactions: UAE property market context     | ⬜ Pending |           |
-| L13   | Enrichment: tech-stack detection from fetched pages           | ⬜ Pending |           |
-| L14   | Plan gating, API v1, UI polish, docs & reviews                | ⬜ Pending |           |
+| Phase | Title                                                         | Status                   | Completed  |
+| ----- | ------------------------------------------------------------- | ------------------------ | ---------- |
+| L0    | Decisions, licence/ToS spike & docs                           | ✅ Complete              | 2026-11-06 |
+| L1    | Lead Sourcing foundations: new sources, reference datasets    | ⬜ Pending               |            |
+| L2    | UK sector registers (FSA, CQC, FCA, Charity Commission)       | ⬜ Pending               |            |
+| L3    | HM Land Registry CCOD/OCOD (companies that own property)      | ⬜ Pending               |            |
+| L4    | UAE free-zone registers (DIFC, ADGM, DMCC)                    | ❌ Dropped               | 2026-11-06 |
+| L5    | OpenStreetMap (Overpass) provider                             | ⬜ Pending               |            |
+| L6    | Signals: the `SignalSource` seam (refactor, no new behaviour) | ✅ Superseded (ADR 0023) | 2026-11-06 |
+| L7    | Signals: Companies House Streaming (UK signals)               | ⬜ Pending               |            |
+| L8    | Signals: hiring signals (Adzuna, Reed)                        | ❌ Dropped               | 2026-11-06 |
+| L9    | Signals: public contracts (Contracts Finder, Find a Tender)   | ⬜ Pending               |            |
+| L10   | Signals: planning applications (PlanIt)                       | ❌ Dropped               | 2026-11-06 |
+| L11   | The Gazette: insolvency signals + lead hygiene                | ⬜ Pending               |            |
+| L12   | Dubai Pulse DLD transactions: UAE property market context     | ⬜ Pending               |            |
+| L13   | Enrichment: tech-stack detection from fetched pages           | ⬜ Pending               |            |
+| L14   | Plan gating, API v1, UI polish, docs & reviews                | ⬜ Pending               |            |
 
-Phases L2–L5 depend only on L1 and can run in any order. L7–L11 depend on L6. L12 and L13 are
-independent of everything except L0. **Suggested order by value:** L0 → L1 → L6 → L7 → L3 → L4 →
-L2 → L8 → L9 → L13 → L11 → L5 → L10 → L12 → L14.
+Phases L2, L3 and L5 depend only on L1. L7, L9 and L11 depend on the Signals source registry, which
+**already exists** (ADR 0023), so they depend only on L0. L12 and L13 are independent of everything
+except L0.
+
+**Revised order after L0** (the dropped phases removed, and the phases that need nothing from you
+first): **L0 ✅ → L1 → L9 → L11 → L2 → L13 → L5 → L7 → L3 → L12 → L14.** L9 (public contracts) and
+L11 (the Gazette) move to the front because they need **no key, no account and no licence**, and L9
+turned out to carry the plan's best identity signal — an award names its supplier by Companies House
+number. L7 and L3 move back behind them because they are blocked on you (a streaming key; a Land
+Registry account and its licence), and L12 behind those because its permission grant takes up to a
+fortnight.
 
 ---
 
@@ -73,9 +89,13 @@ exception to ADR 0006 and goes in ADR 0018 (L0).
 | 16  | **Dubai Pulse** DLD transactions         | Market context (not leads)        | UAE    | Open dataset (verify) | Anonymised property transactions: area, price, type. **No buyer identities**         |
 | 17  | **Tech-stack detection** (in-house)      | Enrichment                        | Both   | None                  | Technologies detected from pages the app already fetches                             |
 
-**Every row is "verify in L0".** Terms, rate limits, auth and licences change. L0 records the live
-answer for each, and **any source whose terms don't permit our use is dropped**. Its phase is marked
-❌ Dropped, with the reason.
+**Every row was verified in L0 on 2026-11-06**, and the verdicts are in
+`docs/modules/lead-sourcing.md` → _Free sources — spike findings (L0)_, which supersedes the table
+above wherever the two disagree. In short: ✅ 1, 6, 9, 13, 15, 17 · ⚠️ with conditions 2, 7, 8, 10,
+16 · ❌ dropped 3, 4, 5, 11, 12, 14. Five of the six drops are the source's own terms or `robots.txt`
+saying no — Adzuna names "sales prospecting or lead generation" as needing a written agreement, Reed
+publishes no terms at all, and PlanIt, DIFC and DMCC sit behind a `Disallow` — and the sixth (ADGM)
+publishes no machine-readable register at all.
 
 ## Ground rules for every phase
 
@@ -122,14 +142,14 @@ terms, and record the architecture decisions.
 `CLAUDE.md`, `mvp.md`, `.env.example`.
 **Tasks:**
 
-1. [ ] **Licence/ToS/limits spike, one row per source (1–17 above).** For each, record in a new
+1. [x] **Licence/ToS/limits spike, one row per source (1–17 above).** For each, record in a new
        "Free sources — spike findings" section of `docs/modules/lead-sourcing.md`:
        endpoint/base URL; auth method; rate limit; whether **commercial use inside a SaaS** is
        permitted; whether **storing** results is permitted, and for how long; the required
        attribution text; robots.txt position (HTML sources); data freshness; and a sample request
        and response trimmed to the fields we'd use. Make **real calls** only where no key is needed
        or the user has provided one. Otherwise mark the row "needs key" and continue.
-2. [ ] **Go / no-go per source.** Mark each row ✅ Go, ⚠️ Go with conditions, or ❌ Drop, with the
+2. [x] **Go / no-go per source.** Mark each row ✅ Go, ⚠️ Go with conditions, or ❌ Drop, with the
        reason. Expected hard questions, answered explicitly:
     - **DMCC directory:** is automated access permitted at all? If not, drop it.
     - **Reed:** do its terms allow storing job ads, or only displaying them with a link back?
@@ -140,7 +160,7 @@ terms, and record the architecture decisions.
       need our own instance?
     - **Dubai Pulse:** is the DLD transactions dataset openly downloadable or API-accessible
       without a government account?
-3. [ ] **ADR 0018 — Free lead sources expansion.** Record:
+3. [x] **ADR 0025 (not 0018 — see the header note) — Free lead sources expansion.** Record:
        (a) the two-seam rule: company records go through `LeadSourceProvider`, events go through
        `SignalSource`;
        (b) the `SignalSource` contract shape, pull vs push, and when AI extraction runs (only for
@@ -151,19 +171,19 @@ terms, and record the architecture decisions.
        (d) Companies House streaming runs as a **supervised long-lived worker**, not a queued job;
        (e) personal-data rules per source;
        (f) the decision on **plan gating** (see task 5).
-4. [ ] **Compliance:** extend `docs/compliance.md`. Add LIA lines for the new personal-data surfaces
+4. [x] **Compliance:** extended `docs/compliance.md` (new §3.14, plus §4, §5 and §6). Add LIA lines for the new personal-data surfaces
        (CH officer and PSC names in signals) and the "never ingested" list (personal insolvency,
        individual planning applicants, named individuals from the sector registers). Add a retention
        line for each platform reference dataset (replaced on refresh). Mark ⚖️ for the pre-launch
        legal review.
-5. [ ] **Decision for the user (ask, don't assume):** should the new sources be available on every
+5. [x] **Decision for the user (asked 2026-11-06; the answer was "all sources, all plans"):** should the new sources be available on every
        plan, or gated by plan through `CapabilityGate` (ADR 0015)? Record the answer in ADR 0018. The
        default proposal is all sources on all plans, with lead quotas as the only limit.
-6. [ ] Update `docs/architecture.md` (data-flow diagram showing the new sources and the
+6. [x] Update `docs/architecture.md` (data-flow diagram showing the new sources and the
        reference-dataset import), `CLAUDE.md` §5 (ADR 0018) and §3 (link this plan), and the
        `mvp.md` status table (link this plan). Add every new env key to `.env.example`, commented,
        with no values.
-7. [ ] **List the user's to-dos** at the end of the phase summary: which free keys and accounts to
+7. [x] **List the user's to-dos** at the end of the phase summary: which free keys and accounts to
        register (see "What you need to do" at the bottom of this file).
 
 **Tests:** n/a (docs only).
@@ -178,6 +198,27 @@ architecture, CLAUDE.md, mvp.md and .env.example docs. Ask me the plan-gating qu
 application code."_
 **Risks:** a source's terms forbid our use. That is the point of the phase: drop it rather than work
 around it.
+
+**What L0 answered** (full evidence in `docs/modules/lead-sourcing.md`; decisions in ADR 0025):
+
+- Each of the six hard questions this phase named, answered. **DMCC** — no: its directory is a
+  Salesforce site whose `robots.txt` is `Disallow: /` for everyone but googlebot. **Reed** — it
+  publishes no API terms at all, so neither storing nor displaying is permitted in writing; dropped
+  pending an answer from Reed. **CCOD/OCOD** — the dataset listing says "See individual licence",
+  not the OGL, and that licence is readable only inside an account, so L3 plans on title **counts**
+  rather than addresses until it has been read (⚖️). **PlanIt** — its `robots.txt` disallows the API
+  to every agent, which answers the volume question by making it moot. **Overpass** — the public
+  endpoint states in its own 502 body that it is "intended for browser-based and human-operated
+  tools", so concurrency 1, backoff, and our own instance for production volume. **Dubai Pulse** —
+  neither openly downloadable nor openly API-accessible: an account **and** a per-dataset permission
+  grant, answered within ~14 days, then OAuth client credentials.
+- **Plan gating: none.** Every source on every plan; lead and signal quotas stay the only limit
+  (ADR 0025 §7). No new `Capability` case.
+- **One finding changed the plan's shape rather than a phase's design.** The seam L6 was to build
+  already exists as `Signals\Contracts\SignalSourceProvider` + `SignalSourceRegistry` (ADR 0023,
+  S13a), with a per-source breaker key, the three addressing shapes and the 4xx trichotomy this plan
+  had not anticipated. L6 is superseded, not deferred.
+- **No application code was written**, as the dispatch prompt required.
 
 ---
 
@@ -720,22 +761,40 @@ the findings. Finish with the phase-complete checklist."_
 
 ## What you need to do (user actions)
 
-Register these, then put the keys in `.env` (never commit them). L0 confirms which are still needed.
+Register these, then put the keys in `.env` (never commit them). Every one is free. The commented
+placeholders and each source's licence conditions are already in `.env.example`. **L0 confirmed this
+list on 2026-11-06** — nothing here is speculative any more.
 
-- [ ] **Companies House stream key.** This is a separate "Streaming" application key in the CH
-      developer hub, alongside the REST key you already have. Needed for L7.
-- [ ] **HM Land Registry** account: accept the CCOD/OCOD licence and download the monthly files.
-      Needed for L3.
-- [ ] **CQC** API subscription key (L2).
-- [ ] **FCA Register** API key (L2).
-- [ ] **Charity Commission** API key (L2).
-- [ ] **Adzuna** app id + key (L8), and **Reed** API key (L8, if ✅).
-- [ ] **Dubai Pulse** access, if L0 finds the dataset needs an account (L12).
-- [ ] Hetzner: add the Supervisor programs for the Companies House stream workers (L7 runbook).
-- [ ] Answer the **plan-gating** question in L0.
+- [x] Answer the **plan-gating** question in L0 — answered: all sources on all plans.
+- [ ] **HM Land Registry** account on `use-land-property-data.service.gov.uk`: **read and accept the
+      CCOD/OCOD licence**, then download the monthly files. Needed for L3 — and the licence text is
+      also what closes a ⚖️ in `docs/compliance.md` §5, so send it to counsel rather than only
+      clicking through it.
+- [ ] **Companies House stream key** — a separate "Streaming" application in the CH developer hub,
+      alongside the REST key already in use. Two concurrent connections per key and reconnect loops
+      get an application banned, so do not share it with anything else. L7.
+- [ ] **CQC** subscription key from `api-portal.service.cqc.org.uk`, and pick a `partnerCode`: CQC
+      asks every consumer to identify itself on each request. L2.
+- [ ] **Charity Commission**: an account on `api-portal.charitycommission.gov.uk`, then subscribe to
+      the Register of Charities product for a key. L2.
+- [ ] **FCA Register** key from the FCA developer portal — **and** a written answer from
+      `RegisterAPISupport@fca.org.uk` on commercial reuse and attribution. The second half is the
+      precondition, not a follow-up: the FCA sells register extracts, so silence in its terms about
+      commercial use is not the same as an open dataset's silence. L2.
+- [ ] **Dubai Pulse**: request permission for `dld-transactions` (L12) **and**
+      `dld_free_zone_companies_licensing` — the latter is the only lawful machine route L0 found to
+      UAE free-zone company data, and so is the live option for the gap L4's drop leaves open. A
+      grant arrives within ~14 days and issues a key and a secret in two separate emails.
+- [ ] Hetzner: add the Supervisor program for the Companies House stream worker (L7 runbook). It is a
+      supervised long-lived process rather than a queued job, and it cannot be exercised that way on
+      Windows.
+- [ ] **Optional, and only if you want L8 back:** ask **Adzuna** for the written agreement their
+      terms require for lead generation, and ask **Reed** whether their API may be used commercially
+      at all. Until one of them says yes in writing, L8 stays dropped.
 
-No key is needed for FSA, Contracts Finder, Find a Tender, PlanIt, The Gazette, Overpass, or the
-DIFC/ADGM registers, subject to L0's findings.
+**No key is needed** for the FSA hygiene register, Contracts Finder, Find a Tender, The Gazette or
+Overpass — which is why the revised order puts those phases first. **Do not register for** PlanIt,
+DIFC, ADGM or DMCC: those are dropped on their terms, not pending a credential.
 
 ## Post-plan backlog
 
@@ -743,6 +802,11 @@ DIFC/ADGM registers, subject to L0's findings.
 - A self-hosted Overpass instance if public-instance limits bite.
 - UAE federal **National Economic Register**: there's no free bulk API, so only through a paid KYB
   aggregator. Revisit with paid enrichment (ADR 0008).
+- **The UAE company-registry gap, properly** (ADR 0007, reopened by L0's drop of all three free
+  zones): Dubai Pulse's `dld_free_zone_companies_licensing` dataset is the one free machine route
+  found, and it covers Dubai only. Abu Dhabi (ADGM) and the federal register still have none.
+- A **written agreement with Adzuna**, which is the only thing standing between this plan and hiring
+  signals — the data and the endpoint are both fine.
 - Arabic-language job and news sources for UAE hiring and relocation signals.
 - Learning per-team thresholds for hiring surges and contract values from dismiss reasons.
 - Paid providers behind the same seams: Apollo / PDL / Hunter / Cognism (people), Crunchbase

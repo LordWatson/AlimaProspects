@@ -24,6 +24,8 @@ final class TeamSwitchController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Switched to :team.', ['team' => $team->name])]);
 
-        return back();
+        // The dashboard, not back(): the screen the member switched from may be a record that
+        // belongs to the team they just left, and returning to it would 404.
+        return to_route('dashboard');
     }
 }

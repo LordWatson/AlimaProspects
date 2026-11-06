@@ -177,6 +177,36 @@ it('matches geography through country aliases so UAE finds AE', function (): voi
     expect(app(DeterministicScorer::class)->score($lead, $icp)->score)->toBe(100);
 });
 
+it('matches geography against the places a lead says it operates in', function (): void {
+    // A web-search lead has no postal address at all, so before Q1 this criterion abstained on
+    // every one of them — which read as "we don't know" when we did.
+    [$team, $icp] = icpWith([[CriterionType::Geography, 'Manchester', 60]]);
+    $lead = scorableLead($team, [
+        'locality' => null,
+        'region' => null,
+        'postal_code' => null,
+        'country' => null,
+        'locations' => ['London', 'Manchester'],
+    ]);
+
+    expect(app(DeterministicScorer::class)->score($lead, $icp)->score)->toBe(100);
+});
+
+it('still abstains on geography when it knows no location at all', function (): void {
+    [$team, $icp] = icpWith([[CriterionType::Geography, 'Manchester', 60]]);
+    $lead = scorableLead($team, [
+        'locality' => null,
+        'region' => null,
+        'postal_code' => null,
+        'country' => null,
+        'locations' => null,
+        'industry' => 'Logistics',
+    ]);
+
+    expect(rowFor(app(DeterministicScorer::class)->score($lead, $icp)->breakdown, CriterionType::Geography)->match)
+        ->toBe(CriterionMatch::Unknown);
+});
+
 it('reads a comma-separated criterion as "any of these"', function (): void {
     [$team, $icp] = icpWith([[CriterionType::Industry, 'SaaS, Logistics, Hospitality', 60]]);
     $lead = scorableLead($team, ['industry' => 'Third-party logistics']);

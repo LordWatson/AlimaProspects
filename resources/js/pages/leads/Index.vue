@@ -27,6 +27,7 @@ import {
 import PageHero from '@/components/PageHero.vue';
 import Pagination from '@/components/Pagination.vue';
 import GradeBadge from '@/components/scoring/GradeBadge.vue';
+import MeterBar from '@/components/MeterBar.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -102,7 +103,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
-const { number, date } = useFormat();
+const { number, date, percent } = useFormat();
 
 // A filter change is a request, not a local toggle. Dim the rows while the server rebuilds them
 // rather than leaving stale ones looking like an answer.
@@ -671,7 +672,17 @@ function updatedAt(lead: Lead): string {
                                 align="end"
                             />
                             <ListHead :label="t('Who’s on it')" hide="lg" />
-                            <ListHead :label="t('Data')" hide="sm" />
+                            <!-- "Data" is sorted by `readiness` (Q4): how much of what we need to
+                                 contact this lead we actually hold. A different question from Fit,
+                                 which is blind to missing data on purpose. -->
+                            <ListHead
+                                :label="t('Data')"
+                                sort="readiness"
+                                hide="sm"
+                                :active="filters.sort"
+                                :direction="filters.direction"
+                                @sort="sortBy"
+                            />
                             <ListHead
                                 :label="t('Updated')"
                                 sort="freshness"
@@ -818,6 +829,34 @@ function updatedAt(lead: Lead): string {
                                     />
                                     {{ t(lead.enrichment_status_label) }}
                                 </Badge>
+                                <!-- Deliberately NOT a grade: no letter and no status colour, since
+                                     a low readiness is a gap in our data and not a verdict about
+                                     the prospect. Nothing is shown until there is a figure. -->
+                                <div
+                                    v-if="lead.readiness !== null"
+                                    class="mt-1.5 flex items-center gap-1.5"
+                                >
+                                    <MeterBar
+                                        :value="lead.readiness"
+                                        tone="neutral"
+                                        class="w-10"
+                                        :label="
+                                            t(
+                                                ':percent of what we need to reach them',
+                                                {
+                                                    percent: percent(
+                                                        lead.readiness / 100,
+                                                    ),
+                                                },
+                                            )
+                                        "
+                                    />
+                                    <bdi
+                                        class="text-xs text-ink-60 tabular-nums"
+                                    >
+                                        {{ percent(lead.readiness / 100) }}
+                                    </bdi>
+                                </div>
                             </ListCell>
                             <ListCell hide="lg" muted align="end">
                                 <bdi class="text-xs">{{ updatedAt(lead) }}</bdi>

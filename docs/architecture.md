@@ -38,6 +38,14 @@ flowchart LR
 
 Code is organised by domain module under `app/Modules/<Module>/` (ADR 0002). MVP unless marked.
 
+**Data comes in through exactly two seams**, and every source added since has gone behind one of
+them: a **company record** through `LeadSourcing\Contracts\LeadSourceProvider` (ADR 0008) and an
+**event** through `Signals\Contracts\SignalSourceProvider` + `SignalSourceRegistry` (ADR 0023). The
+free-sources expansion (`lead-sources-plan.md`, ADR 0025) adds registers and public feeds — the FSA
+hygiene register, CQC, the FCA register, the Charity Commission, OpenStreetMap, Companies House
+streaming, public contract awards, the Gazette — and adds **no third way in**; the only genuinely new
+shape it introduces is the reference-dataset import described in §5.
+
 ```mermaid
 flowchart TD
   Core --> Auth[Auth & Users]
@@ -120,6 +128,15 @@ flowchart TD
 ## 5. Cross-cutting concerns
 
 - **Tenancy (Core):** single DB, `team_id` on every tenant table, `BelongsToTeam` global scope + policy double-check, multi-team membership with an active team (ADR 0006). The scope is a **no-op when no team is active**, which is deliberate and is what the Admin panel's cross-tenant reads depend on — so the one place that removes the active team (`Admin\Http\Middleware\PlatformContext`) refuses to run on a route not named `admin.*`, and `tests/Feature/Admin/AdminRouteContractTest.php` asserts from the other side that no route outside `admin.*` carries it. Reading **one** tenant from the panel goes through `TeamContext::run()` rather than a hand-written `where`, so there is one implementation of tenancy rather than two that can disagree.
+- **Platform reference datasets (L0, ADR 0025 §2):** a bulk public file — HM Land Registry's
+  CCOD/OCOD being the first — is imported into tables with **no `team_id`**, read-only to tenants and
+  refreshed by a scheduled import that writes a `reference_dataset_imports` ledger row and swaps
+  versions atomically (import a new version, flip a pointer, delete the old). It is the second
+  documented exception to ADR 0006 after `signal_definitions`' platform presets, and for the same
+  reason: the data belongs to nobody, so asserting a tenant over it would be a lie the scope then
+  enforces. The flow is one direction only — a tenant query **joins** a reference table and never
+  writes one — and the nightly retention sweeps do not touch them, because a version is replaced
+  rather than aged.
 - **Plan-driven capabilities (Core + Billing + Admin, Phase 19b, ADR 0015):** whether a team may use
   a feature is **one question with one implementation** — `Core\Contracts\CapabilityGate`, decorated
   three times in provider order: Core's permissive default, Billing's plan-backed gate, Admin's

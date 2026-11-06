@@ -86,9 +86,7 @@ final class SourcedLead extends Data
         //
         // The slug itself comes from `CompanyNameKey` since S10, where Signals' lead matcher reads
         // it too. One rule: three normalisers is how two leads become three.
-        $slug = CompanyNameKey::for($this->companyName);
-
-        return 'name:'.$this->source->value.':'.Str::limit($slug, 120, '').':'.substr(sha1($slug), 0, 12);
+        return CompanyNameKey::dedupeKeyFor($this->source, $this->companyName);
     }
 
     /**

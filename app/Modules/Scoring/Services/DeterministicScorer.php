@@ -9,6 +9,7 @@ use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\Scoring\Contracts\LeadSignalSource;
 use App\Modules\Scoring\Data\CriterionScore;
 use App\Modules\Scoring\Data\DeterministicScore;
 use App\Modules\Scoring\Enums\CriterionMatch;
@@ -27,8 +28,9 @@ use Illuminate\Support\Str;
  *    a lead by adding more criteria.
  * 2. **Missing data is not a failure.** When the lead has nothing on a criterion's dimension the row
  *    is {@see CriterionMatch::Unknown} and its weight leaves *both* sides of the ratio — otherwise
- *    the score would measure enrichment coverage rather than fit. Buying signals are always Unknown
- *    here; only the AI half can judge them.
+ *    the score would measure enrichment coverage rather than fit. That holds for a **buying signal**
+ *    too: since Q3 the rules judge one against what {@see LeadSignalSource} says the lead has been
+ *    seen doing, and a lead with no signals is Unknown rather than a miss.
  * 3. **An exclusion is absolute.** A matched exclusion returns 0 immediately — no partial credit,
  *    and the caller skips the AI call entirely.
  */
@@ -39,6 +41,8 @@ final class DeterministicScorer
      * so "IT" doesn't match "security" and "AE" doesn't match "Wales".
      */
     private const int SHORT_VALUE = 4;
+
+    public function __construct(private readonly LeadSignalSource $signals) {}
 
     public function score(Lead $lead, Icp $icp): DeterministicScore
     {
@@ -102,18 +106,6 @@ final class DeterministicScorer
      */
     private function assess(IcpCriterion $criterion, Lead $lead, int $weight): CriterionScore
     {
-        // A buying signal (funding, hiring, expansion…) isn't in any column we hold, so the rules
-        // must abstain and let the AI half speak to it.
-        if ($criterion->type === CriterionType::BuyingSignal) {
-            return new CriterionScore(
-                type: $criterion->type,
-                value: $criterion->value,
-                weight: $weight,
-                match: CriterionMatch::Unknown,
-                evidence: 'Assessed by the AI review only.',
-            );
-        }
-
         if ($criterion->type === CriterionType::CompanySize) {
             return $this->assessCompanySize($criterion, $lead, $weight);
         }
@@ -189,12 +181,22 @@ final class DeterministicScorer
                 $lead->region,
                 $lead->postal_code,
                 ...$this->countryAliases($lead->country),
+                // The places the company says it operates in (Q1). A lead from web search has no
+                // postal address at all, so without these the Geography criterion abstained on
+                // every one of them — which read as "we don't know" when we did.
+                ...($lead->locations ?? []),
             ],
             CriterionType::JobTitle, CriterionType::Seniority => $this->contactTitles($lead),
             CriterionType::Technographic => $lead->technologies ?? [],
-            // Company size is handled by assessCompanySize(), exclusions by the caller, and buying
-            // signals abstain. Listed so the match stays exhaustive.
-            CriterionType::CompanySize, CriterionType::BuyingSignal, CriterionType::Exclusion => [],
+            // What the lead has been seen *doing* (Q3). This criterion abstained unconditionally
+            // until then, on the grounds that funding and hiring "aren't in any column we hold" —
+            // Signals has held them since S10, and `LeadSignalSource` is how we ask without this
+            // module depending on that one. A team without Signals gets an empty list, which is
+            // Unknown, which is the behaviour this replaced.
+            CriterionType::BuyingSignal => $this->signals->labelsFor($lead),
+            // Company size is handled by assessCompanySize() and exclusions by the caller. Listed
+            // so the match stays exhaustive.
+            CriterionType::CompanySize, CriterionType::Exclusion => [],
         };
 
         return $this->clean($values);
@@ -416,6 +418,7 @@ final class DeterministicScorer
             CriterionType::Geography => 'No location on this lead yet.',
             CriterionType::JobTitle, CriterionType::Seniority => 'No contact titles on this lead yet.',
             CriterionType::Technographic => 'No technologies detected on this lead yet.',
+            CriterionType::BuyingSignal => 'No signals recorded about this lead yet.',
             default => 'Not enough data on this lead yet.',
         };
     }

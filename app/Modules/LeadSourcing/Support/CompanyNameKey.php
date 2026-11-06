@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\LeadSourcing\Support;
 
 use App\Modules\LeadSourcing\Data\SourcedLead;
+use App\Modules\LeadSourcing\Enums\LeadSource;
 use Illuminate\Support\Str;
 
 /**
@@ -63,6 +64,32 @@ final class CompanyNameKey
     public static function for(string $name): string
     {
         return Str::limit(Str::slug(Str::squish($name)), self::MAX, '');
+    }
+
+    /**
+     * The **name-only dedupe key**: the weakest of the four keys {@see SourcedLead::dedupeKey()}
+     * can produce, and the only one derived from a value enrichment is allowed to correct.
+     *
+     * Lives here rather than in the DTO because Q1 gave it a second caller: when enrichment fixes a
+     * web-sourced lead's company name, a key built from the **old** name would stay on the row and
+     * that lead would quietly stop de-duplicating for ever. Recomputing it needs the same formula,
+     * and the same reason `for()` moved here applies — two copies of a key formula is how one lead
+     * becomes two.
+     *
+     * Provider-scoped on purpose: a bare name is not enough to claim two providers found the same
+     * company (`docs/modules/lead-sourcing.md`).
+     */
+    public static function dedupeKeyFor(LeadSource $source, string $name): string
+    {
+        $slug = self::for($name);
+
+        return 'name:'.$source->value.':'.Str::limit($slug, 120, '').':'.substr(sha1($slug), 0, 12);
+    }
+
+    /** Whether a stored dedupe key was derived from a company name (and so moves when it changes). */
+    public static function isNameDerived(?string $dedupeKey): bool
+    {
+        return str_starts_with((string) $dedupeKey, 'name:');
     }
 
     /**

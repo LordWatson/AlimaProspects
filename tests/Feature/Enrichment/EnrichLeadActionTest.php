@@ -20,6 +20,7 @@ use App\Modules\Enrichment\Testing\FakeDnsResolver;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Enums\LeadStatus;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Support\CompanyNameKey;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -204,4 +205,156 @@ it('enriches a website-less lead without calling the fetcher or model', function
         ->and($lead->contacts()->count())->toBe(0)
         ->and($fakeAi->callCount())->toBe(0)
         ->and($fetcher->fetched)->toBe([]);
+});
+
+// --- Lead quality Q1: enrichment keeps the facts it extracts ---
+
+it('replaces a web-search lead name that was really a page title', function (): void {
+    [$team, $fakeAi] = bootEnrichment();
+    $fakeAi->queueStructured(extractPayload(), model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team, [
+        'source' => LeadSource::WebSearch,
+        'company_name' => 'Best Coffee Roasters in London | Reviews & Prices',
+        'dedupe_key' => 'domain:acme.test',
+    ]);
+
+    enrich($team, $lead);
+
+    expect($lead->refresh()->company_name)->toBe('Acme Ltd');
+});
+
+it('records where a corrected name came from', function (): void {
+    [$team, $fakeAi] = bootEnrichment();
+    $fakeAi->queueStructured(extractPayload(), model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team, [
+        'source' => LeadSource::WebSearch,
+        'company_name' => 'Coffee | Home',
+        'dedupe_key' => 'domain:acme.test',
+    ]);
+
+    enrich($team, $lead);
+
+    $source = $lead->refresh()->field_sources['company_name'] ?? null;
+
+    expect($source)->toBeInstanceOf(SourcedValue::class)
+        ->and($source->method)->toBe(SourcedValue::METHOD_AI_EXTRACT)
+        ->and($source->sourceUrl)->toBe('https://acme.test');
+});
+
+it('leaves a registry name alone - Companies House outranks the extraction', function (): void {
+    [$team, $fakeAi] = bootEnrichment();
+    $fakeAi->queueStructured(extractPayload(), model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team, [
+        'source' => LeadSource::CompaniesHouse,
+        'company_name' => 'ACME COFFEE ROASTERS LIMITED',
+    ]);
+
+    enrich($team, $lead);
+
+    expect($lead->refresh()->company_name)->toBe('ACME COFFEE ROASTERS LIMITED');
+});
+
+it('leaves a hand-typed name alone', function (): void {
+    [$team, $fakeAi] = bootEnrichment();
+    $fakeAi->queueStructured(extractPayload(), model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team, [
+        'source' => LeadSource::Manual,
+        'company_name' => 'Acme (met at the trade show)',
+    ]);
+
+    enrich($team, $lead);
+
+    expect($lead->refresh()->company_name)->toBe('Acme (met at the trade show)');
+});
+
+it('never blanks a name when the extraction found none', function (): void {
+    [$team, $fakeAi] = bootEnrichment();
+    $fakeAi->queueStructured([...extractPayload(), 'company_name' => null], model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team, [
+        'source' => LeadSource::WebSearch,
+        'company_name' => 'Coffee | Home',
+        'dedupe_key' => 'domain:acme.test',
+    ]);
+
+    enrich($team, $lead);
+
+    expect($lead->refresh()->company_name)->toBe('Coffee | Home');
+});
+
+it('moves a name-derived dedupe key with the corrected name', function (): void {
+    [$team, $fakeAi] = bootEnrichment();
+    $fakeAi->queueStructured(extractPayload(), model: 'claude-haiku-5-5');
+
+    $stale = CompanyNameKey::dedupeKeyFor(LeadSource::WebSearch, 'Coffee | Home');
+
+    $lead = makeLead($team, [
+        'source' => LeadSource::WebSearch,
+        'company_name' => 'Coffee | Home',
+        'dedupe_key' => $stale,
+    ]);
+
+    enrich($team, $lead);
+
+    expect($lead->refresh()->dedupe_key)
+        ->toBe(CompanyNameKey::dedupeKeyFor(LeadSource::WebSearch, 'Acme Ltd'))
+        ->not->toBe($stale);
+});
+
+it('leaves a domain-derived dedupe key where it is', function (): void {
+    [$team, $fakeAi] = bootEnrichment();
+    $fakeAi->queueStructured(extractPayload(), model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team, [
+        'source' => LeadSource::WebSearch,
+        'company_name' => 'Coffee | Home',
+        'dedupe_key' => 'domain:acme.test',
+    ]);
+
+    enrich($team, $lead);
+
+    expect($lead->refresh()->dedupe_key)->toBe('domain:acme.test');
+});
+
+it('keeps the locations the extraction found', function (): void {
+    [$team, $fakeAi] = bootEnrichment();
+    $fakeAi->queueStructured(
+        [...extractPayload(), 'locations' => ['London', 'Manchester']],
+        model: 'claude-haiku-5-5',
+    );
+
+    $lead = makeLead($team, ['locations' => null]);
+
+    enrich($team, $lead);
+
+    expect($lead->refresh()->locations)->toBe(['London', 'Manchester']);
+});
+
+it('does not write an extracted location into the postal address fields', function (): void {
+    [$team, $fakeAi] = bootEnrichment();
+    $fakeAi->queueStructured(extractPayload(), model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team, ['locality' => null, 'region' => null, 'country' => null]);
+
+    enrich($team, $lead);
+    $lead->refresh();
+
+    // "London" is where the company says it operates, not an address it gave us. Guessing one from
+    // the other is exactly what Q1 refused to do.
+    expect($lead->locality)->toBeNull()
+        ->and($lead->region)->toBeNull()
+        ->and($lead->country)->toBeNull()
+        ->and($lead->locations)->toBe(['London']);
+});
+
+it('builds a name dedupe key through one shared rule', function (): void {
+    expect(CompanyNameKey::dedupeKeyFor(LeadSource::WebSearch, 'Acme Ltd'))
+        ->toStartWith('name:web_search:acme-ltd:')
+        ->and(CompanyNameKey::isNameDerived('name:web_search:acme-ltd:abc'))->toBeTrue()
+        ->and(CompanyNameKey::isNameDerived('domain:acme.test'))->toBeFalse()
+        ->and(CompanyNameKey::isNameDerived(null))->toBeFalse();
 });

@@ -22,8 +22,11 @@ use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\Enrichment\Services\CompanyNormaliser;
 use App\Modules\Enrichment\Services\EmailVerifier;
 use App\Modules\Enrichment\Services\LeadDeduplicator;
+use App\Modules\Enrichment\Services\LeadReadiness;
+use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Enums\LeadStatus;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Support\CompanyNameKey;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -45,12 +48,20 @@ use Throwable;
  */
 final class EnrichLeadAction
 {
+    /**
+     * The {@see LeadSource::rank()} at or below which a stored company name is **provisional** — a
+     * page title or an article's subject rather than a name the source asserted. See
+     * {@see self::correctProvisionalName()}.
+     */
+    private const int PROVISIONAL_NAME_RANK = 1;
+
     public function __construct(
         private readonly AiClient $ai,
         private readonly WebContentFetcher $fetcher,
         private readonly EmailVerifier $verifier,
         private readonly CompanyNormaliser $normaliser,
         private readonly LeadDeduplicator $deduplicator,
+        private readonly LeadReadiness $readiness,
         private readonly CapabilityGate $capabilities,
     ) {}
 
@@ -128,6 +139,15 @@ final class EnrichLeadAction
 
             $survivor = $this->deduplicator->deduplicate($lead);
 
+            // How ready the lead is to be contacted (Q4) — computed **after** de-duplication, on
+            // the survivor, because a merge moves contacts across and fills gaps from the loser, so
+            // the figure taken before it would be of a record that no longer exists. `load`, not
+            // `loadMissing`: the merge has just changed the contacts underneath us.
+            $survivor->forceFill([
+                'readiness' => $this->readiness->for($survivor->load('contacts')),
+                'readiness_at' => now(),
+            ])->save();
+
             // Scoring picks this up to grade the lead against the active ICP. afterCommit so the
             // listener never reads uncommitted state, and only ever for the surviving lead.
             DB::afterCommit(static fn () => event(LeadEnriched::for($survivor)));
@@ -174,10 +194,55 @@ final class EnrichLeadAction
         $fill('industry', $facts->industry);
         $fill('employee_range', $facts->employeeRange);
         $fill('technologies', $facts->technologies);
+        $fill('locations', $facts->locations);
+
+        $this->correctProvisionalName($lead, $facts, $sources, $website);
 
         $lead->field_sources = $sources;
 
         return $this->syncContacts($lead, $facts, $verifications, $website);
+    }
+
+    /**
+     * Replace a **provisional** company name with the one the company's own homepage states (Q1).
+     *
+     * `company_name` is the one field enrichment may overwrite rather than fill, because for the
+     * weakest sources it was never a company name to begin with: a `web_search` lead's name is a
+     * **page title** ("Best Plumbers in Dubai | Reviews") and a `signal` lead's is a subject lifted
+     * from an article. The extraction we have already paid for reads the company's own site and
+     * states the name properly, so dropping it — which is what happened until Q1 — left a page
+     * title on the row for ever, and left de-duplication comparing titles.
+     *
+     * The rule is {@see LeadSource::rank()}'s, not a new one: only the bottom tier is overwritten.
+     * Companies House gives the registered name and Places the business's own listing; a member who
+     * typed a name outranks everything. Nothing here can **blank** a name.
+     *
+     * The dedupe key moves with the name when the key was derived from it, or the lead would keep a
+     * key pointing at a name it no longer has and never de-duplicate again. A number- or
+     * domain-keyed lead — nearly all of them — is untouched.
+     *
+     * @param  array<string, SourcedValue>  $sources
+     */
+    private function correctProvisionalName(Lead $lead, ExtractedFacts $facts, array &$sources, ?string $website): void
+    {
+        $extracted = trim((string) $facts->companyName);
+
+        if ($extracted === '' || $lead->source->rank() > self::PROVISIONAL_NAME_RANK) {
+            return;
+        }
+
+        if ($extracted === trim((string) $lead->company_name)) {
+            return;
+        }
+
+        $renameKey = CompanyNameKey::isNameDerived($lead->dedupe_key);
+
+        $lead->company_name = $extracted;
+        $sources['company_name'] = SourcedValue::fromAiExtract($website);
+
+        if ($renameKey) {
+            $lead->dedupe_key = CompanyNameKey::dedupeKeyFor($lead->source, $extracted);
+        }
     }
 
     /**

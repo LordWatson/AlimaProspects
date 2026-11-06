@@ -10722,6 +10722,19 @@
                             "null"
                         ]
                     },
+                    "locations": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "readiness": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "How ready the lead is to be contacted (Q4). Null means not computed, never zero."
+                    },
                     "sic_codes": {
                         "type": "array",
                         "items": {
@@ -10959,6 +10972,8 @@
                     "region",
                     "postal_code",
                     "country",
+                    "locations",
+                    "readiness",
                     "sic_codes",
                     "source_url",
                     "collected_at",
@@ -11148,11 +11163,12 @@
             },
             "LeadSort": {
                 "type": "string",
-                "description": "The orderings the leads list offers (Phase 10). Each case maps to a sortable column \u2014 or, for {@see self::Fit}, to a correlated sub-query over the lead's score against the active ICP \u2014 so a request can never name an arbitrary column. No magic strings.\n",
+                "description": "The orderings the leads list offers (Phase 10). Each case maps to a sortable column \u2014 or, for {@see self::Fit}, to a correlated sub-query over the lead's score against the active ICP \u2014 so a request can never name an arbitrary column. No magic strings. {@see self::Fit} and {@see self::Readiness} are the two different questions a lead answers (Q4): whether we should want them, and whether we can actually reach them. They are separate orderings because an A-grade lead with no contact details and a fully enriched poor fit are both real, and a member sorting the list is asking one of the two.\n",
                 "enum": [
                     "newest",
                     "company",
                     "fit",
+                    "readiness",
                     "freshness"
                 ],
                 "title": "LeadSort"
@@ -13970,6 +13986,36 @@
                             "null"
                         ]
                     },
+                    "outreach_restriction": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "description": "**The restriction conversion would actually apply**, not just the jurisdiction it is\nderived from. `resolved_market` is step one of a three-step rule, so a screen that\nread it alone got the wrong answer for every signal whose article named nowhere the\nplace map knows \u2014 and the convert dialog was reading neither: it stated UAE PDPL\nunconditionally, which on a UK signal is a false statement of law. Same shape as\n`LeadResource::outreachRestriction()`, so one component could render either;\n`label` and `guidance` are translation keys, not finished sentences.",
+                        "properties": {
+                            "value": {
+                                "type": "string",
+                                "const": "uae_prior_consent"
+                            },
+                            "label": {
+                                "type": "string",
+                                "const": "Get consent first"
+                            },
+                            "guidance": {
+                                "type": "string",
+                                "const": "Approach via LinkedIn or a referral \u2014 not cold email."
+                            },
+                            "allows_direct_marketing": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": [
+                            "value",
+                            "label",
+                            "guidance",
+                            "allows_direct_marketing"
+                        ]
+                    },
                     "confidence": {
                         "type": "integer"
                     },
@@ -14299,6 +14345,7 @@
                     "location",
                     "jurisdiction",
                     "resolved_market",
+                    "outreach_restriction",
                     "confidence",
                     "relevance",
                     "suggested_approach",

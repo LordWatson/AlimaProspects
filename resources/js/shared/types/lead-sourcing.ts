@@ -60,6 +60,13 @@ export type Lead = {
     region: string | null;
     postal_code: string | null;
     country: string | null;
+    /** The places the company says it operates in — not a postal address (Q1). */
+    locations: string[];
+    /**
+     * How ready the lead is to be CONTACTED, 0–100 (Q4) — a measure of what we hold, not a verdict
+     * about the prospect, and not a second fit score. Null means not computed yet, never zero.
+     */
+    readiness: number | null;
     sic_codes: string[];
     source_url: string | null;
     collected_at: string | null;

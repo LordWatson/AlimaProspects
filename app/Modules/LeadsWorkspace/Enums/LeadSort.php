@@ -8,12 +8,18 @@ namespace App\Modules\LeadsWorkspace\Enums;
  * The orderings the leads list offers (Phase 10). Each case maps to a sortable column — or, for
  * {@see self::Fit}, to a correlated sub-query over the lead's score against the active ICP — so a
  * request can never name an arbitrary column. No magic strings.
+ *
+ * {@see self::Fit} and {@see self::Readiness} are the two different questions a lead answers (Q4):
+ * whether we should want them, and whether we can actually reach them. They are separate orderings
+ * because an A-grade lead with no contact details and a fully enriched poor fit are both real, and
+ * a member sorting the list is asking one of the two.
  */
 enum LeadSort: string
 {
     case Newest = 'newest';
     case Company = 'company';
     case Fit = 'fit';
+    case Readiness = 'readiness';
     case Freshness = 'freshness';
 
     public function label(): string
@@ -22,6 +28,7 @@ enum LeadSort: string
             self::Newest => 'Newest first',
             self::Company => 'Company name',
             self::Fit => 'Best fit',
+            self::Readiness => 'Ready to contact',
             self::Freshness => 'Recently updated',
         };
     }
@@ -34,7 +41,7 @@ enum LeadSort: string
     {
         return match ($this) {
             self::Company => LeadSortDirection::Asc,
-            self::Newest, self::Fit, self::Freshness => LeadSortDirection::Desc,
+            self::Newest, self::Fit, self::Readiness, self::Freshness => LeadSortDirection::Desc,
         };
     }
 

@@ -249,6 +249,25 @@ it('sorts by fit, keeping ungraded leads in the list', function (): void {
             ->where('leads.data.0.company_name', 'Best'));
 });
 
+it('sorts by readiness, keeping leads with no figure at the end', function (): void {
+    [$user, $team] = Fixtures::team();
+
+    Fixtures::lead($team, ['company_name' => 'Patchy', 'readiness' => 40]);
+    Fixtures::lead($team, ['company_name' => 'Reachable', 'dedupe_key' => 'no:reach', 'readiness' => 90]);
+    Fixtures::lead($team, ['company_name' => 'Unknown', 'dedupe_key' => 'no:unknown', 'readiness' => null]);
+
+    // Nulls last explicitly: 'not computed' is not 'nothing to reach them by', and MySQL and
+    // SQLite disagree about where a null sorts (the lesson `SignalSortOrder` already learned).
+    $this->actingAs($user)
+        ->get(route('leads.index', ['sort' => 'readiness']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('leads.data', 3)
+            ->where('leads.data.0.company_name', 'Reachable')
+            ->where('leads.data.0.readiness', 90)
+            ->where('leads.data.2.company_name', 'Unknown'));
+});
+
 it('sorts by company name, both ways', function (): void {
     [$user, $team] = Fixtures::team();
 

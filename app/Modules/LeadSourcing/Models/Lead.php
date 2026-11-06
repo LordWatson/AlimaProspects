@@ -57,6 +57,11 @@ use Illuminate\Support\Str;
  * @property string|null $region
  * @property string|null $postal_code
  * @property string|null $country
+ * @property list<string>|null $locations the places the company says it operates in (Q1), as
+ *                                        extracted free text — not a postal address, which is what the four fields above are
+ * @property int|null $readiness how ready the lead is to be CONTACTED, 0-100 (Q4) - a record over
+ *                               its own columns, never a second fit score; null means not computed
+ * @property Carbon|null $readiness_at
  * @property array<string, mixed>|null $address
  * @property list<string>|null $sic_codes
  * @property string|null $source_url
@@ -102,6 +107,9 @@ class Lead extends Model
         'region',
         'postal_code',
         'country',
+        'locations',
+        'readiness',
+        'readiness_at',
         'address',
         'sic_codes',
         'source_url',
@@ -286,6 +294,9 @@ class Lead extends Model
             'status' => LeadStatus::class,
             'enrichment_status' => EnrichmentStatus::class,
             'incorporated_on' => 'date',
+            'locations' => 'array',
+            'readiness' => 'integer',
+            'readiness_at' => 'datetime',
             'address' => 'array',
             'sic_codes' => 'array',
             'technologies' => 'array',

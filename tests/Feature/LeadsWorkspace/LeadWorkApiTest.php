@@ -91,7 +91,9 @@ it('adds a task and returns it, 201', function (): void {
         ->postJson(route('api.v1.leads.tasks.store', ['lead' => $lead->getKey()]), [
             'title' => 'Call them back',
             'assigned_to' => $user->getKey(),
-            'due_at' => '2026-11-05 09:00',
+            // Relative, not a fixed date: this test asserts the task is not overdue, so a
+            // hard-coded due date quietly starts failing the day it passes.
+            'due_at' => now()->addDay()->format('Y-m-d H:i'),
         ])
         ->assertCreated()
         ->assertJsonPath('data.title', 'Call them back')

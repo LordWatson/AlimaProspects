@@ -10,6 +10,7 @@ use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\Core\Support\RobotsPolicy;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\ModuleServiceProvider;
+use App\Modules\Scoring\Contracts\LeadSignalSource;
 use App\Modules\Signals\Console\AdviseSignalTuningCommand;
 use App\Modules\Signals\Console\ClusterSignalsBackfillCommand;
 use App\Modules\Signals\Console\DispatchDueSignalWatchesCommand;
@@ -41,6 +42,7 @@ use App\Modules\Signals\Policies\SignalWatchPolicy;
 use App\Modules\Signals\Services\CompaniesHouseNumberLookup;
 use App\Modules\Signals\Services\CompaniesHouseSignalSource;
 use App\Modules\Signals\Services\FeedSignalSource;
+use App\Modules\Signals\Services\MatchedLeadSignals;
 use App\Modules\Signals\Services\NewsSignalSource;
 use App\Modules\Signals\Services\NoOutreachDrafting;
 use App\Modules\Signals\Services\PlaybookStepRegistry;
@@ -366,6 +368,12 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         // The dependency points this way on purpose: Signals already knows about leads because it
         // creates them, and the workspace must not learn about Signals to render a panel.
         $this->app->bind(LeadOriginProvider::class, SignalLeadOriginProvider::class);
+
+        // Tell Scoring what this lead has been seen doing (Q3), over the permissive `NoLeadSignals`
+        // that module binds for itself. The dependency points this way for the same reason as the
+        // line above: Signals already knows about leads, and the scorer must not learn about
+        // signals to grade a buying-signal criterion it abstained on until now.
+        $this->app->bind(LeadSignalSource::class, MatchedLeadSignals::class);
     }
 
     /**

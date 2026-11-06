@@ -260,6 +260,17 @@ return [
      * defaults every untuned type uses.
      */
     'scoring' => [
+        // **What a lead has been seen doing, for the ICP scorer (Q3).** `MatchedLeadSignals`
+        // answers Scoring's `LeadSignalSource` from `signals.matched_lead_id`, which is how a
+        // `buying_signal` ICP criterion finally gets judged by the rules instead of abstaining.
+        //
+        // A year, because a buying signal has a shelf life: a criterion phrased "recently raised
+        // funding" means recently, and grading a lead A on a round from three years ago would be
+        // the scorer asserting something the member did not ask for. Long enough that a slow sales
+        // cycle still sees the event that started it. The retention windows below cut in first for
+        // a dismissed or unactioned signal, so this is a ceiling rather than a promise.
+        'lead_signal_days' => (int) env('SIGNALS_SCORING_LEAD_SIGNAL_DAYS', 365),
+
         'weights' => [
             // What the AI thought, which is where v1's whole judgement lived. Still the largest
             // single voice, deliberately: everything else here is a prior about the *event*, and

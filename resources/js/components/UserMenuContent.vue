@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Link, router } from '@inertiajs/vue3';
-import { Check, Languages, LogOut, Settings } from '@lucide/vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { Check, Languages, LogOut, Settings, Users } from '@lucide/vue';
+import { computed } from 'vue';
 import {
     DropdownMenuGroup,
     DropdownMenuItem,
@@ -14,6 +15,7 @@ import UserInfo from '@/components/UserInfo.vue';
 import { useI18n } from '@/composables/useI18n';
 import { logout } from '@/routes';
 import { edit } from '@/routes/profile';
+import { switchMethod as switchTeam } from '@/routes/teams';
 import type { User } from '@/types';
 
 type Props = {
@@ -21,6 +23,11 @@ type Props = {
 };
 
 const { t, locale, available, setLocale } = useI18n();
+
+const page = usePage();
+
+// Only worth a menu entry when there is somewhere to switch to.
+const teams = computed(() => page.props.auth.teams ?? []);
 
 const handleLogout = () => {
     router.flushAll();
@@ -62,6 +69,23 @@ defineProps<Props>();
                         v-if="option.code === locale"
                         class="size-4 text-brand"
                     />
+                </DropdownMenuItem>
+            </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSub v-if="teams.length > 1">
+            <DropdownMenuSubTrigger class="cursor-pointer">
+                <Users class="me-2 h-4 w-4" />
+                {{ t('Team') }}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+                <DropdownMenuItem
+                    v-for="team in teams"
+                    :key="team.id"
+                    class="cursor-pointer gap-2"
+                    @select="router.post(switchTeam(team.id).url)"
+                >
+                    <span class="flex-1 truncate">{{ team.name }}</span>
+                    <Check v-if="team.is_current" class="size-4 text-brand" />
                 </DropdownMenuItem>
             </DropdownMenuSubContent>
         </DropdownMenuSub>

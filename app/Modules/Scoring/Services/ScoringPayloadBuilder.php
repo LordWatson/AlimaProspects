@@ -92,6 +92,10 @@ final class ScoringPayloadBuilder
             'Industry: '.$this->orUnknown($lead->industry),
             'Employee range: '.$this->orUnknown($lead->employee_range),
             'Location: '.$this->orUnknown($this->location($lead)),
+            // Kept separate from the postal address above: these are the places the company says it
+            // operates in (Q1), which is a different claim, and the AI half must not read one as
+            // the other when it explains the grade.
+            'Operates in: '.$this->orUnknown($this->list($lead->locations)),
             'Website: '.$this->orUnknown($lead->website),
             'Company status: '.$this->orUnknown($lead->company_status),
             'Company type: '.$this->orUnknown($lead->company_type),

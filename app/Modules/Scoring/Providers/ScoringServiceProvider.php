@@ -7,10 +7,12 @@ namespace App\Modules\Scoring\Providers;
 use App\Modules\Enrichment\Events\LeadEnriched;
 use App\Modules\ICP\Events\IcpUpdated;
 use App\Modules\ModuleServiceProvider;
+use App\Modules\Scoring\Contracts\LeadSignalSource;
 use App\Modules\Scoring\Listeners\RescoreTeamOnIcpChange;
 use App\Modules\Scoring\Listeners\ScoreEnrichedLead;
 use App\Modules\Scoring\Models\LeadScore;
 use App\Modules\Scoring\Policies\LeadScorePolicy;
+use App\Modules\Scoring\Services\NoLeadSignals;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -30,6 +32,14 @@ final class ScoringServiceProvider extends ModuleServiceProvider
     protected array $policies = [
         LeadScore::class => LeadScorePolicy::class,
     ];
+
+    public function register(): void
+    {
+        // What a lead has been seen *doing* (Q3). Bound permissively here and replaced by
+        // `SignalsServiceProvider`, which registers after this one — so Scoring never imports
+        // Signals, and a build without it grades buying signals exactly as it did before: Unknown.
+        $this->app->bind(LeadSignalSource::class, NoLeadSignals::class);
+    }
 
     public function boot(): void
     {

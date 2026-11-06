@@ -5,6 +5,165 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-06 — Phase Q4: a lead has two numbers, and they answer two questions
+
+`lead_scores.score` answers **should we want them**, and it is deliberately blind to missing data — a
+thin lead must not be marked down for what we have not found out yet (`scoring-matching.md`, rule 2).
+That is correct, and the price of it is that an **A-grade lead can have no website, no contact and no
+routable email**, with nothing on the list to tell it apart from one you could phone this afternoon.
+
+`leads.readiness` answers the other question — **can we actually reach them** — so it is precisely a
+measure of what we hold, which makes it the one figure _allowed_ to punish a gap.
+`Enrichment\Services\LeadReadiness` scores seven things we already store (a website, an industry, a
+size, a location, a contact, a contact at `mx_found`, a non-role mailbox) with the weights in
+`config/enrichment.php`, normalised by the ones in play so adding a factor cannot inflate a lead and
+a weight of **0** switches one off. No AI, no network, no new query: a **record over the lead's own
+columns**, recomputed, never incremented (ADR 0012's rule).
+
+Three things about it that are load-bearing. **Null is not zero**: a lead we hold nothing about
+beyond its name gets _no figure_, because "not computed" and "nothing to reach them by" are different
+states and a zero reads as the second — so the list orders nulls **last explicitly**, since MySQL
+and SQLite disagree about where one sorts. It is computed **after de-duplication, on the survivor**,
+because a merge moves contacts across and fills gaps from the loser, and a figure taken before it
+describes a row that no longer exists. And it is **not a grade**: no letter, no `status.*` colour, a
+neutral meter — a readiness of 20 is a gap in our data, not a verdict about the prospect, and
+dressing it as one would turn "we have not enriched this yet" into "this company is poor".
+
+Surfaced in the leads list **inside the existing "Data" column** rather than a tenth one — that
+column already asks how complete a lead's data is — with its header now sortable (`LeadSort::
+Readiness`, "Ready to contact"). Exposed on `LeadResource` and the shared TS lead type; EN/AR strings
+at parity. Nothing was wired into the workspace's own create paths: each of them already queues an
+`EnrichLeadJob`, and the stamp sits outside `applyFacts` so it runs whether or not the AI was called.
+Reviewed by the brand agent — no violations; its one finding, the screen-reader label using raw
+digits where the visible figure was locale-formatted, is fixed.
+
+| Files | `app/Modules/Enrichment/{Services/LeadReadiness,Actions/EnrichLeadAction}.php`, `app/Modules/LeadSourcing/{Models/Lead,Http/Resources/LeadResource}.php`, `app/Modules/LeadsWorkspace/{Enums/LeadSort,Services/LeadQueryBuilder}.php`, `config/enrichment.php`, `database/migrations/2026_11_11_100002_leads_record_how_ready_they_are_to_contact.php`, `resources/js/pages/leads/Index.vue`, `resources/js/shared/types/{lead-sourcing,leads-workspace}.ts`, `lang/{en,ar}.json`, `docs/api/openapi.json`, `tests/Feature/{Enrichment/LeadReadinessTest,LeadsWorkspace/LeadsIndexTest}.php` |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### Added — 2026-11-06 — Phase Q3: the scorer reads the buying signals we already hold
+
+`DeterministicScorer` answered **Unknown** for every `buying_signal` ICP criterion, on the stated
+grounds that funding, hiring and expansion "aren't in any column we hold". Signals has held them
+since S10 — `signals.matched_lead_id` is _the lead an event is about_ — so a team could write
+"recently raised funding" into their profile, watch the feed fill up with exactly that, and have the
+rules decline to count it.
+
+`Scoring\Contracts\LeadSignalSource` is how Scoring asks without depending on Signals, the pattern
+Billing uses for `CreditSource`. **Its default is permissive** (`NoLeadSignals` → no labels →
+`Unknown`), which is the behaviour it replaced and a true statement about a team with Signals off —
+the opposite choice to `SignalOutreachDrafter`, whose default refuses, because that one answers
+whether a prospect may be approached and this one answers whether we happen to know something.
+`SignalsServiceProvider` binds the real `MatchedLeadSignals` over it; it registers after Scoring's,
+which is what makes the override work.
+
+`MatchedLeadSignals` follows three of the feed's own rules. **A dismissed signal says nothing**, so
+an automation never overrules a member's judgement (ADR 0024 §4c, one level out). **One event, one
+entry** — a clustered story is read through `signal_clusters.primary_signal_id`, or a round six
+outlets carried would outweigh a quiet one for no reason but coverage. And **recent only**
+(`signals.scoring.lead_signal_days`, a year): a criterion phrased "recently raised funding" means
+recently, and a round from three years ago is history.
+
+The buying-signal special case in the scorer was **deleted** rather than extended: the criterion now
+goes through `haystackFor()` like every other one, so the matcher, the missing-data rule and the
+evidence string are the existing ones, and the breakdown names the signal that matched for free. A
+lead with no signals is still `Unknown`, not a miss — its weight leaves **both** sides of the ratio,
+so nothing is marked down for what we do not know.
+
+| Files | `app/Modules/Scoring/{Contracts/LeadSignalSource,Services/NoLeadSignals,Services/DeterministicScorer,Providers/ScoringServiceProvider}.php`, `app/Modules/Signals/{Services/MatchedLeadSignals,Providers/SignalsServiceProvider}.php`, `config/signals.php`, `.env.example`, `tests/Feature/Scoring/BuyingSignalScoringTest.php` |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### Fixed — 2026-11-06 — Phase Q1: enrichment keeps the facts it already extracts
+
+The first phase of **`lead-quality-plan.md`**, a new plan whose subject is the **precision** of the
+leads we already find (`lead-sources-plan.md` adds breadth; these two do not overlap).
+
+`lead.enrich_extract` has returned a `company_name` and a `locations` list since Phase 8, and
+`EnrichLeadAction::applyFacts()` filled four fields and **dropped both on the floor**. The cost of
+that was not subtle: a `web_search` lead's `company_name` is whatever the result's **page title**
+said ("Best Coffee Roasters in London | Reviews"), so the real name was extracted, validated, paid
+for and discarded on every run — while de-duplication compared page titles and the scorer's
+Geography criterion abstained on every web-sourced lead, because such a lead has no postal address
+at all. Both are now kept.
+
+**`company_name` is the one field enrichment may overwrite rather than fill**, and only for the
+bottom tier of `LeadSource::rank()` — `web_search` and `signal`, the two sources whose "name" was
+never a name but a page title or an article's subject. Companies House gives the registered name,
+Places the business's own listing, and a member who typed one outranks everything; none of them is
+touched, and nothing here can blank a name. The overwrite records its own `SourcedValue` provenance,
+because an overwrite is not a fill and the lead has to say where its corrected name came from.
+
+**The dedupe key moves with the name when the key was derived from it.** A `name:`-keyed lead whose
+name changed would otherwise keep a key pointing at a name it no longer has and never de-duplicate
+again; number- and domain-keyed leads, which is nearly all of them, are untouched. The key formula
+moved to `LeadSourcing\Support\CompanyNameKey::dedupeKeyFor()`, beside `for()` and for the same
+stated reason — two copies of a key formula is how one lead becomes two.
+
+**The extracted locations are stored as themselves** in a new `leads.locations`, not squeezed into
+`locality`/`region`/`country`. Those three describe one postal address a provider gave us; an
+extracted location is free text a company wrote about itself, and parsing one into the other needs a
+guess that would be worse than the honest null. `DeterministicScorer` now reads them alongside the
+address for a Geography criterion (no locations at all is still **Unknown**, not a miss), and
+`ScoringPayloadBuilder` states them to the AI half as "Operates in", kept apart from "Location" so
+the explanation cannot merge two different claims. Exposed on `LeadResource` (additive) and in the
+shared TS lead type; the specification was regenerated.
+
+Also fixed in passing: `LeadWorkApiTest`'s "adds a task" case hard-coded a `due_at` of 2026-11-05
+and asserted the task was not overdue, so it began failing the day that date passed. It is relative
+to `now()` now.
+
+| Files | `app/Modules/Enrichment/Actions/EnrichLeadAction.php`, `app/Modules/LeadSourcing/{Support/CompanyNameKey,Data/SourcedLead,Models/Lead,Http/Resources/LeadResource}.php`, `app/Modules/Scoring/Services/{DeterministicScorer,ScoringPayloadBuilder}.php`, `database/migrations/2026_11_11_100001_leads_keep_the_locations_enrichment_extracts.php`, `resources/js/shared/types/lead-sourcing.ts`, `docs/api/openapi.json`, `lead-quality-plan.md`, `tests/Feature/{Enrichment/EnrichLeadActionTest,Scoring/DeterministicScorerTest,LeadsWorkspace/LeadWorkApiTest}.php` |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### Added — 2026-11-06 — Phase L0: free lead sources, the licence and terms spike (ADR 0025)
+
+The first phase of `lead-sources-plan.md`, and a docs-only one: seventeen candidate **free** data
+sources — UK sector registers, HM Land Registry, the UAE free zones, OpenStreetMap, job boards,
+public contracts, planning applications, The Gazette, Dubai Pulse — read for their terms, limits and
+licences before a line of code was written. Live calls were made to every source that needs no key.
+The findings, with the responses quoted, are in `docs/modules/lead-sourcing.md` → _Free sources —
+spike findings (L0)_; the decisions are **ADR 0025** (the plan calls it "0018", which Signals v2 had
+already taken).
+
+**Five sources are dropped on their own terms, and two of them would have worked perfectly.**
+Adzuna's terms permit personal job search, publishing its listings and research, then say any other
+use "including commercial analysis, resale of data, and sales prospecting or lead generation"
+requires a written agreement — which names this product. Reed publishes no API terms at all, and
+silence is not permission to store a third party's content commercially. PlanIt's `robots.txt`
+disallows the JSON API we would have called, to every agent. DMCC's member directory is a Salesforce
+site whose `robots.txt` is `Disallow: /` for everyone but googlebot, and DIFC's public register is a
+search under `Disallow: /search/`. ADGM publishes no machine-readable register at all. So plan phases
+**L4 (UAE free zones), L8 (hiring signals) and L10 (planning applications) are dropped** — and the
+"no free UAE registry" gap ADR 0007 recorded is still open, with Dubai Pulse's free-zone licensing
+dataset the one lawful machine route found.
+
+**A sixth phase went away for a happier reason.** L6 was to extract a `SignalSource` seam from
+Signals with Serper news as its first implementation. S13a already built it (ADR 0023), complete with
+the per-source circuit-breaker key, the three addressing shapes and the 4xx trichotomy the plan had
+not anticipated. L6 is superseded. Fourteen phases become ten.
+
+What the live calls turned up, beyond the terms: the **FSA** register answers with no key at all and
+holds 141,464 restaurants and cafés in one business type; **Contracts Finder** and **Find a Tender**
+publish open OCDS in which an award names its supplier by **Companies House number**
+(`"id":"GB-COH-6835794"`), so a contract-award signal will match a lead by identifier rather than by
+a name comparison — the first source in the product where ADR 0021's weak-match failure mode cannot
+arise; and the public **Overpass** endpoint answered a fourth consecutive query with "This public
+endpoint is intended for browser-based and human-operated tools", which is why `OSM_OVERPASS_URL` is
+configurable from the first commit. Overpass also produced the finding that decides L5's design: the
+same café query returns **79** results for `area["name"="London"]["admin_level"="6"]` and **4,717**
+for `area["name"="Greater London"]`, and **0** for a Dubai area name that needs `name:en` — a wrong
+area name returns an empty 200, indistinguishable from "nothing there". Areas get resolved to OSM
+relation ids, not composed from name strings.
+
+Three decisions worth reading in the ADR rather than here: a **platform reference dataset** has no
+`team_id`, is read-only to tenants and is replaced by a version flip rather than aged (the second
+documented exception to ADR 0006); a `LeadSourceProvider` stores **no named individual, ever**, which
+the Charity Commission's terms and the OGL's exclusion of personal data turn from a preference into a
+licence condition (`docs/compliance.md` §3.14); and there is **no plan gating** — every new source on
+every plan, with quotas as the only limit, because each one is free to us and gating would make the
+cheaper plans worse than they were the day before. Two new ⚖️ questions were added for counsel: the
+Land Registry licence's commercial terms, and the FCA's silence on commercial reuse beside the
+extracts it sells.
+
 ### Fixed — 2026-11-04 — Signals: an audit, and the things it found
 
 A pass over the whole of Signals rather than over one change, looking for the places where
@@ -784,6 +943,16 @@ and closing it discarded a long hand-written form with no prompt. It is now the 
 guarded by the same unsaved-changes dialog as the product's other long forms, and rebuilt on the
 shared `FormField` set so it has `aria-invalid`, an error summary and required-or-optional in words
 rather than an asterisk.
+
+### Fixed — 2026-11-06 — Team switching had no UI
+
+The `teams.switch` route, `SwitchTeamAction`, the audit entry and the `auth.teams` shared prop have
+all existed since Phase 1, but the Phase 2 rebuild of the sidebar dropped the component that called
+them — so a user who belonged to two teams could not change which one the portal showed. Switching
+is now an entry in the user menu, beside Language, listed only when there is more than one team; the
+menu is shared by the desktop rail, the mobile drawer and the header layout, so one mount covers
+every shell. `TeamSwitchController` now redirects to the dashboard instead of `back()`, because the
+screen somebody switched from may be a record belonging to the team they just left.
 
 ### Fixed — 2026-11-01 — Phase 20, the review round
 

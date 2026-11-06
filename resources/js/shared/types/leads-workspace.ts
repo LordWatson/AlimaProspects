@@ -38,7 +38,7 @@ export type LeadActivity = {
     occurred_at: string;
 };
 
-export type LeadSort = 'newest' | 'company' | 'fit' | 'freshness';
+export type LeadSort = 'newest' | 'company' | 'fit' | 'readiness' | 'freshness';
 export type LeadSortDirection = 'asc' | 'desc';
 
 /** The filter bar's bound state — every key always present, mirroring `LeadFilters::toFormState()`. */

@@ -17,6 +17,30 @@ declare(strict_types=1);
 
 return [
 
+    // **How ready a lead is to be contacted (Q4).** A second figure beside the fit score,
+    // answering the other question: the score says whether we should want them and is
+    // deliberately blind to missing data, which is why an A-grade lead can have no website, no
+    // contact and no routable email. Readiness is a measure of what we hold, so it is the one
+    // figure allowed to punish a gap.
+    //
+    // Weights are relative, not percentages: `LeadReadiness` normalises by the total of the ones
+    // in play, so adding a key cannot inflate a lead and setting one to **0** switches that
+    // factor off entirely. The shape of the defaults is the deliberate part — the three contact
+    // factors together outweigh the four company ones, because a complete company record you
+    // cannot write to is not a lead you can work.
+    'readiness_weights' => [
+        'website' => (int) env('ENRICHMENT_READINESS_WEIGHT_WEBSITE', 10),
+        'industry' => (int) env('ENRICHMENT_READINESS_WEIGHT_INDUSTRY', 10),
+        'company_size' => (int) env('ENRICHMENT_READINESS_WEIGHT_COMPANY_SIZE', 5),
+        'location' => (int) env('ENRICHMENT_READINESS_WEIGHT_LOCATION', 10),
+        'contact' => (int) env('ENRICHMENT_READINESS_WEIGHT_CONTACT', 25),
+        // Routable, never proven deliverable — `EmailVerificationStatus::confidence()` tops out
+        // at 60 for the same reason, and there is no SMTP probe in the MVP (ADR 0008).
+        'routable_email' => (int) env('ENRICHMENT_READINESS_WEIGHT_ROUTABLE_EMAIL', 25),
+        // `info@` is a letterbox; a named mailbox is somebody who can answer.
+        'named_contact' => (int) env('ENRICHMENT_READINESS_WEIGHT_NAMED_CONTACT', 15),
+    ],
+
     // Cap the number of contacts persisted per lead, so a runaway extraction can't flood a lead.
     'max_contacts_per_lead' => (int) env('ENRICHMENT_MAX_CONTACTS', 10),
 
