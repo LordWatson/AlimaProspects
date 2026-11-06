@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Models\User;
 use App\Modules\Core\Models\Team;
+use App\Modules\ICP\Models\Icp;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Onboarding\Models\BusinessProfile;
 use Database\Seeders\DatabaseSeeder;
@@ -42,12 +43,14 @@ it('runs the whole seeder stack without throwing', function (): void {
 it('leaves a demo tenancy somebody can actually look at', function (): void {
     app(DatabaseSeeder::class)->run();
 
-    // The reason the demo seeder exists: a signed-in developer should land on a dashboard with
-    // figures on it, not an empty state.
+    // The reason the demo seeder exists: a signed-in developer should land on a team that is set
+    // up — profile complete, an ICP, a pipeline. Leads are deliberately **not** seeded; the lead
+    // list is filled by running discovery.
     $profiles = BusinessProfile::query()->withoutGlobalScopes()->get();
 
     expect($profiles)->not->toBeEmpty()
-        ->and(Lead::query()->withoutGlobalScopes()->count())->toBeGreaterThan(0);
+        ->and(Icp::query()->withoutGlobalScopes()->count())->toBeGreaterThan(0)
+        ->and(Lead::query()->withoutGlobalScopes()->count())->toBe(0);
 
     foreach ($profiles as $profile) {
         // The two columns that were being discarded. A profile seeded without them is one the app

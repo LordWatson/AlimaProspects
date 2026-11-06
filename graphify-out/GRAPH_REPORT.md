@@ -1,17 +1,17 @@
 # Graph Report - AlimaProspects  (2026-11-06)
 
 ## Corpus Check
-- 2075 files · ~1,465,799 words
+- 2075 files · ~1,465,500 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 56 file(s) not represented in the graph (top: (none) 22, .xml 15, .css 4)
 
 ## Summary
-- 19103 nodes · 50470 edges · 540 communities (364 shown, 176 thin omitted)
+- 19103 nodes · 50462 edges · 537 communities (361 shown, 176 thin omitted)
 - Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 3759 edges (avg confidence: 0.87)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `81c325c9`
+- Built from commit: `9dd28efb`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -26,13 +26,13 @@
 - SupportedLocale
 - @inertiajs/vue3
 - AdminAudit
-- LegitimateInterestGate
+- Icp
 - ScoreLeadJob
 - BillingMode
 - Pipeline.vue
-- Illuminate\Support\Str
+- TeamContext
 - LeadContact
-- badge/index.ts
+- DesignSystem.vue
 - Project Rules (CLAUDE.md)
 - SignalWatch
 - CI Workflow
@@ -46,12 +46,12 @@
 - DashboardTest.php
 - PlatformReportBuilder.php
 - SignalSourceLedger
-- LeadsWorkspaceTenancyTest.php
+- DeterministicScorer
 - leads/Index.vue
 - billing/Index.vue
 - TrendChart.vue
 - ReportColumn
-- FeedSignalSource
+- Team
 - Illuminate\Foundation\Testing\RefreshDatabase
 - DateTimeInterface
 - SuppressionType
@@ -65,18 +65,18 @@
 - DigestTest.php
 - ReportExportTest.php
 - OutreachChannel
-- SignalWatchFactory
+- FeedSignalSource
 - Carbon\CarbonImmutable
-- Team
+- LegitimateInterestGate
 - StartDiscoveryRunTest.php
 - SettingsView.vue
 - SignalDefinition
 - PlanEnforcementTest.php
-- PaginatedIndexRequest
+- NotificationPreferenceController.php
 - User
 - PushDevice
 - root
-- DiscoveryRunStatus
+- Web/SignalWatchlistController.php
 - ResourceField
 - OutreachMessage
 - RescoreSignalsCommand.php
@@ -84,14 +84,14 @@
 - EnrichLeadJob
 - LeadDraftView.vue
 - TokenAbility
-- Changelog
+- SignalCluster
 - OutreachTemplate
 - Illuminate\Foundation\Http\FormRequest
-- CriterionScore
+- RetentionPurgeTest.php
 - PlanKey
 - root
 - InsightCard.vue
-- LeadWorkspaceFiltersTest.php
+- PlatformMarginBuilder
 - AiRequest
 - root
 - WebSearchProviderTest.php
@@ -114,23 +114,23 @@
 - LeadDetailView.vue
 - RobotsPolicy
 - CompaniesHouseSignalSourceTest.php
-- TeamNotification
+- PushMessage
 - root
 - SignalPlaybookTest.php
 - ConvertSignalToLeadActionTest.php
 - SignalStatus
-- LeadTask
-- SignalQuotaSource
+- LeadActivityType
+- SignalsException
 - SignalSourceQuery
 - PlatformProvider
-- RetentionPurgeTest.php
+- GenerateInsightsTest.php
 - InsightType
 - root
 - updates
 - Lead
 - shared/types/index.ts
 - SignalPlaybookConditions
-- LiaRecord
+- DigestBuilder.php
 - AnnouncementTest.php
 - FakeAiTransport
 - with
@@ -146,7 +146,7 @@
 - Web/DiscoveryController.php
 - DiscoveryQuery
 - PlatformOversightTest.php
-- SignalsPersonalDataExporter
+- DataRetention
 - DiscoveryRun
 - Illuminate\Routing\Route
 - ScoreGrade
@@ -159,7 +159,7 @@
 - Runbook — the admin panel
 - BusinessProfile
 - Web/ScoreController.php
-- GenerateInsightsTest.php
+- Signals
 - TeamDataArchiver.php
 - TwoFactorChallenge
 - JsonSchemaValidator
@@ -176,7 +176,7 @@
 - SignalAccountMatchTest.php
 - ApiTokenTest.php
 - Throwable
-- CreateLeadTest.php
+- DiscoveryRunStatus
 - .team
 - OutreachApiTest.php
 - SecurityHeadersTest.php
@@ -221,14 +221,14 @@
 - Runbook — demoing Signals (UAE v1)
 - EnrichLeadActionTest.php
 - CircuitBreaker
-- LeadSignalOriginTest.php
+- LiaRecord
 - SignalsPersonalDataTest.php
 - AnnouncementLevel
 - BillingMetric
 - AuditLog
 - ImpersonationTest.php
 - SignalLeadMatcher
-- Illuminate\Foundation\Events\Dispatchable
+- CreateLeadTest.php
 - ScoreLeadAction
 - SignalBuilderTest.php
 - AuditCategory
@@ -238,8 +238,8 @@
 - SettingType
 - FindIcpAction
 - Illuminate\Support\Facades\Schema
-- LeadSourceProviderRegistry
-- Web/SignalWatchlistController.php
+- Illuminate\Foundation\Events\Dispatchable
+- BusinessProfile
 - NotificationGroup
 - SignalWatchlist
 - OnboardingStep
@@ -252,11 +252,11 @@
 - PlatformSettings
 - WebSearchSignalSourceTest.php
 - sentry.ts
-- SignalClusterBackfillTest.php
-- Signals
+- TeamNotification
+- SignalConverted
 - SignalScorer
 - ComplianceServiceProvider.php
-- TeamContext
+- AuditLogger
 - rules
 - UnsubscribeTest.php
 - PersonalDataLocator
@@ -264,14 +264,14 @@
 - SignalTuningAdvisor
 - Illuminate\Database\Seeder
 - BulkLeadActionTest.php
-- BusinessProfile
-- TeamNotification
+- UpdateSettingsRequest
+- LeadWorkspaceFiltersTest.php
 - AI Platform
 - LeadCsvHardeningTest.php
 - NotificationChannel
 - package.json
 - ResourceGroup
-- SignalConverted
+- InsightStatus
 - Web/SignalPlaybookController.php
 - AiPromptTemplateFactory
 - SignalPlaybookApiTest.php
@@ -285,45 +285,45 @@
 - SignalDismissReason
 - LeadDeduplicatorTest.php
 - LeadCsvTest.php
-- SignalItemNormaliserTest.php
+- AdminServiceProvider.php
 - RunSignalWatchAction
-- SignalsException
+- LeadOriginProvider
 - CrossTenantReadTest.php
 - SignalWatchResource
 - Illuminate\Http\Request
 - Accounts.vue
-- OutreachTemplateResource
+- .fromArray
 - AiTransport
 - LeadLogView.vue
 - PerformanceReportsTest.php
 - FeedSignalSource
 - PlaybookBudget
-- RetentionAction
+- LiaStatus
 - LeadSourceProvider
 - AnnounceTopLeadsJob
 - tokens.ts
-- ComplianceTenancyTest.php
-- SignalClusteringTest.php
+- SignalItemNormaliserTest.php
+- CapabilityGateTest.php
 - ReportKey
 - PlatformRollupTest.php
-- RecordOptOutAction.php
+- DiscoveryTenancyTest.php
 - ResourceFilter
-- OutreachMessageResource
+- LeadSignalOriginTest.php
 - Controller
-- InsightStatus
+- SubjectDataCategory
 - SuggestedIcpSidesTest.php
-- CapabilityGateTest.php
-- DiscoveryRunFactory.php
+- OutreachTemplateResource
+- BillingController
 - RunBackgroundCheckJobTest.php
 - SignalArticleFetchTest.php
-- DiscoveryTenancyTest.php
+- LeadSignalSource
 - SecurityPostureCommand
 - Import.vue
 - The Alima API (`/api/v1`)
 - LeadResource
 - ScoringTenancyTest.php
 - PlaybookActionKind
-- SubjectDataCategory
+- BulkActionBar.vue
 - SignalRun
 - CompaniesHouseSignalSource
 - InsightResource
@@ -331,11 +331,11 @@
 - ErrorEnvelopeTest.php
 - SignInView.vue
 - Business Intelligence (AI background check)
-- UpdateSettingsRequest
-- SignalIcon
+- SignalClusterBackfillTest.php
+- SignalPresetCatalogue
 - WebhookSignalSourceTest.php
 - ExampleInstrumentedTest.java
-- BillingController
+- AiRequestResource
 - PlatformRollup.php
 - SignalInboundEvent
 - OnboardingProgressResource
@@ -349,7 +349,7 @@
 - 2. What to actually test
 - ObservabilityAccessTest.php
 - LeadTaskResource
-- LeadSignalSource
+- OutreachMessageResource
 - SourcedLead
 - SignalEventWebhookTest.php
 - SignalsServiceProvider.php
@@ -362,7 +362,7 @@
 - generate-native-artwork.mjs
 - 2026_10_30_160003_add_anonymised_at_to_leads_table.php
 - optionalDependencies
-- BulkActionBar.vue
+- ComplianceException
 - Auth & Users
 - SignalDefinitionTest.php
 - Decision
@@ -379,20 +379,20 @@
 - WatchlistSourceKind
 - Signals v2 — build plan (phases S7–S16)
 - AdminSidebar.vue
-- AiRequestResource
+- DiscoveryQueryShaper
 - TeamRole
 - SubscriptionResource
 - LiaRecordFactory.php
 - 2026_10_29_090001_create_business_profiles_table.php
 - Decision
-- .fromArray
-- LeadDetailTest.php
-- SourcedLeadTest.php
-- DiscoveryQueryShaper
 - SuperAdminSeederTest.php
-- 2026_10_29_150001_create_lead_scores_table.php
-- OutreachRestriction
+- LeadDetailTest.php
+- ComplianceTenancyTest.php
 - TeamExportTest.php
+- DiscoveryRunResource
+- 2026_10_29_150001_create_lead_scores_table.php
+- DiscoveryWebTest.php
+- NotificationSettingResource
 - SignalRejectionMemoryTest.php
 - AiClient (provider abstraction)
 - OperatorEnrolmentTest.php
@@ -408,39 +408,40 @@
 - LeadTagResource
 - 2026_10_28_204340_create_personal_access_tokens_table.php
 - NotificationPreferenceResource
-- NotificationSettingResource
-- 2026_10_30_140001_create_notifications_table.php
-- AdminServiceProvider.php
 - RetentionPolicyResource
+- 2026_10_30_140001_create_notifications_table.php
+- DiscoveryRunFactory.php
+- SignalWatchFactory
 - SignalWatchlistEntryFactory.php
 - .fromNode
-- PlatformMarginBuilder
+- LeadsWorkspaceFixtures
 - 2026_10_30_140003_create_push_devices_table.php
 - 2026_10_30_160002_create_lia_records_table.php
 - SignalSourceStatFactory.php
 - LeadReadinessTest.php
-- DiscoveryRunResource
+- Pest.php
 - 2026_10_28_204734_create_pulse_tables.php
 - 2026_11_01_090000_create_platform_daily_metrics_table.php
-- LeadsWorkspaceFixtures
-- Pest.php
+- BuildContactTodayAction.php
+- Http/Resources/SignalResource.php
 - ReportRange
 - EnrichLeadAction
 - PushDeviceResource
-- BuildContactTodayAction.php
+- SignalFactory
 - 2026_11_02_100004_migrate_signal_event_types_to_definitions.php
 - NotificationPreferenceFactory.php
 - ResourceWriteRequest
-- Http/Resources/SignalResource.php
-- SignalFactory
-- LeadCsvImporter
-- IssueApiTokenRequest
 - SubjectDataReport
 - DataRetention.php
+- LeadCsvImporter
 - SignalClusterFactory.php
+- IssueApiTokenRequest
+- NotificationSettingFactory
+- SuperAdminSeeder
+- 20. Curating the signal library (Signals S15)
 - SaveViewRequest
 - 2026_10_29_140002_create_lead_contacts_table.php
-- NotificationSettingFactory
+- TokenAbility.php
 - 2026_11_02_100003_point_signals_at_definitions.php
 - 2026_10_31_190009_add_review_notified_at_to_lia_records_table.php
 - 2026_11_03_100001_create_signal_clusters_table.php
@@ -452,7 +453,7 @@
 - 2026_11_06_100001_watchlist_entries_learn_their_company_number.php
 - 2026_10_29_170002_add_pipeline_stage_to_leads_table.php
 - 2026_10_31_190002_add_suspension_to_teams_table.php
-- SuperAdminSeeder
+- 15. A stuck queue, a failed job, a command that has not run (19c)
 - 2026_11_01_090100_add_platform_rollup_indexes.php
 - 2026_10_29_120001_create_business_intel_reports_table.php
 - 2026_11_02_120003_signals_carry_a_jurisdiction.php
@@ -467,8 +468,8 @@
 - 2026_11_09_100001_signal_runs_separate_paid_queries_and_error_codes.php
 - 2026_10_29_110001_create_ai_prompt_templates_table.php
 - 2026_11_11_100001_leads_keep_the_locations_enrichment_extracts.php
-- 20. Curating the signal library (Signals S15)
-- TokenAbility.php
+- 1. Getting in, the first time
+- 6. Impersonating a customer
 - 2026_10_29_090002_create_onboarding_progress_table.php
 - 2026_10_29_170004_create_lead_notes_table.php
 - 2026_10_29_180001_create_signal_watches_table.php
@@ -499,12 +500,9 @@
 - 2026_11_04_100002_create_signal_source_stats_table.php
 - 2026_10_31_190003_create_platform_settings_table.php
 - 2026_10_30_120001_widen_source_url_columns.php
-- 15. A stuck queue, a failed job, a command that has not run (19c)
 - 2026_11_07_100001_create_signal_playbooks_table.php
 - 2026_11_07_100002_create_signal_playbook_runs_table.php
 - 2026_11_08_100001_create_signal_definition_spend_table.php
-- 1. Getting in, the first time
-- 6. Impersonating a customer
 - 2026_10_29_100001_create_icps_table.php
 - 2026_10_29_130001_create_discovery_runs_table.php
 
@@ -513,7 +511,7 @@
 2. `User` - 694 edges
 3. `TeamContext` - 567 edges
 4. `createUserWithTeam()` - 453 edges
-5. `Lead` - 447 edges
+5. `Lead` - 446 edges
 6. `Signal` - 275 edges
 7. `SignalDefinition` - 262 edges
 8. `AuditLogger` - 249 edges
@@ -543,7 +541,7 @@
 - **Signal Orange decorative-only rule enforced across docs** — claude_brand_law, docs_brand_brand_tokens_signal_orange_rule, _claude_agents_brand_reviewer_guardian [EXTRACTED 0.90]
 - **Scraped/web content treated as data, never instructions** — docs_architecture_ai_safety, docs_ai_prompts_injection_safety, docs_compliance_scraping_ethics [EXTRACTED 0.90]
 
-## Communities (540 total, 176 thin omitted)
+## Communities (537 total, 176 thin omitted)
 
 ### Community 0 - "ref_vue"
 Cohesion: 0.01
@@ -585,9 +583,9 @@ Nodes (142): @inertiajs/vue3, @laravel/passkeys, Props, uniqueErrors, describedB
 Cohesion: 0.03
 Nodes (42): {closure#1}(), DeleteFailedJobAction, DismissAnnouncementAction, {closure#1}(), {closure#2}(), {closure#3}(), PublishAnnouncementAction, {closure#1}() (+34 more)
 
-### Community 10 - "LegitimateInterestGate"
-Cohesion: 0.06
-Nodes (11): SaveLiaRecordAction, RetentionPolicyData, ComplianceController, ResolvesCompliance, DsarController, LiaController, TeamExportController, LocateSubjectRequest (+3 more)
+### Community 10 - "Icp"
+Cohesion: 0.04
+Nodes (33): {closure#1}(), {closure#2}(), {closure#1}(), {closure#1}(), GetIcpsAction, {closure#1}(), {closure#2}(), SetActiveIcpAction (+25 more)
 
 ### Community 11 - "ScoreLeadJob"
 Cohesion: 0.04
@@ -601,15 +599,15 @@ Nodes (15): {closure#1}(), {closure#2}(), ProvisionTeamAction, ProvisionTeamData
 Cohesion: 0.07
 Nodes (22): addField, addSlot, announcement, cardsFor(), confirmingRemovalId, defaultStageName, draggingLeadId, dropTargetStageId (+14 more)
 
-### Community 14 - "Illuminate\Support\Str"
-Cohesion: 0.05
-Nodes (10): {closure#1}(), ExportTeamDataAction, {closure#1}(), TeamDataArchiver, CompanyNameKey, {closure#1}(), SavePipelineStageAction, {closure#3}() (+2 more)
+### Community 14 - "TeamContext"
+Cohesion: 0.02
+Nodes (38): {closure#1}(), {closure#1}(), FindReportAction, RerunBackgroundCheckAction, {closure#1}(), ExportTeamDataAction, {closure#1}(), TeamDataArchiver (+30 more)
 
 ### Community 15 - "LeadContact"
 Cohesion: 0.06
 Nodes (15): {closure#3}(), {closure#5}(), LeadContact, {closure#1}(), {closure#3}(), {closure#1}(), {closure#2}(), {closure#2}() (+7 more)
 
-### Community 16 - "badge/index.ts"
+### Community 16 - "DesignSystem.vue"
 Cohesion: 0.02
 Nodes (85): attachTestId, cardTestId, cluster, convertTestId, { currency, date }, dismissTestId, emit, explanation (+77 more)
 
@@ -665,9 +663,9 @@ Nodes (34): PlatformReportPage, PlatformMetricKind, Count, Micros, Milliseconds,
 Cohesion: 0.16
 Nodes (6): {closure#1}(), {closure#2}(), {closure#3}(), {closure#4}(), RecordSignalOutcome, SignalSourceLedger
 
-### Community 30 - "LeadsWorkspaceTenancyTest.php"
-Cohesion: 0.03
-Nodes (22): SaveViewAction, {closure#2}(), {closure#3}(), SavedView, SavedViewPolicy, SavedViewFactory, {closure#12}(), {closure#14}() (+14 more)
+### Community 30 - "DeterministicScorer"
+Cohesion: 0.07
+Nodes (17): {closure#1}(), CriterionScoreList, CriterionScore, DeterministicScore, {closure#1}(), CriterionMatch, Matched, NotMatched (+9 more)
 
 ### Community 32 - "leads/Index.vue"
 Cohesion: 0.01
@@ -685,17 +683,17 @@ Nodes (66): { number, percent }, peak, props, { t }, total, { number, percent },
 Cohesion: 0.07
 Nodes (29): ExportPlatformReportAction, PlatformReportTable, {closure#1}(), PlatformReport, AiCost, Cost, Funnel, Growth (+21 more)
 
-### Community 36 - "FeedSignalSource"
-Cohesion: 0.10
-Nodes (9): SourceAddressNotFound, SourceQueryRejected, AbstractHttpSignalSourceProvider, FeedSignalSource, 4. A query the provider **refuses** is a skipped query, not a failed run, 4a. ...and a query whose **addressee** is missing is a skipped query, not either of those, What the S13a reviews changed, Phase S13 — Pluggable signal sources (+1 more)
+### Community 36 - "Team"
+Cohesion: 0.02
+Nodes (51): {closure#1}(), GrantPlanAction, {closure#1}(), {closure#1}(), SetBillingModeAction, {closure#1}(), {closure#1}(), AnnouncementBoard (+43 more)
 
 ### Community 37 - "Illuminate\Foundation\Testing\RefreshDatabase"
 Cohesion: 0.03
 Nodes (25): {closure#2}(), AuthenticationTest, EmailVerificationTest, {closure#1}(), PasswordConfirmationTest, RegistrationTest, {closure#4}(), {closure#1}() (+17 more)
 
 ### Community 38 - "DateTimeInterface"
-Cohesion: 0.05
-Nodes (29): FindStaleLeadsAction, StoreInsightsAction, {closure#1}(), GenerateInsightsCommand, InsightDraft, {closure#1}(), GeneratePeriodicInsightsJob, InsightRun (+21 more)
+Cohesion: 0.04
+Nodes (30): FindStaleLeadsAction, StoreInsightsAction, {closure#1}(), GenerateInsightsCommand, InsightDraft, {closure#1}(), GeneratePeriodicInsightsJob, InsightRun (+22 more)
 
 ### Community 39 - "SuppressionType"
 Cohesion: 0.03
@@ -722,8 +720,8 @@ Cohesion: 0.05
 Nodes (52): config, allowScripts, esbuild@0.28.2, dependencies, @capacitor/app@^7.0.0, @capacitor/haptics@^7.0.0, @capacitor/keyboard@^7.0.0, @capacitor/preferences@^7.0.0 (+44 more)
 
 ### Community 45 - "Capability"
-Cohesion: 0.03
-Nodes (74): {closure#5}(), {closure#1}(), {closure#2}(), SetCapabilityOverrideAction, {closure#5}(), CapabilityOverride, {closure#8}(), CapabilityExplainer (+66 more)
+Cohesion: 0.04
+Nodes (53): {closure#1}(), {closure#2}(), SetCapabilityOverrideAction, {closure#5}(), CapabilityOverride, {closure#8}(), CapabilityExplainer, {closure#1}() (+45 more)
 
 ### Community 46 - "outreach/Show.vue"
 Cohesion: 0.04
@@ -741,13 +739,17 @@ Nodes (22): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {clos
 Cohesion: 0.04
 Nodes (37): {closure#5}(), MarketConsentGate, {closure#1}(), OutreachRestriction, UaePriorConsent, DraftMessageAction, LeadRestrictionResolver, {closure#1}() (+29 more)
 
+### Community 50 - "FeedSignalSource"
+Cohesion: 0.10
+Nodes (9): SourceAddressNotFound, SourceQueryRejected, AbstractHttpSignalSourceProvider, FeedSignalSource, 4. A query the provider **refuses** is a skipped query, not a failed run, 4a. ...and a query whose **addressee** is missing is a skipped query, not either of those, What the S13a reviews changed, Phase S13 — Pluggable signal sources (+1 more)
+
 ### Community 51 - "Carbon\CarbonImmutable"
 Cohesion: 0.15
 Nodes (3): {closure#1}(), RollUpPlatformMetricsCommand, PlatformRollup
 
-### Community 52 - "Team"
-Cohesion: 0.02
-Nodes (46): {closure#1}(), GrantPlanAction, {closure#1}(), {closure#1}(), SetBillingModeAction, {closure#1}(), {closure#1}(), AnnouncementBoard (+38 more)
+### Community 52 - "LegitimateInterestGate"
+Cohesion: 0.06
+Nodes (11): SaveLiaRecordAction, RetentionPolicyData, ComplianceController, ResolvesCompliance, DsarController, LiaController, TeamExportController, LocateSubjectRequest (+3 more)
 
 ### Community 53 - "StartDiscoveryRunTest.php"
 Cohesion: 0.07
@@ -765,13 +767,13 @@ Nodes (54): {closure#1}(), {closure#3}(), {closure#4}(), {closure#2}(), {closure
 Cohesion: 0.09
 Nodes (16): {closure#10}(), {closure#11}(), {closure#12}(), {closure#14}(), {closure#18}(), {closure#2}(), {closure#21}(), {closure#23}() (+8 more)
 
-### Community 57 - "PaginatedIndexRequest"
+### Community 57 - "NotificationPreferenceController.php"
 Cohesion: 0.14
 Nodes (6): MarkNotificationsReadAction, NotificationController, NotificationController, NotificationPreferenceController, SaveNotificationPreferencesRequest, NotificationReader
 
 ### Community 58 - "User"
 Cohesion: 0.02
-Nodes (46): User, {closure#1}(), {closure#9}(), {closure#1}(), {closure#1}(), Insight, InsightPolicy, {closure#1}() (+38 more)
+Nodes (55): User, {closure#1}(), {closure#9}(), {closure#1}(), {closure#1}(), {closure#1}(), Insight, InsightPolicy (+47 more)
 
 ### Community 59 - "PushDevice"
 Cohesion: 0.06
@@ -781,9 +783,9 @@ Nodes (18): {closure#1}(), RegisterPushDeviceAction, {closure#1}(), PushPlatform
 Cohesion: 0.10
 Nodes (20): compilerOptions, allowJs, esModuleInterop, forceConsistentCasingInFileNames, isolatedModules, jsx, jsxImportSource, lib (+12 more)
 
-### Community 61 - "DiscoveryRunStatus"
-Cohesion: 0.06
-Nodes (20): {closure#1}(), DiscoveryRunStatus, Completed, Failed, Pending, Running, DiscoveryRunProgressed, {closure#1}() (+12 more)
+### Community 61 - "Web/SignalWatchlistController.php"
+Cohesion: 0.10
+Nodes (9): AddWatchlistEntriesAction, {closure#2}(), DeleteSignalWatchlistAction, SaveSignalWatchlistAction, SignalWatchlistController, SignalWatchlistController, AddWatchlistEntriesRequest, SaveSignalWatchlistRequest (+1 more)
 
 ### Community 62 - "ResourceField"
 Cohesion: 0.07
@@ -809,9 +811,9 @@ Nodes (39): @ionic/vue@^8.4.0, vue-router@^4.5.0, emit, refreshUnread(), body, c
 Cohesion: 0.06
 Nodes (28): TokenAbility, DiscoveryRead, DiscoveryWrite, IcpRead, IcpWrite, InsightsRead, InsightsWrite, LeadsRead (+20 more)
 
-### Community 69 - "Changelog"
-Cohesion: 0.02
-Nodes (55): LeadDeduplicator, {closure#1}(), BulkUpdateLeadsAction, {closure#1}(), {closure#5}(), {closure#1}(), {closure#3}(), CreateLeadAction (+47 more)
+### Community 69 - "SignalCluster"
+Cohesion: 0.17
+Nodes (32): SignalCluster, acquisitionWatch(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#14}(), {closure#15}(), {closure#16}() (+24 more)
 
 ### Community 70 - "OutreachTemplate"
 Cohesion: 0.09
@@ -821,9 +823,9 @@ Nodes (20): {closure#1}(), OutreachTemplate, OutreachTemplatePolicy, {closure#26
 Cohesion: 0.02
 Nodes (30): ResetUserPassword, PasswordValidationRules, ProfileValidationRules, PasswordUpdateRequest, ProfileDeleteRequest, ProfileUpdateRequest, AdminMemberRoleRequest, SetCapabilityOverrideRequest (+22 more)
 
-### Community 72 - "CriterionScore"
-Cohesion: 0.07
-Nodes (17): {closure#1}(), CriterionScoreList, CriterionScore, DeterministicScore, {closure#1}(), CriterionMatch, Matched, NotMatched (+9 more)
+### Community 72 - "RetentionPurgeTest.php"
+Cohesion: 0.06
+Nodes (18): {closure#12}(), {closure#13}(), {closure#16}(), {closure#17}(), {closure#2}(), {closure#20}(), {closure#22}(), {closure#23}() (+10 more)
 
 ### Community 73 - "PlanKey"
 Cohesion: 0.07
@@ -837,9 +839,9 @@ Nodes (20): require, ext-zip, inertiajs/inertia-laravel, laravel/ai, laravel/cas
 Cohesion: 0.07
 Nodes (33): cardTestId, count, { date }, dismissTestId, emit, hintFor(), isDismissed, leads (+25 more)
 
-### Community 76 - "LeadWorkspaceFiltersTest.php"
+### Community 76 - "PlatformMarginBuilder"
 Cohesion: 0.09
-Nodes (4): {closure#16}(), {closure#5}(), {closure#7}(), filterExportBody()
+Nodes (11): ConvertedCost, PlatformMargin, {closure#2}(), {closure#3}(), {closure#4}(), {closure#6}(), {closure#8}(), PlatformMarginBuilder (+3 more)
 
 ### Community 77 - "AiRequest"
 Cohesion: 0.06
@@ -929,7 +931,7 @@ Nodes (23): WebContentFetcher, RobotsPolicy, FakeWebContentFetcher, {closure#10}
 Cohesion: 0.04
 Nodes (40): {closure#21}(), {closure#1}(), {closure#2}(), ResolveWatchlistCompanyNumbersAction, SignalQueryEntity, {closure#1}(), WatchlistEntityType, Company (+32 more)
 
-### Community 99 - "TeamNotification"
+### Community 99 - "PushMessage"
 Cohesion: 0.07
 Nodes (12): PushChannel, TeamDatabaseChannel, PushSender, PushMessage, PushResult, {closure#1}(), {closure#2}(), {closure#2}() (+4 more)
 
@@ -949,13 +951,13 @@ Nodes (49): {closure#2}(), ConvertSignalData, {closure#10}(), {closure#11}(), {c
 Cohesion: 0.08
 Nodes (33): {closure#1}(), SignalStatus, Converted, Dismissed, New, agedRow(), agedSignal(), {closure#1}() (+25 more)
 
-### Community 104 - "LeadTask"
+### Community 104 - "LeadActivityType"
 Cohesion: 0.02
-Nodes (57): {closure#13}(), {closure#1}(), CompleteLeadTaskAction, {closure#1}(), DeleteLeadNoteAction, DeleteLeadTaskAction, LeadActivityType, Assigned (+49 more)
+Nodes (54): {closure#13}(), {closure#4}(), LeadActivityType, Assigned, Contacted, Created, Discovered, Enriched (+46 more)
 
-### Community 105 - "SignalQuotaSource"
-Cohesion: 0.09
-Nodes (16): {closure#3}(), PlanSignalQuotaSource, SignalQuotaSource, SignalAllowance, StubSignalQuotaSource, 1. The fourth seam (task 1), 4. Plan definitions and one capability that did not get added (task 4), 6. The DSAR surface (task 6) (+8 more)
+### Community 105 - "SignalsException"
+Cohesion: 0.02
+Nodes (59): {closure#3}(), PlanSignalQuotaSource, AdoptPresetChangesAction, {closure#3}(), CloneSignalPresetsAction, {closure#1}(), {closure#2}(), {closure#1}() (+51 more)
 
 ### Community 106 - "SignalSourceQuery"
 Cohesion: 0.03
@@ -965,9 +967,9 @@ Nodes (70): {closure#1}(), {closure#2}(), SignalSourceQuery, {closure#10}(), {cl
 Cohesion: 0.08
 Nodes (16): {closure#1}(), PlatformProvider, Claude, CompaniesHouse, GooglePlaces, Push, Resend, SerperNews (+8 more)
 
-### Community 108 - "RetentionPurgeTest.php"
-Cohesion: 0.06
-Nodes (18): {closure#12}(), {closure#13}(), {closure#16}(), {closure#17}(), {closure#2}(), {closure#20}(), {closure#22}(), {closure#23}() (+10 more)
+### Community 108 - "GenerateInsightsTest.php"
+Cohesion: 0.17
+Nodes (27): {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#14}(), {closure#15}(), {closure#16}(), {closure#17}() (+19 more)
 
 ### Community 109 - "InsightType"
 Cohesion: 0.07
@@ -993,9 +995,9 @@ Nodes (31): props, widest, delta, higherIsBetter, props, sparkLabel, value, poin
 Cohesion: 0.06
 Nodes (37): {closure#1}(), {closure#3}(), PreviewSignalPlaybookAction, {closure#2}(), {closure#1}(), SignalPlaybookConditions, SignalPlaybookFacts, {closure#1}() (+29 more)
 
-### Community 115 - "LiaRecord"
-Cohesion: 0.12
-Nodes (14): {closure#1}(), {closure#2}(), {closure#3}(), {closure#1}(), {closure#3}(), LiaRecord, LiaRecordPolicy, {closure#1}() (+6 more)
+### Community 115 - "DigestBuilder.php"
+Cohesion: 0.13
+Nodes (5): SendDigestsCommand, DigestSummary, {closure#1}(), DigestBuilder, NotificationPreferences
 
 ### Community 116 - "AnnouncementTest.php"
 Cohesion: 0.14
@@ -1050,20 +1052,20 @@ Cohesion: 0.10
 Nodes (10): PaginatedIndexRequest, FindDiscoveryRunAction, GetDiscoveryRunsAction, StartDiscoveryData, DiscoveryController, DiscoveryController, StartDiscoveryRequest, DiscoveryRunResource (+2 more)
 
 ### Community 129 - "DiscoveryQuery"
-Cohesion: 0.08
+Cohesion: 0.07
 Nodes (33): DiscoveryQuery, structured(), bootShaping(), {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#14}() (+25 more)
 
 ### Community 130 - "PlatformOversightTest.php"
 Cohesion: 0.07
 Nodes (9): {closure#1}(), {closure#2}(), {closure#20}(), {closure#23}(), {closure#25}(), {closure#3}(), {closure#30}(), {closure#4}() (+1 more)
 
-### Community 131 - "SignalsPersonalDataExporter"
-Cohesion: 0.06
-Nodes (15): {closure#2}(), {closure#3}(), EraseSubjectDataAction, {closure#4}(), PurgeExpiredDataAction, {closure#1}(), {closure#2}(), SaveRetentionPolicyAction (+7 more)
+### Community 131 - "DataRetention"
+Cohesion: 0.09
+Nodes (12): PurgeExpiredDataAction, {closure#1}(), {closure#2}(), SaveRetentionPolicyAction, PurgeExpiredDataCommand, {closure#1}(), {closure#2}(), RetentionPolicy (+4 more)
 
 ### Community 132 - "DiscoveryRun"
-Cohesion: 0.08
-Nodes (33): {closure#1}(), DiscoveryRun, DiscoveryRunPolicy, FakeLeadSourceProvider, {closure#1}(), bootDiscovery(), {closure#10}(), {closure#11}() (+25 more)
+Cohesion: 0.09
+Nodes (34): {closure#1}(), DiscoveryRun, DiscoveryRunPolicy, FakeLeadSourceProvider, {closure#1}(), bootDiscovery(), {closure#10}(), {closure#11}() (+26 more)
 
 ### Community 133 - "Illuminate\Routing\Route"
 Cohesion: 0.12
@@ -1109,9 +1111,9 @@ Nodes (22): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {clos
 Cohesion: 0.12
 Nodes (8): FindActiveIcpAction, FindScoredLeadAction, ScoringException, ScoreController, ScoreController, RecordScoreFeedbackRequest, LeadScoreResource, {closure#1}()
 
-### Community 144 - "GenerateInsightsTest.php"
-Cohesion: 0.17
-Nodes (27): {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#14}(), {closure#15}(), {closure#16}(), {closure#17}() (+19 more)
+### Community 144 - "Signals"
+Cohesion: 0.07
+Nodes (28): 3. "Pause or retune?" (task 3), 5. "Your preset has moved on" (task 5), 6. Platform signal reporting (task 6), 7. Library-first, market-first (task 7), A promotion threw away the half of the work that does the most, An eager load is a second query, and it re-applies the scope, Companies House spike — filings as signals (2026-11-03, S13b), From the brand review (+20 more)
 
 ### Community 145 - "TeamDataArchiver.php"
 Cohesion: 0.11
@@ -1138,8 +1140,8 @@ Cohesion: 0.03
 Nodes (61): DigestHighlight, {closure#2}(), {closure#2}(), {closure#2}(), PreviewedSignal, Signal, SignalPolicy, SignalOutreachRestriction (+53 more)
 
 ### Community 153 - "LeadSource"
-Cohesion: 0.07
-Nodes (22): {closure#1}(), {closure#1}(), {closure#2}(), {closure#3}(), LeadSource, CompaniesHouse, GooglePlaces, Import (+14 more)
+Cohesion: 0.05
+Nodes (21): {closure#1}(), {closure#1}(), {closure#2}(), {closure#3}(), LeadSource, CompaniesHouse, GooglePlaces, Import (+13 more)
 
 ### Community 154 - "Types.vue"
 Cohesion: 0.01
@@ -1167,11 +1169,11 @@ Nodes (18): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {clos
 
 ### Community 161 - "Throwable"
 Cohesion: 0.02
-Nodes (51): ReportOverageCommand, {closure#1}(), BackgroundCheckStatus, Accepted, Failed, Pending, Ready, {closure#1}() (+43 more)
+Nodes (56): AiClient, AiCreditExceededException, AiInputTooLargeException, AiPlatformException, InvalidAiResponseException, UnknownPromptException, AiCreditGuard, UntrustedContent (+48 more)
 
-### Community 162 - "CreateLeadTest.php"
-Cohesion: 0.14
-Nodes (23): {closure#1}(), {closure#10}(), {closure#12}(), {closure#13}(), {closure#16}(), {closure#18}(), {closure#19}(), {closure#20}() (+15 more)
+### Community 162 - "DiscoveryRunStatus"
+Cohesion: 0.09
+Nodes (14): {closure#1}(), DiscoveryRunStatus, Completed, Failed, Pending, Running, DiscoveryRunProgressed, {closure#1}() (+6 more)
 
 ### Community 163 - ".team"
 Cohesion: 0.08
@@ -1253,10 +1255,6 @@ Nodes (5): {closure#2}(), {closure#3}(), {closure#4}(), {closure#5}(), {closure#
 Cohesion: 0.11
 Nodes (40): SignalScoreComponent, Amount, ClusterBreadth, Confidence, IcpFit, Recency, Relevance, Seniority (+32 more)
 
-### Community 204 - "LeadSourcingException"
-Cohesion: 0.13
-Nodes (3): LeadSourcingException, WebSearchProvider, {closure#17}()
-
 ### Community 205 - "RunSignalWatchActionTest.php"
 Cohesion: 0.16
 Nodes (28): aiEvents(), {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#14}(), {closure#15}(), {closure#16}() (+20 more)
@@ -1321,9 +1319,9 @@ Nodes (23): bootEnrichment(), {closure#10}(), {closure#11}(), {closure#12}(), {c
 Cohesion: 0.06
 Nodes (20): CircuitBreaker, {closure#1}(), {closure#2}(), {closure#3}(), LeadSourcingServiceProvider, AbstractHttpLeadSourceProvider, {closure#1}(), CompaniesHouseProvider (+12 more)
 
-### Community 221 - "LeadSignalOriginTest.php"
-Cohesion: 0.16
-Nodes (7): LeadOriginProvider, LeadOrigin, {closure#1}(), {closure#2}(), {closure#3}(), NoLeadOrigin, SignalLeadOriginProvider
+### Community 221 - "LiaRecord"
+Cohesion: 0.12
+Nodes (14): {closure#1}(), {closure#2}(), {closure#3}(), {closure#1}(), {closure#3}(), LiaRecord, LiaRecordPolicy, {closure#1}() (+6 more)
 
 ### Community 222 - "SignalsPersonalDataTest.php"
 Cohesion: 0.16
@@ -1349,9 +1347,9 @@ Nodes (6): auditedActions(), {closure#10}(), {closure#11}(), {closure#13}(), {cl
 Cohesion: 0.07
 Nodes (21): SignalMatch, {closure#1}(), SignalMatchConfidence, Exact, Likely, {closure#1}(), SignalLeadMatcher, 1. A watch is either topical or entity-scoped, and the model says which (+13 more)
 
-### Community 228 - "Illuminate\Foundation\Events\Dispatchable"
-Cohesion: 0.16
-Nodes (6): BackgroundCheckProgressed, SignalRunProgressed, {closure#2}(), {closure#13}(), {closure#17}(), {closure#21}()
+### Community 228 - "CreateLeadTest.php"
+Cohesion: 0.14
+Nodes (23): {closure#1}(), {closure#10}(), {closure#12}(), {closure#13}(), {closure#16}(), {closure#18}(), {closure#19}(), {closure#20}() (+15 more)
 
 ### Community 229 - "ScoreLeadAction"
 Cohesion: 0.12
@@ -1385,13 +1383,13 @@ Nodes (4): FindIcpAction, IcpController, SaveIcpRequest, IcpResource
 Cohesion: 0.04
 Nodes (15): {closure#1}(), {closure#1}(), {closure#2}(), {closure#1}(), {closure#1}(), {closure#1}(), {closure#1}(), {closure#2}() (+7 more)
 
-### Community 238 - "LeadSourceProviderRegistry"
-Cohesion: 0.13
-Nodes (9): {closure#1}(), {closure#2}(), {closure#3}(), StartDiscoveryRunAction, LeadInterestGate, AllowAllLeadInterestGate, DiscoveryLimitGuard, LeadSourceProviderRegistry (+1 more)
+### Community 238 - "Illuminate\Foundation\Events\Dispatchable"
+Cohesion: 0.16
+Nodes (6): BackgroundCheckProgressed, SignalRunProgressed, {closure#2}(), {closure#13}(), {closure#17}(), {closure#21}()
 
-### Community 239 - "Web/SignalWatchlistController.php"
-Cohesion: 0.10
-Nodes (9): AddWatchlistEntriesAction, {closure#2}(), DeleteSignalWatchlistAction, SaveSignalWatchlistAction, SignalWatchlistController, SignalWatchlistController, AddWatchlistEntriesRequest, SaveSignalWatchlistRequest (+1 more)
+### Community 239 - "BusinessProfile"
+Cohesion: 0.04
+Nodes (40): {closure#3}(), {closure#5}(), AcceptBackgroundCheckAction, {closure#1}(), {closure#2}(), {closure#1}(), {closure#1}(), {closure#1}() (+32 more)
 
 ### Community 240 - "NotificationGroup"
 Cohesion: 0.20
@@ -1437,13 +1435,13 @@ Nodes (17): {closure#10}(), {closure#12}(), {closure#13}(), {closure#14}(), {clo
 Cohesion: 0.13
 Nodes (18): restoreAppearance(), restoreApiUrl(), restoreLocale(), initializeErrorReporting(), ADR-0017, ADR-0017, boot(), ALLOWED_KEYS (+10 more)
 
-### Community 252 - "SignalClusterBackfillTest.php"
-Cohesion: 0.23
-Nodes (13): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#2}(), {closure#3}(), {closure#4}() (+5 more)
+### Community 252 - "TeamNotification"
+Cohesion: 0.12
+Nodes (9): {closure#1}(), TeamNotification, autoload, psr-4, App\\, Database\\Factories\\, Database\\Seeders\\, {closure#4}() (+1 more)
 
-### Community 253 - "Signals"
-Cohesion: 0.07
-Nodes (28): 3. "Pause or retune?" (task 3), 5. "Your preset has moved on" (task 5), 6. Platform signal reporting (task 6), 7. Library-first, market-first (task 7), A promotion threw away the half of the work that does the most, An eager load is a second query, and it re-applies the scope, Companies House spike — filings as signals (2026-11-03, S13b), From the brand review (+20 more)
+### Community 253 - "SignalConverted"
+Cohesion: 0.09
+Nodes (11): {closure#1}(), SignalConverted, RunPlaybooks, A cap refused the signal for ever instead of deferring it, A failed automation could re-bill a Serper run, A rule could override a human's decision, The screens, What the S14 reviews changed (+3 more)
 
 ### Community 254 - "SignalScorer"
 Cohesion: 0.11
@@ -1453,9 +1451,9 @@ Nodes (8): {closure#1}(), SignalScoreComponentValue, {closure#1}(), {closure#3}(
 Cohesion: 0.11
 Nodes (18): {closure#10}(), {closure#3}(), {closure#1}(), {closure#4}(), {closure#1}(), {closure#2}(), {closure#3}(), {closure#1}() (+10 more)
 
-### Community 256 - "TeamContext"
+### Community 256 - "AuditLogger"
 Cohesion: 0.02
-Nodes (97): {closure#1}(), {closure#1}(), AcceptInvitationAction, {closure#2}(), {closure#1}(), {closure#1}(), {closure#1}(), RevokeInvitationAction (+89 more)
+Nodes (91): {closure#1}(), AcceptInvitationAction, {closure#2}(), {closure#1}(), IssueApiTokenAction, {closure#1}(), {closure#1}(), RevokeInvitationAction (+83 more)
 
 ### Community 257 - "rules"
 Cohesion: 0.12
@@ -1485,13 +1483,13 @@ Nodes (3): DatabaseSeeder, TeamRolesSeeder, {closure#2}()
 Cohesion: 0.25
 Nodes (13): bulkLeads(), {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {closure#2}(), {closure#3}(), {closure#4}() (+5 more)
 
-### Community 264 - "BusinessProfile"
-Cohesion: 0.06
-Nodes (23): {closure#1}(), CreateNewUser, {closure#3}(), CreatePersonalTeamAction, CreateTeamAction, CreateTeamData, {closure#1}(), {closure#2}() (+15 more)
+### Community 264 - "UpdateSettingsRequest"
+Cohesion: 0.17
+Nodes (3): {closure#1}(), {closure#1}(), UpdateSettingsRequest
 
-### Community 265 - "TeamNotification"
-Cohesion: 0.12
-Nodes (9): {closure#1}(), TeamNotification, autoload, psr-4, App\\, Database\\Factories\\, Database\\Seeders\\, {closure#4}() (+1 more)
+### Community 265 - "LeadWorkspaceFiltersTest.php"
+Cohesion: 0.09
+Nodes (4): {closure#16}(), {closure#5}(), {closure#7}(), filterExportBody()
 
 ### Community 274 - "AI Platform"
 Cohesion: 0.15
@@ -1513,9 +1511,9 @@ Nodes (26): @inertiajs/vite@^3.0.0, laravel-vite-plugin@^3.0.0, devDependencies,
 Cohesion: 0.03
 Nodes (15): ResourceGroup, Billing, Compliance, Engagement, Intelligence, Outreach, Platform, Prospecting (+7 more)
 
-### Community 279 - "SignalConverted"
-Cohesion: 0.09
-Nodes (11): {closure#1}(), SignalConverted, RunPlaybooks, A cap refused the signal for ever instead of deferring it, A failed automation could re-bill a Serper run, A rule could override a human's decision, The screens, What the S14 reviews changed (+3 more)
+### Community 279 - "InsightStatus"
+Cohesion: 0.16
+Nodes (8): PruneInsightsCommand, {closure#1}(), InsightStatus, Dismissed, New, {closure#1}(), {closure#2}(), InsightRetention
 
 ### Community 280 - "Web/SignalPlaybookController.php"
 Cohesion: 0.05
@@ -1561,13 +1559,17 @@ Nodes (17): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {clos
 Cohesion: 0.17
 Nodes (16): {closure#1}(), {closure#10}(), {closure#13}(), {closure#15}(), {closure#16}(), {closure#18}(), {closure#2}(), {closure#3}() (+8 more)
 
+### Community 293 - "AdminServiceProvider.php"
+Cohesion: 0.15
+Nodes (6): SuspendTeamAction, {closure#6}(), SuspensionAwareTeamSendingGate, TeamSuspension, TeamSendingGate, AlwaysAllowTeamSending
+
 ### Community 294 - "RunSignalWatchAction"
 Cohesion: 0.03
 Nodes (53): {closure#2}(), {closure#1}(), {closure#10}(), {closure#13}(), {closure#15}(), {closure#19}(), {closure#2}(), {closure#21}() (+45 more)
 
-### Community 295 - "SignalsException"
-Cohesion: 0.03
-Nodes (33): AdoptPresetChangesAction, {closure#3}(), CloneSignalPresetsAction, {closure#1}(), {closure#2}(), {closure#1}(), {closure#1}(), {closure#2}() (+25 more)
+### Community 295 - "LeadOriginProvider"
+Cohesion: 0.16
+Nodes (7): LeadOriginProvider, LeadOrigin, {closure#1}(), {closure#2}(), {closure#3}(), NoLeadOrigin, SignalLeadOriginProvider
 
 ### Community 296 - "CrossTenantReadTest.php"
 Cohesion: 0.17
@@ -1580,6 +1582,10 @@ Nodes (50): RevokeApiTokenAction, ApiTokenController, TeamController, UserContro
 ### Community 299 - "Accounts.vue"
 Cohesion: 0.02
 Nodes (107): active, { all }, flat, grouped, input, onKeydown(), open, query (+99 more)
+
+### Community 300 - ".fromArray"
+Cohesion: 0.16
+Nodes (15): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#14}(), {closure#15}(), {closure#2}() (+7 more)
 
 ### Community 306 - "AiTransport"
 Cohesion: 0.19
@@ -1601,7 +1607,7 @@ Nodes (15): {closure#1}(), HttpWebContentFetcher, SafeUrl, {closure#1}(), 6. Exc
 Cohesion: 0.10
 Nodes (7): {closure#1}(), PlaybookBudget, PlaybookNotices, Four decisions the plan left to the implementation, S14, as shipped — one addition the plan did not ask for, and four decisions it left open, The addition: ADR 0024, Two things worth knowing that are not in either doc
 
-### Community 312 - "RetentionAction"
+### Community 312 - "LiaStatus"
 Cohesion: 0.09
 Nodes (11): {closure#1}(), LiaStatus, Active, Draft, Withdrawn, {closure#1}(), RetentionAction, Anonymised (+3 more)
 
@@ -1617,9 +1623,9 @@ Nodes (7): {closure#1}(), AnnounceTopLeadsJob, AnnounceTopLeads, LeadScored, Pha
 Cohesion: 0.14
 Nodes (13): brand, BrandLocale, fonts, grid, motion, palette, proportion, radius (+5 more)
 
-### Community 317 - "SignalClusteringTest.php"
+### Community 317 - "CapabilityGateTest.php"
 Cohesion: 0.17
-Nodes (32): SignalCluster, acquisitionWatch(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#14}(), {closure#15}(), {closure#16}() (+24 more)
+Nodes (13): {closure#1}(), {closure#10}(), {closure#15}(), {closure#17}(), {closure#2}(), {closure#3}(), {closure#4}(), {closure#5}() (+5 more)
 
 ### Community 318 - "ReportKey"
 Cohesion: 0.03
@@ -1629,25 +1635,29 @@ Nodes (51): ActivitySnapshotBuilder, BuildAiUsageAction, {closure#1}(), BuildGra
 Cohesion: 0.07
 Nodes (23): PlatformDailyMetric, {closure#1}(), backdateSubscription(), {closure#1}(), {closure#11}(), {closure#14}(), {closure#15}(), {closure#16}() (+15 more)
 
+### Community 320 - "DiscoveryTenancyTest.php"
+Cohesion: 0.11
+Nodes (5): {closure#12}(), {closure#13}(), {closure#15}(), {closure#16}(), {closure#8}()
+
 ### Community 321 - "ResourceFilter"
 Cohesion: 0.04
 Nodes (5): ResourceFilter, LeadActivityResource, LeadContactResource, SignalResource, UsageMeterResource
+
+### Community 322 - "LeadSignalOriginTest.php"
+Cohesion: 0.11
+Nodes (11): {closure#10}(), {closure#12}(), {closure#13}(), {closure#15}(), {closure#16}(), {closure#19}(), {closure#20}(), {closure#3}() (+3 more)
 
 ### Community 323 - "Controller"
 Cohesion: 0.03
 Nodes (35): Controller, ProfileController, SecurityController, TwoFactorAuthenticationRequest, ResetCircuitBreakerAction, AnnouncementController, AuditController, ComplianceActivityController (+27 more)
 
-### Community 324 - "InsightStatus"
-Cohesion: 0.16
-Nodes (8): PruneInsightsCommand, {closure#1}(), InsightStatus, Dismissed, New, {closure#1}(), {closure#2}(), InsightRetention
+### Community 324 - "SubjectDataCategory"
+Cohesion: 0.12
+Nodes (11): {closure#1}(), SubjectDataCategory, Attempt, Contact, Lead, Message, PushedEvent, Signal (+3 more)
 
 ### Community 325 - "SuggestedIcpSidesTest.php"
 Cohesion: 0.26
 Nodes (13): acceptWithIcp(), {closure#1}(), {closure#10}(), {closure#11}(), {closure#3}(), {closure#4}(), {closure#5}(), {closure#6}() (+5 more)
-
-### Community 326 - "CapabilityGateTest.php"
-Cohesion: 0.17
-Nodes (13): {closure#1}(), {closure#10}(), {closure#15}(), {closure#17}(), {closure#2}(), {closure#3}(), {closure#4}(), {closure#5}() (+5 more)
 
 ### Community 328 - "RunBackgroundCheckJobTest.php"
 Cohesion: 0.28
@@ -1657,9 +1667,9 @@ Nodes (12): bootBackgroundCheck(), {closure#10}(), {closure#12}(), {closure#2}()
 Cohesion: 0.16
 Nodes (24): articlesFetched(), {closure#10}(), {closure#11}(), {closure#13}(), {closure#14}(), {closure#15}(), {closure#17}(), {closure#18}() (+16 more)
 
-### Community 330 - "DiscoveryTenancyTest.php"
-Cohesion: 0.11
-Nodes (5): {closure#12}(), {closure#13}(), {closure#15}(), {closure#16}(), {closure#8}()
+### Community 330 - "LeadSignalSource"
+Cohesion: 0.15
+Nodes (4): LeadSignalSource, NoLeadSignals, MatchedLeadSignals, {closure#3}()
 
 ### Community 332 - "Import.vue"
 Cohesion: 0.13
@@ -1681,9 +1691,9 @@ Nodes (17): {closure#10}(), {closure#11}(), {closure#14}(), {closure#17}(), {clo
 Cohesion: 0.05
 Nodes (22): {closure#3}(), {closure#1}(), PlaybookActionKind, AddTag, AssignToMember, AttachToMatchedLead, ConvertToLead, CreateTask (+14 more)
 
-### Community 337 - "SubjectDataCategory"
-Cohesion: 0.12
-Nodes (11): {closure#1}(), SubjectDataCategory, Attempt, Contact, Lead, Message, PushedEvent, Signal (+3 more)
+### Community 337 - "BulkActionBar.vue"
+Cohesion: 0.14
+Nodes (14): action, actions, apply(), canApply, emit, needs, { number }, overLimit (+6 more)
 
 ### Community 338 - "SignalRun"
 Cohesion: 0.03
@@ -1705,11 +1715,11 @@ Nodes (24): @capacitor/core@^7.0.0, apiBaseUrl(), apiUrl, apiUrlRef, configured,
 Cohesion: 0.23
 Nodes (12): ADR 0006 — multi-team tenancy, ADR 0007 — UK/UAE markets, bilingual/RTL, compliance, BusinessIntelReport (versioned profile), Business Intelligence (AI background check), RunBackgroundCheckJob, WebContentFetcher (SSRF-hardened), CreateIcpAction, Ideal Customer Profile (ICP) (+4 more)
 
-### Community 345 - "UpdateSettingsRequest"
-Cohesion: 0.17
-Nodes (3): {closure#1}(), {closure#1}(), UpdateSettingsRequest
+### Community 345 - "SignalClusterBackfillTest.php"
+Cohesion: 0.23
+Nodes (13): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#2}(), {closure#3}(), {closure#4}() (+5 more)
 
-### Community 348 - "SignalIcon"
+### Community 348 - "SignalPresetCatalogue"
 Cohesion: 0.04
 Nodes (28): {closure#4}(), SignalPreset, {closure#1}(), {closure#2}(), {closure#3}(), SignalPresetCatalogue, {closure#1}(), SignalPresetPack (+20 more)
 
@@ -1753,13 +1763,9 @@ Nodes (7): {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {clos
 Cohesion: 0.09
 Nodes (5): LeadTaskResource, {closure#1}(), LeadTaskStatus, Done, Open
 
-### Community 367 - "LeadSignalSource"
-Cohesion: 0.15
-Nodes (4): LeadSignalSource, NoLeadSignals, MatchedLeadSignals, {closure#3}()
-
 ### Community 368 - "SourcedLead"
-Cohesion: 0.10
-Nodes (14): SourcedLead, {closure#7}(), Phase L0 — Decisions, licence/ToS spike & docs, Phase L10 — Signals: planning applications (PlanIt), Phase L12 — Dubai Pulse DLD transactions: UAE property market context, Phase L13 — Enrichment: tech-stack detection from fetched pages, Phase L14 — Plan gating, API v1, UI polish, docs & reviews, Phase L3 — HM Land Registry CCOD/OCOD (companies that own property) (+6 more)
+Cohesion: 0.08
+Nodes (24): SourcedLead, {closure#7}(), Phase L0 — Decisions, licence/ToS spike & docs, Phase L10 — Signals: planning applications (PlanIt), Phase L12 — Dubai Pulse DLD transactions: UAE property market context, Phase L13 — Enrichment: tech-stack detection from fetched pages, Phase L14 — Plan gating, API v1, UI polish, docs & reviews, Phase L3 — HM Land Registry CCOD/OCOD (companies that own property) (+16 more)
 
 ### Community 369 - "SignalEventWebhookTest.php"
 Cohesion: 0.20
@@ -1792,10 +1798,6 @@ Nodes (6): artworkFile, drawable, here, mark, mobile, ADR-0007
 ### Community 379 - "optionalDependencies"
 Cohesion: 0.13
 Nodes (15): optionalDependencies, @laravel/multiplex@^0.4.1, lightningcss-linux-x64-gnu@^1.29.1, lightningcss-win32-x64-msvc@^1.29.1, @rollup/rollup-linux-x64-gnu@4.9.5, @rollup/rollup-win32-x64-msvc@4.9.5, @tailwindcss/oxide-linux-x64-gnu@^4.0.1, @tailwindcss/oxide-win32-x64-msvc@^4.0.1 (+7 more)
-
-### Community 380 - "BulkActionBar.vue"
-Cohesion: 0.14
-Nodes (14): action, actions, apply(), canApply, emit, needs, { number }, overLimit (+6 more)
 
 ### Community 381 - "Auth & Users"
 Cohesion: 0.33
@@ -1846,28 +1848,20 @@ Cohesion: 0.13
 Nodes (16): AdminDestination, AdminGroup, useAdminNav, { base, groups }, closed, currentGroup, filter, isActive() (+8 more)
 
 ### Community 398 - "TeamRole"
-Cohesion: 0.03
-Nodes (56): {closure#1}(), {closure#1}(), {closure#1}(), {closure#2}(), InviteTeamMemberAction, {closure#1}(), {closure#2}(), RemoveTeamMemberAction (+48 more)
+Cohesion: 0.02
+Nodes (62): {closure#1}(), CreateNewUser, {closure#1}(), {closure#1}(), CreatePersonalTeamAction, CreateTeamAction, {closure#1}(), {closure#2}() (+54 more)
 
 ### Community 402 - "Decision"
 Cohesion: 0.18
 Nodes (10): 1. The score is deterministic, and the components are stored, not just the total, 2. Unknown is not zero — on both sides of the average, 3. The breakdown is stored, because an explanation is of the decision that was taken, 4. A system that learns proposes; it never applies, 5. Reading the full article is a bounded exception, and the body is never stored, 7. Signal performance is reported over representatives, and "worked" is not a named stage, ADR 0022 — A ranked feed that can explain itself, and a product that proposes rather than retunes, Consequences (+2 more)
 
-### Community 403 - ".fromArray"
-Cohesion: 0.16
-Nodes (15): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#14}(), {closure#15}(), {closure#2}() (+7 more)
-
-### Community 406 - "SourcedLeadTest.php"
-Cohesion: 0.35
-Nodes (10): {closure#1}(), {closure#2}(), {closure#3}(), {closure#4}(), {closure#5}(), {closure#6}(), {closure#7}(), {closure#8}() (+2 more)
-
-### Community 410 - "OutreachRestriction"
-Cohesion: 0.11
-Nodes (11): {closure#10}(), {closure#12}(), {closure#13}(), {closure#15}(), {closure#16}(), {closure#19}(), {closure#20}(), {closure#3}() (+3 more)
-
-### Community 411 - "TeamExportTest.php"
+### Community 407 - "TeamExportTest.php"
 Cohesion: 0.27
 Nodes (9): {closure#1}(), {closure#2}(), {closure#3}(), {closure#5}(), {closure#7}(), {closure#8}(), {closure#9}(), exportableData() (+1 more)
+
+### Community 410 - "DiscoveryWebTest.php"
+Cohesion: 0.17
+Nodes (6): {closure#1}(), {closure#10}(), {closure#2}(), {closure#4}(), {closure#5}(), {closure#7}()
 
 ### Community 412 - "SignalRejectionMemoryTest.php"
 Cohesion: 0.14
@@ -1893,29 +1887,29 @@ Nodes (12): {closure#3}(), {closure#5}(), {closure#6}(), {closure#7}(), {closure
 Cohesion: 0.13
 Nodes (6): PruneSignalsCommand, SignalRetention, 1. The branching test, Code map, Phase S7 — Signal definitions become data, The decision to write down first (ADR 0018)
 
-### Community 442 - "AdminServiceProvider.php"
-Cohesion: 0.15
-Nodes (6): SuspendTeamAction, {closure#6}(), SuspensionAwareTeamSendingGate, TeamSuspension, TeamSendingGate, AlwaysAllowTeamSending
-
 ### Community 445 - ".fromNode"
 Cohesion: 0.24
 Nodes (5): FeedEntry, Job postings — dropped, on evidence, `/search` — shipped, Serper `/search` spike — web search and job postings (2026-11-03, S13a), The finding that reframes S10's, and changes the hardening
-
-### Community 446 - "PlatformMarginBuilder"
-Cohesion: 0.09
-Nodes (11): ConvertedCost, PlatformMargin, {closure#2}(), {closure#3}(), {closure#4}(), {closure#6}(), {closure#8}(), PlatformMarginBuilder (+3 more)
 
 ### Community 450 - "LeadReadinessTest.php"
 Cohesion: 0.33
 Nodes (9): {closure#2}(), {closure#3}(), {closure#4}(), {closure#5}(), {closure#6}(), {closure#7}(), {closure#8}(), {closure#9}() (+1 more)
 
+### Community 451 - "Pest.php"
+Cohesion: 0.18
+Nodes (4): {closure#2}(), {closure#3}(), {closure#4}(), {closure#5}()
+
 ### Community 452 - "2026_10_28_204734_create_pulse_tables.php"
 Cohesion: 0.29
 Nodes (3): {closure#1}(), {closure#2}(), {closure#3}()
 
-### Community 455 - "Pest.php"
-Cohesion: 0.18
-Nodes (4): {closure#2}(), {closure#3}(), {closure#4}(), {closure#5}()
+### Community 454 - "BuildContactTodayAction.php"
+Cohesion: 0.27
+Nodes (5): BuildContactTodayAction, {closure#1}(), {closure#2}(), {closure#3}(), {closure#4}()
+
+### Community 455 - "Http/Resources/SignalResource.php"
+Cohesion: 0.24
+Nodes (3): SignalScore, {closure#4}(), {closure#32}()
 
 ### Community 456 - "ReportRange"
 Cohesion: 0.04
@@ -1925,25 +1919,21 @@ Nodes (26): AuditFilterRequest, PlatformWindowRequest, OutreachOversight, Platfo
 Cohesion: 0.07
 Nodes (21): {closure#4}(), EnrichLeadAction, ExtractedFacts, {closure#1}(), CompanyNormaliser, AlimaProspects — Lead Quality Build Plan, Ground rules for every phase, Out of scope (+13 more)
 
-### Community 459 - "BuildContactTodayAction.php"
-Cohesion: 0.27
-Nodes (5): BuildContactTodayAction, {closure#1}(), {closure#2}(), {closure#3}(), {closure#4}()
-
 ### Community 460 - "2026_11_02_100004_migrate_signal_event_types_to_definitions.php"
 Cohesion: 0.27
 Nodes (6): down(), presets(), repointSignals(), repointWatches(), row(), up()
 
-### Community 463 - "Http/Resources/SignalResource.php"
-Cohesion: 0.24
-Nodes (3): SignalScore, {closure#4}(), {closure#32}()
+### Community 463 - "SubjectDataReport"
+Cohesion: 0.39
+Nodes (3): {closure#1}(), SubjectDataReport, {closure#1}()
 
 ### Community 465 - "LeadCsvImporter"
 Cohesion: 0.21
 Nodes (3): {closure#1}(), LeadsWorkspaceException, LeadCsvImporter
 
-### Community 468 - "SubjectDataReport"
-Cohesion: 0.39
-Nodes (3): {closure#1}(), SubjectDataReport, {closure#1}()
+### Community 470 - "20. Curating the signal library (Signals S15)"
+Cohesion: 0.40
+Nodes (5): 20. Curating the signal library (Signals S15), Answering a submission, Editing and withdrawing a preset, What promoting does and does not do, "Which presets are worth maintaining?"
 
 ### Community 474 - "2026_11_02_100003_point_signals_at_definitions.php"
 Cohesion: 0.29
@@ -1965,6 +1955,10 @@ Nodes (3): {closure#1}(), {closure#2}(), {closure#3}()
 Cohesion: 0.33
 Nodes (3): {closure#1}(), {closure#2}(), {closure#3}()
 
+### Community 485 - "15. A stuck queue, a failed job, a command that has not run (19c)"
+Cohesion: 0.50
+Nodes (4): 15. A stuck queue, a failed job, a command that has not run (19c), Failed jobs, Queue depth, Scheduled commands
+
 ### Community 492 - "2026_11_02_140002_seed_signal_preset_packs.php"
 Cohesion: 0.60
 Nodes (3): down(), presets(), up()
@@ -1973,9 +1967,13 @@ Nodes (3): down(), presets(), up()
 Cohesion: 0.03
 Nodes (10): BusinessIntelReportFactory, IcpFactory, LeadFactory, LeadTaskFactory, RetentionPolicyFactory, SignalPreviewFactory, SignalWatchlistFactory, TeamFactory (+2 more)
 
-### Community 500 - "20. Curating the signal library (Signals S15)"
-Cohesion: 0.40
-Nodes (5): 20. Curating the signal library (Signals S15), Answering a submission, Editing and withdrawing a preset, What promoting does and does not do, "Which presets are worth maintaining?"
+### Community 500 - "1. Getting in, the first time"
+Cohesion: 0.50
+Nodes (4): 1. Getting in, the first time, If `/admin` gives you a 404, If `/dashboard` gives you a 404, If you get a 403 inside the panel
+
+### Community 501 - "6. Impersonating a customer"
+Cohesion: 0.50
+Nodes (4): 6. Impersonating a customer, Getting out, What is on the record, What you cannot do while impersonating
 
 ### Community 507 - "AppServiceProvider.php"
 Cohesion: 0.14
@@ -1989,27 +1987,15 @@ Nodes (14): AiInsightsServiceProvider, AuthServiceProvider, BusinessIntelligence
 Cohesion: 0.03
 Nodes (32): HandleAppearance, {closure#1}(), ImpersonationController, AdminIpAllowlist, EnsureAdminAbility, EnsureAdminTwoFactor, EnsurePlatformAdmin, PlatformContext (+24 more)
 
-### Community 532 - "15. A stuck queue, a failed job, a command that has not run (19c)"
-Cohesion: 0.50
-Nodes (4): 15. A stuck queue, a failed job, a command that has not run (19c), Failed jobs, Queue depth, Scheduled commands
-
-### Community 536 - "1. Getting in, the first time"
-Cohesion: 0.50
-Nodes (4): 1. Getting in, the first time, If `/admin` gives you a 404, If `/dashboard` gives you a 404, If you get a 403 inside the panel
-
-### Community 537 - "6. Impersonating a customer"
-Cohesion: 0.50
-Nodes (4): 6. Impersonating a customer, Getting out, What is on the record, What you cannot do while impersonating
-
 ## Knowledge Gaps
 - **602 isolated node(s):** `Access`, `ReadTenantData`, `WriteTenantData`, `DeleteTenantData`, `ManageUsers` (+597 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 6160 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 6161 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **176 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Team` connect `Team` to `SignalSourceKind`, `Web/LeadController.php`, `SupportedLocale`, `AdminAudit`, `LegitimateInterestGate`, `ScoreLeadJob`, `BillingMode`, `Illuminate\Support\Str`, `LeadContact`, `SignalWatch`, `OverageReportingTest.php`, `ContactOutcome`, `SendOutreachEmailTest.php`, `Illuminate\Http\JsonResponse`, `PlaybookActionKind`, `DashboardTest.php`, `PlatformReportBuilder.php`, `SignalSourceLedger`, `LeadsWorkspaceTenancyTest.php`, `ReportColumn`, `DateTimeInterface`, `SuppressionType`, `ExtractedSignal`, `PipelineStage`, `Capability`, `DigestTest.php`, `ReportExportTest.php`, `OutreachChannel`, `Carbon\CarbonImmutable`, `StartDiscoveryRunTest.php`, `SignalDefinition`, `PlanEnforcementTest.php`, `PaginatedIndexRequest`, `User`, `OutreachMessage`, `EnrichLeadJob`, `Changelog`, `Illuminate\Foundation\Http\FormRequest`, `PlanKey`, `AiRequest`, `Web/BusinessIntelController.php`, `Carbon\CarbonImmutable`, `SignalTuningTest.php`, `SignalFeedTest.php`, `LeadFilters`, `createUserWithTeam`, `CompaniesHouseSignalSourceTest.php`, `SignalPlaybookTest.php`, `ConvertSignalToLeadActionTest.php`, `SignalStatus`, `LeadTask`, `SignalQuotaSource`, `SignalSourceQuery`, `InsightType`, `Lead`, `SignalPlaybookConditions`, `LiaRecord`, `FakeAiTransport`, `ResolvesSignals`, `SignalLibraryCurationTest.php`, `LeadScore`, `.count`, `Web/DiscoveryController.php`, `DiscoveryQuery`, `SignalsPersonalDataExporter`, `DiscoveryRun`, `ScoreGrade`, `Illuminate\Database\Eloquent\Builder`, `Illuminate\Http\RedirectResponse`, `AiRequestStatus`, `LocaleTest.php`, `BusinessProfile`, `Web/ScoreController.php`, `GenerateInsightsTest.php`, `TeamDataArchiver.php`, `Notification`, `SignalPlaybook`, `Signal`, `LeadQuotaSource`, `SignalWatchlistTest.php`, `AiPromptTemplate`, `SignalAccountMatchTest.php`, `Throwable`, `.team`, `SearchRegion`, `ReportCsvExporter`, `MarketConsentGateTest.php`, `Web/OutreachController.php`, `Market`, `.write`, `NotificationBroadcastTest.php`, `SignalScorerTest.php`, `RunSignalWatchActionTest.php`, `LiaGateTest.php`, `SignalsDetected`, `CriterionType`, `CompanySize`, `SignalFilters`, `EnrichLeadActionTest.php`, `SignalsPersonalDataTest.php`, `BillingMetric`, `AuditLog`, `SignalBuilderTest.php`, `AuditCategory`, `SignalDefinitionData`, `FindIcpAction`, `LeadSourceProviderRegistry`, `Web/SignalWatchlistController.php`, `SignalWatchlist`, `Illuminate\Database\Migrations\Migration`, `Illuminate\Support\Facades\Route`, `SignalClusterBackfillTest.php`, `ComplianceServiceProvider.php`, `TeamContext`, `UnsubscribeTest.php`, `PersonalDataLocator`, `SignalTuningAdvisor`, `Illuminate\Database\Seeder`, `BulkLeadActionTest.php`, `BusinessProfile`, `TeamNotification`, `SignalConverted`, `Web/SignalPlaybookController.php`, `SignalPlaybookApiTest.php`, `OutreachMessageStatus`, `DsarTest.php`, `SignalRoiTest.php`, `LeadDeduplicatorTest.php`, `RunSignalWatchAction`, `SignalsException`, `Illuminate\Http\Request`, `PerformanceReportsTest.php`, `PlaybookBudget`, `SignalClusteringTest.php`, `ReportKey`, `PlatformRollupTest.php`, `RecordOptOutAction.php`, `Controller`, `SuggestedIcpSidesTest.php`, `CapabilityGateTest.php`, `DiscoveryRunFactory.php`, `RunBackgroundCheckJobTest.php`, `SignalArticleFetchTest.php`, `DiscoveryTenancyTest.php`, `The Alima API (`/api/v1`)`, `ScoringTenancyTest.php`, `PlaybookActionKind`, `SignalRun`, `ErrorEnvelopeTest.php`, `SignalIcon`, `WebhookSignalSourceTest.php`, `BillingController`, `PlatformRollup.php`, `SignalEventWebhookTest.php`, `SignalsServiceProvider.php`, `TeamResource`, `SignalDefinitionTest.php`, `AdminRole`, `CreditSource`, `TeamRole`, `LiaRecordFactory.php`, `SignalRejectionMemoryTest.php`, `SignalDefinitionMigrationTest.php`, `BillingFixtures`, `AdminServiceProvider.php`, `SignalWatchlistEntryFactory.php`, `PlatformMarginBuilder`, `SignalSourceStatFactory.php`, `LeadReadinessTest.php`, `LeadsWorkspaceFixtures`, `Pest.php`, `BuildContactTodayAction.php`, `NotificationPreferenceFactory.php`, `DataRetention.php`, `SignalClusterFactory.php`, `Illuminate\Database\Eloquent\Factories\Factory`, `2026_10_30_170002_create_subscriptions_tables.php`?**
+- **Why does `Team` connect `Team` to `SignalSourceKind`, `Web/LeadController.php`, `SupportedLocale`, `AdminAudit`, `Icp`, `ScoreLeadJob`, `BillingMode`, `TeamContext`, `LeadContact`, `SignalWatch`, `OverageReportingTest.php`, `ContactOutcome`, `SendOutreachEmailTest.php`, `Illuminate\Http\JsonResponse`, `PlaybookActionKind`, `DashboardTest.php`, `PlatformReportBuilder.php`, `SignalSourceLedger`, `ReportColumn`, `DateTimeInterface`, `SuppressionType`, `ExtractedSignal`, `PipelineStage`, `Capability`, `DigestTest.php`, `ReportExportTest.php`, `OutreachChannel`, `Carbon\CarbonImmutable`, `LegitimateInterestGate`, `StartDiscoveryRunTest.php`, `SignalDefinition`, `PlanEnforcementTest.php`, `NotificationPreferenceController.php`, `User`, `Web/SignalWatchlistController.php`, `OutreachMessage`, `EnrichLeadJob`, `SignalCluster`, `Illuminate\Foundation\Http\FormRequest`, `PlanKey`, `PlatformMarginBuilder`, `AiRequest`, `Web/BusinessIntelController.php`, `Carbon\CarbonImmutable`, `SignalTuningTest.php`, `SignalFeedTest.php`, `LeadFilters`, `createUserWithTeam`, `CompaniesHouseSignalSourceTest.php`, `SignalPlaybookTest.php`, `ConvertSignalToLeadActionTest.php`, `SignalStatus`, `LeadActivityType`, `SignalsException`, `SignalSourceQuery`, `GenerateInsightsTest.php`, `InsightType`, `Lead`, `SignalPlaybookConditions`, `DigestBuilder.php`, `FakeAiTransport`, `ResolvesSignals`, `SignalLibraryCurationTest.php`, `LeadScore`, `.count`, `Web/DiscoveryController.php`, `DiscoveryQuery`, `DataRetention`, `DiscoveryRun`, `ScoreGrade`, `Illuminate\Database\Eloquent\Builder`, `Illuminate\Http\RedirectResponse`, `AiRequestStatus`, `LocaleTest.php`, `BusinessProfile`, `Web/ScoreController.php`, `TeamDataArchiver.php`, `Notification`, `SignalPlaybook`, `Signal`, `LeadQuotaSource`, `SignalWatchlistTest.php`, `AiPromptTemplate`, `SignalAccountMatchTest.php`, `Throwable`, `.team`, `SearchRegion`, `ReportCsvExporter`, `MarketConsentGateTest.php`, `Web/OutreachController.php`, `Market`, `.write`, `NotificationBroadcastTest.php`, `SignalScorerTest.php`, `RunSignalWatchActionTest.php`, `LiaGateTest.php`, `SignalsDetected`, `CriterionType`, `CompanySize`, `SignalFilters`, `EnrichLeadActionTest.php`, `LiaRecord`, `SignalsPersonalDataTest.php`, `BillingMetric`, `AuditLog`, `SignalBuilderTest.php`, `AuditCategory`, `SignalDefinitionData`, `FindIcpAction`, `BusinessProfile`, `SignalWatchlist`, `Illuminate\Database\Migrations\Migration`, `Illuminate\Support\Facades\Route`, `TeamNotification`, `SignalConverted`, `ComplianceServiceProvider.php`, `AuditLogger`, `UnsubscribeTest.php`, `PersonalDataLocator`, `SignalTuningAdvisor`, `Illuminate\Database\Seeder`, `BulkLeadActionTest.php`, `Web/SignalPlaybookController.php`, `SignalPlaybookApiTest.php`, `OutreachMessageStatus`, `DsarTest.php`, `SignalRoiTest.php`, `LeadDeduplicatorTest.php`, `AdminServiceProvider.php`, `RunSignalWatchAction`, `Illuminate\Http\Request`, `PerformanceReportsTest.php`, `PlaybookBudget`, `CapabilityGateTest.php`, `ReportKey`, `PlatformRollupTest.php`, `DiscoveryTenancyTest.php`, `Controller`, `SuggestedIcpSidesTest.php`, `BillingController`, `RunBackgroundCheckJobTest.php`, `SignalArticleFetchTest.php`, `The Alima API (`/api/v1`)`, `ScoringTenancyTest.php`, `PlaybookActionKind`, `SignalRun`, `ErrorEnvelopeTest.php`, `SignalClusterBackfillTest.php`, `SignalPresetCatalogue`, `WebhookSignalSourceTest.php`, `PlatformRollup.php`, `SignalEventWebhookTest.php`, `SignalsServiceProvider.php`, `TeamResource`, `ComplianceException`, `SignalDefinitionTest.php`, `AdminRole`, `CreditSource`, `TeamRole`, `LiaRecordFactory.php`, `SignalRejectionMemoryTest.php`, `SignalDefinitionMigrationTest.php`, `BillingFixtures`, `DiscoveryRunFactory.php`, `SignalWatchlistEntryFactory.php`, `LeadsWorkspaceFixtures`, `SignalSourceStatFactory.php`, `LeadReadinessTest.php`, `Pest.php`, `BuildContactTodayAction.php`, `NotificationPreferenceFactory.php`, `DataRetention.php`, `SignalClusterFactory.php`, `Illuminate\Database\Eloquent\Factories\Factory`, `2026_10_30_170002_create_subscriptions_tables.php`?**
   _High betweenness centrality (0.166) - this node is a cross-community bridge._
 - **Are the 9 inferred relationships involving `TeamContext` (e.g. with `4. The curated library (task 4, plan decision #3)` and `Changelog`) actually correct?**
   _`TeamContext` has 9 INFERRED edges - model-reasoned connections that need verification._
@@ -2017,7 +2003,7 @@ _Questions this graph is uniquely positioned to answer:_
   _602 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `ref_vue` be split into smaller, more focused modules?**
   _Cohesion score 0.01028264148468752 - nodes in this community are weakly interconnected._
-- **Why does `TeamContext` connect `TeamContext` to `SignalSourceKind`, `Web/LeadController.php`, `Symfony\Component\HttpFoundation\Response`, `AdminAudit`, `LegitimateInterestGate`, `ScoreLeadJob`, `BillingMode`, `Illuminate\Support\Str`, `LeadContact`, `SignalWatch`, `OverageReportingTest.php`, `AdminResource`, `ContactOutcome`, `SendOutreachEmailTest.php`, `Illuminate\Http\JsonResponse`, `PlaybookActionKind`, `DashboardTest.php`, `PlatformReportBuilder.php`, `SignalSourceLedger`, `LeadsWorkspaceTenancyTest.php`, `LeadsIndexTest.php`, `ReportColumn`, `Illuminate\Foundation\Testing\RefreshDatabase`, `DateTimeInterface`, `PipelineStage`, `Capability`, `DigestTest.php`, `ReportExportTest.php`, `OutreachChannel`, `Team`, `StartDiscoveryRunTest.php`, `SignalDefinition`, `PlanEnforcementTest.php`, `User`, `DiscoveryRunStatus`, `OutreachMessage`, `EnrichLeadJob`, `Changelog`, `OutreachTemplate`, `Illuminate\Foundation\Http\FormRequest`, `PlanKey`, `LeadWorkspaceFiltersTest.php`, `AiRequest`, `Web/BusinessIntelController.php`, `Carbon\CarbonImmutable`, `SignalTuningTest.php`, `PurgeCommandTest.php`, `SignalFeedTest.php`, `LeadFilters`, `createUserWithTeam`, `CompaniesHouseSignalSourceTest.php`, `SignalPlaybookTest.php`, `ConvertSignalToLeadActionTest.php`, `SignalStatus`, `LeadTask`, `SignalSourceQuery`, `RetentionPurgeTest.php`, `Lead`, `SignalPlaybookConditions`, `FakeAiTransport`, `ResolvesSignals`, `SignalLibraryCurationTest.php`, `LeadScore`, `.count`, `Web/DiscoveryController.php`, `DiscoveryQuery`, `PlatformOversightTest.php`, `SignalsPersonalDataExporter`, `DiscoveryRun`, `ScoreGrade`, `Illuminate\Database\Eloquent\Builder`, `Illuminate\Http\RedirectResponse`, `AiRequestStatus`, `BusinessProfile`, `Web/ScoreController.php`, `GenerateInsightsTest.php`, `TeamDataArchiver.php`, `Notification`, `Signal`, `SignalWatchlistTest.php`, `AiPromptTemplate`, `SignalAccountMatchTest.php`, `Throwable`, `CreateLeadTest.php`, `.team`, `OutreachApiTest.php`, `SearchRegion`, `SentryReportingTest.php`, `MarketConsentGateTest.php`, `Web/OutreachController.php`, `SignalScorerTest.php`, `RunSignalWatchActionTest.php`, `LiaGateTest.php`, `SignalsDetected`, `CriterionType`, `SignalFilters`, `EnrichLeadActionTest.php`, `SignalsPersonalDataTest.php`, `BillingMetric`, `AuditLog`, `ScoreLeadAction`, `SignalBuilderTest.php`, `FindIcpAction`, `LeadSourceProviderRegistry`, `Web/SignalWatchlistController.php`, `SignalWatchlist`, `Illuminate\Support\Facades\Route`, `SignalClusterBackfillTest.php`, `UnsubscribeTest.php`, `PersonalDataLocator`, `ApiErrorCode`, `SignalTuningAdvisor`, `BulkLeadActionTest.php`, `BusinessProfile`, `SignalConverted`, `Web/SignalPlaybookController.php`, `SignalPlaybookApiTest.php`, `DsarTest.php`, `SignalRoiTest.php`, `ScoringWebTest.php`, `LeadDeduplicatorTest.php`, `LeadCsvTest.php`, `RunSignalWatchAction`, `SignalsException`, `CrossTenantReadTest.php`, `PerformanceReportsTest.php`, `AnnounceTopLeadsJob`, `ComplianceTenancyTest.php`, `SignalClusteringTest.php`, `ReportKey`, `PlatformRollupTest.php`, `Controller`, `SuggestedIcpSidesTest.php`, `CapabilityGateTest.php`, `RunBackgroundCheckJobTest.php`, `SignalArticleFetchTest.php`, `DiscoveryTenancyTest.php`, `ScoringTenancyTest.php`, `SignalRun`, `ErrorEnvelopeTest.php`, `WebhookSignalSourceTest.php`, `SignalEventWebhookTest.php`, `SignalDefinitionTest.php`, `TeamRole`, `LeadDetailTest.php`, `OutreachRestriction`, `TeamExportTest.php`, `SignalRejectionMemoryTest.php`, `AiPlatformServiceProvider.php`, `SignalDefinitionMigrationTest.php`, `Code map`, `LeadReadinessTest.php`, `Pest.php`, `EnrichLeadAction`, `BuildContactTodayAction.php`, `LeadsApiTest.php`?**
+- **Why does `TeamContext` connect `TeamContext` to `SignalSourceKind`, `Web/LeadController.php`, `Symfony\Component\HttpFoundation\Response`, `AdminAudit`, `Icp`, `ScoreLeadJob`, `BillingMode`, `LeadContact`, `SignalWatch`, `OverageReportingTest.php`, `AdminResource`, `ContactOutcome`, `SendOutreachEmailTest.php`, `Illuminate\Http\JsonResponse`, `PlaybookActionKind`, `DashboardTest.php`, `PlatformReportBuilder.php`, `SignalSourceLedger`, `LeadsIndexTest.php`, `ReportColumn`, `Team`, `Illuminate\Foundation\Testing\RefreshDatabase`, `DateTimeInterface`, `PipelineStage`, `Capability`, `DigestTest.php`, `ReportExportTest.php`, `OutreachChannel`, `LegitimateInterestGate`, `StartDiscoveryRunTest.php`, `SignalDefinition`, `PlanEnforcementTest.php`, `User`, `Web/SignalWatchlistController.php`, `OutreachMessage`, `EnrichLeadJob`, `SignalCluster`, `OutreachTemplate`, `Illuminate\Foundation\Http\FormRequest`, `RetentionPurgeTest.php`, `PlanKey`, `AiRequest`, `Web/BusinessIntelController.php`, `Carbon\CarbonImmutable`, `SignalTuningTest.php`, `PurgeCommandTest.php`, `SignalFeedTest.php`, `LeadFilters`, `createUserWithTeam`, `CompaniesHouseSignalSourceTest.php`, `SignalPlaybookTest.php`, `ConvertSignalToLeadActionTest.php`, `SignalStatus`, `LeadActivityType`, `SignalsException`, `SignalSourceQuery`, `GenerateInsightsTest.php`, `Lead`, `SignalPlaybookConditions`, `DigestBuilder.php`, `FakeAiTransport`, `ResolvesSignals`, `SignalLibraryCurationTest.php`, `LeadScore`, `.count`, `Web/DiscoveryController.php`, `DiscoveryQuery`, `PlatformOversightTest.php`, `DataRetention`, `DiscoveryRun`, `ScoreGrade`, `Illuminate\Database\Eloquent\Builder`, `Illuminate\Http\RedirectResponse`, `AiRequestStatus`, `BusinessProfile`, `Web/ScoreController.php`, `TeamDataArchiver.php`, `Notification`, `Signal`, `LeadSource`, `SignalWatchlistTest.php`, `AiPromptTemplate`, `SignalAccountMatchTest.php`, `Throwable`, `.team`, `OutreachApiTest.php`, `SearchRegion`, `SentryReportingTest.php`, `MarketConsentGateTest.php`, `Web/OutreachController.php`, `SignalScorerTest.php`, `RunSignalWatchActionTest.php`, `LiaGateTest.php`, `SignalsDetected`, `CriterionType`, `SignalFilters`, `EnrichLeadActionTest.php`, `SignalsPersonalDataTest.php`, `BillingMetric`, `AuditLog`, `CreateLeadTest.php`, `ScoreLeadAction`, `SignalBuilderTest.php`, `FindIcpAction`, `BusinessProfile`, `SignalWatchlist`, `Illuminate\Support\Facades\Route`, `SignalConverted`, `AuditLogger`, `UnsubscribeTest.php`, `PersonalDataLocator`, `ApiErrorCode`, `SignalTuningAdvisor`, `BulkLeadActionTest.php`, `LeadWorkspaceFiltersTest.php`, `Web/SignalPlaybookController.php`, `SignalPlaybookApiTest.php`, `DsarTest.php`, `SignalRoiTest.php`, `ScoringWebTest.php`, `LeadDeduplicatorTest.php`, `LeadCsvTest.php`, `RunSignalWatchAction`, `CrossTenantReadTest.php`, `PerformanceReportsTest.php`, `AnnounceTopLeadsJob`, `CapabilityGateTest.php`, `ReportKey`, `PlatformRollupTest.php`, `DiscoveryTenancyTest.php`, `LeadSignalOriginTest.php`, `Controller`, `SuggestedIcpSidesTest.php`, `RunBackgroundCheckJobTest.php`, `SignalArticleFetchTest.php`, `ScoringTenancyTest.php`, `SignalRun`, `ErrorEnvelopeTest.php`, `SignalClusterBackfillTest.php`, `WebhookSignalSourceTest.php`, `SignalEventWebhookTest.php`, `SignalDefinitionTest.php`, `TeamRole`, `LeadDetailTest.php`, `ComplianceTenancyTest.php`, `TeamExportTest.php`, `DiscoveryWebTest.php`, `SignalRejectionMemoryTest.php`, `AiPlatformServiceProvider.php`, `SignalDefinitionMigrationTest.php`, `Code map`, `LeadReadinessTest.php`, `Pest.php`, `BuildContactTodayAction.php`, `EnrichLeadAction`?**
   _High betweenness centrality (0.133) - this node is a cross-community bridge._
 - **Are the 451 inferred relationships involving `createUserWithTeam()` (e.g. with `{closure#13}()` and `{closure#2}()`) actually correct?**
   _`createUserWithTeam()` has 451 INFERRED edges - model-reasoned connections that need verification._
