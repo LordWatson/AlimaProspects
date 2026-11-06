@@ -62,18 +62,45 @@ function cannedResponses(): array
                 'confidence' => 90, 'relevance' => 80, 'summary' => 'Acme raised a Series A.', 'suggested_approach' => 'Intro via LinkedIn.',
             ]],
         ],
+        // The composer (S9). A **viable** draft, because that is the branch with a schema to
+        // satisfy — a refusal is `is_viable: false` and a reason, and would validate trivially.
+        'signals.compose_definition' => [
+            'is_viable' => true,
+            'reason' => null,
+            'summary' => 'A UK manufacturer changing hands.',
+            'definition' => [
+                'name' => 'Manufacturer sold',
+                'description' => 'A manufacturing business changes hands or its owner sells a controlling stake.',
+                'category' => 'liquidity',
+                'icon' => 'handshake',
+                'query_templates' => ['{location} manufacturer acquired', '{location} engineering firm sold'],
+                'match_keywords' => ['acqui', 'sold'],
+                'includes' => ['a named manufacturer being bought or sold'],
+                'excludes' => ['deal round-ups covering several companies'],
+                'min_confidence' => 60,
+                'min_relevance' => 40,
+                'suggested_approach_hint' => 'Introduce yourself via LinkedIn or a mutual referral.',
+            ],
+        ],
     ];
 }
 
 it('seeds every prompt from docs/ai-prompts.md', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    // Ten **rows** for eight keys: `outreach.draft_message` has a version 2 (Phase 11) and
-    // `business_intel.background_check` a version 2 (Phase 7c, which split the team's own industry
-    // from its customers'). Both v1 rows stay seeded so a report or message that recorded
-    // `prompt_version: 1` can still be traced back to what produced it. The registry resolves the
-    // highest active version.
-    expect(AiPromptTemplate::query()->count())->toBe(10)
+    // Twelve **rows** for nine keys. Three have a v2, and all three v1 rows stay seeded so a
+    // report, message or signal that recorded `prompt_version: 1` can still be traced back to what
+    // produced it; the registry resolves the highest active version.
+    //
+    // - `outreach.draft_message` v2 (Phase 11)
+    // - `business_intel.background_check` v2 (Phase 7c — split the team's own industry from its
+    //   customers')
+    // - `signals.extract_event` v2 (Phase S7 — signal types became rows, so the schema's
+    //   `event_type` enum had to go; ADR 0018 section 7)
+    //
+    // `signals.compose_definition` (S9) is the ninth key: the builder's drafting prompt, and the
+    // only one on the reasoning tier that writes **configuration** rather than prose.
+    expect(AiPromptTemplate::query()->count())->toBe(12)
         ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.refine_suggestions',
@@ -82,6 +109,7 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
             'lead_sourcing.shape_query',
             'outreach.draft_message',
             'scoring.qualitative_fit',
+            'signals.compose_definition',
             'signals.extract_event',
         ]);
 });
@@ -116,5 +144,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(10);
+    expect(AiPromptTemplate::query()->count())->toBe(12);
 });

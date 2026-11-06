@@ -17,8 +17,9 @@ The prompts are seeded by `AiPromptTemplateSeeder` (Phase 5 — AI Platform) wit
 Code references them via `AiClient->structured(key, input)` from the owning module's phase; "status"
 below tracks whether that **consumer** is built, not whether the template exists (it does). Two keys
 now have a version 2 — `outreach.draft_message` (Phase 11) and `business_intel.background_check`
-(Phase 7c) — and in both cases v1 stays seeded and active at a lower version number, so a row that
-recorded `prompt_version: 1` can still be traced back to what produced it.
+(Phase 7c) — plus `signals.extract_event` (Phase S7), and in every case v1 stays seeded and active at
+a lower version number, so a row that recorded `prompt_version: 1` can still be traced back to what
+produced it. **Twelve rows for nine keys** as of S9.
 
 **A note on naming schema fields.** `business_intel.background_check` v1 carried a single
 `suggested_industries` list with no description, and nothing in the prompt said whether it meant the
@@ -28,19 +29,77 @@ design studio was given an ICP whose industry signal was "graphic design" — an
 found its competitors. Describe every field in a schema, and never let one field carry two readings;
 a field a reader has to guess at is a bug waiting for a consumer.
 
-| Key                               | Module                      | Tier      | Purpose                                                                                                                                                                                                                                                     | Structured output            | Status             |
-| --------------------------------- | --------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------------------ |
-| `business_intel.background_check` | Business Intelligence       | reasoning | Research the signed-up business from its site + public sources → profile. **v2 splits the seller from the buyer:** `own_industry` + `competitors` describe the team, `customer_industries` + `target_customers` + `decision_maker_titles` describe who buys | yes (object)                 | live v2 (Ph. 7c)   |
-| `icp.refine_suggestions`          | ICP / Business Intelligence | reasoning | Suggest ICP refinements from the business profile                                                                                                                                                                                                           | yes (object → suggestions[]) | seeded v1 (Ph. 6)  |
-| `lead_sourcing.shape_query`       | Lead Sourcing               | reasoning | Turn the business profile + ICP into a provider-ready search for the team's **customers**, with negative terms for its own trade and competitors                                                                                                            | yes (object)                 | live v1 (Ph. 7c)   |
-| `lead.enrich_extract`             | Enrichment                  | cheap     | Extract structured company/contact facts from fetched public web text                                                                                                                                                                                       | yes (object)                 | live v1 (Ph. 8)    |
-| `scoring.qualitative_fit`         | Scoring & Matching          | reasoning | Qualitative ICP-fit assessment + plain-English "why this matches", feeding the hybrid score                                                                                                                                                                 | yes (object)                 | live v1 (Ph. 9)    |
-| `outreach.draft_message`          | Outreach                    | reasoning | Personalised email / LinkedIn text / call script from business profile + lead + tone controls                                                                                                                                                               | yes (object → variants[])    | seeded v1 (Ph. 11) |
-| `insights.periodic_digest`        | AI Insights                 | reasoning | The model's read of one team's last seven days: at most three grounded observations (topic, title, body, severity) over **figures only** — no company or person names in the input, so nothing in it is untrusted                                           | yes (object → insights[])    | live v1 (Ph. 14)   |
-| `signals.extract_event`           | Signals                     | cheap     | Classify a batch of news items (≤10) as wealth/liquidity events (acquisition / funding / relocation), geo-qualified to the watched location; per item: is_event, type, subject, amount, confidence, relevance, summary, LinkedIn/referral next step         | yes (object → events[])      | live v1 (Ph. S3)   |
+| Key                               | Module                      | Tier      | Purpose                                                                                                                                                                                                                                                                                                         | Structured output            | Status                                    |
+| --------------------------------- | --------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ----------------------------------------- |
+| `business_intel.background_check` | Business Intelligence       | reasoning | Research the signed-up business from its site + public sources → profile. **v2 splits the seller from the buyer:** `own_industry` + `competitors` describe the team, `customer_industries` + `target_customers` + `decision_maker_titles` describe who buys                                                     | yes (object)                 | live v2 (Ph. 7c)                          |
+| `icp.refine_suggestions`          | ICP / Business Intelligence | reasoning | Suggest ICP refinements from the business profile                                                                                                                                                                                                                                                               | yes (object → suggestions[]) | seeded v1 (Ph. 6)                         |
+| `lead_sourcing.shape_query`       | Lead Sourcing               | reasoning | Turn the business profile + ICP into a provider-ready search for the team's **customers**, with negative terms for its own trade and competitors                                                                                                                                                                | yes (object)                 | live v1 (Ph. 7c)                          |
+| `lead.enrich_extract`             | Enrichment                  | cheap     | Extract structured company/contact facts from fetched public web text                                                                                                                                                                                                                                           | yes (object)                 | live v1 (Ph. 8)                           |
+| `scoring.qualitative_fit`         | Scoring & Matching          | reasoning | Qualitative ICP-fit assessment + plain-English "why this matches", feeding the hybrid score                                                                                                                                                                                                                     | yes (object)                 | live v1 (Ph. 9)                           |
+| `outreach.draft_message`          | Outreach                    | reasoning | Personalised email / LinkedIn text / call script from business profile + lead + tone controls                                                                                                                                                                                                                   | yes (object → variants[])    | seeded v1 (Ph. 11)                        |
+| `insights.periodic_digest`        | AI Insights                 | reasoning | The model's read of one team's last seven days: at most three grounded observations (topic, title, body, severity) over **figures only** — no company or person names in the input, so nothing in it is untrusted                                                                                               | yes (object → insights[])    | live v1 (Ph. 14)                          |
+| `signals.compose_definition`      | Signals                     | reasoning | Draft a **signal definition** from a member’s sentence about a buying moment: name, description, category, icon, 3–6 plain-keyword templates, include/exclude rules, suggested thresholds, match keywords, approach hint — or a refusal with a reason. The brief is wrapped as untrusted content                | yes (object)                 | live v1 (Ph. S9)                          |
+| `signals.extract_event`           | Signals                     | cheap     | Classify a batch of news items (≤10) against **the team's own signal definitions** — their keys, names and include/exclude rules are injected into the body — geo-qualified to the watched location; per item: is_event, type key, subject, amount, confidence, relevance, summary, LinkedIn/referral next step | yes (object → events[])      | live **v2** (Ph. S7); v1 retired (Ph. S3) |
 
 > Top-level array outputs (suggestions / variants / insights / events) are wrapped in a named object property,
 > since the structured-output transport and our validator expect an object at the schema root.
+
+### `signals.extract_event` v2 — the one place the schema stopped being the guard
+
+v1 constrained `event_type` to a JSON-schema `enum` of the three `SignalEventType` cases, so a
+hijacked or hallucinated response **could not** name a type outside the set: the schema refused it
+before our code saw it. S7 made signal types data a team owns (ADR 0018), and a team's keys differ
+per watch, so that enum cannot exist.
+
+v2 therefore bounds `event_type` to a 32-character string — the width of `signals.event_key` — and
+**`RunSignalWatchAction::resolveDefinition()` rejects any key that was not among the ones offered for
+that batch**, dropping the item and logging the key (never the article text). That Action is now the
+guard the schema used to be, and it is covered by a test that feeds a hostile key back
+(`tests/Feature/Signals/SignalDefinitionRunTest.php`).
+
+The lesson generalises: when a prompt's constraint cannot live in the schema, it has to live in the
+code that reads the response. It never lives only in the prompt — a prompt describes a constraint, it
+does not enforce one.
+
+### `signals.compose_definition` v1 — the prompt that writes configuration
+
+Every other prompt in this registry produces **content**: a profile, a score, a message, a
+classification. This one produces **configuration** — a signal definition is a standing instruction
+to spend money on searches every day, so a bad draft is not a bad paragraph somebody deletes, it is a
+recurring cost that finds nothing. Three consequences, all visible in the seeded template:
+
+1. **Reasoning tier, not cheap.** The cheap tier writes templates that look right and return
+   nothing, which is exactly the failure the S0 spike found in seven of eight hand-written ones.
+2. **The S0 finding is stated in the system prompt, with its reason.** "Plain keywords, no quoting,
+   no `-based`, because the provider is a news search with a one-week window and tight phrases match
+   no headline." A model told merely to "write good templates" writes quoted phrases — they read as
+   precise. Telling it _why_ is what changes the output.
+3. **A refusal is a first-class answer.** `is_viable: false` with a reason, for a brief that is not
+   an event a news search could find — "find me rich people in Dubai", a request for contact
+   details, anything about a private individual. A composer that drafted plausible templates for
+   those would be worse than one that refuses: it would spend a team's money daily on a search that
+   cannot work, and the member would conclude the feature does not work.
+
+**A note on "the one untrusted input", corrected by the S9 security review.** The brief is the only
+input to these two prompts that comes from **outside** the product, and it is wrapped. It is not the
+only customer-written text in them: a definition's `description`, `includes` and `excludes` go into
+`signals.extract_event` in a **trusted** slot — here and in a real run since S7 — and they must,
+because steering the classifier is their purpose. The residual is tenant-internal and accepted: a
+member can iterate their own rule text until the classifier's system prompt comes back to them in a
+`summary`. They are extracting our prompt wording, to themselves, with no cross-tenant reach and
+nothing persisted. Wrapping first-party configuration as untrusted data would mean telling the model
+to ignore the instructions the customer is paying us to follow. ADR 0020 §3 records the same.
+
+**The constraint that cannot live in the schema lives in the code**, as with `extract_event` v2
+above. The schema bounds the shape — six templates, 200 characters each, scores in 0–100 — but it
+cannot express "this must be a _valid definition_", so `DraftSignalDefinition::fromAi()` re-validates
+the draft against `SignalDefinitionData::rules()`, the same rules the save path uses. A draft that
+validated against the schema and failed the rules would otherwise reach the review form as a half-
+filled mess.
+
+`PreviewSignalDefinitionAction` then calls **`signals.extract_event` v2** — the real classifier, with
+the draft as the only offered type — to show what the draft would keep and what it would drop. Using
+a different prompt for the preview would mean previewing a search nobody will ever run.
 
 ## Rules for adding a prompt
 

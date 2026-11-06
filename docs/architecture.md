@@ -106,7 +106,7 @@ flowchart TD
 | 8   | Enrichment & Data Quality     | MVP                         | `modules/enrichment-data-quality.md`     |
 | 9   | Scoring & Matching            | MVP                         | `modules/scoring-matching.md`            |
 | 10  | Leads Workspace               | MVP                         | `modules/leads-workspace.md`             |
-| 10c | Signals (trigger events)      | MVP (UAE v1, S0–S6)         | `modules/signals.md`                     |
+| 10c | Signals (trigger events)      | v1 (S0–S6) + v2 S7–S16      | `modules/signals.md`                     |
 | 11  | Outreach                      | MVP (built, Phase 11)       | `modules/outreach.md`                    |
 | 12  | Reporting & Analytics         | MVP (built, Phase 13)       | `modules/reporting-analytics.md`         |
 | 13  | AI Insights                   | MVP (built, Phase 14)       | `modules/ai-insights.md`                 |
@@ -134,6 +134,7 @@ flowchart TD
   granting nothing. Platform-wide knobs live in `platform_settings`, **schema'd by
   `config/admin.php`** — an undeclared key throws, which is what keeps it from becoming a junk drawer
   and what lets the settings screen be generated rather than hand-written.
+- **A plan limit is asked for at the point of spend, and the fourth seam decorates (Signals, S16):** `Signals\Contracts\SignalQuotaSource` joins `CreditSource`, `LeadQuotaSource` and `SeatLimitSource` as a seam Billing fills in by binding over the owning module's own default — but it is the first that **decorates** rather than replaces, because it answers eight figures and a plan definition is allowed to be partial. So a figure has three states: a number, an explicit `null` meaning _unlimited_, and an **absent key** meaning the plan has taken no position, which is the only one that falls through to the module's own floor. Its stub is therefore the one of the four that is **not** permissive: the floors it reports are cost guards Signals shipped with, and turning plan enforcement off must not turn those off too. Enforcement is in `SignalSpendGuard`, not middleware, for ADR 0012's reason — the scheduler, a nightly sync and a queued run all spend a team's allowance with no request behind them — and a **ceiling refuses while a partial allowance clamps**, which is the difference between a team getting nothing and getting what they are still entitled to.
 - **Platform reporting (Admin, Phase 19c, ADR 0016):** the business's own figures — MRR and its movements,
   retention, the onboarding funnel, allowance consumption, provider cost and **gross margin per
   tenant** — come from `platform_daily_metrics`, a nightly rollup that is a **record over the
@@ -157,6 +158,168 @@ flowchart TD
 - **Forms:** the long forms are `resources/js/components/forms/` — `FormSection` per part, `FormField` per field (which is where the `for`/`id`/`aria-describedby`/`aria-invalid` wiring comes from, by construction rather than by being typed out forty times), `FormErrorSummary` announcing what the server rejected and linking each failure into its field, `FormActions` keeping the save within reach, and `useUnsavedGuard` + `UnsavedChangesDialog` holding back a navigation that would discard a draft. Never `window.confirm`: it cannot be translated, cannot be set in the brand’s type, and says “Leave site?” about a navigation that never leaves the site.
 - **Charts:** hand-built in `resources/js/components/charts/`, no charting dependency, on the validated `--chart-*` tokens (brand-tokens.md §7.7) and the `dataviz` guidance. At most two series per chart; everything else is single-series magnitude.
 - **AI safety:** scraped/web content is **data, never instructions**; structured JSON output validated; per-team cost/credit logging (AI Platform). **Bounded on input since Phase 20** (ADR 0017), in two places for two problems: an oversized untrusted block is _truncated_ (a scraped page arriving too big is a normal Tuesday) and the whole rendered prompt being over the limit is _refused_ with a 413 before the transport — a near-context-limit call is slow, is charged to the team's allowance whatever comes back, and is the shape a prompt-injection attempt takes when the aim is to push the system instructions out of the model's attention. Characters, not tokens, because a token count is only knowable by making the call the bound exists to avoid.
+- **Signal types are data, not an enum (Signals, S7, ADR 0018):** a `SignalDefinition` is a row a team owns — its name, its search templates, its include/exclude rules and its own thresholds — so a new kind of trigger event is configuration rather than a deploy. The exception to `CLAUDE.md` §2's "enums for every type column" is deliberate and has a test: **does the application branch on the value?** It does for `SignalStatus`, `SignalRunStatus`, `SignalWatchCadence` and `SignalDismissReason`, which stay enums; it never did for the event type, which only ever got carried, displayed, templated and grouped by. The table holds two scopes — `team_id = null` is a **platform preset** every team can read and only the platform can write — and `Signals\Services\PlatformPresetReader` is the single place that removes the tenancy scope to read them, replacing it with a stricter one, the same way `Admin\Support\PlatformContext` isolates that trick (ADR 0016). A team **clones** a preset rather than referencing it, so a platform edit never silently changes what a team is paying to run.
+- **An AI that writes configuration gets a preview (Signals, S9, ADR 0020):** every other prompt
+  in the product returns content somebody reads once; the signal composer returns a **standing
+  instruction to spend money every day**. Three rules follow, and they generalise to any future
+  prompt that writes settings rather than prose. The AI **drafts and never saves** — the member reads,
+  edits and commits, so a prompt never has write access to a recurring cost. The model's output is
+  bounded **three times**: by the schema, by the _save path's own validation rules_
+  (`DraftSignalDefinition::fromAi()`), and by `UntrustedContent` around the one input a customer
+  wrote. And the output is **previewed against reality before it is kept**, because the S0 spike
+  established that nobody can tell whether a query template works by reading it — which makes the
+  preview the feature and the composer the convenience. The preview persists nothing except a
+  `signal_previews` ledger row, because a user-triggered spend loop needs a cap and a cost with no
+  row cannot be capped.
+- **A feed and a monitor are the same machinery pointed differently (Signals, S10, ADR 0021):** a
+  watch carries either places or a **watchlist**, never both, because conflating them multiplies one
+  cost by the other. The generalisable parts are three. **Matching is a column of the row being
+  written**, not a correction applied afterwards, and the lead's timeline entry is written in the
+  same transaction as the signal — a record saying an event happened with no event behind it is the
+  worse state. **A per-run ceiling over a long list has to rotate, not trim**: trimming keeps the
+  first N forever, so the eighty-ninth account is never searched at all, which is the failure nobody
+  sees; a cursor makes the list a ring and the screen says how long it takes to come round. And
+  **a weak match is no match** — two confidences, both explained in words on the card, with the
+  override a first-class button, because the member is the one who knows whether two companies with
+  the same name are the same company. The name rule behind it has exactly one definition
+  (`LeadSourcing\Support\CompanyNameKey`), read by both the deduplicator and the matcher.
+- **An article is not an event (Signals, S11):** a `Signal` is one article and a `SignalCluster` is
+  the thing that happened, and the feed lists and counts the second. Three parts of it generalise.
+  **An identity has to be the identity of the thing, not of the handle you were given**: a Google
+  redirect hands back an opaque token, so `url_hash` stopped identifying an article and a varying
+  token re-admitted the same one on every run — `signals.dedupe_hash` is a content identity behind
+  a known redirector and the canonical URL hash everywhere else, the unique index moved with it,
+  and the team's skip list learned to match an **outlet's name** as well as a host, because behind
+  a redirect every item's host is `google.com`. **Put the cheap deterministic grouping before the
+  expensive judgement**: candidate articles are grouped by headline overlap (Dice over the
+  significant words, no AI) and one representative is classified, so a story that travels well costs
+  one call instead of eight — and because the cards are consolidated _again_ afterwards by the
+  event's own subject, the savings depend on that grouping being generous and the correctness does
+  not, which is what makes `signals.cluster_before_ai` a safe flag rather than a rollback. And
+  **a rejection is worth remembering, keyed by the question as well as the subject**: a round-up
+  inside the recency window cost an AI batch every day it stayed there, so a verdict is kept for 30
+  days against the article _and_ the set of signal types that were offered — add a type and it is
+  asked again, change nothing and nobody pays twice. The counters on a cluster are a **record over
+  its rows** rather than a tally the app increments, the same shape `usage_meters` has over the
+  ledgers (ADR 0012).
+- **Some data arrives already true (Signals, S13b, ADR 0023 §6):** a Companies House filing is
+  not a sentence to be interpreted — the registry has parsed the form, so `description_values`
+  carries the officer's name and the date and `transaction_id` is a stable identity. `SourceItem`
+  therefore carries an optional `classification`, and a source that populates it skips the AI batch
+  entirely: classifying a registry fact with a language model would spend money to make a certainty
+  less certain. Two rules keep that from becoming "trust me". Only code **we** wrote against an
+  authoritative provider may populate it — never the inbound webhook, whose events are classified
+  by the same prompt as a news snippet _precisely because_ a customer supplied them. And a skipped
+  classification still passes the type's own thresholds, because a source asserts a confidence and
+  does not assert that the team wants the event. The general shape is worth keeping: **a trust
+  boundary is a property of where data came from, not of what it looks like** — and the two
+  sources that look most alike on arrival, a parsed filing and a pushed event, sit on opposite sides
+  of it.
+- **Accepting is not processing (Signals, S13b, ADR 0023 §7):** the inbound webhook stores the
+  event and the next watch run reads it back through an ordinary source. That keeps one pipeline for
+  thresholds, clustering, scoring and jurisdiction — a second ingestion path would be a second
+  place for all four to drift, in the one place a caller's own assertions are most tempting to
+  believe — and it stops a customer's retry loop from being able to trigger an AI call. The cost
+  is latency measured in one watch cadence, which is the right trade whenever the expensive half of
+  a pipeline is already written and the cheap half is the part exposed to the outside.
+- **A provider's health and a query's validity are different questions (Signals, S13a, ADR 0023):**
+  a signal source sits behind `Signals\Contracts\SignalSourceProvider` and a
+  `SignalSourceRegistry`, mirroring Lead Sourcing's pair (ADR 0008) deliberately — same shape, same
+  hardening, a breaker **keyed per source** so a team running news and web search does not lose
+  their news when `/search` is unwell. Two things about it generalise. First, **the enum/row test
+  cuts the other way here than it did at S7.** A signal _type_ is a row because nothing branches on
+  it; a signal _source_ is an enum because a class exists per case — `fetch()` for a registry filing
+  is not a different configuration of the news one, it is different code with a different
+  credential — so a team cannot invent one and a case with nothing behind it is a bug, which is what
+  `SignalSourceKind::isAvailable()` says out loud. Second, and more widely useful: a 4xx from a
+  provider has **two meanings** and conflating them is expensive. Serper answers a `site:` or quoted
+  template with a 400, and treating that as a provider failure made one team's bad template fail
+  their whole run — three times over, re-paying for every other query in it — and report an outage
+  that was not happening. So a breaker answers _is this provider up?_ and
+  `SignalsException::sourceQueryRejected()` answers _was that a sensible thing to ask it?_: not
+  retryable, breaker untouched, caught per query, counted on the run, and the rest of the plan
+  proceeds. Any later integration that lets a customer compose part of a request has the same split
+  to make. **S13b's review found that two was the wrong number** (ADR 0023 §4a), and the way it was
+  wrong generalises further than the fix: both of those questions are about **us** — our credential,
+  our template, our parameters — which was exhaustive only while every source was addressed by a
+  string we had composed. A source addressed by a **subject** (a company number) or by a stored
+  **configuration** (a feed's URL) has a third answer: the request was well formed, the provider is
+  healthy, and the addressee is not there. Missing it cost two separate outages-by-construction, in
+  opposite directions: as a provider failure a struck-off company number failed a whole watch on
+  every run for ever, and as a _query_ rejection a moved feed failed a run too, because a feed is
+  asked exactly one query so "some refused" and "all refused" are the same event. **A 4xx has as
+  many meanings as there are parties to the request** — the provider, the question, and the thing
+  the question is about — and a rule that collapses any two of them is cheap until a source arrives
+  whose addressee is somebody else's configuration.
+- **Removing a read scope and removing a write's auto-assignment are two different jobs (Signals,
+  S15):** a platform preset is a `signal_definitions` row that belongs to nobody, and the module had
+  solved reading one — `PlatformPresetReader` is the single door that drops the tenancy scope and
+  replaces it with the stricter `team_id is null`. Writing one looked solved by `'team_id' => null`
+  and a docblock saying the Action runs outside any team context. It was not: **`BelongsToTeam`'s
+  `creating` hook fills a null `team_id` from the ambient `TeamContext`**, so a preset written while
+  any team was active became that team's own type — right columns, wrong owner, unique against the
+  wrong scope, and never visible in the library. Nothing downstream would notice, because every
+  consumer of a preset reads through the door that only sees `team_id is null`. It could not fire in
+  production, because `PlatformContext` drops the context on every admin request and an operator is
+  in no team; it fired on the first test fixture that created one with a team active. The general
+  lesson is that a trait which **adds** data on write is a second, independent mechanism from the
+  scope that **hides** it on read, and an intention expressed as a literal `null` is not
+  enforcement. The second half is about the fix: the model already carried
+  `SignalDefinition::$isPlatformPreset` for exactly this case, and the first attempt added a new
+  helper that forgot and restored the context instead — two doors onto one invariant, where the
+  whole point of a door is that there is one. Look for the existing mechanism before building a
+  second.
+- **A measured figure and an allocated one belong in different columns (Signals, S15):** a signal
+  type's search cost is measured — a query names exactly one type — and its AI cost is an
+  apportionment, because one classification call serves every type on the watch at once and that
+  sharing is the saving. Both are legitimate; presenting their sum as one number would let a screen
+  show an allocation as a measurement, and the first question anybody asks of a cost-per-lead figure
+  is how it was arrived at. The companion rule is that an allocation's parts must **sum to the
+  whole** (the integer-division remainder goes to the largest contributor), because the point of a
+  breakdown is that it reconciles against the total it sits under.
+- **A cache key in a multi-tenant product is a tenancy decision (Signals, S13b review):** the feed
+  source cached its poll-interval floor and its conditional-GET validators under the feed's URL
+  alone, on reasoning that reads as obviously correct — three watches pointed at one newsletter
+  should be three readings of one fetch, not three requests to a small publisher who will block us
+  for it. It is correct **inside** a team and a silent cross-tenant failure between them, because
+  nothing cached the _entries_ for the second reader to read: team A's poll stamped the floor and
+  banked the ETag, and team B's fetch of the same public newsletter returned an empty list or a 304,
+  so their signals never existed. No error, no row, nothing to notice, for as long as the busier
+  team kept polling. Worth stating generally because the global query scope — the thing this
+  codebase relies on for tenancy — stands behind Eloquent and nowhere near a cache key, and the
+  failure direction is _denial_ rather than leakage, which is the half nobody tests for. The rule:
+  **anything keyed by a value a tenant chose is keyed per tenant too, unless the thing being cached
+  is readable by all of them.**
+- **A ranking nobody can interrogate is worse than date order (Signals, S12):** the feed is ordered
+  by a `heat` a member can open and read the working of, and three parts of how that was built
+  generalise. **Unknown is not zero.** `SignalScorer` weighs eight components and leaves one it
+  cannot judge — no amount in the article, no history for the outlet, no active ICP — out of _both_
+  sides of the average, because scoring it zero would make the number measure how much Alima knows
+  about an event rather than how much the event is worth; the same reasoning
+  `Scoring\Services\DeterministicScorer` documents, and the reason `signals.heat` itself is
+  nullable rather than defaulting to 0. **An explanation is of the decision that was taken, not of
+  the decision that would be taken now**, so `signals.score_breakdown` is stored with the row and
+  the card reads it back rather than recomputing: a member retuning their weights must not change
+  what yesterday's feed says about why it was ordered that way, and the figures in it are literal
+  while only Alima's own sentences carry a translation flag. **A system that learns proposes and
+  never applies.** `signal_source_stats` is a tally of what a team does with each outlet and
+  `SignalTuningAdvisor` turns a one-sided tally into a suggestion a member accepts or declines —
+  accepting is an ordinary audited edit to the same columns they could have typed — because a
+  feature that silently retunes itself is a feature nobody can debug, and a declined suggestion is
+  kept precisely so it is never raised twice. The one place it reaches outside the module is
+  `Core\Support\RobotsPolicy`, which is Core's and not Signals' because the next module that
+  fetches a page will want it.
+- **Where we search is not which law applies (Signals, S8, ADR 0019):** `Signals\Enums\SearchRegion`
+  answers "where do we look" — a Serper country code and a language — and `Core\Enums\Market`
+  answers "which rules apply". One column was doing both jobs, which was harmless only while every
+  watch was UAE-only. `Market` deliberately **does not grow** to cover the new regions: every case
+  on it asserts a legal position the business has taken, so `SearchRegion::market()` is **nullable**
+  and a region with no position behind it contributes nothing to a lead's restriction and is not
+  offered to a watch at all. The general rule it establishes is in `docs/compliance.md` §3.11: **a
+  restriction follows the subject, not the search** — derived from where the person is, with
+  "unknown" failing toward the restriction rather than away from it, and "most restrictive" asked of
+  `OutreachRestriction::allowsDirectMarketing()` rather than hard-coded. Any later source that
+  infers a person from a published place is held to the same rule.
 - **Compliance:** suppression/opt-out/retention/DSAR enforced by the system (Compliance & Privacy + `docs/compliance.md`). **Built in Phase 15**, and it reaches other modules through three seams rather than by them knowing about it: `LeadSourcingContractsLeadInterestGate` (no recorded lawful basis, no discovery), `OutreachContractsLeadRestrictionResolver` (how a prospect may be approached, from their jurisdiction as well as any flag on the lead), and `SignalsServicesSignalsPersonalDataExporter` (which Signals answers a data-subject request with). The do-not-contact table stays in Outreach — see that module's doc for why.
 - **Observability (Phase 20, ADR 0017):** structured logs with `team_id`/`user_id`/`request_id`;
   channels `ai`, `lead_sourcing`, `outreach`, `notifications`, `insights`, `signals`, `compliance`,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Actions;
 
 use App\Models\User;
+use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Enums\OutreachRestriction;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Enrichment\Data\SourcedValue;
@@ -25,6 +26,8 @@ use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalConverted;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Services\SignalClusterer;
+use App\Modules\Signals\Support\SignalOutreachRestriction;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -68,16 +71,25 @@ final class ConvertSignalToLeadAction
         private readonly RecordLeadActivityAction $record,
         private readonly CreateLeadNoteAction $createNote,
         private readonly AuditLogger $audit,
+        private readonly SignalClusterer $clusterer,
     ) {}
 
     /**
      * Convert `$signal` and return the lead it produced — a fresh one, the team's existing record
      * of that company, or (on a repeat) the lead an earlier conversion already made.
      *
+     * **`$attachTo` is S10's "Add to this lead".** Given a lead, the signal is attached to *that*
+     * row rather than to whatever its dedupe key finds — because the matcher found it by **name**,
+     * and a lead keyed by registry number has a different dedupe key from a name-keyed one. Nothing
+     * else about the conversion changes: the same gap-filling, the same `field_sources` provenance,
+     * the same timeline entry, the same outreach restriction. That reuse is the point — a parallel
+     * "attach" implementation would be a second place for the fill-gaps-never-overwrite rule to
+     * live, and the second one would be the one that got it wrong.
+     *
      * @throws SignalsException when no company name is available, or when an earlier conversion's
      *                          lead has since been deleted.
      */
-    public function handle(Signal $signal, User $actor, ConvertSignalData $data): Lead
+    public function handle(Signal $signal, User $actor, ConvertSignalData $data, ?Lead $attachTo = null): Lead
     {
         if (trim($data->companyName) === '') {
             // A relocation signal often names a person and no company. Rather than invent a holding
@@ -86,14 +98,14 @@ final class ConvertSignalToLeadAction
         }
 
         try {
-            [$lead, $attached, $alreadyConverted] = $this->runConversion($signal, $actor, $data);
+            [$lead, $attached, $alreadyConverted] = $this->runConversion($signal, $actor, $data, $attachTo);
         } catch (UniqueConstraintViolationException) {
             // Two members converted signals about the same *new* company at once and we lost the
             // insert: the row lock can't hold a row that doesn't exist yet. The winner exists now,
             // so a fresh attempt finds and attaches to it. Retried out here rather than inside the
             // transaction — a failed statement aborts the surrounding transaction on some drivers,
             // which is the trap `ImportLeadsAction` avoids the same way.
-            [$lead, $attached, $alreadyConverted] = $this->runConversion($signal, $actor, $data);
+            [$lead, $attached, $alreadyConverted] = $this->runConversion($signal, $actor, $data, $attachTo);
         }
 
         // The caller still holds the pre-conversion model (the action works on its own locked copy),
@@ -136,9 +148,9 @@ final class ConvertSignalToLeadAction
      *
      * @return array{0: Lead, 1: bool, 2: bool}
      */
-    private function runConversion(Signal $signal, User $actor, ConvertSignalData $data): array
+    private function runConversion(Signal $signal, User $actor, ConvertSignalData $data, ?Lead $attachTo = null): array
     {
-        return DB::transaction(fn (): array => $this->convert($signal, $actor, $data), attempts: 3);
+        return DB::transaction(fn (): array => $this->convert($signal, $actor, $data, $attachTo), attempts: 3);
     }
 
     /**
@@ -148,7 +160,7 @@ final class ConvertSignalToLeadAction
      * @return array{0: Lead, 1: bool, 2: bool} the lead, whether it was attached to rather than
      *                                          created, and whether this was a repeat conversion
      */
-    private function convert(Signal $signal, User $actor, ConvertSignalData $data): array
+    private function convert(Signal $signal, User $actor, ConvertSignalData $data, ?Lead $attachTo = null): array
     {
         /** @var Signal $locked */
         $locked = Signal::query()
@@ -162,7 +174,7 @@ final class ConvertSignalToLeadAction
 
         $attributes = $this->toSourcedLead($locked, $data)->toLeadAttributes();
 
-        [$lead, $attached] = $this->attachOrCreate($locked, $data, $attributes);
+        [$lead, $attached] = $this->attachOrCreate($locked, $data, $attributes, $attachTo);
 
         // Catches the company the team already has under a *different* key — keyed by registry
         // number while this one is keyed by domain, say. The survivor is the most authoritative
@@ -180,7 +192,10 @@ final class ConvertSignalToLeadAction
             subject: $locked,
             properties: [
                 'signal_id' => (int) $locked->getKey(),
-                'event_type' => $locked->event_type->value,
+                // The property key stays `event_type` although the column is now `event_key`:
+                // timeline rows written before S7 use this name, and renaming it would strand
+                // every lead converted up to now. The value is the definition's key either way.
+                'event_type' => $locked->event_key,
                 // The article's own headline, so the timeline says which event this was. A value,
                 // not a sentence — the wording around it is composed at render time (EN/AR).
                 'headline' => Str::limit($locked->headline, 160),
@@ -195,7 +210,7 @@ final class ConvertSignalToLeadAction
 
         $this->audit->log('signals.converted', $locked, [
             'lead_id' => (int) $survivor->getKey(),
-            'event_type' => $locked->event_type->value,
+            'event_type' => $locked->event_key,
             'attached' => $attached,
             // Whether a person was recorded, never who: the audit trail has no business holding a
             // second copy of a named individual (CLAUDE.md logging rules).
@@ -210,6 +225,12 @@ final class ConvertSignalToLeadAction
             'actioned_by' => $actor->getKey(),
             'actioned_at' => now(),
         ])->save();
+
+        // The rest of the cluster follows (S11): one event, one status. **`lead_id` does not
+        // travel** - exactly one article is the provenance of this lead, and eight rows each
+        // claiming to have made it is what `SignalLeadOriginProvider` would then have to choose
+        // between when it shows a lead where it came from.
+        $this->clusterer->propagateStatus($locked);
 
         return [$survivor, $attached, false];
     }
@@ -253,15 +274,23 @@ final class ConvertSignalToLeadAction
 
     /**
      * What `leads.raw` carries for a converted signal: the one-way pointer back at the signal, the
-     * event it was, the headline the member recognised — and the outreach restriction, when the
-     * market the signal was found in imposes one.
+     * event it was, the headline the member recognised, where the subject is — and the outreach
+     * restriction, where one applies.
      *
-     * The restriction comes from the **watch's market** ({@see Market::outreachRestriction()}), not
-     * from the company's country on the form. That distinction is the whole point: the restriction
-     * protects the *person being approached*, who is where the watch was looking, and the company
-     * they own may well be registered somewhere else. Keying it on the lead's country would quietly
-     * drop the restriction the moment a Dubai founder's lead was filed under a UK holding company —
-     * which is exactly the case it exists for.
+     * **The restriction follows the subject, not the watch** (S8, ADR 0019). Until S8 it came from
+     * `$signal->watch->market`, which was sound while every watch was UAE and every signal in it
+     * was about the UAE. The moment a watch can span places that is wrong in both directions: a
+     * London funding round found by a UAE watch got a PDPL restriction it is not subject to, and a
+     * Dubai relocation found by a UK watch got **none** — the serious direction, since nothing
+     * published can supply the prior consent PDPL requires.
+     *
+     * It is still **not** keyed on the company's country from the form, and that part of the
+     * original reasoning stands: the restriction protects the *person being approached*, and the
+     * company they own may well be registered somewhere else. A Dubai founder filed under a UK
+     * holding company keeps the restriction.
+     *
+     * The jurisdiction goes in the payload too, so a lead can explain its own restriction rather
+     * than presenting it as a fact with no provenance.
      *
      * @return array<string, mixed>
      */
@@ -269,17 +298,35 @@ final class ConvertSignalToLeadAction
     {
         $payload = [
             'signal_id' => (int) $signal->getKey(),
-            'event_type' => $signal->event_type->value,
+            // Same reasoning as the timeline above: this is a key inside `leads.raw`, read back by
+            // `SignalLeadOriginProvider` and present on every lead converted before S7.
+            'event_type' => $signal->event_key,
             'headline' => Str::limit($signal->headline, 255),
         ];
 
-        $restriction = $signal->watch->market->outreachRestriction();
+        if (is_string($signal->jurisdiction) && $signal->jurisdiction !== '') {
+            $payload['jurisdiction'] = $signal->jurisdiction;
+        }
+
+        $restriction = $this->restrictionFor($signal);
 
         if ($restriction !== null) {
             $payload[OutreachRestriction::RAW_KEY] = $restriction->value;
         }
 
         return $payload;
+    }
+
+    /**
+     * The outreach restriction a converted lead carries.
+     *
+     * The three-step rule itself lives in {@see SignalOutreachRestriction}, because the convert
+     * dialog has to show the member what this is about to apply and a compliance rule with two
+     * copies is a compliance rule with one of them wrong.
+     */
+    private function restrictionFor(Signal $signal): ?OutreachRestriction
+    {
+        return SignalOutreachRestriction::for($signal);
     }
 
     /**
@@ -294,10 +341,28 @@ final class ConvertSignalToLeadAction
      * @param  array<string, mixed>  $attributes
      * @return array{0: Lead, 1: bool}
      */
-    private function attachOrCreate(Signal $signal, ConvertSignalData $data, array $attributes): array
+    private function attachOrCreate(Signal $signal, ConvertSignalData $data, array $attributes, ?Lead $attachTo = null): array
     {
         $teamId = (int) $signal->team_id;
         $dedupeKey = (string) $attributes['dedupe_key'];
+
+        // A named target (S10's "Add to this lead") is preferred over the dedupe key, because the
+        // matcher found it by name and this team's row may be keyed by a registry number instead.
+        // Re-read under a lock and **re-scoped by team**: the caller resolved it, and a target from
+        // another tenant would be the worst bug this phase could have.
+        if ($attachTo instanceof Lead) {
+            $target = Lead::query()
+                ->where('team_id', $teamId)
+                ->whereKey($attachTo->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if ($target instanceof Lead) {
+                $this->fillGaps($target, $attributes);
+
+                return [$target, true];
+            }
+        }
 
         $existing = $this->lockByDedupeKey($teamId, $dedupeKey);
 

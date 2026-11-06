@@ -7,11 +7,11 @@ use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\Signals\Actions\ConvertSignalToLeadAction;
-use App\Modules\Signals\Contracts\NewsSearchClient;
+use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Data\ConvertSignalData;
 use App\Modules\Signals\Data\ExtractedSignal;
-use App\Modules\Signals\Data\SignalQuery;
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Data\SignalSourceQuery;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalRun;
@@ -19,12 +19,14 @@ use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalItemNormaliser;
 use App\Modules\Signals\Services\SignalQueryBuilder;
 use App\Modules\Signals\Services\SignalsPersonalDataExporter;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
+use Tests\Support\BillingFixtures as Billing;
 
 uses(RefreshDatabase::class);
 
@@ -153,14 +155,18 @@ it('does not prune a signal that was converted after the ids were read', functio
 // --- Module review 3: a team can't create watches without limit --------------------------------
 
 it('refuses a new watch once the team is at its ceiling', function (): void {
-    config(['signals.max_watches_per_team' => 2]);
+    // The plan's figure, not the module's config floor — see `BillingFixtures::capSignalAllowance`.
+    Billing::capSignalAllowance('max_watches', 2);
 
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
 
     foreach (['One', 'Two'] as $name) {
         $this->actingAs($user)->post(route('signal-watches.store'), [
-            'name' => $name, 'location' => 'Dubai', 'event_types' => ['acquisition'], 'cadence' => 'daily',
+            'name' => $name, 'locations' => ['Dubai'],
+            'regions' => ['ae'],
+            'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
+            'cadence' => 'daily',
         ])->assertRedirect();
     }
 
@@ -169,7 +175,10 @@ it('refuses a new watch once the team is at its ceiling', function (): void {
     $this->actingAs($user)
         ->from(route('signal-watches.index'))
         ->post(route('signal-watches.store'), [
-            'name' => 'Three', 'location' => 'Dubai', 'event_types' => ['acquisition'], 'cadence' => 'daily',
+            'name' => 'Three', 'locations' => ['Dubai'],
+            'regions' => ['ae'],
+            'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
+            'cadence' => 'daily',
         ])
         ->assertRedirect(route('signal-watches.index'))
         ->assertSessionHas('inertia.flash_data.toast.type', 'error');
@@ -178,7 +187,8 @@ it('refuses a new watch once the team is at its ceiling', function (): void {
 });
 
 it('still lets an existing watch be edited at the ceiling', function (): void {
-    config(['signals.max_watches_per_team' => 1]);
+    // The plan's figure, not the module's config floor — see `BillingFixtures::capSignalAllowance`.
+    Billing::capSignalAllowance('max_watches', 1);
 
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
@@ -190,7 +200,10 @@ it('still lets an existing watch be edited at the ceiling', function (): void {
     // The cap is on create: an existing watch is already counted, so editing it must not fail.
     $this->actingAs($user)
         ->patch(route('signal-watches.update', ['watch' => $watch->getKey()]), [
-            'name' => 'Renamed', 'location' => 'Dubai', 'event_types' => ['relocation'], 'cadence' => 'weekly',
+            'name' => 'Renamed', 'locations' => ['Dubai'],
+            'regions' => ['ae'],
+            'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::RELOCATION]),
+            'cadence' => 'weekly',
         ])
         ->assertRedirect(route('signal-watches.index'));
 
@@ -198,7 +211,8 @@ it('still lets an existing watch be edited at the ceiling', function (): void {
 });
 
 it('reports the ceiling through the API envelope', function (): void {
-    config(['signals.max_watches_per_team' => 1]);
+    // The plan's figure, not the module's config floor — see `BillingFixtures::capSignalAllowance`.
+    Billing::capSignalAllowance('max_watches', 1);
 
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
@@ -210,7 +224,10 @@ it('reports the ceiling through the API envelope', function (): void {
     Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signal-watches.store'), [
-        'name' => 'Nope', 'location' => 'Dubai', 'event_types' => ['acquisition'], 'cadence' => 'daily',
+        'name' => 'Nope', 'locations' => ['Dubai'],
+        'regions' => ['ae'],
+        'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
+        'cadence' => 'daily',
     ])
         ->assertStatus(422)
         ->assertJsonPath('error.code', 'signals.too_many_watches');
@@ -263,8 +280,9 @@ it('drops an ignored source however the host is dressed up', function (): void {
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
-        eventType: SignalEventType::FundingRound,
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
         gl: 'ae', hl: 'en', tbs: 'qdr:w', num: 20,
     ));
@@ -292,8 +310,9 @@ it('stores the canonical link, so userinfo can’t dress up the destination', fu
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
-        eventType: SignalEventType::FundingRound,
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
         gl: 'ae', hl: 'en', tbs: 'qdr:w', num: 20,
     ));
@@ -306,14 +325,15 @@ it('normalises a team’s own ignored domain written with a trailing dot', funct
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
 
-    $watch = app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()->create([
-        'team_id' => $team->getKey(),
-        'location' => 'Dubai',
-        'event_types' => ['funding_round'],
-        'ignore_domains' => ['Rival.ae.', 'https://www.other.ae/'],
-    ]));
+    $watch = app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()
+        ->watchingPresets([SignalPresetCatalogue::FUNDING_ROUND])
+        ->create([
+            'team_id' => $team->getKey(),
+            'locations' => ['Dubai'],
+            'ignore_domains' => ['Rival.ae.', 'https://www.other.ae/'],
+        ]));
 
-    $queries = app(SignalQueryBuilder::class)->build($watch);
+    $queries = app(SignalQueryBuilder::class)->build($watch, $watch->activeDefinitions()->all())->queries;
 
     expect($queries[0]->ignoreDomains)->toBe(['rival.ae', 'other.ae']);
 });

@@ -43,6 +43,17 @@ enum Capability: string
      */
     case Signals = 'signals';
 
+    /**
+     * Drafting a signal type from a sentence (Signals S9, plan decision #1).
+     *
+     * **Narrower than it looks, deliberately.** This gates the AI *shortcut* and nothing else: the
+     * preset library and the hand-written form stay on every plan that has {@see self::Signals},
+     * because a team that cannot describe a signal type in a text box must still be able to have
+     * one. Gating the whole builder would have made the cheaper plans worse than they were before
+     * S9 existed, which is not what a new feature is for.
+     */
+    case SignalComposer = 'signal_composer';
+
     /** The daily AI commentary and call list (Phase 14). */
     case AiInsights = 'ai_insights';
 
@@ -62,6 +73,7 @@ enum Capability: string
     {
         return match ($this) {
             self::Signals => 'Signals',
+            self::SignalComposer => 'AI signal composer',
             self::AiInsights => 'AI insights',
             self::BusinessIntelligence => 'Business background check',
             self::Enrichment => 'Contact enrichment',
@@ -78,6 +90,9 @@ enum Capability: string
     {
         return match ($this) {
             self::Signals => 'Signals is not included on your plan.',
+            // Names what they *can* still do, because they can: this is the one capability whose
+            // refusal leaves a complete path to the same outcome.
+            self::SignalComposer => 'Drafting a signal type with AI is not included on your plan — you can still add one from the library or write your own.',
             self::AiInsights => 'AI insights are not included on your plan.',
             self::BusinessIntelligence => 'The background check is not included on your plan.',
             self::Enrichment => 'Contact enrichment is not included on your plan.',
@@ -94,6 +109,7 @@ enum Capability: string
     {
         return match ($this) {
             self::Signals => 'RunSignalWatchAction (queued and scheduled) + the signal-watch routes',
+            self::SignalComposer => 'ComposeSignalDefinitionAction + the signal-definitions compose routes (web and api)',
             self::AiInsights => 'InsightGenerator (scheduled) + the insights web and api routes',
             self::BusinessIntelligence => 'RunBackgroundCheckAction (queued) + the business-intel routes',
             self::Enrichment => 'EnrichLeadAction (queued) + the lead-sourcing enrichment route',

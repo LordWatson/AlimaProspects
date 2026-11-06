@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Core\Enums\Currency;
 use App\Modules\Signals\Data\ExtractedSignal;
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 
 function aiItem(array $overrides = []): array
 {
@@ -29,7 +29,7 @@ function aiItem(array $overrides = []): array
 it('maps an AI item, converting amount to minor units and resolving the currency', function (): void {
     $extracted = ExtractedSignal::fromAiItem(aiItem());
 
-    expect($extracted->eventType)->toBe(SignalEventType::FundingRound)
+    expect($extracted->eventKey)->toBe(SignalPresetCatalogue::FUNDING_ROUND)
         ->and($extracted->currency)->toBe(Currency::Usd)
         ->and($extracted->amountMinor)->toBe(4_000_000_000)
         ->and($extracted->confidence)->toBe(90)
@@ -55,7 +55,9 @@ it('clamps scores into 0–100 and the summary length', function (): void {
 });
 
 it('nulls an unknown event type', function (): void {
-    expect(ExtractedSignal::fromAiItem(aiItem(['event_type' => 'ipo']))->eventType)->toBeNull();
+    expect(ExtractedSignal::fromAiItem(aiItem(['event_type' => 'ipo']))->eventKey)->toBe('ipo');
+    expect(ExtractedSignal::fromAiItem(aiItem(['event_type' => str_repeat('x', 80)]))->eventKey)
+        ->toHaveLength(32); // clamped to the width of `signals.event_key`
 });
 
 it('enforces a LinkedIn/referral next step, replacing any contact-channel suggestion', function (): void {

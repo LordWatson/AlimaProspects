@@ -20,9 +20,25 @@ C:/Users/alexa/.config/herd/bin/php.bat artisan db:seed --class=SuperAdminSeeder
 
 That gives you **`super@admin.com` / `password`** — a super admin who belongs to no team.
 
-**Your first visit will not show you the panel.** It will send you to the security page to set up two-factor authentication, because a platform operator must have it: one super-admin credential reads every tenant's data in the product, and a password alone is not the right lock on that. Set up your authenticator, then go back to `/admin`.
+**Signing in takes you straight to the panel.** An operator belongs to no team, and the product's
+dashboard needs one — so the sign-in, the "you are already signed in" redirect and the panel's own
+header all send an account with a platform role and no team to `/admin`. (Before that was wired,
+signing in as the operator landed on a **404** from the dashboard. If you are on an older checkout
+and see that, this is what it was.)
+
+**Your first visit will not show you the panel.** It will send you to **`/admin/security`** — the panel's own enrolment screen — because a platform operator must have two-factor authentication: one super-admin credential reads every tenant's data in the product, and a password alone is not the right lock on that. Scan the code, enter the six digits, and the panel opens. (Fortify asks you to confirm your password on the way, which is Laravel's own protection on arming a second factor, not a password reset.)
+
+That screen used to be the **product's** `settings/security`, and that was a bug worth remembering: an operator belongs to no team, so the customer shell it sits in had a rail of team-scoped links that every answered 404. The panel asked for one thing and handed you a room where nothing worked.
 
 If you are developing and the TOTP dance is in your way, `ADMIN_REQUIRE_TWO_FACTOR=false` in `.env`. That is a local convenience and **not** a deployment option — production keeps it on.
+
+### If `/dashboard` gives you a 404
+
+That is the product telling you that you are not a tenant, which for the seeded operator is
+correct: it has no team, so there is no pipeline, no leads and no dashboard to render. Nothing in
+the panel links there any more — the header offers **Sign out** rather than "Leave the panel" for an
+account with no team. An operator who _does_ belong to a team (register normally, then be promoted,
+which is the production advice) keeps both.
 
 ### If `/admin` gives you a 404
 
@@ -469,5 +485,69 @@ Only a **masked preview** is ever shown (`j***@example.com`), because only a has
 A shared sending domain means **one tenant's behaviour is every tenant's deliverability**. Watch the bounce and opt-out rates per channel. A climbing complaint rate usually means one tenant is working a list they should not be, and the way to find them is the outreach tab in §13 plus their own `/admin/teams/{id}` page — then a conversation, or a suspension (§5) if it does not stop.
 
 The "tenants' own entries" count next to the global one is each team's housekeeping — bounces, companies they handle offline. It is normally much larger and it is **not** a platform block list.
+
+---
+
+## 20. Curating the signal library (Signals S15)
+
+**`/admin/signal-library`**, and `operations.manage`.
+
+The library is the set of signal types every tenant can clone from. This screen is where it grows,
+and it has two halves: a **queue** of types teams have offered us, and the **presets** themselves.
+
+### Answering a submission
+
+A team offers a type they built. What you see is the type — its name, what it looks for, its
+searches, the markets it applies to — their **covering note**, and **how it has actually performed
+for them**: found, kept, converted. You do **not** see which team it is, and that is deliberate: the
+decision should be made on the evidence.
+
+Two buttons, and the note is **required** on both. It goes back to the team, and a rejection with no
+reason is us taking somebody's contribution and saying nothing.
+
+- **Promote** — it joins the library. Leave the key blank and it gets one of its own, so nothing
+  already there changes. **Type an existing preset's key** and the submission is folded into that
+  preset instead, bumping its version — which is how you take somebody's better searches into a type
+  the library already has.
+- **Reject** — their own type is untouched and keeps running, whatever you decide. Say so in the
+  note; it is the thing they will worry about.
+
+If the type says **"no longer available"**, the team deleted it while the offer waited. Reject it
+with a line explaining why; there is nothing to promote.
+
+### What promoting does and does not do
+
+It **copies**. The submitting team keeps their own type: same row, same name, still running on their
+schedule. It is not taken from them as a reward for sharing it.
+
+And it **changes nothing for the teams already running a copy.** Every clone records which version it
+was taken from, so when you bump a preset those teams see a _your preset has moved on_ panel with
+the diff, and take the parts they want — field by field — or keep theirs. There is no path by which
+an edit here changes what somebody is paying to run overnight. That is the whole reason a clone is a
+copy rather than a reference, and it is why the **version** matters: a change you make without the
+version moving is a change nobody will ever be offered.
+
+### Editing and withdrawing a preset
+
+**Editing** bumps the version, so every team holding a copy will be offered the change. Keep that in
+mind for a typo fix: it is still an offer thirty teams have to answer.
+
+**"Stop offering"** does _not_ bump the version, because whether the library advertises a type is not
+a change to the type. Teams already running a copy keep it, and the library stops showing it to
+anybody new. This is what to use for a preset that has stopped working, rather than deleting it.
+
+**A key never changes**, and the form will not let you. Clones point at it, every signal records it,
+and the seed migrations name it. If you want a different key, stop offering this one and add another.
+
+### "Which presets are worth maintaining?"
+
+The two numbers on each row answer it. **Copies** is how many teams run one. **Behind** is how many
+of those have not taken the latest change — and a preset with ninety copies all one version behind is
+a change nobody wanted, which is worth knowing before you make another.
+
+For the fuller picture use **`/admin/reporting`** → _Signal library_ and _Signal sources_: adoption
+and kept/converted rates per preset, with the pack it belongs to, and where signals are being found
+at all. Those are the figures that say which packs to invest in. A preset nobody has cloned is a
+preset to retire from the library, and nothing else in the product can tell you so.
 
 ---

@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft } from '@lucide/vue';
 import { ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -132,16 +133,10 @@ function allowance(value: number | null): string {
             </Button>
         </div>
 
-        <header class="min-w-0">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Billing · tenant {{ team.id }}
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                {{ team.name }}
-            </h1>
-        </header>
+        <AdminPageHeader
+            :eyebrow="`Billing · tenant ${team.id}`"
+            :title="team.name"
+        />
 
         <!-- What is actually in force, and why. -->
         <section

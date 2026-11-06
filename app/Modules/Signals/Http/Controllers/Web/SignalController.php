@@ -5,21 +5,28 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Actions\EnsureDefaultPipelineStagesAction;
 use App\Modules\LeadsWorkspace\Http\Resources\PipelineStageResource;
 use App\Modules\Signals\Actions\ConvertSignalToLeadAction;
 use App\Modules\Signals\Actions\CountSignalWatchesAction;
 use App\Modules\Signals\Actions\DismissSignalAction;
+use App\Modules\Signals\Actions\ListSignalDefinitionsAction;
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Actions\RestoreSignalAction;
+use App\Modules\Signals\Data\ConvertSignalData;
 use App\Modules\Signals\Data\SignalWatchData;
 use App\Modules\Signals\Enums\SignalDismissReason;
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Enums\SignalScope;
+use App\Modules\Signals\Enums\SignalSortOrder;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\SignalStatus;
+use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Http\Controllers\Concerns\ResolvesSignals;
 use App\Modules\Signals\Http\Requests\ConvertSignalRequest;
 use App\Modules\Signals\Http\Requests\DismissSignalRequest;
 use App\Modules\Signals\Http\Requests\ListSignalsRequest;
+use App\Modules\Signals\Http\Resources\SignalDefinitionResource;
 use App\Modules\Signals\Http\Resources\SignalResource;
 use App\Modules\Signals\Policies\SignalPolicy;
 use Illuminate\Http\RedirectResponse;
@@ -44,6 +51,7 @@ final class SignalController extends Controller
         ListSignalsRequest $request,
         ListSignalsAction $list,
         CountSignalWatchesAction $countWatches,
+        ListSignalDefinitionsAction $listDefinitions,
         EnsureDefaultPipelineStagesAction $ensureStages,
     ): Response {
         $team = $this->team($request);
@@ -51,6 +59,15 @@ final class SignalController extends Controller
 
         $this->authorize('view', $this->transientSignal($team));
 
+        // The team's own signal types, which the filter chips are drawn from and which the
+        // filters are narrowed against. All of them, paused included: a paused type stops finding
+        // new events, it does not stop the ones it already found from being worth filtering to.
+        $definitions = $listDefinitions->handle($team);
+
+        // The event keys are honoured as given, including one whose type the team has since
+        // deleted: its signals are still in the feed and still carry the key, so filtering by it is
+        // a real question (`SignalFilters`). A key matching nothing gives an empty page, which the
+        // screen reads as "nothing matches these filters" rather than as a quiet week.
         $filters = $request->filters();
         $signals = $list->handle($team, $filters, $request->perPage());
 
@@ -63,22 +80,46 @@ final class SignalController extends Controller
             // The whole paginator, so the screen gets `links` and `meta` for the shared pager.
             'signals' => SignalResource::collection($signals)->toResponse($request)->getData(true),
             'filters' => $filters->toFormState(),
-            'counts' => $this->counts($list->counts($team)),
+            'counts' => $this->counts($list->counts($team, $filters->scope)),
             'options' => [
-                'event_types' => array_map(static fn (SignalEventType $type): array => [
-                    'value' => $type->value,
-                    'label' => $type->label(),
-                    'description' => $type->description(),
-                ], SignalEventType::cases()),
+                'definitions' => SignalDefinitionResource::collection($definitions)->resolve($request),
                 'dismiss_reasons' => array_map(static fn (SignalDismissReason $reason): array => [
                     'value' => $reason->value,
                     'label' => $reason->label(),
                 ], SignalDismissReason::cases()),
+                // The two halves of the feed (S10): everything a watch found, and the warm half —
+                // events about companies the team is already working. Sent as options rather than
+                // hard-coded in the markup, so the empty state for each can come from the enum
+                // that knows what the tab is for.
+                'scopes' => array_map(static fn (SignalScope $scope): array => [
+                    'value' => $scope->value,
+                    'label' => $scope->label(),
+                    'empty_message' => $scope->emptyMessage(),
+                ], SignalScope::cases()),
+                // How the feed may be ordered (S12). Sent from the enum, with each order's own
+                // one-line description, so the control can say what "Best for you" means rather
+                // than asking a member to trust a label.
+                'sorts' => array_map(static fn (SignalSortOrder $sort): array => [
+                    'value' => $sort->value,
+                    'label' => $sort->label(),
+                    'description' => $sort->description(),
+                ], SignalSortOrder::cases()),
+                // Which sources the feed may be narrowed to (S13, task 9). Only the available ones:
+                // a source with no provider has no rows, so offering it would be a control that can
+                // only ever empty the feed.
+                'sources' => array_map(static fn (SignalSourceKind $kind): array => [
+                    'value' => $kind->value,
+                    'label' => $kind->label(),
+                ], SignalSourceKind::available()),
             ],
             'watchCount' => $watchCount,
-            // What a first watch would cover, so the empty state can name the market rather than
-            // hard-coding "Dubai" in the markup.
-            'defaults' => ['location' => SignalWatchData::defaultWatch()->location],
+            // What a first watch would cover, so the empty state can name the place rather than
+            // hard-coding one. From the **team's** market since S8 (ADR 0019).
+            'defaults' => [
+                'location' => SignalWatchData::defaultWatch(
+                    market: SignalWatchData::marketFor($team->market),
+                )->locations[0] ?? '',
+            ],
             // The convert modal's stage picker. Resolved here rather than on open, so clicking
             // Convert shows a form rather than a spinner.
             'stages' => PipelineStageResource::collection($ensureStages->handle($team))->resolve($request),
@@ -110,6 +151,48 @@ final class SignalController extends Controller
         // Straight to the lead: the member converted it to work it, and the origin panel there
         // shows the event they just acted on.
         return to_route('leads.show', ['lead' => $lead->getKey()]);
+    }
+
+    /**
+     * Add this event to the lead it is about, creating no lead (S10).
+     *
+     * The alternative to "convert", offered when the matcher recognised the company. It fills the
+     * lead's gaps, stamps the origin and writes the timeline entry — all of it the conversion's own
+     * code, pointed at a named lead — and **creates nothing**. A member who disagrees with the match
+     * still has "convert anyway", which is why that stays a visible choice rather than a buried one.
+     */
+    public function attach(
+        Request $request,
+        int $signal,
+        ConvertSignalToLeadAction $action,
+    ): RedirectResponse {
+        $model = $this->signal($request, $signal, ['matchedLead']);
+
+        // The same permission as converting: this writes to a lead.
+        $this->authorize('convert', $model);
+
+        $lead = $model->matchedLead;
+
+        if (! $lead instanceof Lead) {
+            // The match was shown, then the lead was deleted or anonymised in another tab.
+            throw SignalsException::noLeadToAttachTo();
+        }
+
+        $attached = $action->handle(
+            $model,
+            $this->user($request),
+            ConvertSignalData::fromSignalForLead($model, $lead),
+            $lead,
+        );
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => __('Added to “:company”. Nothing new was created.', [
+                'company' => $attached->company_name,
+            ]),
+        ]);
+
+        return to_route('leads.show', ['lead' => $attached->getKey()]);
     }
 
     public function dismiss(

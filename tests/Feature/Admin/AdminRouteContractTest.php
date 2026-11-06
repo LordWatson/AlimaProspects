@@ -50,6 +50,26 @@ function adminRouteLabel(RoutingRoute $route): string
     return implode('|', $route->methods()).' '.$route->uri();
 }
 
+/**
+ * The one route that is deliberately outside two layers of the stack: **the panel's own two-factor
+ * enrolment**.
+ *
+ * It cannot carry `EnsureAdminTwoFactor`, because it is where the second factor comes from — a
+ * requirement that gated its own fulfilment would be a locked door with the key behind it. It also
+ * does not carry `PlatformContext`: enrolment reads the operator's own account and nothing else, so
+ * there is nothing here worth removing tenant scoping for, and not removing it is strictly safer.
+ *
+ * Named here rather than relaxing the rule for every route, which is the only way an exception
+ * stays an exception. Everything else still holds on it, and `it('keeps the other four layers on
+ * the enrolment route')` below is what says so.
+ */
+const ENROLMENT_ROUTE = 'admin.security.edit';
+
+function isEnrolmentRoute(RoutingRoute $route): bool
+{
+    return $route->getName() === ENROLMENT_ROUTE;
+}
+
 it('registers some admin routes at all', function (): void {
     // A guard on the guards: every assertion below passes vacuously over an empty collection, so a
     // rename of the `admin.` prefix would otherwise turn this whole file green and meaningless.
@@ -68,7 +88,7 @@ it('puts the whole admin stack on every admin route', function (): void {
 
     $missing = [];
 
-    foreach (adminRoutes() as $route) {
+    foreach (adminRoutes()->reject(isEnrolmentRoute(...)) as $route) {
         $middleware = $route->gatherMiddleware();
 
         foreach ($required as $layer) {
@@ -79,6 +99,40 @@ it('puts the whole admin stack on every admin route', function (): void {
     }
 
     expect($missing)->toBe([]);
+});
+
+it('keeps the other four layers on the enrolment route', function (): void {
+    // The exception is two layers wide and no wider. Signed in, an operator, from a permitted
+    // network, inside the panel's own limiter — and one declared ability, which the assertion
+    // below covers for every admin route including this one.
+    $route = adminRoutes()->first(isEnrolmentRoute(...));
+
+    expect($route)->not->toBeNull();
+
+    $middleware = $route->gatherMiddleware();
+
+    foreach (['auth', EnsurePlatformAdmin::class, AdminIpAllowlist::class, 'throttle:admin'] as $layer) {
+        expect($middleware)->toContain($layer);
+    }
+
+    // And the two it is excused, which must stay excused on purpose rather than by accident: with
+    // `EnsureAdminTwoFactor` it could never be reached, and with `PlatformContext` it would remove
+    // tenant scoping to render a page about one account.
+    expect($middleware)->not->toContain(EnsureAdminTwoFactor::class)
+        ->and($middleware)->not->toContain(PlatformContext::class);
+});
+
+it('excuses nothing else from the second-factor check', function (): void {
+    // The assertion that keeps the exception honest: if a second route ever appears without
+    // `EnsureAdminTwoFactor`, this fails even though the stack test above skips by name.
+    $unguarded = adminRoutes()
+        ->reject(isEnrolmentRoute(...))
+        ->reject(fn (RoutingRoute $route): bool => in_array(EnsureAdminTwoFactor::class, $route->gatherMiddleware(), true))
+        ->map(adminRouteLabel(...))
+        ->values()
+        ->all();
+
+    expect($unguarded)->toBe([]);
 });
 
 it('never applies the platform context outside the admin routes', function (): void {

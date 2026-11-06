@@ -10,7 +10,7 @@ use App\Modules\Notifications\Data\PushResult;
 /**
  * Sends a push notification to a set of device tokens (Phase 12).
  *
- * The seam exists for the same reason `NewsSearchClient` and `AiTransport` do: tests never touch a
+ * The seam exists for the same reason `SignalSourceProvider` and `AiTransport` do: tests never touch a
  * provider (CLAUDE.md), and FCM is one plausible provider rather than the only one — the mobile app
  * may ship against APNs directly, or a later deployment against Web Push.
  *

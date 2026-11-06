@@ -12,6 +12,7 @@ use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Enums\LeadTaskStatus;
 use App\Modules\LeadsWorkspace\Models\LeadTask;
+use App\Modules\Notifications\Data\DigestHighlight;
 use App\Modules\Notifications\Data\DigestSummary;
 use App\Modules\Notifications\Enums\DigestFrequency;
 use App\Modules\Notifications\Enums\NotificationType;
@@ -75,8 +76,63 @@ final class DigestBuilder
                 ];
             }
 
-            return new DigestSummary(frequency: $frequency, lines: $lines, total: $total);
+            return new DigestSummary(
+                frequency: $frequency,
+                lines: $lines,
+                total: $total,
+                // **Named, not counted** (S15 task 1). Gated on the same preference and the same
+                // window as the signals line beside it, so one cannot appear without the other.
+                highlights: $this->highlights($user, $team, $since),
+            );
         });
+    }
+
+    /**
+     * The signals worth naming rather than counting (S15 task 1).
+     *
+     * **The one part of the digest that is not a count**, and the reason is the product's own
+     * shape: the most time-sensitive thing Alima produces is a specific event at a specific
+     * company, and "you have eleven new signals" sends somebody to a feed to work out which one
+     * mattered. The window in which a call is welcome is days.
+     *
+     * Four decisions worth knowing:
+     *
+     * - **Gated on the same preference as the count.** A member who switched signal notifications
+     *   off is not told about signals in the round-up either — a digest that ignored preferences
+     *   would be a way of re-enabling everything somebody turned off.
+     * - **Events, not articles** ({@see Signal::representatives()}): a story picked up by eight
+     *   outlets is one line, which is the rule S11 made and every count in the product follows.
+     * - **Ordered by heat, nulls last.** An unscored signal is not a zero-heat signal (ADR 0022),
+     *   and the ordering is explicit because MySQL and SQLite disagree about where a null sorts.
+     * - **Capped**, because the risk this feature carries is noise. Three headlines is a digest; a
+     *   dozen is a feed somebody unsubscribes from.
+     *
+     * @return list<DigestHighlight>
+     */
+    private function highlights(User $user, Team $team, CarbonImmutable $since): array
+    {
+        if (! $this->preferences->wants($user, $team, NotificationType::SignalsDetected)) {
+            return [];
+        }
+
+        $limit = max(1, (int) config('signals.digest.highlights', 3));
+
+        /** @var list<Signal> $signals */
+        $signals = Signal::query()
+            ->representatives()
+            ->where('status', SignalStatus::New->value)
+            ->where('created_at', '>=', $since)
+            ->orderByRaw('case when heat is null then 1 else 0 end')
+            ->orderByDesc('heat')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->all();
+
+        return array_map(
+            static fn (Signal $signal): DigestHighlight => DigestHighlight::fromSignal($signal),
+            $signals,
+        );
     }
 
     /**
@@ -116,6 +172,11 @@ final class DigestBuilder
 
         if ($this->preferences->wants($user, $team, NotificationType::SignalsDetected)) {
             $signals = Signal::query()
+                // **Events, not articles** (Signals S11). A signal is one article and a cluster is
+                // one event; the feed lists and counts the event, so a digest promising eight new
+                // signals over a feed showing one card would send somebody to look for seven
+                // things that are not there.
+                ->representatives()
                 ->where('status', SignalStatus::New->value)
                 ->where('created_at', '>=', $since)
                 ->count();

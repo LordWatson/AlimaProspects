@@ -31,6 +31,11 @@ final class SignalRunResource extends JsonResource
             'status' => $run->status->value,
             'status_label' => $run->status->label(),
             'queries_count' => $run->queries_count,
+            // What the plan wanted, and how much the per-run ceiling cut (S8). Zero means no trim;
+            // a non-zero figure is what lets the watch card say coverage was reduced rather than
+            // leaving a team to wonder why adding places stopped finding more.
+            'queries_requested' => $run->queries_requested,
+            'queries_trimmed' => $run->queriesTrimmed(),
             'results_count' => $run->results_count,
             'signals_created' => $run->signals_created,
             // Integer micro-units; the screen formats it in the team's currency.

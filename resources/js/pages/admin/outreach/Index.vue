@@ -3,6 +3,7 @@ import { Head, useForm } from '@inertiajs/vue3';
 import { MailWarning, ShieldBan } from '@lucide/vue';
 import { useEventListener } from '@vueuse/core';
 import { ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminPager from '@/components/admin/AdminPager.vue';
 import AdminWindowFilter from '@/components/admin/AdminWindowFilter.vue';
 import InputError from '@/components/InputError.vue';
@@ -106,21 +107,11 @@ function submit(): void {
     <Head title="Outreach oversight" />
 
     <div class="flex flex-col gap-8">
-        <header class="max-w-2xl">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Platform
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                Outreach oversight
-            </h1>
-            <p class="mt-2 text-sm text-muted-foreground">
-                Send volume and deliverability across every tenant, and the
-                global do-not-contact list. A shared sending domain means one
-                tenant's behaviour is every tenant's deliverability.
-            </p>
-        </header>
+        <AdminPageHeader
+            eyebrow="Platform · outreach"
+            title="What we sent,|and what came back."
+            lede="Send volume, bounces and suppressions across every tenant. Counts and domains only — never a message."
+        />
 
         <AdminWindowFilter
             :filters="filters"

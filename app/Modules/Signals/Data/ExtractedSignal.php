@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Data;
 
 use App\Modules\Core\Enums\Currency;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
 use Illuminate\Support\Str;
 use Spatie\LaravelData\Data;
 
@@ -15,7 +15,13 @@ use Spatie\LaravelData\Data;
  * reaches here), mapped back to the news item it describes by {@see self::$itemIndex}. All subject
  * fields are nullable — the model leaves out what the snippet doesn't state. A result is only kept as
  * a {@see Signal} when it {@see self::meetsThreshold()}: a genuine event,
- * of a known type, clearing the confidence and relevance floors.
+ * of a type that was actually offered, clearing that type's confidence and relevance floors.
+ *
+ * `eventKey` is a {@see SignalDefinition} key and is **deliberately an unvalidated string here**.
+ * v1 constrained it with a JSON-schema `enum`, which meant the schema was the guard; with signal
+ * types as data that enum cannot exist, so v2 of the prompt bounds the string and
+ * `RunSignalWatchAction` rejects any key it did not offer for the batch (ADR 0018 §7). A prompt
+ * cannot be trusted to enforce a constraint it merely describes.
  */
 final class ExtractedSignal extends Data
 {
@@ -23,10 +29,13 @@ final class ExtractedSignal extends Data
 
     private const int MAX_TEXT = 255;
 
+    /** The width of `signals.event_key`, which is also `signal_definitions.key`. */
+    private const int MAX_KEY = 32;
+
     public function __construct(
         public int $itemIndex,
         public bool $isEvent,
-        public ?SignalEventType $eventType,
+        public ?string $eventKey,
         public ?string $subjectPersonName,
         public ?string $subjectPersonRole,
         public ?string $subjectCompanyName,
@@ -65,14 +74,16 @@ final class ExtractedSignal extends Data
             ? (int) round(((float) $amount) * $currency->minorUnitFactor())
             : null;
 
-        $eventType = is_string($item['event_type'] ?? null)
-            ? SignalEventType::tryFrom($item['event_type'])
+        // Bounded, trimmed, and otherwise taken as given: whether this key is one the run
+        // actually asked for is the Action's question, not the DTO's (see the class docblock).
+        $eventKey = is_string($item['event_type'] ?? null)
+            ? Str::limit(trim($item['event_type']), self::MAX_KEY, '')
             : null;
 
         return new self(
             itemIndex: (int) ($item['item_index'] ?? -1),
             isEvent: (bool) ($item['is_event'] ?? false),
-            eventType: $eventType,
+            eventKey: $eventKey === '' ? null : $eventKey,
             subjectPersonName: self::text($item['subject_person_name'] ?? null),
             subjectPersonRole: self::text($item['subject_person_role'] ?? null),
             subjectCompanyName: self::text($item['subject_company_name'] ?? null),
@@ -88,13 +99,70 @@ final class ExtractedSignal extends Data
     }
 
     /**
-     * Whether this result should become a signal: a genuine event of a known type (the `event_type`
+     * One event a **structured** source already knows (S13b, ADR 0023 §6).
+     *
+     * The counterpart to {@see self::fromAiItem()}, for a source whose provider has already parsed
+     * the event — a Companies House filing, where the registry hands over the officer's name and the
+     * date and there is nothing left to infer. Such an item skips the extraction batch entirely:
+     * classifying a registry fact with a language model would spend money to make a certainty less
+     * certain.
+     *
+     * **It asserts, and the assertion is bounded by who may call it.** ADR 0023 §6 allows this only
+     * for a source *we* wrote against an authoritative provider — never one whose content came from
+     * free text, and never the inbound webhook, whose events are classified by the same prompt as a
+     * news snippet precisely because the customer supplied them.
+     *
+     * Every field still goes through the same clamps and the same outreach guard as an AI item, so a
+     * structured source cannot store an over-long name or a suggested approach naming a contact
+     * channel. `itemIndex` is -1: there is no batch position to map back to, because there was no
+     * batch.
+     */
+    public static function structured(
+        string $eventKey,
+        ?string $subjectCompanyName,
+        string $summary,
+        ?string $subjectPersonName = null,
+        ?string $subjectPersonRole = null,
+        ?string $location = null,
+        ?string $counterpartyName = null,
+        ?int $amountMinor = null,
+        ?Currency $currency = null,
+        int $confidence = 100,
+        int $relevance = 100,
+        ?string $suggestedApproach = null,
+    ): self {
+        return new self(
+            itemIndex: -1,
+            isEvent: true,
+            eventKey: Str::limit(trim($eventKey), self::MAX_KEY, ''),
+            subjectPersonName: self::text($subjectPersonName),
+            subjectPersonRole: self::text($subjectPersonRole),
+            subjectCompanyName: self::text($subjectCompanyName),
+            counterpartyName: self::text($counterpartyName),
+            amountMinor: $amountMinor,
+            currency: $currency,
+            location: self::text($location),
+            confidence: self::clampScore($confidence),
+            relevance: self::clampScore($relevance),
+            summary: Str::limit(trim($summary), self::MAX_SUMMARY, ''),
+            // Through the same guard, which also supplies the compliant default: a structured source
+            // has no opinion about how to approach somebody and must not invent one.
+            suggestedApproach: self::approach($suggestedApproach),
+        );
+    }
+
+    /**
+     * Whether this result should become a signal: a genuine event of a named type (the `event_key`
      * column is not nullable) that clears both AI floors.
+     *
+     * The floors are passed in because they are **per definition** since S7
+     * ({@see SignalDefinition::effectiveThresholds()}): a team that found one of their types too
+     * noisy can raise its confidence floor without touching the rest.
      */
     public function meetsThreshold(int $minConfidence, int $minRelevance): bool
     {
         return $this->isEvent
-            && $this->eventType !== null
+            && $this->eventKey !== null
             && $this->confidence >= $minConfidence
             && $this->relevance >= $minRelevance;
     }

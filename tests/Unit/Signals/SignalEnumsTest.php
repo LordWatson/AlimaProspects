@@ -2,17 +2,40 @@
 
 declare(strict_types=1);
 
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Enums\SignalCategory;
+use App\Modules\Signals\Enums\SignalIcon;
 use App\Modules\Signals\Enums\SignalRunStatus;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Enums\SignalWatchCadence;
 
-it('exposes stable values and labels for every event type', function (): void {
-    expect(SignalEventType::values())->toBe(['acquisition', 'funding_round', 'relocation']);
+/*
+ * `SignalEventType` used to be tested here. It is gone (ADR 0018): nothing in the app branched on
+ * which case it was, so the type became a row. What is left on this file is the set of enums that
+ * **are** branched on - plus the two S7 added, which are enums for exactly that reason: the UI
+ * renders a section per category and maps an icon key to an imported component, so both sets have
+ * to stay closed.
+ */
 
-    foreach (SignalEventType::cases() as $case) {
+it('exposes stable values and labels for every signal category', function (): void {
+    expect(SignalCategory::values())->toBe([
+        'liquidity', 'growth', 'movement', 'distress', 'hiring', 'regulatory', 'custom',
+    ]);
+
+    foreach (SignalCategory::cases() as $case) {
         expect($case->label())->not->toBe('')
             ->and($case->description())->not->toBe('');
+    }
+});
+
+it('exposes a closed, labelled icon allowlist', function (): void {
+    // A free string here would reach the client as a component name, so the set is closed on
+    // purpose (ADR 0018 section 8) and every case has to be renderable.
+    expect(SignalIcon::values())->toContain('satellite')
+        ->and(SignalIcon::values())->toHaveCount(count(SignalIcon::cases()));
+
+    foreach (SignalIcon::cases() as $case) {
+        expect($case->label())->not->toBe('')
+            ->and($case->value)->toMatch('/^[a-z0-9-]+$/'); // a Lucide name, kebab-case
     }
 });
 

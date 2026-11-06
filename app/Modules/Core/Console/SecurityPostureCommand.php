@@ -59,6 +59,7 @@ final class SecurityPostureCommand extends Command
         $this->headerChecks($production);
         $this->adminChecks($production);
         $this->observabilityChecks($production);
+        $this->spendChecks($production);
 
         $this->table(['', 'Check', 'Detail'], array_map(
             static fn (array $row): array => [
@@ -215,6 +216,53 @@ final class SecurityPostureCommand extends Command
             'Sentry request body off',
             in_array(config('sentry.max_request_body_size'), ['none', 'never'], true),
             'SENTRY_MAX_REQUEST_BODY_SIZE=none',
+        );
+    }
+
+    /**
+     * The settings that decide whether a tenant can spend unbounded money (S16).
+     *
+     * **In this command rather than in a test, for the reason the class docblock gives**, and the
+     * fit is as good here as any of the others: each one of these is correct in `.env.example` and
+     * is exactly the kind of thing that gets switched on for a demo and left on. "Security" in the
+     * sense that matters commercially — an uncapped third-party API behind a customer-triggered
+     * button is an availability and a cost incident waiting for somebody to notice, and the one
+     * below has a comment in `config/signals.php` nominating this command as its home.
+     */
+    private function spendChecks(bool $production): void
+    {
+        // **The full-article read with no ceiling anywhere.** It is off by default, and a zero cap
+        // is only safe *because* it is off — `config/signals.php` says so and points here. With
+        // plans enforced the ceiling comes from `SignalQuotaSource` instead, so the failure is
+        // specifically: the feature is on, the module's own cap is zero, and no plan is going to
+        // supply one.
+        $articleFetchOn = (bool) config('signals.article_fetch.enabled', false);
+        $articleCap = (int) config('signals.article_fetch.monthly_cap_micros', 0);
+        $plansEnforced = (bool) config('billing.enforce_plans', true);
+
+        $this->assert(
+            'article fetch has a ceiling',
+            ! $articleFetchOn || $articleCap > 0 || $plansEnforced,
+            'SIGNALS_ARTICLE_FETCH_MONTHLY_CAP_MICROS=… (or BILLING_ENFORCE_PLANS=true)',
+        );
+
+        // **The preview budget**, which is the one spend loop a member drives directly: a button
+        // that pays for Serper searches and an AI pass on every press. Zero reads as "no budget
+        // configured" in the Action, deliberately — a missing configuration is not a product
+        // decision — which is precisely why it has to be checked on the machine.
+        $this->assert(
+            'signal preview budget set',
+            ! $production || (int) config('signals.preview.daily_budget_micros', 0) > 0,
+            'SIGNALS_PREVIEW_DAILY_BUDGET_MICROS=…',
+        );
+
+        // Plan enforcement off in production is a legitimate state — it is the invoiced-customer
+        // case, and `config/billing.php` spells out what keeps working — but it means no tenant has
+        // a lead, seat, capability or signal limit, and nobody notices on their own.
+        $this->warnIf(
+            'plan limits enforced',
+            $production && ! $plansEnforced,
+            'BILLING_ENFORCE_PLANS=true once the plans are priced',
         );
     }
 

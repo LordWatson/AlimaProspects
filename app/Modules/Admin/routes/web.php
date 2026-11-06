@@ -15,7 +15,9 @@ use App\Modules\Admin\Http\Controllers\Web\PlatformReportingController;
 use App\Modules\Admin\Http\Controllers\Web\ProviderHealthController;
 use App\Modules\Admin\Http\Controllers\Web\ProvisioningController;
 use App\Modules\Admin\Http\Controllers\Web\ResourceController;
+use App\Modules\Admin\Http\Controllers\Web\SecurityController;
 use App\Modules\Admin\Http\Controllers\Web\SettingsController;
+use App\Modules\Admin\Http\Controllers\Web\SignalLibraryController;
 use App\Modules\Admin\Http\Controllers\Web\SignalRunController;
 use App\Modules\Admin\Http\Controllers\Web\TeamBillingController;
 use App\Modules\Admin\Http\Controllers\Web\TeamOperationsController;
@@ -53,6 +55,32 @@ use Illuminate\Support\Facades\Route;
 |   6. `throttle:admin`       — its own limiter, not the app's.
 |
 */
+
+/*
+ * **The one route without the second-factor check**, because it is where the second factor is set
+ * up. Everything else in the stack still applies — signed in, an operator, from a permitted
+ * network, the panel's own limiter, and `AdminAbility::Access` — and `PlatformContext` is
+ * deliberately absent too: enrolment reads the operator's own account and nothing else, so there is
+ * nothing here to remove tenant scoping for.
+ *
+ * It exists because the gate used to send a new operator to the **product's** security settings,
+ * and an operator belongs to no team: every link in that shell's rail answers 404. The panel asked
+ * for a second factor and handed them a room where nothing worked. `AdminRouteContractTest` names
+ * this route as the exception rather than relaxing the rule for everything.
+ */
+Route::middleware([
+    'auth',
+    EnsurePlatformAdmin::class,
+    AdminIpAllowlist::class,
+    'throttle:admin',
+])
+    ->prefix((string) config('admin.path', 'admin'))
+    ->name('admin.')
+    ->group(function (): void {
+        Route::get('security', [SecurityController::class, 'edit'])
+            ->middleware('admin.can:'.AdminAbility::Access->value)
+            ->name('security.edit');
+    });
 
 Route::middleware([
     'auth',
@@ -213,6 +241,52 @@ Route::middleware([
         Route::get('signal-runs', [SignalRunController::class, 'index'])
             ->middleware('admin.can:'.AdminAbility::ReadTenantData->value)
             ->name('signal-runs.index');
+
+        /*
+         * **The signal library** (S15 task 4, plan decision #3) — the one operator surface in this
+         * panel that *writes* into another module's domain, and the reason it is allowed to is that
+         * it does not: every route here calls a **Signals** Action, because what a platform preset
+         * is belongs to ADR 0018 §2 and not to us.
+         *
+         * `ManageOperations` rather than `ManagePlatformData`: curating what every tenant is offered
+         * to run is the same kind of act as resetting a breaker or reading the queue — it changes
+         * the platform's behaviour rather than one tenant's records.
+         */
+        Route::get('signal-library', [SignalLibraryController::class, 'index'])
+            ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+            ->name('signal-library.index');
+
+        Route::post('signal-library/presets', [SignalLibraryController::class, 'store'])
+            ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+            ->name('signal-library.presets.store');
+
+        Route::patch('signal-library/presets/{preset}', [SignalLibraryController::class, 'update'])
+            ->whereNumber('preset')
+            ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+            ->name('signal-library.presets.update');
+
+        // Its own route rather than a field on the editor, because it is the one change that does
+        // **not** bump the version: whether the library advertises a type is not a change to the
+        // type, and every clone records the version it was taken from.
+        Route::post('signal-library/presets/{preset}/offered', [SignalLibraryController::class, 'setActive'])
+            ->whereNumber('preset')
+            ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+            ->name('signal-library.presets.offered');
+
+        Route::delete('signal-library/presets/{preset}', [SignalLibraryController::class, 'destroy'])
+            ->whereNumber('preset')
+            ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+            ->name('signal-library.presets.destroy');
+
+        Route::post('signal-library/submissions/{submission}/promote', [SignalLibraryController::class, 'promote'])
+            ->whereNumber('submission')
+            ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+            ->name('signal-library.submissions.promote');
+
+        Route::post('signal-library/submissions/{submission}/reject', [SignalLibraryController::class, 'reject'])
+            ->whereNumber('submission')
+            ->middleware('admin.can:'.AdminAbility::ManageOperations->value)
+            ->name('signal-library.submissions.reject');
 
         Route::get('compliance', [ComplianceActivityController::class, 'index'])
             ->middleware('admin.can:'.AdminAbility::ReadAudit->value)

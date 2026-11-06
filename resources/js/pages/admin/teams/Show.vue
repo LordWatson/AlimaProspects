@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ShieldOff, UserMinus } from '@lucide/vue';
 import { ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -64,7 +65,10 @@ const props = defineProps<{
     usage: { leads: number; discovery_runs: number; messages_sent: number };
 }>();
 
-const { number, dateTime } = useFormat();
+// `utcDateTime`, not `dateTime`: an operator is in no team, or worse is impersonating one, so a
+// team-timezone timestamp on a panel screen reads differently depending on whose account they last
+// opened (§7f).
+const { number, dateTime, utcDateTime } = useFormat();
 
 /** The member whose removal is awaiting a second click. */
 const confirmingRemoval = ref<number | null>(null);
@@ -107,32 +111,22 @@ function removeMember(memberId: number): void {
     <Head :title="team.name" />
 
     <div class="flex flex-col gap-8">
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-                >
-                    Tenant · {{ team.id }}
-                </p>
-                <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                    {{ team.name }}
-                </h1>
-                <p class="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                    <Badge variant="outline">{{ team.market }}</Badge>
-                    <Badge variant="outline">{{ team.timezone }}</Badge>
-                    <Badge variant="outline">{{ team.locale }}</Badge>
-                    <Badge v-if="team.suspended_at" variant="warning">
-                        Suspended {{ dateTime(team.suspended_at) }}
-                    </Badge>
-                </p>
-            </div>
-
-            <Button variant="outline" as-child>
-                <Link :href="`/admin/resources/teams/${team.id}/edit`">
-                    Edit settings
-                </Link>
-            </Button>
-        </header>
+        <AdminPageHeader
+            :eyebrow="`Tenant · ${team.id}`"
+            :title="team.name"
+            :meta="`${team.market} · ${team.timezone} · ${team.locale}`"
+        >
+            <template #actions>
+                <Badge v-if="team.suspended_at" variant="warning">
+                    Suspended {{ utcDateTime(team.suspended_at) }}
+                </Badge>
+                <Button variant="outline" as-child>
+                    <Link :href="`/admin/resources/teams/${team.id}/edit`">
+                        Edit settings
+                    </Link>
+                </Button>
+            </template>
+        </AdminPageHeader>
 
         <section aria-label="Usage">
             <dl class="grid grid-cols-3 gap-3">

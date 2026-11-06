@@ -41,7 +41,7 @@ final class SignalWatchController extends Controller
 
     public function show(Request $request, int $watch): SignalWatchResource
     {
-        $model = $this->watch($request, $watch, ['icp', 'runs']);
+        $model = $this->watch($request, $watch, ['icp', 'runs', 'watchlist']);
 
         $this->authorize('view', $model);
 
@@ -56,7 +56,7 @@ final class SignalWatchController extends Controller
 
         $watch = $action->handle($team, $this->user($request), $request->watch());
 
-        return SignalWatchResource::make($watch->load('icp'))
+        return SignalWatchResource::make($watch->load(['icp', 'watchlist']))
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
     }
@@ -69,7 +69,7 @@ final class SignalWatchController extends Controller
 
         $updated = $action->handle($this->team($request), $this->user($request), $request->watch(), $model);
 
-        return SignalWatchResource::make($updated->load('icp'));
+        return SignalWatchResource::make($updated->load(['icp', 'watchlist']));
     }
 
     public function destroy(Request $request, int $watch, DeleteSignalWatchAction $action): Response

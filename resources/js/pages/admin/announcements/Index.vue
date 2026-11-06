@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -83,22 +84,11 @@ function submit(): void {
     <Head title="Announcements" />
 
     <div class="flex max-w-3xl flex-col gap-8">
-        <header>
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Platform
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                Announcements
-            </h1>
-            <p class="mt-2 max-w-prose text-sm text-muted-foreground">
-                A banner on every targeted tenant's screens, and optionally a
-                notification. Taking one down keeps the record — “when did we
-                say the product would be down?” is a question somebody asks
-                afterwards.
-            </p>
-        </header>
+        <AdminPageHeader
+            eyebrow="Platform · announcements"
+            title="Say something|to everybody."
+            lede="A banner on every tenant's screen until they dismiss it. Scheduled in UTC, because the audience is in every timezone."
+        />
 
         <form class="flex flex-col gap-4" @submit.prevent="submit">
             <h2 class="text-lg font-semibold text-foreground">New notice</h2>

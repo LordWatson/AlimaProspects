@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Signals\Actions;
 
+use App\Modules\Core\Models\Team;
 use App\Modules\Signals\Enums\SignalRunStatus;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Jobs\RunSignalWatchJob;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Services\SignalSpendGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 
@@ -30,11 +32,20 @@ final class TriggerSignalWatchAction
 {
     private const int THROTTLE_SECONDS = 900; // once per 15 minutes per watch
 
+    public function __construct(private readonly SignalSpendGuard $spend) {}
+
     public function handle(SignalWatch $watch): SignalRun
     {
         if (! $watch->is_active) {
             throw SignalsException::watchInactive();
         }
+
+        // **The monthly allowance, before the throttle is spent** (S16 task 2). The queued run
+        // would refuse for the same reason a moment later and record it on the run, which is right
+        // for a scheduled run nobody is watching — but a member who just pressed a button deserves
+        // the sentence now, and a press that was never going to search anything must not also cost
+        // them their fifteen-minute token.
+        $this->spend->assertSourceQueriesRemain(Team::query()->findOrFail($watch->team_id));
 
         $key = 'signals:run-now:'.$watch->getKey();
 

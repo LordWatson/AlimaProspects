@@ -8,8 +8,10 @@ use App\Models\User;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalStatus;
+use App\Modules\Signals\Events\SignalDismissed;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Services\SignalClusterer;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -29,7 +31,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class DismissSignalAction
 {
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly SignalClusterer $clusterer,
+    ) {}
 
     /**
      * @throws SignalsException when the signal has already become a lead.
@@ -54,12 +59,32 @@ final class DismissSignalAction
                 'actioned_at' => now(),
             ])->save();
 
+            // A cluster is one event, so dismissing it dismisses its members (S11). The feed
+            // lists and counts the primary, so a member left on `New` would be a row nothing shows
+            // and retention deletes in 180 days - quietly shortening the coverage on a card
+            // somebody is still reading. Inside this transaction, and audited once: the team made
+            // one decision.
+            $alsoDismissed = $this->clusterer->propagateStatus($locked);
+
             // The reason and the event type, never the headline or the person's name: the audit
-            // trail records what the team decided, not a second copy of the article.
+            // trail records what the team decided, not a second copy of the article. The cluster
+            // count is in it because one click can now clear seven more rows, and a trail that
+            // does not say how far a decision reached is a trail that under-reports it.
             $this->audit->log('signals.dismissed', $locked, [
-                'event_type' => $locked->event_type->value,
+                'event_type' => $locked->event_key,
                 'reason' => $reason?->value,
+                'cluster_members_dismissed' => $alsoDismissed,
             ], $actor);
+
+            // After commit, so the learning never holds up the member's own click (S12). The
+            // reason travels on the event because the ledger needs to know whether this dismissal
+            // says the classifier was wrong or only that the team was not interested.
+            $teamId = (int) $locked->team_id;
+            $signalId = (int) $locked->getKey();
+
+            DB::afterCommit(static function () use ($teamId, $signalId, $reason): void {
+                event(new SignalDismissed($teamId, $signalId, $reason));
+            });
 
             return $locked;
         });

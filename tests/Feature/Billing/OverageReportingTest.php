@@ -16,7 +16,6 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
-use DateTimeInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\BillingFixtures as Fixtures;
 
@@ -385,5 +384,6 @@ it('writes a meter row that survives the ledger behind it', function (): void {
     app(TeamContext::class)->run($team, fn () => app(UsageLedger::class)->sync($team));
 
     expect(leadMeter($team)->used)->toBe(120)
-        ->and(UsageMeter::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->count())->toBe(2);
+        ->and(UsageMeter::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->count())
+        ->toBe(count(BillingMetric::cases()));
 });

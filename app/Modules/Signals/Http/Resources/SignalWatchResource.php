@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Signals\Http\Resources;
 
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Models\SignalWatch;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -12,10 +12,14 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /**
  * One watch, as the settings screen and the API read it.
  *
- * The event types are sent **with their labels and descriptions**, not as bare keys: the settings
- * screen renders a checkbox per type with its one-line explainer, and the API shouldn't make a
- * client hold its own copy of that wording. `next_due_at` is computed from the cadence rather than
- * stored, so there is nothing to keep in sync.
+ * The watched types come down as full {@see SignalDefinitionResource}s rather than bare ids: the
+ * settings screen renders a checkbox per type with its one-line explainer, and the API shouldn't
+ * make a client fetch the library to render a watch. Since S7 they are rows reached through a pivot
+ * (ADR 0018 §5), so they are a `whenLoaded` relation — a watch serialised without them says nothing
+ * about its types rather than lying with an empty list.
+ *
+ * `next_due_at` is computed from the cadence rather than stored, so there is nothing to keep in
+ * sync.
  *
  * @mixin SignalWatch
  */
@@ -32,12 +36,30 @@ final class SignalWatchResource extends JsonResource
         return [
             'id' => $watch->id,
             'name' => $watch->name,
+            // The team's declared compliance regime for this watch, which since S8 is a
+            // backstop rather than the thing that picks where to look (ADR 0019).
             'market' => $watch->market->value,
             'market_label' => $watch->market->label(),
-            'location' => $watch->location,
-            'event_types' => $this->eventTypes($watch),
+            'locations' => $watch->locations ?? [],
+            // Sent with their labels and their **approach note**, because choosing where to look is
+            // also choosing how the resulting leads may be approached and nothing else on the
+            // screen says so.
+            'regions' => array_map(static fn (SearchRegion $region): array => [
+                'value' => $region->value,
+                'label' => $region->label(),
+                'approach_note' => $region->approachNote(),
+            ], $watch->searchRegions()),
+            'definitions' => $this->whenLoaded(
+                'definitions',
+                fn (): array => SignalDefinitionResource::collection($watch->definitions)->resolve($request),
+            ),
             // The team's own exclusion list (S6) — their competitors, which only they can know.
             'ignore_domains' => $watch->ignore_domains ?? [],
+            // Which accounts this watch follows instead of places (S10). The id is what the form
+            // posts back; the name is so the card can say "following My pipeline" without the
+            // client holding the whole list of watchlists.
+            'signal_watchlist_id' => $watch->signal_watchlist_id,
+            'watchlist_name' => $watch->relationLoaded('watchlist') ? $watch->watchlist?->name : null,
             'cadence' => $watch->cadence->value,
             'cadence_label' => $watch->cadence->label(),
             'is_active' => $watch->is_active,
@@ -59,30 +81,6 @@ final class SignalWatchResource extends JsonResource
             ),
             'created_at' => $watch->created_at?->toIso8601String(),
         ];
-    }
-
-    /**
-     * @return list<array{value: string, label: string, description: string}>
-     */
-    private function eventTypes(SignalWatch $watch): array
-    {
-        $types = [];
-
-        foreach ($watch->event_types as $value) {
-            $type = SignalEventType::tryFrom((string) $value);
-
-            // A type dropped from the enum since the watch was saved is skipped rather than
-            // crashing the screen; the watch simply stops watching for it.
-            if ($type !== null) {
-                $types[] = [
-                    'value' => $type->value,
-                    'label' => $type->label(),
-                    'description' => $type->description(),
-                ];
-            }
-        }
-
-        return $types;
     }
 
     private function nextDueAt(SignalWatch $watch): ?string

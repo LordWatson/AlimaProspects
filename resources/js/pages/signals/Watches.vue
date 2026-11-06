@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ArrowLeft, Pause, Play, Satellite, Trash2 } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import {
+    computed,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    watch as onChange,
+} from 'vue';
 import InputError from '@/components/InputError.vue';
 import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
+import TuningSuggestions from '@/components/signals/TuningSuggestions.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -26,13 +33,15 @@ import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import type {
     SignalCadenceOption,
-    SignalEventType,
-    SignalEventTypeOption,
+    SignalDefinition,
+    SignalRegionOption,
     SignalRunProgressPayload,
     SignalRunStatus,
     SignalWatch,
     SignalWatchDefaults,
     SignalWatchForm,
+    SignalWatchlistOption,
+    SignalTuningSuggestion,
 } from '@/types';
 
 defineOptions({
@@ -47,15 +56,40 @@ defineOptions({
 const props = defineProps<{
     watches: SignalWatch[];
     options: {
-        event_types: SignalEventTypeOption[];
+        /** The team's own signal types — what a watch is built from since S7 (ADR 0018). */
+        definitions: SignalDefinition[];
+        /** Where a watch may look. Only regions the business has a compliance position for. */
+        regions: SignalRegionOption[];
+        /** The cap on places, so the field can say it rather than the server enforcing it alone. */
+        max_locations: number;
+        /**
+         * How many watches the team's plan allows, or **null for no limit** (S16).
+         *
+         * Here for the same reason `max_locations` is: `SaveSignalWatchAction` asks the plan
+         * before it saves, and the editor below is the tallest form in the product — a team at
+         * their ceiling should not fill it in to find out.
+         */
+        max_watches: number | null;
         cadences: SignalCadenceOption[];
         icps: { id: number; name: string; is_active: boolean }[];
+        /**
+         * The lists a watch can follow instead of places (S10). Only the team's active lists with
+         * something on them: pointing a watch at an empty one is a watch that searches nothing.
+         */
+        watchlists: SignalWatchlistOption[];
     };
     defaults: SignalWatchDefaults;
+    /**
+     * What the product suggests the team change, with the evidence (S12).
+     *
+     * Open proposals only, capped by `signals.tuning.max_open` — a panel of thirty suggestions is
+     * a backlog, and a backlog is ignored.
+     */
+    suggestions: SignalTuningSuggestion[];
     can: { manage: boolean };
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { currency, dateTime } = useFormat();
 const page = usePage();
 
@@ -66,26 +100,139 @@ const showEditor = ref(false);
 
 const form = useForm<SignalWatchForm>({
     name: '',
-    location: props.defaults.location,
-    event_types: [...props.defaults.event_types],
+    locations: [...props.defaults.locations],
+    regions: [...props.defaults.regions],
+    signal_definition_ids: [],
     ignore_domains: [],
     cadence: props.defaults.cadence,
     is_active: true,
     icp_id: null,
+    signal_watchlist_id: null,
 });
 
 /**
- * The exclusion list is edited as one domain per line, which is how a team thinks about it, and
- * sent as a list. Blank lines are dropped on the way out; the server clamps and de-duplicates.
+ * One place per line, which is how somebody thinks about them, parsed into the form as they type.
+ *
+ * **Deliberately a ref and a one-way sync rather than a two-way computed.** The first version was
+ * a computed whose setter dropped blank lines and whose getter wrote the filtered text straight
+ * back into the control — so pressing Enter at the end of the text removed the line break it had
+ * just inserted, and the only way to add a second place was to split an existing line or paste
+ * one in. The textarea was not keyboard-operable for the thing it exists to do (WCAG 2.1.1,
+ * found by the S8 brand review). The raw text owns the control, the parse feeds the form, and
+ * nothing writes back.
  */
-const ignoreDomainsText = computed({
-    get: () => form.ignore_domains.join('\n'),
-    set: (value: string) => {
-        form.ignore_domains = value
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean);
-    },
+const locationsText = ref(props.defaults.locations.join('\n'));
+
+/** One entry per non-blank line. The server squishes, de-duplicates and caps them again. */
+function parseLines(value: string): string[] {
+    return value
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+}
+
+onChange(locationsText, (value) => {
+    form.locations = parseLines(value);
+});
+
+/**
+ * How many paid searches one check of this watch would ask for, as the member builds it.
+ *
+ * Places × regions × every template of every type ticked — the arithmetic from ADR 0019 §4, which
+ * is the number that actually matters and the one a member cannot otherwise see. "Two places cost
+ * twice as much" is true and abstract; "48 searches" is a number somebody can decide about.
+ */
+const searchesPerCheck = computed(() => {
+    const places = Math.max(form.locations.length, 1);
+    const regions = Math.max(form.regions.length, 1);
+    const templates = props.options.definitions
+        .filter((definition) =>
+            form.signal_definition_ids.includes(definition.id),
+        )
+        .reduce(
+            (total, definition) => total + definition.query_templates.length,
+            0,
+        );
+
+    return places * regions * templates;
+});
+
+/**
+ * Every place the one-click watch would cover, as a list somebody can read.
+ *
+ * It named only the first place until the S8 brand review caught it: the UAE default is Dubai *and*
+ * Abu Dhabi, so "watch Dubai every day" was quietly committing the team to twice the searches it
+ * described. A promise on a button has to be the whole promise.
+ */
+const defaultPlaces = computed(() =>
+    new Intl.ListFormat(locale.value, {
+        style: 'long',
+        type: 'conjunction',
+    }).format(props.defaults.locations),
+);
+
+/** The first place of the region the team's own market points at — never a hard-coded city. */
+const placeholderPlace = computed(
+    () =>
+        props.options.regions.find(
+            (region) => region.value === props.defaults.regions[0],
+        )?.default_locations?.[0] ?? '',
+);
+
+function toggleRegion(value: string): void {
+    form.regions = form.regions.includes(value)
+        ? form.regions.filter((region) => region !== value)
+        : [...form.regions, value];
+}
+
+/**
+ * What choosing these regions means for how the resulting leads may be approached.
+ *
+ * Shown because the watch form is where a member picks where to look, and that is also where they
+ * pick which rules apply — the one thing on this screen with a legal consequence, and nothing else
+ * would say so (ADR 0019).
+ */
+const approachNotes = computed(() =>
+    props.options.regions
+        .filter((region: SignalRegionOption) =>
+            form.regions.includes(region.value),
+        )
+        .map((region: SignalRegionOption) => ({
+            value: region.value,
+            label: region.label,
+            note: region.approach_note,
+        })),
+);
+
+/**
+ * A type's name is Alima's words or the team's, and only the server knows which — see
+ * `SignalDefinition::usesPlatformWording()`. Translating the team's own wording would be the app
+ * overwriting what somebody typed.
+ */
+function typeLabel(definition: SignalDefinition): string {
+    return definition.translatable ? t(definition.name) : definition.name;
+}
+
+function typeExplainer(definition: SignalDefinition): string {
+    return definition.translatable
+        ? t(definition.description)
+        : definition.description;
+}
+
+/** Every active type the team has, which is what a new watch starts ticked. */
+const everyTypeId = computed(() =>
+    props.options.definitions.map((definition) => definition.id),
+);
+
+/**
+ * The exclusion list, one domain per line. Same shape as `locationsText`, and fixed in S8 for the
+ * same reason: this one had the Enter-key defect since S6, and nobody had tried to add a second
+ * domain from the keyboard.
+ */
+const ignoreDomainsText = ref('');
+
+onChange(ignoreDomainsText, (value) => {
+    form.ignore_domains = parseLines(value);
 });
 
 function openNew(): void {
@@ -93,14 +240,24 @@ function openNew(): void {
     form.clearErrors();
     form.defaults({
         name: '',
-        location: props.defaults.location,
-        event_types: [...props.defaults.event_types],
+        locations: [...props.defaults.locations],
+        regions: [...props.defaults.regions],
+        // Pre-ticked: the broadest useful watch is the one most likely to find something, and a
+        // first watch that finds nothing teaches the team that Signals doesn't work.
+        signal_definition_ids: [...everyTypeId.value],
         ignore_domains: [],
         cadence: props.defaults.cadence,
         is_active: true,
         icp_id: props.options.icps.find((icp) => icp.is_active)?.id ?? null,
+        // Places by default. A watch over the team's own accounts is the warmer question, but it
+        // is a deliberate choice rather than something to be opted into by omission.
+        signal_watchlist_id: null,
     });
     form.reset();
+    // The two free-text lists own their own control, so they are seeded alongside the form rather
+    // than derived from it — see `locationsText`.
+    locationsText.value = props.defaults.locations.join('\n');
+    ignoreDomainsText.value = '';
     showEditor.value = true;
 }
 
@@ -109,21 +266,34 @@ function openEdit(watch: SignalWatch): void {
     form.clearErrors();
     form.defaults({
         name: watch.name,
-        location: watch.location,
-        event_types: watch.event_types.map((type) => type.value),
+        locations: [...watch.locations],
+        regions: watch.regions.map((region) => region.value),
+        signal_definition_ids: (watch.definitions ?? []).map(
+            (definition) => definition.id,
+        ),
         ignore_domains: [...watch.ignore_domains],
         cadence: watch.cadence,
         is_active: watch.is_active,
         icp_id: watch.icp?.id ?? null,
+        signal_watchlist_id: watch.signal_watchlist_id,
     });
     form.reset();
+    locationsText.value = watch.locations.join('\n');
+    ignoreDomainsText.value = watch.ignore_domains.join('\n');
     showEditor.value = true;
 }
 
-function toggleEventType(type: SignalEventType): void {
-    form.event_types = form.event_types.includes(type)
-        ? form.event_types.filter((t) => t !== type)
-        : [...form.event_types, type];
+/** The list the form is currently pointed at, if any (S10). */
+const followedList = computed(() =>
+    props.options.watchlists.find(
+        (list) => list.id === form.signal_watchlist_id,
+    ),
+);
+
+function toggleDefinition(id: number): void {
+    form.signal_definition_ids = form.signal_definition_ids.includes(id)
+        ? form.signal_definition_ids.filter((candidate) => candidate !== id)
+        : [...form.signal_definition_ids, id];
 }
 
 function submit(): void {
@@ -147,14 +317,20 @@ function toggleActive(watch: SignalWatch): void {
         `/signals/watches/${watch.id}`,
         {
             name: watch.name,
-            location: watch.location,
-            event_types: watch.event_types.map((type) => type.value),
+            locations: watch.locations,
+            regions: watch.regions.map((region) => region.value),
+            signal_definition_ids: (watch.definitions ?? []).map(
+                (definition) => definition.id,
+            ),
             // Carried through unchanged: this posts the whole watch, and dropping the list here
             // would quietly clear it every time someone paused a watch.
             ignore_domains: watch.ignore_domains,
             cadence: watch.cadence,
             is_active: !watch.is_active,
             icp_id: watch.icp?.id ?? null,
+            // Carried through for the same reason as the skip-list: this posts the whole watch,
+            // and dropping it here would quietly unpoint the watch every time somebody paused it.
+            signal_watchlist_id: watch.signal_watchlist_id,
         },
         { preserveScroll: true },
     );
@@ -283,13 +459,26 @@ const runStatusLabel: Record<SignalRunStatus, string> = {
     failed: 'Failed',
 };
 
+// **Null is "no limit", not zero** (S16): an Enterprise plan declares no ceiling, and a team on
+// one is never at it. Same shape as the Types screen.
+const atCeiling = computed(
+    () =>
+        props.options.max_watches !== null &&
+        props.watches.length >= props.options.max_watches,
+);
+
 const runStatusVariant: Record<
     SignalRunStatus,
-    'success' | 'info' | 'outline' | 'error'
+    'success' | 'outline' | 'error'
 > = {
     // Queued is waiting, not a problem — `outline`, not `warning`.
     queued: 'outline',
-    running: 'info',
+    // Running is also not a problem, and **not `info`**: `status.info` over its own 12% tint is
+    // about 4.4:1, so §7g.2 allows it as a non-text icon and not as a badge until §7.6 approves
+    // the token. §7h.2 already moved the leads list and the lead's rail off it, to an `outline`
+    // badge with a `Spinner` — which says "in progress" without leaning on the colour at all.
+    // This screen was the last one still setting it.
+    running: 'outline',
     completed: 'success',
     failed: 'error',
 };
@@ -367,9 +556,15 @@ onBeforeUnmount(() => {
                 <Button
                     v-if="can.manage && watches.length"
                     variant="lime"
+                    :disabled="atCeiling"
                     @click="openNew"
                 >
                     {{ t('New watch') }}
+                </Button>
+                <Button variant="outline" as-child>
+                    <Link href="/signals/types">
+                        {{ t('Signal types') }}
+                    </Link>
                 </Button>
                 <Button variant="hero" as-child>
                     <Link href="/signals">
@@ -390,19 +585,27 @@ onBeforeUnmount(() => {
             {{ announcement }}
         </p>
 
+        <!-- What the team could tune, from what they have kept and dismissed (S12).
+             Above the watches, because it is the thing they have not seen before — and it renders
+             nothing at all when there is nothing to say, which is most weeks. -->
+        <TuningSuggestions
+            :suggestions="suggestions"
+            :can-manage="can.manage"
+        />
+
         <!-- First run: one click to the broadest useful watch. -->
         <EmptyState
             v-if="!watches.length"
             :icon="Satellite"
             :title="
                 t('Set up your first :location watch', {
-                    location: defaults.location,
+                    location: defaultPlaces,
                 })
             "
             :description="
                 t(
-                    'We’ll watch :location every day for company sales, funding rounds and founders moving in. You can change any of it afterwards.',
-                    { location: defaults.location },
+                    'We’ll add Alima’s signal types and watch :location every day — company sales, funding rounds, founders moving in. You can change any of it afterwards.',
+                    { location: defaultPlaces },
                 )
             "
             data-test="no-watches"
@@ -411,7 +614,7 @@ onBeforeUnmount(() => {
                 <Button data-test="create-default-watch" @click="createDefault">
                     {{
                         t('Watch :location for me', {
-                            location: defaults.location,
+                            location: defaultPlaces,
                         })
                     }}
                 </Button>
@@ -426,6 +629,31 @@ onBeforeUnmount(() => {
 
         <!-- The watches -->
         <div v-else class="space-y-4" data-test="watch-list">
+            <p
+                v-if="options.max_watches !== null"
+                class="font-mono text-xs text-muted-foreground tabular-nums"
+                dir="ltr"
+            >
+                <span class="sr-only">{{ t('Watches used') }}: </span>
+                {{ watches.length }} / {{ options.max_watches }}
+            </p>
+
+            <!-- Said in words, because a disabled button explains nothing and drops out of the
+                 tab order. A member at the ceiling needs to know what to do, not just that they
+                 cannot. -->
+            <p
+                v-if="atCeiling && can.manage && options.max_watches !== null"
+                class="text-base text-muted-foreground"
+                data-test="at-ceiling"
+            >
+                {{
+                    t(
+                        'You have as many watches as your plan allows (:max). Remove or pause one to add another.',
+                        { max: options.max_watches },
+                    )
+                }}
+            </p>
+
             <Card
                 v-for="watch in watches"
                 :key="watch.id"
@@ -454,7 +682,7 @@ onBeforeUnmount(() => {
                                 </Badge>
                                 <Badge
                                     v-if="isRunning(watch)"
-                                    variant="info"
+                                    variant="outline"
                                     data-test="watch-running"
                                 >
                                     <!-- Decorative: the badge's own text is the status, and
@@ -474,12 +702,38 @@ onBeforeUnmount(() => {
                                     }}
                                 </Badge>
                             </div>
-                            <p class="text-sm text-muted-foreground" dir="auto">
-                                {{ watch.location }} ·
-                                {{ t(watch.cadence_label) }}
+                            <!-- What it covers. A watch pointed at a list says so instead of its
+                                 places, because the places are not what it searches (S10). -->
+                            <p
+                                class="text-base text-muted-foreground"
+                                dir="auto"
+                            >
+                                <template v-if="watch.watchlist_name">
+                                    {{
+                                        t('Following :name', {
+                                            name: watch.watchlist_name,
+                                        })
+                                    }}
+                                </template>
+                                <template v-else>
+                                    {{ watch.locations.join(' · ') }}
+                                </template>
+                                · {{ t(watch.cadence_label) }}
                                 <template v-if="watch.icp">
                                     · {{ t('shaped by') }} {{ watch.icp.name }}
                                 </template>
+                            </p>
+                            <!-- Where it searches, and the compliance note each region implies.
+                                 A member reading a watch should be able to see why its leads may
+                                 only be approached one way. -->
+                            <p
+                                v-for="region in watch.regions"
+                                :key="region.value"
+                                class="text-base text-muted-foreground"
+                                dir="auto"
+                            >
+                                {{ t(region.label) }} —
+                                {{ t(region.approach_note) }}
                             </p>
                         </div>
 
@@ -603,11 +857,12 @@ onBeforeUnmount(() => {
                     <!-- What it watches for -->
                     <div class="flex flex-wrap gap-2">
                         <Badge
-                            v-for="type in watch.event_types"
-                            :key="type.value"
+                            v-for="definition in watch.definitions ?? []"
+                            :key="definition.id"
                             variant="lilac"
+                            dir="auto"
                         >
-                            {{ t(type.label) }}
+                            {{ typeLabel(definition) }}
                         </Badge>
                     </div>
 
@@ -711,6 +966,23 @@ onBeforeUnmount(() => {
                                         })
                                     }}
                                 </span>
+                                <!-- A trim is coverage this run did not have, so it is said rather
+                                     than left for somebody to infer from a count that stopped
+                                     growing (ADR 0019 §4). -->
+                                <span
+                                    v-if="run.queries_trimmed > 0"
+                                    class="text-warning"
+                                    :data-test="`trimmed-${run.id}`"
+                                >
+                                    {{
+                                        t(
+                                            'Searches skipped to stay in budget: :count — use fewer places or types to cover everything.',
+                                            {
+                                                count: run.queries_trimmed,
+                                            },
+                                        )
+                                    }}
+                                </span>
                                 <span
                                     v-if="run.error"
                                     class="text-destructive"
@@ -754,28 +1026,161 @@ onBeforeUnmount(() => {
                             <InputError :message="form.errors.name" />
                         </div>
 
+                        <!-- What this watch follows (S10, ADR 0021). A watch asks what happened
+                             **in a place** or what happened **to these companies**, never both —
+                             so this is one select rather than two half-used sections, and the
+                             places below stay on the row either way, so unpointing a watch gives
+                             the member back the geography they chose. -->
+                        <div v-if="options.watchlists.length" class="space-y-2">
+                            <Label for="watch-follows">{{
+                                t('What this watch follows')
+                            }}</Label>
+                            <!-- `NativeSelect`, not a hand-rolled `<select>`. The three on this
+                                 screen each carried their own copy of `Input`'s class string and
+                                 had already drifted apart from each other — two at
+                                 `focus-visible:ring-ring/50`, which is below the 3:1 WCAG 1.4.11
+                                 minimum for a focus indicator, and all three missing the
+                                 `disabled` and `aria-invalid` states. That is the component's own
+                                 reason for existing. -->
+                            <NativeSelect
+                                id="watch-follows"
+                                v-model="form.signal_watchlist_id"
+                                name="signal_watchlist_id"
+                                aria-describedby="watch-follows-hint"
+                                data-test="watch-follows"
+                            >
+                                <option :value="null">
+                                    {{
+                                        t('Places — what happens where I sell')
+                                    }}
+                                </option>
+                                <option
+                                    v-for="list in options.watchlists"
+                                    :key="list.id"
+                                    :value="list.id"
+                                >
+                                    {{
+                                        t('My accounts: :name (:count)', {
+                                            name: list.name,
+                                            count: list.entries_count,
+                                        })
+                                    }}
+                                </option>
+                            </NativeSelect>
+                            <p
+                                id="watch-follows-hint"
+                                class="text-base text-muted-foreground"
+                            >
+                                {{
+                                    followedList
+                                        ? t(
+                                              'This watch asks what happened to those companies, a few at a time, instead of what happened in the places below.',
+                                          )
+                                        : t(
+                                              'Point it at a list of accounts to watch companies you already work instead of places.',
+                                          )
+                                }}
+                            </p>
+                            <InputError
+                                :message="form.errors.signal_watchlist_id"
+                            />
+                        </div>
+
                         <div class="space-y-2">
-                            <Label for="watch-location">{{ t('Where') }}</Label>
-                            <Input
-                                id="watch-location"
-                                v-model="form.location"
-                                name="location"
+                            <Label for="watch-locations">{{
+                                t('Where')
+                            }}</Label>
+                            <Textarea
+                                id="watch-locations"
+                                v-model="locationsText"
+                                rows="3"
                                 required
-                                aria-describedby="watch-location-hint"
+                                :aria-invalid="
+                                    form.errors.locations ? true : undefined
+                                "
+                                aria-describedby="watch-locations-hint watch-locations-cost watch-locations-error"
+                                :placeholder="placeholderPlace"
                                 dir="auto"
                             />
                             <p
-                                id="watch-location-hint"
-                                class="text-xs text-muted-foreground"
+                                id="watch-locations-hint"
+                                class="text-base text-muted-foreground"
                             >
                                 {{
                                     t(
-                                        'A city or emirate. Alima currently watches the UAE.',
+                                        'One place per line — a city, an emirate, a region. Up to :max.',
+                                        { max: options.max_locations },
                                     )
                                 }}
                             </p>
-                            <InputError :message="form.errors.location" />
+                            <!-- The arithmetic, live. Every place is searched for every type in
+                                 every region, and that multiplication is the one thing about this
+                                 field a member cannot see for themselves (ADR 0019 §4). -->
+                            <p
+                                id="watch-locations-cost"
+                                class="font-mono text-xs text-muted-foreground"
+                                data-test="searches-per-check"
+                            >
+                                {{
+                                    t('Searches per check: :count', {
+                                        count: searchesPerCheck,
+                                    })
+                                }}
+                            </p>
+                            <InputError
+                                id="watch-locations-error"
+                                :message="form.errors.locations"
+                            />
                         </div>
+
+                        <fieldset
+                            class="space-y-3"
+                            :aria-invalid="
+                                form.errors.regions ? true : undefined
+                            "
+                            aria-describedby="watch-regions-error"
+                        >
+                            <legend
+                                class="text-base font-medium text-foreground rtl:font-bold"
+                            >
+                                {{ t('Which news to search') }}
+                            </legend>
+                            <div class="space-y-2">
+                                <Label
+                                    v-for="region in options.regions"
+                                    :key="region.value"
+                                    class="flex cursor-pointer items-start gap-3 rounded-2xl border border-border p-3 transition-colors has-[:checked]:border-brand has-[:checked]:bg-brand/5 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        class="mt-0.5 size-4 accent-brand"
+                                        :value="region.value"
+                                        :checked="
+                                            form.regions.includes(region.value)
+                                        "
+                                        @change="toggleRegion(region.value)"
+                                    />
+                                    <span class="space-y-0.5">
+                                        <span
+                                            class="block text-base font-semibold text-foreground rtl:font-bold"
+                                            >{{ t(region.label) }}</span
+                                        >
+                                        <!-- Not muted. This sentence is the compliance
+                                             consequence of ticking the box, not a hint about
+                                             how to use the control. -->
+                                        <span
+                                            class="block text-base text-foreground"
+                                            dir="auto"
+                                            >{{ t(region.approach_note) }}</span
+                                        >
+                                    </span>
+                                </Label>
+                            </div>
+                            <InputError
+                                id="watch-regions-error"
+                                :message="form.errors.regions"
+                            />
+                        </fieldset>
 
                         <fieldset class="space-y-3">
                             <legend
@@ -783,36 +1188,68 @@ onBeforeUnmount(() => {
                             >
                                 {{ t('What counts as an event') }}
                             </legend>
-                            <div class="space-y-2">
+
+                            <!-- A checkbox per type the team has, rather than three fixed ones
+                                 (S7, ADR 0018). A team with none is sent to the library instead of
+                                 shown an empty fieldset — the one-click first watch is the path
+                                 that never reaches this state. -->
+                            <div
+                                v-if="options.definitions.length"
+                                class="space-y-2"
+                            >
                                 <Label
-                                    v-for="option in options.event_types"
-                                    :key="option.value"
+                                    v-for="definition in options.definitions"
+                                    :key="definition.id"
                                     class="flex cursor-pointer items-start gap-3 rounded-2xl border border-border p-3 transition-colors has-[:checked]:border-brand has-[:checked]:bg-brand/5 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring"
                                 >
                                     <input
                                         type="checkbox"
                                         class="mt-0.5 size-4 accent-brand"
-                                        :value="option.value"
+                                        :value="definition.id"
                                         :checked="
-                                            form.event_types.includes(
-                                                option.value,
+                                            form.signal_definition_ids.includes(
+                                                definition.id,
                                             )
                                         "
-                                        @change="toggleEventType(option.value)"
+                                        @change="
+                                            toggleDefinition(definition.id)
+                                        "
                                     />
-                                    <span class="space-y-0.5">
+                                    <span class="space-y-0.5" dir="auto">
                                         <span
-                                            class="block text-sm font-medium text-foreground"
-                                            >{{ t(option.label) }}</span
+                                            class="block text-base font-semibold text-foreground rtl:font-bold"
+                                            >{{ typeLabel(definition) }}</span
                                         >
                                         <span
-                                            class="block text-xs text-muted-foreground"
-                                            >{{ t(option.description) }}</span
+                                            class="block text-base text-muted-foreground"
+                                            >{{
+                                                typeExplainer(definition)
+                                            }}</span
                                         >
                                     </span>
                                 </Label>
                             </div>
-                            <InputError :message="form.errors.event_types" />
+                            <div
+                                v-else
+                                class="space-y-3 rounded-2xl border border-border p-4"
+                                data-test="no-types-for-watch"
+                            >
+                                <p class="text-base text-foreground">
+                                    {{
+                                        t(
+                                            'You have no signal types yet, so there is nothing for a watch to look for.',
+                                        )
+                                    }}
+                                </p>
+                                <Button variant="outline" size="sm" as-child>
+                                    <Link href="/signals/types">
+                                        {{ t('Pick your signal types') }}
+                                    </Link>
+                                </Button>
+                            </div>
+                            <InputError
+                                :message="form.errors.signal_definition_ids"
+                            />
                         </fieldset>
 
                         <div class="grid gap-4 sm:grid-cols-2">
@@ -820,11 +1257,10 @@ onBeforeUnmount(() => {
                                 <Label for="watch-cadence">{{
                                     t('How often')
                                 }}</Label>
-                                <select
+                                <NativeSelect
                                     id="watch-cadence"
                                     v-model="form.cadence"
                                     name="cadence"
-                                    class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:text-sm"
                                 >
                                     <option
                                         v-for="cadence in options.cadences"
@@ -833,7 +1269,7 @@ onBeforeUnmount(() => {
                                     >
                                         {{ t(cadence.label) }}
                                     </option>
-                                </select>
+                                </NativeSelect>
                                 <InputError :message="form.errors.cadence" />
                             </div>
 
@@ -841,11 +1277,10 @@ onBeforeUnmount(() => {
                                 <Label for="watch-icp">{{
                                     t('Shaped by (optional)')
                                 }}</Label>
-                                <select
+                                <NativeSelect
                                     id="watch-icp"
                                     v-model="form.icp_id"
                                     name="icp_id"
-                                    class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:text-sm"
                                 >
                                     <option :value="null">
                                         {{ t('No ideal customer profile') }}
@@ -857,7 +1292,7 @@ onBeforeUnmount(() => {
                                     >
                                         {{ icp.name }}
                                     </option>
-                                </select>
+                                </NativeSelect>
                                 <InputError :message="form.errors.icp_id" />
                             </div>
                         </div>
@@ -901,6 +1336,34 @@ onBeforeUnmount(() => {
                             }}</span>
                         </Label>
                     </div>
+
+                    <!-- Said again, together, immediately before Save: picking where to look
+                         is also picking how these leads may be approached, and that is the one
+                         consequence on this form somebody should not be able to miss. It sat under
+                         the region choices until the S8 brand review pointed out that four more
+                         groups came after it, so at phone width it was off screen by the time
+                         anybody reached the button it claimed to sit beside. -->
+                    <section
+                        v-if="approachNotes.length"
+                        class="space-y-1 rounded-2xl border border-border p-4"
+                        aria-labelledby="approach-notes-heading"
+                        data-test="approach-notes"
+                    >
+                        <h3
+                            id="approach-notes-heading"
+                            class="text-base font-semibold text-foreground rtl:font-bold"
+                        >
+                            {{ t('How you may approach these leads') }}
+                        </h3>
+                        <p
+                            v-for="note in approachNotes"
+                            :key="note.value"
+                            class="text-base text-foreground"
+                            dir="auto"
+                        >
+                            {{ t(note.label) }} — {{ t(note.note) }}
+                        </p>
+                    </section>
 
                     <DialogFooter>
                         <Button

@@ -28,6 +28,7 @@ use App\Modules\Reporting\Enums\ColumnFormat;
 use App\Modules\Reporting\Enums\KpiFormat;
 use App\Modules\Reporting\Support\DateRange;
 use App\Modules\Reporting\Support\Ratio;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
@@ -317,6 +318,8 @@ final class PlatformReportBuilder
             $this->marginTable(PlatformReport::MarginByPlan, $this->margins->perPlan($range), 'Plan'),
             $this->marginTable(PlatformReport::MarginByCohort, $this->margins->perCohort($range), 'Signup month'),
             $this->outreachTable($range),
+            $this->signalLibraryTable($range),
+            $this->signalSourceTable($range),
         ];
     }
 
@@ -784,6 +787,125 @@ final class PlatformReportBuilder
                 'Margin % is empty, not zero, where there is no revenue to divide by — a free-plan tenant costs us money and earns none, and 0% would read as break-even.',
             ],
             'Nothing rolled up for this window yet.',
+        );
+    }
+
+    /**
+     * Which of the library's presets anybody is actually running, and how far their signals got
+     * (S15 task 6).
+     *
+     * **The report that decides where the library's next pack comes from.** No tenant has ever
+     * wanted this figure; the business cannot choose what to invest in without it, which is exactly
+     * ADR 0016's distinction between platform reporting and tenant reporting with the scope removed.
+     *
+     * One row per preset, plus `own` for the types teams built themselves and `unattributed` for
+     * signals whose type has since been deleted. `own` is a figure worth watching in its own right:
+     * a library nobody starts from is a library that is missing something.
+     *
+     * The adoption column is **point-in-time** and the rest are of the window, which is why they
+     * sit in one table rather than two: "sixty teams run this and it found four signals last month"
+     * is one sentence, and splitting it across tabs would mean nobody read the second half.
+     */
+    private function signalLibraryTable(DateRange $range): PlatformReportTable
+    {
+        $inUse = $this->store->byDimension(PlatformMetric::SignalTypesInUse, $range);
+        $found = $this->store->byDimension(PlatformMetric::SignalsFound, $range);
+        $outcomes = $this->store->byDimension(PlatformMetric::SignalOutcomes, $range);
+
+        // Every dimension that appears anywhere, because either side can exist without the other
+        // and both cases matter: a preset cloned by sixty teams that found nothing last month is
+        // the most interesting row on the screen, and a preset nobody has cloned that still
+        // produced signals means somebody deleted their type.
+        $dimensions = array_values(array_unique([
+            ...array_keys($inUse),
+            ...array_keys($found),
+        ]));
+
+        sort($dimensions);
+
+        $rows = [];
+
+        foreach ($dimensions as $dimension) {
+            $signals = $found[$dimension] ?? 0;
+            $kept = $outcomes[$dimension.':kept'] ?? 0;
+            $converted = $outcomes[$dimension.':converted'] ?? 0;
+
+            $rows[] = new ReportRow(key: 'preset-'.$dimension, cells: [
+                'preset' => $dimension,
+                // **The pack is derived here rather than stored**, because a pack is a property of
+                // the catalogue and not of the row (ADR 0020: "a preset's pack lives in the
+                // catalogue"). Rolling it up as its own dimension would have frozen last month's
+                // packaging into the metrics table, where a repackaging could never be reflected;
+                // derived, the question "which packs should we invest in?" is always asked of
+                // today's packaging over history's signals, which is the question the business
+                // actually has.
+                'pack' => SignalPresetCatalogue::packFor($dimension)?->label() ?? '—',
+                'in_use' => $inUse[$dimension] ?? 0,
+                'found' => $signals,
+                'kept' => $kept,
+                'converted' => $converted,
+                'kept_rate' => Ratio::of($kept, $signals),
+                'converted_rate' => Ratio::of($converted, $signals),
+            ]);
+        }
+
+        return PlatformReportTable::of(
+            PlatformReport::SignalLibrary,
+            [
+                // Not translated: these are preset keys and two sentinels, which are data rather
+                // than copy. `own` and `unattributed` read the same in both languages because they
+                // are the keys the rollup wrote.
+                new ReportColumn('preset', 'Library preset'),
+                new ReportColumn('pack', 'Pack'),
+                ReportColumn::count('in_use', 'Types in use now'),
+                ReportColumn::count('found', 'Signals found'),
+                ReportColumn::count('kept', 'Kept'),
+                ReportColumn::count('converted', 'Converted'),
+                ReportColumn::percent('kept_rate', 'Kept rate'),
+                ReportColumn::percent('converted_rate', 'Converted rate'),
+            ],
+            $rows,
+            [
+                PlatformMetric::SignalTypesInUse->definition(),
+                PlatformMetric::SignalsFound->definition(),
+                PlatformMetric::SignalOutcomes->definition(),
+            ],
+        );
+    }
+
+    /**
+     * Where it is worth looking at all (S15 task 6).
+     *
+     * Its own table rather than a column on the one above, because the two group by different
+     * things and a row cannot be both: a signal has one source and one type, and crossing them
+     * would be a table of eighty mostly-empty cells.
+     */
+    private function signalSourceTable(DateRange $range): PlatformReportTable
+    {
+        $found = $this->store->byDimension(PlatformMetric::SignalsBySource, $range);
+        $total = array_sum($found);
+
+        $rows = [];
+
+        foreach ($found as $source => $count) {
+            $rows[] = new ReportRow(key: 'source-'.$source, cells: [
+                'source' => $source,
+                'found' => $count,
+                'share' => Ratio::of($count, $total),
+            ]);
+        }
+
+        usort($rows, static fn (ReportRow $a, ReportRow $b): int => ($b->cells['found'] ?? 0) <=> ($a->cells['found'] ?? 0));
+
+        return PlatformReportTable::of(
+            PlatformReport::SignalSources,
+            [
+                new ReportColumn('source', 'Source'),
+                ReportColumn::count('found', 'Signals found'),
+                ReportColumn::percent('share', 'Share'),
+            ],
+            $rows,
+            [PlatformMetric::SignalsBySource->definition()],
         );
     }
 

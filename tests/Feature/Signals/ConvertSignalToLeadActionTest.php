@@ -18,12 +18,14 @@ use App\Modules\LeadsWorkspace\Models\LeadNote;
 use App\Modules\LeadsWorkspace\Models\PipelineStage;
 use App\Modules\Signals\Actions\ConvertSignalToLeadAction;
 use App\Modules\Signals\Data\ConvertSignalData;
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalConverted;
 use App\Modules\Signals\Exceptions\SignalsException;
+use App\Modules\Signals\Http\Resources\SignalResource;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -75,7 +77,7 @@ it('creates a lead and a contact with no email or phone', function (): void {
         ->and($lead->collected_at)->not->toBeNull()
         ->and($lead->has_personal_data)->toBeTrue()
         ->and($lead->raw['signal_id'])->toBe($signal->id)
-        ->and($lead->raw['event_type'])->toBe(SignalEventType::FundingRound->value)
+        ->and($lead->raw['event_type'])->toBe(SignalPresetCatalogue::FUNDING_ROUND)
         ->and($lead->raw['headline'])->toBe($signal->headline);
 
     $contact = $lead->contacts()->sole();
@@ -264,15 +266,15 @@ it('leaves the outreach flag off a signal found in a market with no such rule', 
     $actor = createUserWithTeam();
     $team = $actor->currentTeam()->firstOrFail();
 
-    // The restriction follows the market the *watch* was looking in, not the company's country —
-    // the UK runs on a legitimate-interest basis assessed per team, with no blanket per-lead limit.
-    // v1 Signals is UAE-only, so this is a guard against a second market silently inheriting the
-    // UAE's prior-consent posture rather than a case the feed produces today.
+    // A UK signal under a UK watch: no restriction, because ADR 0007 puts the UK on legitimate
+    // interest assessed per team (the LIA) rather than a blanket per-lead limit. The four cases
+    // below are the ones S8 added, where the signal and the watch disagree.
     $signal = app(TeamContext::class)->run($team, function () use ($team): Signal {
         $watch = SignalWatch::factory()->create([
             'team_id' => $team->getKey(),
             'market' => Market::Uk,
-            'location' => 'London',
+            'locations' => ['London'],
+            'regions' => ['gb'],
         ]);
 
         return Signal::factory()->create([
@@ -291,6 +293,178 @@ it('leaves the outreach flag off a signal found in a market with no such rule', 
 
     expect($lead->raw)->not->toHaveKey(OutreachRestriction::RAW_KEY)
         ->and(OutreachRestriction::fromRaw($lead->raw))->toBeNull();
+});
+
+/*
+ * The four cases S8 exists for (ADR 0019 §2): **the restriction follows the subject, not the
+ * watch**. Until S8 it came from `$signal->watch->market`, which was sound while every watch was
+ * UAE and wrong in both directions the moment one could span places.
+ */
+
+it('puts no UAE restriction on a London event found by a UAE watch', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    // Over-restrictive is the milder direction, and it is still wrong: a British founder held to a
+    // rule that does not apply to them, and a team told not to email somebody they lawfully may.
+    $signal = app(TeamContext::class)->run($team, function () use ($team): Signal {
+        $watch = SignalWatch::factory()
+            ->covering(['Dubai', 'London'], [SearchRegion::Ae, SearchRegion::Gb])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uae]);
+
+        return Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'location' => 'London',
+            'jurisdiction' => 'GB',
+            'resolved_market' => Market::Uk->value,
+        ]);
+    });
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme Ltd',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBeNull()
+        // And the lead can say where that answer came from.
+        ->and($lead->raw['jurisdiction'])->toBe('GB');
+});
+
+it('puts the UAE restriction on a Dubai event found by a UK watch', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    // **The serious direction.** Before S8 this lead got no restriction at all, so Outreach would
+    // have seen no reason to refuse a cold email that UAE PDPL forbids and that nothing published
+    // can supply consent for (`docs/compliance.md` §3.3, §5a).
+    $signal = app(TeamContext::class)->run($team, function () use ($team): Signal {
+        $watch = SignalWatch::factory()
+            ->uk()
+            ->covering(['London', 'Dubai'], [SearchRegion::Gb, SearchRegion::Ae])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk]);
+
+        return Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'location' => 'Dubai',
+            'jurisdiction' => 'AE',
+            'resolved_market' => Market::Uae->value,
+        ]);
+    });
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme DMCC',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent)
+        ->and($lead->raw['jurisdiction'])->toBe('AE')
+        ->and(OutreachRestriction::UaePriorConsent->allowsDirectMarketing())->toBeFalse();
+});
+
+it('falls back to the watch market when the signal names nowhere it knows', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    // Null jurisdiction is not "unrestricted": the watch's own declared regime answers next.
+    $signal = app(TeamContext::class)->run($team, function () use ($team): Signal {
+        $watch = SignalWatch::factory()->create([
+            'team_id' => $team->getKey(),
+            'market' => Market::Uae,
+        ]);
+
+        return Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'location' => 'Somewhere',
+            'jurisdiction' => null,
+            'resolved_market' => null,
+        ]);
+    });
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme DMCC',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent)
+        // No jurisdiction to report, so the key is absent rather than null — a lead should not
+        // carry an empty claim about where somebody is.
+        ->and($lead->raw)->not->toHaveKey('jurisdiction');
+});
+
+it('takes the most restrictive of a multi-region watch when the signal names nowhere', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    // A **UK-market** watch covering London and Dubai, whose signal names neither. The watch's own
+    // market says "no restriction"; one of its regions says "prior consent". The stricter answer
+    // wins, because the direction to fail in is obvious — and because a restriction may be added
+    // but never dropped (`docs/compliance.md` §5a).
+    $signal = app(TeamContext::class)->run($team, function () use ($team): Signal {
+        $watch = SignalWatch::factory()
+            ->covering(['London', 'Dubai'], [SearchRegion::Gb, SearchRegion::Ae])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk]);
+
+        return Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'location' => 'remote',
+            'jurisdiction' => null,
+            'resolved_market' => null,
+        ]);
+    });
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme Ltd',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent);
+});
+
+it('converts a signal whose watch has been deleted, using the signal own jurisdiction', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    // `signals.signal_watch_id` is `nullOnDelete` (S6 migration) and a converted signal outlives
+    // its watch, so a signal with no watch at all is reachable. Steps 2 and 3 have nothing to read;
+    // step 1 is all there is, and it must not be a null dereference.
+    $signal = app(TeamContext::class)->run($team, function () use ($team): Signal {
+        $signal = Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => null,
+            'signal_run_id' => null,
+            'location' => 'Dubai',
+            'jurisdiction' => 'AE',
+            'resolved_market' => Market::Uae->value,
+        ]);
+
+        return $signal->fresh();
+    });
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme DMCC',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent);
 });
 
 it('never drops an outreach restriction a lead already carried', function (): void {
@@ -315,7 +489,8 @@ it('never drops an outreach restriction a lead already carried', function (): vo
         $watch = SignalWatch::factory()->create([
             'team_id' => $team->getKey(),
             'market' => Market::Uk,
-            'location' => 'London',
+            'locations' => ['London'],
+            'regions' => ['gb'],
         ]);
 
         return Signal::factory()->create([
@@ -351,7 +526,7 @@ it('records the conversion on the timeline and in the audit trail', function ():
 
     expect($activity->user_id)->toBe($actor->id)
         ->and($activity->properties['signal_id'])->toBe($signal->id)
-        ->and($activity->properties['event_type'])->toBe(SignalEventType::FundingRound->value)
+        ->and($activity->properties['event_type'])->toBe(SignalPresetCatalogue::FUNDING_ROUND)
         ->and($activity->properties['attached'])->toBeFalse()
         ->and($activity->properties['headline'])->toBe($signal->headline);
 
@@ -388,7 +563,7 @@ it('refuses to convert a signal with no company to name', function (): void {
 
     // A relocation signal often names a person and no company at all.
     $signal = signalFor($team, [
-        'event_type' => SignalEventType::Relocation,
+        'event_key' => SignalPresetCatalogue::RELOCATION,
         'subject_company_name' => null,
     ]);
 
@@ -729,4 +904,204 @@ it('keeps a long article URL whole on the lead and on its contact', function ():
     expect(strlen($url))->toBeGreaterThan(255)
         ->and($lead->source_url)->toBe($url)
         ->and($contact->source_url)->toBe($url);
+});
+
+/*
+ * Found by the S8 review. `offered` is a compliance switch over what a watch may **search**; it was
+ * also deciding what a lead was **restricted** by, because both read the same accessor. Switching a
+ * region off — a config change made for an entirely unrelated reason — therefore relaxed the
+ * restriction on signals that region had already produced, which is the fail-permissive direction.
+ */
+
+it('still restricts a lead from a region the business has since switched off', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    $signal = app(TeamContext::class)->run($team, function () use ($team): Signal {
+        $watch = SignalWatch::factory()
+            ->covering(['London', 'Dubai'], [SearchRegion::Gb, SearchRegion::Ae])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk]);
+
+        return Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'location' => 'remote',
+            'jurisdiction' => null,
+            'resolved_market' => null,
+        ]);
+    });
+
+    // The UAE is withdrawn *after* the signal was found. The watch may no longer search it; the
+    // signal it already produced is still a signal that watch found there.
+    config()->set('signals.regions.ae.offered', false);
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme Ltd',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent);
+});
+
+it('restricts a lead whose article named two places, the stricter one winning', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    // The extraction resolved the article to the UAE end, which is what the resolver now does with
+    // an ambiguous place. This asserts the end-to-end consequence: the lead carries the
+    // restriction, on a watch whose own market imposes none.
+    $signal = app(TeamContext::class)->run($team, function () use ($team): Signal {
+        $watch = SignalWatch::factory()
+            ->covering(['London', 'Dubai'], [SearchRegion::Gb, SearchRegion::Ae])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk]);
+
+        return Signal::factory()->create([
+            'team_id' => $team->getKey(),
+            'signal_watch_id' => $watch->getKey(),
+            'location' => 'UK founder relocates to Dubai',
+            'jurisdiction' => 'AE',
+            'resolved_market' => Market::Uae->value,
+        ]);
+    });
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme Ltd',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent)
+        ->and($lead->raw['jurisdiction'])->toBe('AE');
+});
+
+/*
+ * **What the convert dialog says is what the save applies.**
+ *
+ * The dialog used to state the UAE PDPL restriction unconditionally. That was true while Signals
+ * was UAE-only (ADR 0011) and became a false statement of law the moment S8 made the geography
+ * plural — a UK founder shown a consent requirement that does not apply to them, on the one screen
+ * where a member decides how to approach somebody. The fix was to send the resolved restriction
+ * rather than let a screen infer it from `resolved_market`, which is one step of three.
+ *
+ * These assert the *agreement* rather than either answer on its own, because agreement is the
+ * property that keeps them from drifting apart again.
+ */
+
+it('tells the convert dialog there is no restriction on a UK signal', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    $signal = app(TeamContext::class)->run($team, fn (): Signal => Signal::factory()->create([
+        'team_id' => $team->getKey(),
+        'signal_watch_id' => SignalWatch::factory()
+            ->covering(['London'], [SearchRegion::Gb])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk])
+            ->getKey(),
+        'location' => 'London',
+        'jurisdiction' => 'GB',
+        'resolved_market' => Market::Uk->value,
+    ]));
+
+    $payload = app(TeamContext::class)->run(
+        $team,
+        fn (): array => SignalResource::make($signal->fresh())->resolve(request()),
+    );
+
+    // Null, so the panel does not render at all — rather than rendering with softer words.
+    expect($payload['outreach_restriction'])->toBeNull();
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme Ltd',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBeNull();
+});
+
+it('tells the convert dialog the restriction a UAE signal carries, in the words the lead will use', function (): void {
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    $signal = app(TeamContext::class)->run($team, fn (): Signal => Signal::factory()->create([
+        'team_id' => $team->getKey(),
+        'signal_watch_id' => SignalWatch::factory()
+            ->covering(['London'], [SearchRegion::Gb])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk])
+            ->getKey(),
+        'location' => 'Dubai',
+        'jurisdiction' => 'AE',
+        'resolved_market' => Market::Uae->value,
+    ]));
+
+    $payload = app(TeamContext::class)->run(
+        $team,
+        fn (): array => SignalResource::make($signal->fresh())->resolve(request()),
+    );
+
+    expect($payload['outreach_restriction'])->not->toBeNull()
+        ->and($payload['outreach_restriction']['value'])
+        ->toBe(OutreachRestriction::UaePriorConsent->value)
+        ->and($payload['outreach_restriction']['allows_direct_marketing'])->toBeFalse()
+        // Translation keys, not finished sentences — the dialog runs them through `t()`.
+        ->and($payload['outreach_restriction']['label'])
+        ->toBe(OutreachRestriction::UaePriorConsent->label())
+        ->and($payload['outreach_restriction']['guidance'])
+        ->toBe(OutreachRestriction::UaePriorConsent->guidance());
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme DMCC',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent);
+});
+
+it('does not let the dialog read the jurisdiction alone, where that would be the wrong answer', function (): void {
+    // The case a screen computing this from `resolved_market` would get wrong: the article named
+    // nowhere, so step one has no answer and the watch's regions supply one. A dialog that showed
+    // nothing here would be telling a member they may cold-email somebody they may not — the
+    // dangerous direction, and the whole reason this is resolved server-side.
+    Queue::fake();
+    Event::fake([SignalConverted::class]);
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    $signal = app(TeamContext::class)->run($team, fn (): Signal => Signal::factory()->create([
+        'team_id' => $team->getKey(),
+        'signal_watch_id' => SignalWatch::factory()
+            ->covering(['London', 'Dubai'], [SearchRegion::Gb, SearchRegion::Ae])
+            ->create(['team_id' => $team->getKey(), 'market' => Market::Uk])
+            ->getKey(),
+        'location' => 'remote',
+        'jurisdiction' => null,
+        'resolved_market' => null,
+    ]));
+
+    $payload = app(TeamContext::class)->run(
+        $team,
+        fn (): array => SignalResource::make($signal->fresh())->resolve(request()),
+    );
+
+    expect($payload['resolved_market'])->toBeNull()
+        ->and($payload['outreach_restriction']['value'])
+        ->toBe(OutreachRestriction::UaePriorConsent->value);
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Acme Ltd',
+        personName: 'Jane Founder',
+    ));
+
+    expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent);
 });

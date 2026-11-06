@@ -5,29 +5,30 @@ declare(strict_types=1);
 namespace App\Modules\Notifications\Channels;
 
 use App\Models\User;
-use App\Modules\Notifications\Contracts\PushSender;
 use App\Modules\Notifications\Data\PushMessage;
-use App\Modules\Notifications\Models\PushDevice;
+use App\Modules\Notifications\Services\PushDelivery;
 use Illuminate\Notifications\Notification as BaseNotification;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Delivers a notification to a member's registered devices (Phase 12).
  *
- * Two jobs, and the second is the one that keeps push working over time:
+ * The channel is now the **adapter** and {@see PushDelivery} the delivery: this asks the
+ * notification for its push message and hands it over, and everything that was ever hard here —
+ * sending to every device, and deleting the tokens the provider permanently rejected — lives in the
+ * service.
  *
- * 1. Send the message to every device the member has registered.
- * 2. **Delete the tokens the provider permanently rejected.** A device whose app was uninstalled
- *    returns `UNREGISTERED` for ever; a row we keep is a notification that silently goes nowhere,
- *    and nobody ever notices because nothing fails. This is where the row goes.
+ * The split happened in S15, when the signal digest needed a push. The digest is a Mailable with
+ * sections rather than a notification with one line, so it cannot come through this channel at all,
+ * and the choice was a shared service or a second copy of the token pruning. A second copy is the
+ * one that stops pruning the day somebody changes only one of them.
  *
- * It never throws. Push is the least important channel — a member who misses one still has the bell
- * and often the email — so a provider outage must not fail the queued notification and drag the
- * other channels into a retry with it.
+ * It still never throws, for the reason the service documents: push is the least important channel,
+ * and a provider outage must not fail the queued notification and drag the other channels into a
+ * retry with it.
  */
 final class PushChannel
 {
-    public function __construct(private readonly PushSender $sender) {}
+    public function __construct(private readonly PushDelivery $delivery) {}
 
     public function send(object $notifiable, BaseNotification $notification): void
     {
@@ -35,40 +36,9 @@ final class PushChannel
             return;
         }
 
-        $devices = PushDevice::query()->where('user_id', $notifiable->getKey())->get();
-
-        if ($devices->isEmpty()) {
-            return;
-        }
-
         /** @var PushMessage $message */
         $message = $notification->toPush($notifiable);
 
-        $result = $this->sender->send(
-            array_values($devices->pluck('token')->map(static fn (mixed $token): string => (string) $token)->all()),
-            $message,
-        );
-
-        if ($result->invalidTokens !== []) {
-            $hashes = array_map(static fn (string $token): string => PushDevice::hash($token), $result->invalidTokens);
-
-            PushDevice::query()->whereIn('token_hash', $hashes)->delete();
-
-            Log::channel('notifications')->info('Dropped push devices the provider will not accept again.', [
-                'user_id' => $notifiable->getKey(),
-                'dropped' => count($hashes),
-            ]);
-        }
-
-        if ($result->anySent()) {
-            // Only the devices that actually took it, so the pruning sweep can tell a quiet device
-            // from a dead one.
-            $sentHashes = array_diff(
-                $devices->pluck('token_hash')->map(static fn (mixed $hash): string => (string) $hash)->all(),
-                array_map(static fn (string $token): string => PushDevice::hash($token), $result->invalidTokens),
-            );
-
-            PushDevice::query()->whereIn('token_hash', $sentHashes)->update(['last_used_at' => now()]);
-        }
+        $this->delivery->to($notifiable, $message);
     }
 }

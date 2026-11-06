@@ -45,7 +45,9 @@ it('has no second factor, so the first visit is the enrolment screen', function 
 
     // The correct local experience, and written down in the runbook rather than excepted in the
     // middleware.
-    $this->actingAs($user)->get('/admin')->assertRedirect(route('security.edit'));
+    // The panel's own enrolment screen, in the panel's shell: the seeded operator has no team, so
+    // the product's settings would have put it in a shell whose every link answers 404.
+    $this->actingAs($user)->get('/admin')->assertRedirect(route('admin.security.edit'));
 });
 
 it('never resets a password somebody has changed', function (): void {

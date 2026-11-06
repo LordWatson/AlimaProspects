@@ -53,6 +53,17 @@ enum PlatformReport: string
 
     case Outreach = 'outreach';
 
+    /**
+     * Which library presets anybody runs, and how far their signals get (S15 task 6).
+     *
+     * The report that decides where the next pack comes from — and the clearest example in the
+     * panel of a question no tenant has ever asked.
+     */
+    case SignalLibrary = 'signal_library';
+
+    /** Where it is worth looking at all: signals by the source that found them (S15 task 6). */
+    case SignalSources = 'signal_sources';
+
     public function label(): string
     {
         return match ($this) {
@@ -69,6 +80,8 @@ enum PlatformReport: string
             self::MarginByPlan => 'Gross margin by plan',
             self::MarginByCohort => 'Gross margin by signup cohort',
             self::Outreach => 'Outreach volume and deliverability',
+            self::SignalLibrary => 'Signal library adoption',
+            self::SignalSources => 'Signals by source',
         };
     }
 
@@ -89,6 +102,8 @@ enum PlatformReport: string
             self::MarginByPlan => 'The same figures aggregated by the plan in force, which is what says whether a plan is priced right.',
             self::MarginByCohort => 'The same figures aggregated by the month the tenant signed up, which is what says whether the ones we are winning now are better or worse.',
             self::Outreach => 'Platform send volume and deliverability by channel. A shared sending domain means one tenant\'s behaviour is every tenant\'s deliverability.',
+            self::SignalLibrary => 'Which library presets tenants actually run, and how far the signals they find get. “Own” is a type a team built themselves — a library nobody starts from is a library that is missing something.',
+            self::SignalSources => 'Signals found in this window by the source that found them. What this says is where it is worth looking, which is a different question from what to look for.',
         };
     }
 

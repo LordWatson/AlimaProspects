@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ArrowLeft, Pencil, Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import ResourceCell from '@/components/admin/ResourceCell.vue';
 import { Button } from '@/components/ui/button';
 import type { AdminCellValue, AdminColumn, AdminResourceMeta } from '@/types';
@@ -50,21 +51,12 @@ function destroy(): void {
             </Button>
         </div>
 
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-                >
-                    {{ resource.singular }} · {{ record_id }}
-                </p>
-                <h1
-                    class="mt-1 text-2xl font-semibold break-words text-foreground"
-                >
-                    {{ title }}
-                </h1>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2">
+        <AdminPageHeader
+            :eyebrow="`${resource.singular} · ${record_id}`"
+            :title="title"
+            :meta="null"
+        >
+            <template #actions>
                 <Button v-if="resource.can_update" variant="outline" as-child>
                     <Link
                         :href="`/admin/resources/${resource.key}/${record_id}/edit`"
@@ -100,8 +92,8 @@ function destroy(): void {
                         </Button>
                     </template>
                 </template>
-            </div>
-        </header>
+            </template>
+        </AdminPageHeader>
 
         <dl
             class="grid gap-x-6 gap-y-4 rounded-2xl border border-border bg-card px-5 py-5 sm:grid-cols-2"

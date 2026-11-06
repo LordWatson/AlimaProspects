@@ -26,10 +26,11 @@ use App\Modules\Onboarding\Models\BusinessProfile;
 use App\Modules\Onboarding\Models\OnboardingProgress;
 use App\Modules\Scoring\Enums\ScoreGrade;
 use App\Modules\Scoring\Models\LeadScore;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -302,22 +303,39 @@ class DemoSeeder extends Seeder
     private function signals(TeamContext $teamContext, Team $team): void
     {
         $teamContext->run($team, function () use ($team): void {
-            $watch = SignalWatch::factory()->create([
-                'team_id' => $team->getKey(),
-                'name' => 'Dubai wealth events',
-                'last_run_at' => now()->subHours(6),
-            ]);
+            // The team's own clones of the three library presets (S7, ADR 0018) — the same rows a
+            // real team gets from the one-click first watch, so the demo exercises the real shape
+            // rather than a fixture only the seeder knows how to build.
+            $definitions = [];
+
+            foreach (SignalPresetCatalogue::all() as $preset) {
+                $definitions[$preset->key] = SignalDefinition::factory()
+                    ->fromCatalogue($preset->key)
+                    ->create(['team_id' => $team->getKey()]);
+            }
+
+            $watch = SignalWatch::factory()
+                ->watching(array_values($definitions))
+                ->create([
+                    'team_id' => $team->getKey(),
+                    'name' => 'Dubai wealth events',
+                    'last_run_at' => now()->subHours(6),
+                ]);
 
             $shared = ['team_id' => $team->getKey(), 'signal_watch_id' => $watch->getKey()];
 
-            Signal::factory()->count(4)->create([...$shared, 'event_type' => SignalEventType::FundingRound]);
-            Signal::factory()->count(2)->create([...$shared, 'event_type' => SignalEventType::Acquisition]);
-            Signal::factory()->create([...$shared, 'event_type' => SignalEventType::Relocation]);
-            Signal::factory()->create([
-                ...$shared,
-                'event_type' => SignalEventType::Acquisition,
-                'status' => SignalStatus::Dismissed,
-            ]);
+            Signal::factory()->count(4)
+                ->forDefinition($definitions[SignalPresetCatalogue::FUNDING_ROUND])
+                ->create($shared);
+            Signal::factory()->count(2)
+                ->forDefinition($definitions[SignalPresetCatalogue::ACQUISITION])
+                ->create($shared);
+            Signal::factory()
+                ->forDefinition($definitions[SignalPresetCatalogue::RELOCATION])
+                ->create($shared);
+            Signal::factory()
+                ->forDefinition($definitions[SignalPresetCatalogue::ACQUISITION])
+                ->create([...$shared, 'status' => SignalStatus::Dismissed]);
         });
     }
 

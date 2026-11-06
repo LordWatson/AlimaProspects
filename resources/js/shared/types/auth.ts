@@ -32,6 +32,15 @@ export type Auth = {
     user: User;
     currentTeam?: CurrentTeam | null;
     teams?: TeamSummary[];
+    /**
+     * Whether this reader is a platform operator.
+     *
+     * The shell reads it because an operator belongs to **no team**, so the team-scoped rail would
+     * be a column of 404s for them; it offers the panel instead. A boolean rather than the role:
+     * which role an operator holds decides what the panel lets them do, and nothing outside the
+     * panel should branch on that.
+     */
+    isOperator?: boolean;
 };
 
 export type Passkey = {

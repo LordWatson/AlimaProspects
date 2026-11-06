@@ -6,23 +6,28 @@ use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\AiPlatform\Contracts\AiTransport;
 use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Billing\Enums\BillingMetric;
+use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
-use App\Modules\Signals\Contracts\NewsSearchClient;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalRunStatus;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalRunProgressed;
 use App\Modules\Signals\Events\SignalsDetected;
 use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalDefinition;
+use App\Modules\Signals\Models\SignalDefinitionSpend;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
-use App\Modules\Signals\Testing\FakeNewsSearchClient;
+use App\Modules\Signals\Services\SignalQueryBuilder;
+use App\Modules\Signals\Services\SignalSourceRegistry;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
+use App\Modules\Signals\Testing\FakeSignalSource;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Schema;
 use Tests\Support\BillingFixtures as Billing;
 
 uses(RefreshDatabase::class);
@@ -30,8 +35,8 @@ uses(RefreshDatabase::class);
 beforeEach(function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    $this->fakeNews = new FakeNewsSearchClient;
-    app()->instance(NewsSearchClient::class, $this->fakeNews);
+    $this->fakeNews = new FakeSignalSource;
+    app(SignalSourceRegistry::class)->register($this->fakeNews);
 
     $this->fakeAi = new FakeAiTransport;
     app()->instance(AiTransport::class, $this->fakeAi);
@@ -52,7 +57,7 @@ function fundingEvent(int $index = 0, int $confidence = 90, int $relevance = 80)
     return [
         'item_index' => $index,
         'is_event' => true,
-        'event_type' => SignalEventType::FundingRound->value,
+        'event_type' => SignalPresetCatalogue::FUNDING_ROUND,
         'subject_person_name' => 'Jane Founder',
         'subject_person_role' => 'Founder & CEO',
         'subject_company_name' => 'Acme DMCC',
@@ -72,13 +77,23 @@ function runWatchFor(Team $team, SignalWatch $watch): SignalRun
     return app(TeamContext::class)->run($team, fn (): SignalRun => app(RunSignalWatchAction::class)->handle($watch));
 }
 
-function dubaiWatch(Team $team, array $eventTypes = ['funding_round']): SignalWatch
+/**
+ * A Dubai watch over the team's own clones of the named library presets.
+ *
+ * Since S7 the watched types are rows reached through a pivot (ADR 0018), so the factory attaches
+ * them rather than the watch carrying a JSON list - `watchingPresets()` creates the clones the team
+ * would have if they had taken those types from the library.
+ *
+ * @param  list<string>  $keys
+ */
+function dubaiWatch(Team $team, array $keys = [SignalPresetCatalogue::FUNDING_ROUND]): SignalWatch
 {
-    return app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()->create([
-        'team_id' => $team->getKey(),
-        'location' => 'Dubai',
-        'event_types' => $eventTypes,
-    ]));
+    return app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()
+        ->watchingPresets($keys)
+        ->create([
+            'team_id' => $team->getKey(),
+            'locations' => ['Dubai'],
+        ]));
 }
 
 it('creates signals from genuine in-threshold events and records the run', function (): void {
@@ -109,7 +124,9 @@ it('creates signals from genuine in-threshold events and records the run', funct
     $signal = app(TeamContext::class)->run($team, fn (): ?Signal => Signal::query()->first());
 
     expect($signal)->not->toBeNull()
-        ->and($signal->event_type)->toBe(SignalEventType::FundingRound)
+        ->and($signal->event_key)->toBe(SignalPresetCatalogue::FUNDING_ROUND)
+        // The live attribution as well as the stored key: a run writes both (ADR 0018 section 4).
+        ->and($signal->signal_definition_id)->not->toBeNull()
         ->and($signal->status)->toBe(SignalStatus::New)
         ->and($signal->subject_person_name)->toBe('Jane Founder')
         ->and($signal->amount_minor)->toBe(4_000_000_000) // $40m in minor units
@@ -201,7 +218,7 @@ it('fails the run cleanly on a non-retryable provider failure', function (): voi
     $team = Team::factory()->create();
     $watch = dubaiWatch($team);
 
-    $this->fakeNews->willFail(SignalsException::newsProviderMisconfigured());
+    $this->fakeNews->willFail(SignalsException::sourceMisconfigured());
 
     $run = runWatchFor($team, $watch);
 
@@ -213,7 +230,7 @@ it('bubbles a retryable provider failure so the job can retry', function (): voi
     $team = Team::factory()->create();
     $watch = dubaiWatch($team);
 
-    $this->fakeNews->willFail(SignalsException::newsProviderFailed());
+    $this->fakeNews->willFail(SignalsException::sourceUnavailable());
 
     expect(fn () => runWatchFor($team, $watch))->toThrow(SignalsException::class);
 });
@@ -332,4 +349,125 @@ it('adopts the run that "Run now" queued instead of opening a second', function 
     expect((int) $run->getKey())->toBe((int) $queued->getKey())
         ->and($run->status)->toBe(SignalRunStatus::Completed)
         ->and($count)->toBe(1);
+});
+
+/*
+ * The extraction end of S8 (ADR 0019 §2 step 1). The resolver had thorough coverage of its own and
+ * the conversion had coverage of what it does with the answer, but nothing asserted that a **run**
+ * actually writes one — found as a gap by the S8 review. A signal with a null `resolved_market`
+ * falls back to its watch, so this failing silently would look like nothing worse than every lead
+ * taking the backstop.
+ */
+
+it('records the jurisdiction the article names on every signal it creates', function (): void {
+    Event::fake([SignalsDetected::class]);
+
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Acme closes $40m Series A', 'https://gulfbusiness.com/acme')]);
+    $this->fakeAi->queueStructured(aiEvents([fundingEvent(index: 0)]));
+
+    runWatchFor($team, $watch);
+
+    $signal = app(TeamContext::class)->run($team, fn (): ?Signal => Signal::query()->first());
+
+    // "Dubai" is what the AI put in `location`; the resolver is what turns it into a legal answer.
+    expect($signal->location)->toBe('Dubai')
+        ->and($signal->jurisdiction)->toBe('AE')
+        ->and($signal->resolvedMarket())->toBe(Market::Uae);
+});
+
+it('leaves the jurisdiction null when the article names nowhere it knows', function (): void {
+    Event::fake([SignalsDetected::class]);
+
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Acme closes $40m Series A', 'https://gulfbusiness.com/acme')]);
+    $this->fakeAi->queueStructured(aiEvents([
+        array_merge(fundingEvent(index: 0), ['location' => 'remote-first']),
+    ]));
+
+    runWatchFor($team, $watch);
+
+    $signal = app(TeamContext::class)->run($team, fn (): ?Signal => Signal::query()->first());
+
+    // Null rather than a guess — and null is not "unrestricted": the conversion falls back to the
+    // watch and then to the most restrictive of its regions.
+    expect($signal->jurisdiction)->toBeNull()
+        ->and($signal->resolved_market)->toBeNull();
+});
+
+// --- Per-type spend survives every way a run can end (S15, review findings) ----------------------
+
+/*
+ * **A search is paid for the moment it is made.** So the question these ask is not "is the figure
+ * right" — `SignalRoiTest` does that — but "does the figure survive", and the answer used to be no
+ * on two paths. A **retryable** failure rethrew without recording, and the retry then paid for the
+ * same searches again, so a flaky provider looked cheap. An unexpected throw out of the classifier
+ * or out of the commit did the same. And a ledger write that threw would have failed a run that had
+ * already spent the team's allowance, which is the hazard the S14 review found in a listener: the
+ * cost of losing one row of reporting is nothing beside the cost of re-billing a whole run.
+ */
+
+it('records what a run had already spent before a retryable failure', function (): void {
+    $team = Team::factory()->create();
+    // Two types, so the plan has two queries and the first can succeed before the second throws.
+    $watch = dubaiWatch($team, [SignalPresetCatalogue::FUNDING_ROUND, SignalPresetCatalogue::ACQUISITION]);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Deal', 'https://gulfbusiness.com/one')]);
+
+    $plan = app(TeamContext::class)->run($team, fn () => app(SignalQueryBuilder::class)
+        ->build($watch, app(TeamContext::class)->run($team, fn (): array => SignalDefinition::query()
+            ->where('team_id', $team->getKey())
+            ->orderBy('id')
+            ->get()
+            ->all())));
+
+    // Whichever query the plan puts second: the first is answered and paid for, then this one
+    // bubbles out of `search()` as retryable.
+    $this->fakeNews->willFailQuery($plan->queries[1]->q, SignalsException::sourceUnavailable());
+
+    expect(fn () => runWatchFor($team, $watch))->toThrow(SignalsException::class);
+
+    // The spend that had already been incurred is on the ledger, so the retry's second bill does
+    // not look like the whole cost of the run.
+    expect(SignalDefinitionSpend::query()->withoutGlobalScopes()->sum('search_cost_micros'))
+        ->toBeGreaterThan(0);
+});
+
+it('records the spend when the classifier throws unexpectedly', function (): void {
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Deal', 'https://gulfbusiness.com/one')]);
+    // Not a `SignalsException`: the point is that an *unexpected* failure past the paid searches
+    // still leaves the record of them.
+    $this->fakeAi->queueFailure(new RuntimeException('the model fell over'));
+
+    expect(fn () => runWatchFor($team, $watch))->toThrow(RuntimeException::class);
+
+    expect(SignalDefinitionSpend::query()->withoutGlobalScopes()->sum('search_cost_micros'))
+        ->toBeGreaterThan(0);
+});
+
+it('completes a run whose spend ledger write fails, rather than re-billing the search', function (): void {
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Acme closes $40m Series A', 'https://gulfbusiness.com/acme')]);
+    $this->fakeAi->queueStructured(aiEvents([fundingEvent()]));
+
+    // A ledger that cannot be written to — the realistic shape of "the ledger is down", and the
+    // one a stub cannot imitate because `SignalSpendLedger` is final. Losing a row of reporting is
+    // the lesser failure by a wide margin: the alternative is a failed run, a retry, and a second
+    // Serper bill.
+    Schema::drop('signal_definition_spend');
+
+    $run = runWatchFor($team, $watch);
+
+    expect($run->status)->toBe(SignalRunStatus::Completed)
+        ->and($run->signals_created)->toBe(1)
+        ->and($run->cost_micros)->toBeGreaterThan(0);
 });

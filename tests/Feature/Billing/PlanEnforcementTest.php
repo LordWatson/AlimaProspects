@@ -281,9 +281,9 @@ it('keeps a team’s meter rows out of another team’s reach', function (): voi
     app(TeamContext::class)->run($b, fn () => app(UsageLedger::class)->sync($b));
 
     // `usage_meters` is tenant-owned, so `BelongsToTeam`'s global scope is the first line and the
-    // rule in ADR 0006 says every such model needs a test proving a cross-tenant read fails. Four
-    // rows exist; a query run with B active may only see two of them.
-    expect(UsageMeter::query()->withoutGlobalScopes()->count())->toBe(4);
+    // rule in ADR 0006 says every such model needs a test proving a cross-tenant read fails. One
+    // row per metric per team exists; a query run with B active may only see B's.
+    expect(UsageMeter::query()->withoutGlobalScopes()->count())->toBe(2 * count(BillingMetric::cases()));
 
     $visible = app(TeamContext::class)->run($b, fn (): array => UsageMeter::query()
         ->pluck('team_id')

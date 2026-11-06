@@ -19,6 +19,7 @@ use App\Modules\Billing\Data\BillingPeriod;
 use App\Modules\Billing\Data\InvoiceData;
 use App\Modules\Billing\Data\MetricUsage;
 use App\Modules\Billing\Data\PlanData;
+use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Billing\Enums\BillingMode;
 use App\Modules\Billing\Exceptions\BillingException;
 use App\Modules\Billing\Http\Requests\ChoosePlanRequest;
@@ -28,6 +29,7 @@ use App\Modules\Billing\Http\Resources\SubscriptionResource;
 use App\Modules\Billing\Http\Resources\UsageResource;
 use App\Modules\Billing\Services\PlanRegistry;
 use App\Modules\Billing\Services\PlanResolver;
+use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Models\Team;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,6 +62,7 @@ final class BillingController extends Controller
         SeatCounter $seats,
         BillingGateway $gateway,
         StripeSwitch $stripe,
+        CapabilityGate $capabilities,
     ): Response {
         $team = $this->team($request);
         $user = $this->user($request);
@@ -86,9 +89,23 @@ final class BillingController extends Controller
                 fn (PlanData $plan): array => PlanResource::make($plan)->resolve($request),
                 $plans->all(),
             ),
+            // **Only the metrics this team's plan can actually reach** (`/code-review`). The meter
+            // keeps a row for every metric whatever the plan — it is a billing record, and a gap in
+            // one is worse than a zero — but a team whose plan has no Signals has no business
+            // reading "Signal searches 0 / 100" and a sentence about watches stopping. The
+            // capability is asked of the one gate (ADR 0015); the filter is here rather than in
+            // `UsageLedger`, because what to *show* is a screen's question and what to *record* is
+            // not.
             'usage' => array_map(
                 fn (MetricUsage $metric): array => UsageResource::make($metric)->resolve($request),
-                array_values($usage),
+                array_values(array_filter(
+                    $usage,
+                    function (MetricUsage $metric) use ($capabilities, $team): bool {
+                        $required = $metric->metric->requiresCapability();
+
+                        return $required === null || $capabilities->allows($team, $required);
+                    },
+                )),
             ),
             'period' => [
                 'start' => $period->start->toIso8601String(),
@@ -107,10 +124,12 @@ final class BillingController extends Controller
                 fn (InvoiceData $invoice): array => InvoiceResource::make($invoice)->resolve($request),
                 $canManage ? $this->invoices($gateway, $team) : [],
             ),
+            // **Keyed by metric, derived from the enum** (S16). It used to be three flat keys —
+            // `leads`, `credits`, `credits_unit` — which the screen read through a two-way ternary;
+            // adding a third metric would have priced signal searches as AI credits on the one
+            // screen whose whole job is to tell a team what things cost. A map cannot have that bug.
             'overage' => [
-                'leads' => (int) config('billing.overage.leads.amount', 0),
-                'credits' => (int) config('billing.overage.ai_credits.amount', 0),
-                'credits_unit' => (int) config('billing.overage.ai_credits.unit', 1_000),
+                'metrics' => $this->overagePricing(),
                 'currency' => strtoupper((string) config('billing.currency', 'gbp')),
             ],
             'sales_email' => (string) config('billing.sales_email'),
@@ -211,6 +230,43 @@ final class BillingController extends Controller
         $url = $action->handle($team, $this->user($request), returnUrl: route('billing.index'));
 
         return Inertia::location($url);
+    }
+
+    /**
+     * What a unit of overage costs, per metric (S16).
+     *
+     * Over `BillingMetric::cases()` rather than a hand-written list, so a metric added to the enum
+     * is priced on the screen without anybody remembering to come here — the same reason
+     * `BillingMetric::subjectLabel()` exists one module along.
+     *
+     * `unit` is how many of the metric one billed unit covers: leads singly, credits in thousands,
+     * signal searches in hundreds. A metric with no metered price in Stripe still appears with its
+     * list price, because the sentence under the bars is about what a team *would* pay rather than
+     * about what we are currently able to bill.
+     *
+     * **`price_line` is a whole sentence, not a noun** ({@see BillingMetric::overagePriceLine()}).
+     * The first version sent the metric's `label()` and let the client interpolate it into a shared
+     * ":price per :thing" template, which the brand review caught: a shared template fixes English
+     * word order, and Arabic needs its own construction per noun. One complete key per metric is
+     * what lets the translator own the sentence (ADR 0007).
+     *
+     * @return array<string, array{amount: int, unit: int, label: string, price_line: string}>
+     */
+    private function overagePricing(): array
+    {
+        $pricing = [];
+
+        foreach (BillingMetric::cases() as $metric) {
+            $pricing[$metric->value] = [
+                'amount' => (int) config('billing.overage.'.$metric->value.'.amount', 0),
+                'unit' => $metric->overageUnit(),
+                // Both are translation keys, like every label crossing this boundary (ADR 0007).
+                'label' => $metric->label(),
+                'price_line' => $metric->overagePriceLine(),
+            ];
+        }
+
+        return $pricing;
     }
 
     /**

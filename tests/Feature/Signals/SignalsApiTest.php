@@ -13,6 +13,7 @@ use App\Modules\Signals\Jobs\RunSignalWatchJob;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -203,15 +204,19 @@ it('lists, shows, creates, updates and deletes watches', function (): void {
     // Create — 201 with the new watch.
     $created = $this->postJson(route('api.v1.signal-watches.store'), [
         'name' => 'Dubai founders',
-        'location' => 'Dubai',
-        'event_types' => ['acquisition', 'funding_round'],
+        'locations' => ['Dubai'],
+        'regions' => ['ae'],
+        'signal_definition_ids' => signalDefinitionIds($team, [
+            SignalPresetCatalogue::ACQUISITION,
+            SignalPresetCatalogue::FUNDING_ROUND,
+        ]),
         'cadence' => 'daily',
     ])
         ->assertCreated()
         ->assertJsonPath('data.name', 'Dubai founders')
         // Event types arrive with their labels and explainers, so a client holds no copy.
-        ->assertJsonPath('data.event_types.0.value', 'acquisition')
-        ->assertJsonStructure(['data' => ['event_types' => [['value', 'label', 'description']]]])
+        ->assertJsonPath('data.definitions.0.key', SignalPresetCatalogue::ACQUISITION)
+        ->assertJsonStructure(['data' => ['definitions' => [['id', 'key', 'name', 'description', 'is_preset']]]])
         ->json('data.id');
 
     $this->getJson(route('api.v1.signal-watches.index'))
@@ -224,8 +229,9 @@ it('lists, shows, creates, updates and deletes watches', function (): void {
 
     $this->patchJson(route('api.v1.signal-watches.update', ['watch' => $created]), [
         'name' => 'Renamed',
-        'location' => 'Abu Dhabi',
-        'event_types' => ['relocation'],
+        'locations' => ['Abu Dhabi'],
+        'regions' => ['ae'],
+        'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::RELOCATION]),
         'cadence' => 'weekly',
         'is_active' => false,
     ])
@@ -247,10 +253,10 @@ it('validates a watch', function (): void {
     Sanctum::actingAs($user, ['*']);
 
     $this->postJson(route('api.v1.signal-watches.store'), [
-        'name' => '', 'location' => '', 'event_types' => [], 'cadence' => 'hourly',
+        'name' => '', 'locations' => [], 'regions' => [], 'signal_definition_ids' => [], 'cadence' => 'hourly',
     ])
         ->assertStatus(422)
-        ->assertApiValidationErrors(['name', 'location', 'event_types', 'cadence']);
+        ->assertApiValidationErrors(['name', 'locations', 'regions', 'signal_definition_ids', 'cadence']);
 });
 
 it('accepts a run and answers 202 without waiting for it', function (): void {
@@ -337,7 +343,10 @@ it('stops a read-only token managing watches', function (): void {
 
     $this->getJson(route('api.v1.signal-watches.index'))->assertOk();
     $this->postJson(route('api.v1.signal-watches.store'), [
-        'name' => 'Nope', 'location' => 'Dubai', 'event_types' => ['acquisition'], 'cadence' => 'daily',
+        'name' => 'Nope', 'locations' => ['Dubai'],
+        'regions' => ['ae'],
+        'signal_definition_ids' => signalDefinitionIds($team, [SignalPresetCatalogue::ACQUISITION]),
+        'cadence' => 'daily',
     ])->assertForbidden();
     $this->deleteJson(route('api.v1.signal-watches.destroy', ['watch' => $watch->getKey()]))->assertForbidden();
     $this->postJson(route('api.v1.signal-watches.run', ['watch' => $watch->getKey()]))->assertForbidden();

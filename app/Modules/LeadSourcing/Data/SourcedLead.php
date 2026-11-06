@@ -7,6 +7,7 @@ namespace App\Modules\LeadSourcing\Data;
 use App\Modules\LeadSourcing\Contracts\LeadSourceProvider;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Support\CompanyNameKey;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Spatie\LaravelData\Data;
@@ -82,7 +83,10 @@ final class SourcedLead extends Data
         // Name-only is the weakest key and provider-scoped: clamp the slug (so it can't exceed the
         // column) and append a short hash of that slug — case-insensitively — so distinct same-prefix
         // names don't collide while "ACME" and "Acme" still match.
-        $slug = Str::slug($this->companyName);
+        //
+        // The slug itself comes from `CompanyNameKey` since S10, where Signals' lead matcher reads
+        // it too. One rule: three normalisers is how two leads become three.
+        $slug = CompanyNameKey::for($this->companyName);
 
         return 'name:'.$this->source->value.':'.Str::limit($slug, 120, '').':'.substr(sha1($slug), 0, 12);
     }

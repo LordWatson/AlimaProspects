@@ -57,13 +57,19 @@ it('refuses every declared capability at the web route that names it', function 
     foreach (Capability::cases() as $capability) {
         $path = $routes[$capability->value] ?? null;
 
-        // Two capabilities are enforced somewhere other than a GET, and each has its own test
-        // below: `enrichment` in a queued Action with no screen at all, and `api_access` on a POST
+        // Three capabilities are enforced somewhere other than a GET, and each has its own test
+        // below: `enrichment` in a queued Action with no screen at all, `api_access` on a POST
         // (the token *index* stays open on every plan on purpose, because a downgraded team still
-        // needs to clean up the tokens it holds). Anything else missing from this map is a
-        // capability whose route nobody has pointed at, which is the gap this test exists to find.
+        // needs to clean up the tokens it holds), and `signal_composer` on a POST for the same kind
+        // of reason — the signal-type library it sits on stays open to everybody (S9, plan decision
+        // #1). Anything else missing from this map is a capability whose route nobody has pointed
+        // at, which is the gap this test exists to find.
         if ($path === null) {
-            expect($capability)->toBeIn([Capability::Enrichment, Capability::ApiAccess]);
+            expect($capability)->toBeIn([
+                Capability::Enrichment,
+                Capability::ApiAccess,
+                Capability::SignalComposer,
+            ]);
 
             continue;
         }
@@ -78,6 +84,25 @@ it('refuses every declared capability at the web route that names it', function 
             ->get($path)
             ->assertRedirect();
     }
+
+    expect($team)->not->toBeNull();
+});
+
+it('refuses the AI composer while leaving the signal-type library open', function (): void {
+    [$owner, $team] = Billing::team();
+
+    killAll(Capability::SignalComposer);
+
+    // **The library and the hand-written form stay open**, which is the whole reason this
+    // capability is drawn this narrowly (S9, plan decision #1): a team that cannot describe a
+    // signal type in a sentence must still be able to have one. Gating the builder itself would
+    // have made the cheaper plans worse than they were before the builder existed.
+    $this->actingAs($owner)->get('/signals/types')->assertSuccessful();
+
+    // The drafting POST is what refuses — with the plan's own sentence, from the middleware.
+    $this->actingAs($owner)
+        ->post('/signals/types/compose', ['brief' => 'Tell me when a UK manufacturer changes hands.'])
+        ->assertRedirect();
 
     expect($team)->not->toBeNull();
 });

@@ -141,7 +141,7 @@ final class ProviderHealth
     private function configRoot(PlatformProvider $provider): string
     {
         return match ($provider) {
-            PlatformProvider::SerperNews => 'signals',
+            PlatformProvider::SerperNews, PlatformProvider::SignalsWebSearch => 'signals',
             PlatformProvider::Push => 'notifications',
             default => 'lead-sourcing',
         };

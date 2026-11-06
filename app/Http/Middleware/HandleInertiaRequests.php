@@ -53,6 +53,13 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user,
                 'currentTeam' => $user instanceof User ? $this->currentTeam($user) : null,
                 'teams' => $user instanceof User ? $this->teams($user) : [],
+                // **Whether this reader is a platform operator**, as a boolean and not as the role.
+                // The shell needs it because an operator belongs to no team, so every team-scoped
+                // destination in the rail would 404 for them — it offers the panel instead. A
+                // boolean rather than `admin_role` deliberately: which role somebody holds decides
+                // what the panel lets them do, and no screen outside the panel has any business
+                // branching on it.
+                'isOperator' => $user instanceof User && $user->isPlatformAdmin(),
             ],
             'locale' => [
                 'current' => $locale,

@@ -6,7 +6,9 @@ namespace App\Modules\Signals\Http\Requests;
 
 use App\Modules\Signals\Actions\ListSignalsAction;
 use App\Modules\Signals\Data\SignalFilters;
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Enums\SignalScope;
+use App\Modules\Signals\Enums\SignalSortOrder;
+use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\SignalStatus;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -33,8 +35,24 @@ final class ListSignalsRequest extends FormRequest
     {
         return [
             'status' => ['nullable', 'string', 'in:'.implode(',', SignalStatus::values())],
-            'event_types' => ['nullable', 'array', 'max:'.count(SignalEventType::cases())],
-            'event_types.*' => ['string', 'max:32'],
+            // Which half of the feed (S10). `in:` rather than permissive, unlike the filters
+            // below, because there are exactly two and neither can go stale — but `nullable`, so
+            // the plain `/signals` URL the app has always had still means "everything".
+            'scope' => ['nullable', 'string', 'in:'.implode(',', SignalScope::values())],
+            // How it is ordered (S12). Same shape and same reasoning as the scope: a closed pair
+            // that cannot go stale, nullable so the plain URL keeps meaning the default.
+            'sort' => ['nullable', 'string', 'in:'.implode(',', SignalSortOrder::values())],
+            // Signal definition keys since S7 (ADR 0018). The bound is a team's library ceiling
+            // rather than a fixed set of cases, and membership is not checked here for the reason
+            // `SignalFilters` gives: an unknown key narrows to nothing, which is what a stale
+            // shared link should do rather than 422.
+            'event_keys' => ['nullable', 'array', 'max:'.max(1, (int) config('signals.max_definitions_per_team', 25))],
+            'event_keys.*' => ['string', 'max:32'],
+            // Which sources to show (S13). Bounded by the enum, and only the available cases: a
+            // source with no provider has no rows, so offering to filter by it would be a control
+            // that can only ever empty the feed.
+            'source_kinds' => ['nullable', 'array', 'max:'.count(SignalSourceKind::available())],
+            'source_kinds.*' => ['string', 'distinct', 'in:'.implode(',', SignalSourceKind::availableValues())],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'min_relevance' => ['nullable', 'integer', 'min:0', 'max:100'],

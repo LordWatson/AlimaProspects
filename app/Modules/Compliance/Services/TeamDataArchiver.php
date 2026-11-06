@@ -19,6 +19,7 @@ use App\Modules\Outreach\Models\OutreachMessage;
 use App\Modules\Outreach\Models\OutreachSuppression;
 use App\Modules\Scoring\Models\LeadScore;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Models\SignalWatchlistEntry;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -226,18 +227,37 @@ final class TeamDataArchiver
             ),
             'signals.csv' => fn (): string => $this->csv(
                 Signal::query()->where('team_id', $teamId),
-                ['id', 'lead_id', 'status', 'event_type', 'subject_person_name', 'subject_person_role', 'subject_company_name', 'headline', 'source_url', 'published_at'],
+                ['id', 'lead_id', 'matched_lead_id', 'status', 'event_type', 'subject_person_name', 'subject_person_role', 'subject_company_name', 'headline', 'source_url', 'published_at'],
                 static fn (Signal $signal): array => [
                     $signal->id,
                     $signal->lead_id,
+                    // The lead this event was *about*, as opposed to converted into (S10).
+                    $signal->matched_lead_id,
                     $signal->status->value,
-                    $signal->event_type->value,
+                    $signal->event_key,
                     $signal->subject_person_name,
                     $signal->subject_person_role,
                     $signal->subject_company_name,
                     $signal->headline,
                     $signal->source_url,
                     $signal->published_at?->toIso8601String(),
+                ],
+            ),
+            // The accounts the team asked to be watched (S10). In the export because they are
+            // the team's own words about who matters to them — a list a member typed or that
+            // mirrors their pipeline — and an export that left them out would hand somebody back
+            // their data minus the part they would notice missing.
+            'signal_watchlists.csv' => fn (): string => $this->csv(
+                SignalWatchlistEntry::query()->where('team_id', $teamId)->with('watchlist'),
+                ['id', 'watchlist', 'entity_type', 'name', 'domain', 'lead_id', 'is_active'],
+                static fn (SignalWatchlistEntry $entry): array => [
+                    $entry->id,
+                    $entry->watchlist?->name,
+                    $entry->entity_type->value,
+                    $entry->name,
+                    $entry->domain,
+                    $entry->lead_id,
+                    $entry->is_active ? 'yes' : 'no',
                 ],
             ),
             // The team's own entries only. A platform-wide opt-out belongs to the person who made

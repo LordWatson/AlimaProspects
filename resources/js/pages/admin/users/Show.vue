@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { KeyRound, LogOut, MailCheck, ShieldAlert, UserCog } from '@lucide/vue';
 import { ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -68,34 +69,11 @@ function impersonate(): void {
     <Head :title="user.name" />
 
     <div class="flex flex-col gap-8">
-        <header class="min-w-0">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Person · {{ user.id }}
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                {{ user.name }}
-            </h1>
-            <p class="mt-1 text-sm text-muted-foreground">{{ user.email }}</p>
-            <p class="mt-2 flex flex-wrap items-center gap-2">
-                <Badge v-if="user.admin_role_label" variant="info">
-                    {{ user.admin_role_label }}
-                </Badge>
-                <Badge :variant="user.verified ? 'success' : 'warning'">
-                    {{ user.verified ? 'Verified' : 'Unverified' }}
-                </Badge>
-                <Badge :variant="user.two_factor ? 'success' : 'secondary'">
-                    {{ user.two_factor ? 'Two-factor on' : 'No two-factor' }}
-                </Badge>
-                <Badge variant="outline">
-                    {{ user.tokens }} API token(s)
-                </Badge>
-                <Badge v-if="user.created_at" variant="outline">
-                    Joined {{ dateTime(user.created_at) }}
-                </Badge>
-            </p>
-        </header>
+        <AdminPageHeader
+            :eyebrow="`Member · ${user.id}`"
+            :title="user.name"
+            :meta="user.email"
+        />
 
         <section class="flex flex-col gap-3" aria-label="Account actions">
             <h2 class="text-lg font-semibold text-foreground">Account</h2>

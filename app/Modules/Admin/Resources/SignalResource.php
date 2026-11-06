@@ -7,9 +7,9 @@ namespace App\Modules\Admin\Resources;
 use App\Modules\Admin\Data\ResourceColumn;
 use App\Modules\Admin\Data\ResourceFilter;
 use App\Modules\Admin\Enums\ResourceGroup;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 
 /**
  * Trigger events found in the news, several of which name a real person. Read-only, and
@@ -50,7 +50,7 @@ final class SignalResource extends AdminResource
     {
         return [
             ResourceColumn::text('team.name', 'Team'),
-            ResourceColumn::text('event_type', 'Event'),
+            ResourceColumn::text('event_key', 'Event'),
             ResourceColumn::text('status', 'Status'),
             ResourceColumn::text('subject_company_name', 'Company'),
             ResourceColumn::text('source_name', 'Source'),
@@ -81,7 +81,13 @@ final class SignalResource extends AdminResource
     {
         return [
             ResourceFilter::enum('status', 'Status', SignalStatus::class),
-            ResourceFilter::enum('event_type', 'Event type', SignalEventType::class),
+            // **The preset keys, not a team's library.** Since S7 a signal type is a row a tenant
+            // owns (ADR 0018), and this screen is cross-tenant: there is no "the" set of event
+            // types to offer any more. The platform presets are the keys every tenant shares, which
+            // makes them the only ones an operator can usefully filter the whole table by - a
+            // tenant's own key is reachable through search instead. Read from the catalogue rather
+            // than the database, so a registry definition stays a declaration and not a query.
+            new ResourceFilter('event_key', 'Event type', SignalPresetCatalogue::labels()),
         ];
     }
 

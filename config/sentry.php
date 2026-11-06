@@ -4,6 +4,7 @@ use App\Modules\AiPlatform\Exceptions\AiCreditExceededException;
 use App\Modules\AiPlatform\Exceptions\AiInputTooLargeException;
 use App\Modules\Core\Exceptions\CapabilityException;
 use App\Modules\Core\Observability\SentryOptions;
+use App\Modules\Signals\Exceptions\SignalAllowanceExceeded;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
@@ -68,6 +69,15 @@ return [
         // 413 tells them so. Added in the review round — without it every oversized paste would be
         // reported as a bug in the AI platform.
         AiInputTooLargeException::class,
+        // A Signals plan limit or allowance saying no (S16): this month's searches are gone, the
+        // team is at its watch ceiling, their plan has no automations. Every one of them is the
+        // application working, and the one that is scheduled rather than clicked — a watch run
+        // refused for a spent allowance — would otherwise report itself once an hour per watch,
+        // for every team on a ceiling, which is a tracker nobody reads. The refusal is still
+        // recorded on the run and in the `signals` log, where the team and an operator can both
+        // see it. Note it is the **subclass**, never `SignalsException`: a source returning
+        // something unreadable is a domain exception too and we want to hear about that one.
+        SignalAllowanceExceeded::class,
     ],
 
     // @see https://docs.sentry.io/concepts/key-terms/dsn-explainer/

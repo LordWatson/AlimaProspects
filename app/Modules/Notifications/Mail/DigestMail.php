@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Notifications\Mail;
 
 use App\Modules\Core\Models\Team;
+use App\Modules\Notifications\Data\DigestHighlight;
 use App\Modules\Notifications\Data\DigestSummary;
 use App\Modules\Notifications\Enums\DigestFrequency;
 use Illuminate\Bus\Queueable;
@@ -54,6 +55,14 @@ final class DigestMail extends Mailable implements ShouldQueue
                 'weekly' => $this->summary->frequency === DigestFrequency::Weekly,
                 'lines' => $this->summary->lines,
                 'total' => $this->summary->total,
+                // Arrays rather than the DTOs: a Blade view reaching into a readonly class is a
+                // second place the shape lives, and this one renders under a different locale from
+                // the one it was built in.
+                'highlights' => array_map(
+                    static fn (DigestHighlight $highlight): array => $highlight->toArray(),
+                    $this->summary->highlights,
+                ),
+                'signalsUrl' => url('/signals'),
                 'settingsUrl' => url('/settings/notifications'),
                 'dashboardUrl' => url('/dashboard'),
             ],

@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ShieldCheck } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminPager from '@/components/admin/AdminPager.vue';
 import AdminWindowFilter from '@/components/admin/AdminWindowFilter.vue';
 import { Badge } from '@/components/ui/badge';
@@ -108,22 +109,11 @@ function assessmentState(record: AdminAssessment): {
     <Head title="Compliance activity" />
 
     <div class="flex flex-col gap-8">
-        <header class="max-w-2xl">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
-            >
-                Platform
-            </p>
-            <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                Compliance activity
-            </h1>
-            <p class="mt-2 text-sm text-muted-foreground">
-                Retention sweeps, exports, erasures and assessments across every
-                tenant. <strong>Read-only.</strong> An erasure or a retention
-                policy is the tenant's decision as data controller, so there is
-                no route here to make one.
-            </p>
-        </header>
+        <AdminPageHeader
+            eyebrow="Platform · compliance"
+            title="What the law|has us doing."
+            lede="Retention sweeps, erasures and subject requests across every tenant. Figures, never the records themselves."
+        />
 
         <section class="flex flex-col gap-3" aria-label="Assessments">
             <div class="flex flex-wrap items-baseline justify-between gap-3">

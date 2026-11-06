@@ -15,10 +15,10 @@ use App\Modules\Reporting\Enums\ReportKey;
 use App\Modules\Reporting\Enums\ReportRange;
 use App\Modules\Scoring\Enums\ScoreGrade;
 use App\Modules\Scoring\Models\LeadScore;
-use App\Modules\Signals\Enums\SignalEventType;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalWatch;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -72,7 +72,7 @@ it('renders the dashboard for a member of a team', function (): void {
             ->component('Dashboard')
             ->has('report.kpis', 4)
             ->has('report.funnel', 4)
-            ->has('report.tables', 4)
+            ->has('report.tables', 5)
             ->where('report.has_data', false));
 });
 
@@ -255,21 +255,25 @@ it('offers every range and every report to the filter controls', function (): vo
             ->has('options.reports', count(ReportKey::cases())));
 });
 
-it('builds the four performance tables in tab order', function (): void {
+it('builds the performance tables in tab order', function (): void {
     $user = createUserWithTeam();
 
+    // The count and the order are both pinned on purpose: `ReportKey::tabular()` is what the tabs
+    // and the export menu are both built from, so a table added without a tab — or added in the
+    // wrong place — is the failure this asserts away. Signals S12 added the fifth.
     $this->actingAs($user)
         ->get(route('dashboard'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->has('report.tables', 4)
+            ->has('report.tables', 5)
             ->where('report.tables.0.key', 'icp_performance')
-            ->where('report.tables.1.key', 'outreach')
-            ->where('report.tables.2.key', 'team_activity')
-            ->where('report.tables.3.key', 'ai_usage')
+            ->where('report.tables.1.key', 'signal_performance')
+            ->where('report.tables.2.key', 'outreach')
+            ->where('report.tables.3.key', 'team_activity')
+            ->where('report.tables.4.key', 'ai_usage')
             // Every member gets a row, including one who did nothing: a member at zero is the most
             // actionable line in the table.
-            ->has('report.tables.2.rows', 1));
+            ->has('report.tables.3.rows', 1));
 });
 
 it('buckets the trend by week and keeps qualified inside sourced', function (): void {
@@ -363,21 +367,28 @@ it('counts undismissed signals by event type', function (): void {
     app(TeamContext::class)->run($team, function () use ($team): void {
         $watch = SignalWatch::factory()->create(['team_id' => $team->getKey()]);
 
-        Signal::factory()->count(2)->create([
-            'team_id' => $team->getKey(),
-            'signal_watch_id' => $watch->getKey(),
-            'status' => SignalStatus::New,
-            'event_type' => SignalEventType::FundingRound,
-        ]);
+        // The team's own signal types, which is what the breakdown labels its slices from since S7
+        // (ADR 0018) — it groups by the stored `event_key` and looks the name up.
+        $funding = signalDefinition($team, SignalPresetCatalogue::FUNDING_ROUND);
+        $acquisition = signalDefinition($team, SignalPresetCatalogue::ACQUISITION);
+
+        Signal::factory()->count(2)
+            ->forDefinition($funding)
+            ->create([
+                'team_id' => $team->getKey(),
+                'signal_watch_id' => $watch->getKey(),
+                'status' => SignalStatus::New,
+            ]);
 
         // Dismissed signals are a judgement that the event was not worth acting on; counting them
         // would make a noisy watch look productive.
-        Signal::factory()->create([
-            'team_id' => $team->getKey(),
-            'signal_watch_id' => $watch->getKey(),
-            'status' => SignalStatus::Dismissed,
-            'event_type' => SignalEventType::Acquisition,
-        ]);
+        Signal::factory()
+            ->forDefinition($acquisition)
+            ->create([
+                'team_id' => $team->getKey(),
+                'signal_watch_id' => $watch->getKey(),
+                'status' => SignalStatus::Dismissed,
+            ]);
     });
 
     $this->actingAs($user)
@@ -385,7 +396,8 @@ it('counts undismissed signals by event type', function (): void {
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->has('report.signal_types', 1)
-            ->where('report.signal_types.0.key', 'funding_round')
+            ->where('report.signal_types.0.key', SignalPresetCatalogue::FUNDING_ROUND)
+            ->where('report.signal_types.0.label', 'Funding round')
             ->where('report.signal_types.0.value', 2)
             ->where('report.kpis.2.value', 2));
 });

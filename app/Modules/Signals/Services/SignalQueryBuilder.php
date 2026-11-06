@@ -7,143 +7,397 @@ namespace App\Modules\Signals\Services;
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
-use App\Modules\Signals\Data\SignalQuery;
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Data\SignalQueryEntity;
+use App\Modules\Signals\Data\SignalQueryPlan;
+use App\Modules\Signals\Data\SignalQuerySpec;
+use App\Modules\Signals\Data\SignalSourceQuery;
+use App\Modules\Signals\Enums\SearchRegion;
+use App\Modules\Signals\Enums\SignalSourceKind;
+use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalWatch;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Turns a {@see SignalWatch} (plus the team's active ICP, if any) into the set of Serper `/news`
- * queries a run executes. Deterministic — no AI. The watch's `location` overrides the ICP geography;
- * its `event_types` select the config templates (loosened plain-keyword templates, S0 spike); and an
- * ICP Buying-signal criterion is **appended as an extra query** only when it maps to a watched event
- * type — otherwise it is ignored and the reason logged (IDs/counts only, never names).
+ * Turns a {@see SignalWatch} and the {@see SignalDefinition}s it watches for (plus the team's active
+ * ICP, if any) into the set of Serper `/news` queries a run executes. Deterministic — no AI.
+ *
+ * Since S7 the templates and the ICP keyword map come off the **definition rows**, not from
+ * `config/signals.php` (ADR 0018): a signal type is data a team owns, and the config templates are
+ * now seed data for the platform presets only.
+ *
+ * Since S8 a watch covers **places and regions, plural** (ADR 0019). The product is
+ * `regions × locations × definitions × templates`, which is where the cost lives: six types of ten
+ * templates over ten places in two regions is twelve hundred paid searches for one run. Three
+ * things hold that:
+ *
+ * - `signals.max_locations_per_watch` and `max_regions_per_watch` bound the inputs
+ *   (`SignalWatchData`).
+ * - `signals.max_queries_per_run` bounds the product, here.
+ * - The trim is **deterministic and reported**: {@see SignalQueryPlan} carries what was wanted as
+ *   well as what will run, the run stores both, and the watch card shows the difference. A silent
+ *   trim is a lie about coverage.
+ *
+ * **Since S9 the "where" is a {@see SignalQuerySpec} rather than a watch** — the places, the
+ * regions and the skip list, resolved once, with no model behind them. That is what let the preview
+ * exist: it previews a definition somebody is still typing, for a team that may not have created a
+ * watch yet, and a builder that needs a saved row is the reason previews are hard. {@see build()}
+ * is the watch-shaped convenience over {@see buildFromSpec()}, so there is still exactly one code
+ * path.
+ *
+ * **The definitions are passed in, not loaded.** That is what keeps this a pure function of its
+ * inputs: the caller resolves them through a team-scoped query (which `docs/modules/signals.md`
+ * requires of every parent reference, since the FKs are not team-qualified), and the preview calls
+ * it with a definition that has no row at all.
+ *
+ * An ICP Buying-signal criterion is **appended as an extra query** only when it maps to one of the
+ * watched definitions — otherwise it is ignored and the reason logged (IDs/counts only, never
+ * names). The mapping is first-match-wins over the definitions in the order given, which is how v1
+ * behaved over the enum's declaration order; `SignalWatch::definitions()` orders by definition id
+ * for exactly that reason.
  */
 final class SignalQueryBuilder
 {
     private const int MAX_QUERY = 200;
 
     /**
-     * Keyword fragments (lower-case, substring match) that map an ICP buying signal to an event type.
+     * The `eventKey` an entity query carries.
      *
-     * @var array<string, list<string>>
+     * A company is searched by name with no event word in it, so the query is not *about* one type
+     * — the classifier decides which of the watch's types the article turns out to be, as it always
+     * has. The key is only the dedupe map's key here, and a sentinel says that plainly rather than
+     * naming an arbitrary definition and implying a claim the query does not make.
      */
-    private const KEYWORDS = [
-        SignalEventType::Acquisition->value => ['acqui', 'sold', 'exit', 'merger', 'm&a', 'buyout', 'takeover', 'stake sale'],
-        SignalEventType::FundingRound->value => ['fund', 'rais', 'series ', 'seed', 'investment', 'venture'],
-        SignalEventType::Relocation->value => ['relocat', 'moving', 'moves to', 'move to', 'family office', 'headquarter', 'opens office'],
-    ];
+    private const string ENTITY_KEY = '*account';
 
     /**
-     * @return list<SignalQuery>
+     * The registry, so a definition's stored source keys are turned into the sources that will
+     * actually run it (S13, ADR 0023).
+     *
+     * The builder asks rather than trusting the column, and the three refusals it collapses are
+     * three different things: a key this build does not recognise, a key with no provider
+     * registered (a source withdrawn between deploys, a credential pulled), and a provider that
+     * **declines** this definition through `supports()` — no SIC codes for a filings source, no URL
+     * for a feed. None of them is an error and all of them mean "no queries from here", so the
+     * builder is where they belong: a plan that contained queries nobody could run would be costed,
+     * trimmed and reported as coverage that does not exist.
      */
-    public function build(SignalWatch $watch, ?Icp $icp = null): array
+    public function __construct(private readonly SignalSourceRegistry $sources) {}
+
+    /**
+     * The queries one run of a watch would ask for.
+     *
+     * @param  list<SignalDefinition>  $definitions  The types to build for, in priority order.
+     * @param  int|null  $maxQueries  The ceiling for this run, from `SignalSpendGuard` — the
+     *                                module's own bound clamped by what is left of the team's
+     *                                monthly allowance (S16). Null falls back to the config bound,
+     *                                which is what the cost estimator and the tests want.
+     */
+    public function build(SignalWatch $watch, array $definitions, ?Icp $icp = null, ?int $maxQueries = null): SignalQueryPlan
     {
-        $market = $watch->market->value;
-        $location = $this->resolveLocation($watch, $market);
-        $gl = (string) config("signals.markets.{$market}.gl", 'ae');
-        $hl = (string) config('signals.hl', 'en');
+        return $this->buildFromSpec(SignalQuerySpec::forWatch($watch), $definitions, $icp, null, $maxQueries);
+    }
+
+    /**
+     * The queries any "where" would ask for — a watch's, or a draft definition's preview.
+     *
+     * @param  list<SignalDefinition>  $definitions  The types to build for, in priority order.
+     * @param  int|null  $resultsPerQuery  Overridden by the preview, which asks for fewer.
+     */
+    public function buildFromSpec(
+        SignalQuerySpec $spec,
+        array $definitions,
+        ?Icp $icp = null,
+        ?int $resultsPerQuery = null,
+        ?int $maxQueries = null,
+    ): SignalQueryPlan {
+        $regions = $spec->regions;
+        $locations = $spec->locations;
         $tbs = (string) config('signals.recency', 'qdr:w');
-        $num = max(1, min((int) config('signals.results_per_query', 20), 100));
-        $ignoreDomains = $this->resolveIgnoreDomains($watch);
+        $num = max(1, min($resultsPerQuery ?? (int) config('signals.results_per_query', 20), 100));
+        $ignoreDomains = $spec->ignoreDomains;
 
-        /** @var array<string, mixed> $templatesByType */
-        $templatesByType = (array) config("signals.templates.{$market}", []);
+        if ($spec->isEntityScoped()) {
+            return $this->buildEntityQueries($spec, $definitions, $tbs, $num, $maxQueries);
+        }
 
-        /** @var array<string, SignalQuery> $queries keyed by eventType|q to dedupe */
+        /** @var array<string, SignalSourceQuery> $queries keyed by region|eventKey|q to dedupe */
         $queries = [];
 
-        $watchedTypes = $this->watchedEventTypes($watch);
+        // **Definition-addressed sources, once each** (S13b): a feed's URL and a webhook's stored
+        // events both live on the definition, so neither multiplies by place, region or template.
+        // A feed asked once per place per region per template would be fetched forty times a run
+        // for one identical document.
+        foreach ($definitions as $definition) {
+            $this->pushDefinitionQueries($queries, $spec, $definition, $tbs, $num);
+        }
 
-        foreach ($watchedTypes as $eventType) {
-            /** @var list<string> $templates */
-            $templates = (array) ($templatesByType[$eventType->value] ?? []);
+        // **Place, then region, then type, then template.** That order is also the trim order,
+        // because the trim keeps the first N, so the nesting decides what a watch over budget
+        // loses. Place outermost is what makes the loss survivable: coverage is dropped a whole
+        // place at a time — a gap a member can see named on the card — and every region the member
+        // picked keeps the places that did fit. Region outermost, which this was first written as,
+        // spent the entire ceiling on the first region and left the second with **nothing**, which
+        // is the one failure a member would not spot: they asked for two jurisdictions and silently
+        // got one. Type above template means the first place searched covers every type.
+        foreach ($locations as $location) {
+            foreach ($regions as $region) {
+                foreach ($definitions as $definition) {
+                    [$kinds, $config] = $this->sourcesFor($definition);
 
-            foreach ($templates as $template) {
-                $q = $this->compose((string) $template, $location);
-                $this->push($queries, $eventType, $q, $gl, $hl, $tbs, $num, $ignoreDomains);
+                    foreach ($this->templatesFor($definition, $region) as $template) {
+                        $q = $this->compose($template, $location);
+                        $this->push($queries, $region, $definition->key, $q, $tbs, $num, $ignoreDomains, $kinds, $config);
+                    }
+                }
             }
         }
 
         if ($icp instanceof Icp) {
-            $this->appendBuyingSignalQueries($watch, $icp, $watchedTypes, $location, $gl, $hl, $tbs, $num, $queries, $ignoreDomains);
+            $this->appendBuyingSignalQueries($spec, $icp, $definitions, $locations, $regions, $tbs, $num, $queries, $ignoreDomains);
         }
 
-        return array_values($queries);
+        return $this->plan(array_values($queries), $spec, $maxQueries);
     }
 
     /**
-     * The watch's location, falling back to the market default when it is blank.
-     */
-    private function resolveLocation(SignalWatch $watch, string $market): string
-    {
-        $location = trim($watch->location);
-
-        return $location !== '' ? $location : (string) config("signals.markets.{$market}.default_location", '');
-    }
-
-    /**
-     * The watch's event types as enum cases, ignoring any stored value that is no longer a case.
+     * The queries an **entity-scoped** watch asks: one per account, by name (S10).
      *
-     * @return list<SignalEventType>
+     * **A bare name, not a quoted phrase, and that is a spike finding rather than a preference.**
+     * The plan assumed a company name was the one case where exact-phrase quoting is right, and
+     * asked for it to be checked. It was, over six companies that were in the news that week, and
+     * **every quoted query returned zero** — twelve of twelve, including single-word names where
+     * quoting cannot even change the meaning. Serper's `/news` endpoint with a recency window
+     * appears not to serve quoted queries at all, which is the same wall the S0 spike hit from the
+     * other side. The table is in `docs/modules/signals.md`.
+     *
+     * **A company is searched by name alone, with no keyword appended**, which is the second thing
+     * the spike settled. The bare name was 70–100% on topic by itself, and adding a keyword cost
+     * genuine results rather than sharpening them: one subject went from nine results to **none**.
+     * So the search finds everything about the account and `signals.extract_event` decides whether
+     * any of it is an event of a watched type — which is what the classifier is for, and it already
+     * receives the watch's definitions.
+     *
+     * **A person is not searched by name alone**, because "Jane Smith" returns every Jane Smith
+     * alive. Each person entity gets one query per definition, qualified by that definition's first
+     * match keyword — the stems a team already wrote for ICP matching, which are exactly the words
+     * that appear in a sentence about this kind of event.
+     *
+     * @param  list<SignalDefinition>  $definitions
      */
-    private function watchedEventTypes(SignalWatch $watch): array
-    {
-        $types = [];
-        foreach ($watch->event_types as $value) {
-            $type = SignalEventType::tryFrom((string) $value);
-            if ($type !== null) {
-                $types[] = $type;
+    private function buildEntityQueries(
+        SignalQuerySpec $spec,
+        array $definitions,
+        string $tbs,
+        int $num,
+        ?int $maxQueries,
+    ): SignalQueryPlan {
+        /** @var array<string, SignalSourceQuery> $queries */
+        $queries = [];
+
+        // A bare company name belongs to no single type, so it is asked of every source any watched
+        // type runs on — see `unionSourcesFor()` for why the union rather than the first.
+        $unionKinds = $this->unionSourcesFor($definitions);
+
+        // **Searching and addressing are two different things** (S13b). A query-based source is
+        // given a string and multiplies out by name and region; a source that addresses a *subject*
+        // — Companies House, which is given a company number — wants exactly one query per account,
+        // with no name and no region multiplication, because the registry has one record per
+        // company and `gl` means nothing to it. So the kinds are split here and the two shapes are
+        // built separately, rather than one being bent into the other.
+        $searchKinds = $this->queryBased($unionKinds);
+
+        foreach ($definitions as $definition) {
+            $this->pushDefinitionQueries($queries, $spec, $definition, $tbs, $num);
+        }
+
+        foreach ($spec->entities as $entity) {
+            $this->pushSubjectQueries($queries, $spec, $entity, $definitions, $tbs, $num);
+        }
+
+        // **Entity, then region, then (for a person) type.** Entity outermost, because the trim
+        // keeps the first N and an account half-searched is worse than an account not searched this
+        // run — the cursor brings it round tomorrow either way.
+        foreach ($spec->entities as $entity) {
+            foreach ($spec->regions as $region) {
+                foreach ($entity->names as $name) {
+                    if ($entity->searchableAlone()) {
+                        // Through `compose()` with no placeholder, so a name gets the same squish
+                        // and the same 200-character clamp a template does. A watchlist name is
+                        // member-typed and reaches a provider URL.
+                        $this->push(
+                            $queries,
+                            $region,
+                            self::ENTITY_KEY,
+                            $this->compose($name, ''),
+                            $tbs,
+                            $num,
+                            $spec->ignoreDomains,
+                            $searchKinds,
+                        );
+
+                        continue;
+                    }
+
+                    foreach ($definitions as $definition) {
+                        $qualifier = $this->qualifierFor($definition);
+
+                        if ($qualifier === '') {
+                            continue;
+                        }
+
+                        [$kinds, $config] = $this->sourcesFor($definition);
+
+                        $this->push(
+                            $queries,
+                            $region,
+                            $definition->key,
+                            $this->compose($name.' '.$qualifier, ''),
+                            $tbs,
+                            $num,
+                            $spec->ignoreDomains,
+                            $this->queryBased($kinds),
+                            $config,
+                        );
+                    }
+                }
             }
         }
 
-        return $types;
+        return $this->plan(array_values($queries), $spec, $maxQueries);
     }
 
     /**
-     * Append an extra query per ICP buying signal that maps to a watched event type.
+     * The word that makes a person's name into a question about an event.
      *
-     * @param  list<SignalEventType>  $watchedTypes
-     * @param  array<string, SignalQuery>  $queries
+     * The definition's first match keyword, which is a stem a team wrote for ICP matching and
+     * therefore already the word a sentence about this event would use ("acqui", "rais", "exit").
+     * Falls back to the definition's own name, lower-cased, so a type with no keywords still
+     * produces something askable rather than nothing.
+     */
+    private function qualifierFor(SignalDefinition $definition): string
+    {
+        foreach ($definition->match_keywords ?? [] as $keyword) {
+            $clean = Str::squish($keyword);
+
+            if ($clean !== '') {
+                return $clean;
+            }
+        }
+
+        return Str::lower(Str::squish($definition->name));
+    }
+
+    /**
+     * Hold a run to `signals.max_queries_per_run`, and record what it cost in coverage.
+     *
+     * v1 could not exceed eight queries: three event types with three, three and two templates. S7
+     * made that 25 types × 10 templates, and S8 multiplies again by places and regions — so this is
+     * the one bound that scales with every dimension the feature has grown. Neither the per-watch
+     * 15-minute throttle nor the per-member rate limit helps, because both bound how *often* a run
+     * happens rather than how big one is.
+     *
+     * The trim is a **prefix** of the plan, which is only fair because `build()` orders the plan
+     * place-major (see there). What it cannot promise is that every type is reached when the
+     * ceiling is lower than one place's worth of queries — a team with 20 types of 10 templates and
+     * a ceiling of 40 gets the first four types of its first place, and `wasTrimmed()` is how the
+     * screen says so.
+     *
+     * @param  list<SignalSourceQuery>  $queries
+     */
+    private function plan(array $queries, SignalQuerySpec $spec, ?int $maxQueries = null): SignalQueryPlan
+    {
+        $requested = count($queries);
+        $max = max(1, $maxQueries ?? (int) config('signals.max_queries_per_run', 40));
+
+        if ($requested <= $max) {
+            return new SignalQueryPlan($queries, $requested);
+        }
+
+        Log::channel('signals')->warning('Signal run trimmed to the per-run query ceiling.', [
+            'team_id' => $spec->teamId,
+            // Null for a preview, which is also how this line says which it was.
+            'signal_watch_id' => $spec->watchId,
+            'requested' => $requested,
+            'ceiling' => $max,
+        ]);
+
+        return new SignalQueryPlan(array_slice($queries, 0, $max), $requested);
+    }
+
+    /**
+     * The templates to use for a definition in a region.
+     *
+     * A region whose `hl` is not English uses the definition's translated templates **where it has
+     * them** and the English ones where it does not (ADR 0019 §5). The fallback is the point:
+     * adding an Arabic-language region must never silently empty a watch, and a definition nobody
+     * has translated is the normal case rather than an error.
+     *
+     * @return list<string>
+     */
+    private function templatesFor(SignalDefinition $definition, SearchRegion $region): array
+    {
+        $hl = $region->hl();
+
+        if ($hl !== 'en') {
+            $translated = $definition->templatesForLanguage($hl);
+
+            if ($translated !== []) {
+                return $translated;
+            }
+        }
+
+        return $definition->query_templates;
+    }
+
+    /**
+     * Append an extra query per ICP buying signal that maps to one of the watched definitions.
+     *
+     * One per (region × location), like the templates — a buying signal is a search like any other
+     * and has to be asked in each place the watch covers, or it would only ever find things in
+     * whichever place happened to come first.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     * @param  list<string>  $locations
+     * @param  list<SearchRegion>  $regions
+     * @param  array<string, SignalSourceQuery>  $queries
      * @param  list<string>  $ignoreDomains
      */
     private function appendBuyingSignalQueries(
-        SignalWatch $watch,
+        SignalQuerySpec $spec,
         Icp $icp,
-        array $watchedTypes,
-        string $location,
-        string $gl,
-        string $hl,
+        array $definitions,
+        array $locations,
+        array $regions,
         string $tbs,
         int $num,
         array &$queries,
         array $ignoreDomains = [],
     ): void {
-        $watchedValues = array_map(static fn (SignalEventType $t): string => $t->value, $watchedTypes);
-
+        // Mirrors `build()`'s place-major nesting, for the same reason: these are appended to the
+        // same plan and trimmed by the same prefix.
         foreach ($this->buyingSignals($icp) as $signal) {
-            $eventType = $this->matchEventType($signal);
+            $definition = $this->matchDefinition($signal, $definitions);
 
-            if ($eventType === null) {
-                Log::channel('signals')->debug('ICP buying signal ignored for query building: no event keyword matched.', [
-                    'signal_watch_id' => $watch->getKey(),
+            if (! $definition instanceof SignalDefinition) {
+                Log::channel('signals')->debug('ICP buying signal ignored for query building: no watched signal type matched its keywords.', [
+                    'signal_watch_id' => $spec->watchId,
                 ]);
 
                 continue;
             }
 
-            if (! in_array($eventType->value, $watchedValues, strict: true)) {
-                Log::channel('signals')->debug('ICP buying signal maps to an event type this watch does not watch; ignored.', [
-                    'signal_watch_id' => $watch->getKey(),
-                    'event_type' => $eventType->value,
-                ]);
+            // The matched definition's own sources, not the union: a buying signal that mapped onto
+            // one watched type is a question about *that* type, so it is asked wherever that type
+            // looks and nowhere else.
+            [$kinds, $config] = $this->sourcesFor($definition);
 
-                continue;
+            foreach ($locations as $location) {
+                foreach ($regions as $region) {
+                    $q = $this->compose(trim($location.' '.$signal), $location);
+                    $this->push($queries, $region, $definition->key, $q, $tbs, $num, $ignoreDomains, $kinds, $config);
+                }
             }
-
-            $q = $this->compose(trim($location.' '.$signal), $location);
-            $this->push($queries, $eventType, $q, $gl, $hl, $tbs, $num, $ignoreDomains);
         }
     }
 
@@ -164,16 +418,27 @@ final class SignalQueryBuilder
     }
 
     /**
-     * Map a buying-signal phrase to an event type by keyword, or null when none matches.
+     * Map a buying-signal phrase onto one of the watched definitions by keyword, or null when none
+     * matches.
+     *
+     * Substring, case-insensitive, first definition wins — kept exactly as v1's behaviour (`rais`
+     * matches "raises/raised", `exit` matches "exits") because it is deterministic and testable.
+     * What changed in S7 is where the keywords live: on the definition, so a team that writes their
+     * own type can say which of their buying signals it answers. Word-boundary matching remains the
+     * post-v1 refinement `docs/modules/signals.md` records.
+     *
+     * @param  list<SignalDefinition>  $definitions
      */
-    private function matchEventType(string $text): ?SignalEventType
+    private function matchDefinition(string $text, array $definitions): ?SignalDefinition
     {
         $haystack = Str::lower($text);
 
-        foreach (self::KEYWORDS as $eventType => $keywords) {
-            foreach ($keywords as $keyword) {
-                if (Str::contains($haystack, $keyword)) {
-                    return SignalEventType::from($eventType);
+        foreach ($definitions as $definition) {
+            foreach ($definition->match_keywords ?? [] as $keyword) {
+                $needle = Str::lower(trim($keyword));
+
+                if ($needle !== '' && Str::contains($haystack, $needle)) {
+                    return $definition;
                 }
             }
         }
@@ -193,79 +458,354 @@ final class SignalQueryBuilder
     }
 
     /**
-     * Add a query, de-duplicating identical (event type + text) pairs.
+     * Add a query **per source** (S13), de-duplicating identical (source + region + event key +
+     * text) tuples.
      *
-     * @param  array<string, SignalQuery>  $queries
-     */
-    /**
-     * @param  array<string, SignalQuery>  $queries
+     * The region is part of the key because the same text in two regions is two different searches:
+     * "London company acquisition" asked with `gl=gb` and with `gl=ae` returns different news,
+     * which is the whole reason a watch can name more than one.
+     *
+     * **The source joined it at S13** for the same kind of reason: the same template asked of
+     * `/news` and of `/search` returns different things — the spike found `/search` answers queries
+     * the news endpoint has nothing for — and the two have to stay attributable apart, or the run's
+     * per-source breakdown and the card's source badge mean nothing. So one template on two sources
+     * is **two** queries and costs twice, which is also why the per-run ceiling now bounds a watch
+     * across sources rather than within one.
+     *
+     * @param  array<string, SignalSourceQuery>  $queries
      * @param  list<string>  $ignoreDomains
+     * @param  list<SignalSourceKind>  $kinds  The sources to ask. Empty is treated as none, not as
+     *                                         news: a caller with no sources has nothing to ask, and
+     *                                         defaulting here would hide a definition whose keys were
+     *                                         all withdrawn.
+     * @param  array<string, array<string, mixed>>  $config  Per-source settings, keyed by source.
      */
-    private function push(array &$queries, SignalEventType $eventType, string $q, string $gl, string $hl, string $tbs, int $num, array $ignoreDomains = []): void
-    {
+    private function push(
+        array &$queries,
+        SearchRegion $region,
+        string $eventKey,
+        string $q,
+        string $tbs,
+        int $num,
+        array $ignoreDomains = [],
+        array $kinds = [],
+        array $config = [],
+    ): void {
         if ($q === '') {
             return;
         }
 
-        $key = $eventType->value.'|'.$q;
-
-        if (isset($queries[$key])) {
-            return;
-        }
-
-        $queries[$key] = new SignalQuery(
-            eventType: $eventType,
-            q: $q,
-            gl: $gl,
-            hl: $hl,
-            tbs: $tbs,
-            num: $num,
-            ignoreDomains: $ignoreDomains,
-        );
-    }
-
-    /**
-     * The watch's own domains to exclude (S6), normalised to bare lower-case hosts.
-     *
-     * A team types what they see — "www.Competitor.ae", or a whole URL pasted out of the address
-     * bar — so a host is extracted where there is one and `www.` is stripped, which is the form the
-     * client compares against. Blank entries are dropped and duplicates collapsed, so a sloppy
-     * list still works.
-     *
-     * @return list<string>
-     */
-    private function resolveIgnoreDomains(SignalWatch $watch): array
-    {
-        $domains = [];
-
-        foreach ($watch->ignore_domains ?? [] as $entry) {
-            $value = Str::lower(trim($entry));
-
-            if ($value === '') {
+        foreach ($kinds as $kind) {
+            // **Only a source that takes a search string belongs here, and enforcing it in this
+            // method is the S13b follow-up.** The entity path filtered its kinds through
+            // `queryBased()` at both call sites; the topical loop above passed `sourcesFor()`
+            // straight through, so a definition naming a **feed** got one feed query per template
+            // per place per region — the exact "forty fetches of one identical document" that
+            // `pushDefinitionQueries()`'s docblock says this shape exists to prevent. The
+            // poll-interval floor hid the requests (queries 2..N returned nothing immediately), so
+            // the visible damage was the per-run query ceiling: junk feed queries counted against
+            // `max_queries_per_run` and trimmed real news ones out of the window.
+            //
+            // Here rather than at the call sites, because this is where the invariant lives: a
+            // query with a `q` is for a source that reads one.
+            if (! $kind->isQueryBased()) {
                 continue;
             }
 
-            if (Str::contains($value, '/')) {
-                $host = parse_url(Str::startsWith($value, ['http://', 'https://']) ? $value : 'https://'.$value, PHP_URL_HOST);
-                $value = is_string($host) ? $host : $value;
+            $key = $kind->value.'|'.$region->value.'|'.$eventKey.'|'.$q;
+
+            if (isset($queries[$key])) {
+                continue;
             }
 
-            // A team that types a Unicode domain would otherwise never match the punycode host
-            // the provider returns.
-            if (! mb_check_encoding($value, 'ASCII') && function_exists('idn_to_ascii')) {
-                $ascii = idn_to_ascii($value);
-                $value = is_string($ascii) && $ascii !== '' ? $ascii : $value;
+            $queries[$key] = new SignalSourceQuery(
+                eventKey: $eventKey,
+                q: $q,
+                region: $region,
+                gl: $region->gl(),
+                hl: $region->hl(),
+                tbs: $tbs,
+                num: $num,
+                ignoreDomains: $ignoreDomains,
+                kind: $kind,
+                config: $config[$kind->value] ?? [],
+            );
+        }
+    }
+
+    /**
+     * One query per account for every source that addresses a **subject** rather than a search
+     * string (S13b) — today, Companies House.
+     *
+     * Exactly one per entity, however many names and regions the spec carries, because the registry
+     * holds one record per company: the member's spelling is the `q` so a log line reads, but the
+     * request is built from `entity->companyNumber`. An entity with no number contributes nothing,
+     * which is the ordinary state for a person, for an account not on the UK register, and for one
+     * the resolver has not reached.
+     *
+     * The config is the **union** of the offered definitions' filing maps rather than one
+     * definition's slice, and that is the documented exception to `SignalSourceQuery::$config`: a
+     * single filing-history request answers for every registry type the watch cares about, so asking
+     * per definition would multiply one HTTP call per account by the number of those types, for
+     * identical responses. The run still refuses any event key it did not offer.
+     *
+     * @param  array<string, SignalSourceQuery>  $queries
+     * @param  list<SignalDefinition>  $definitions
+     */
+    private function pushSubjectQueries(
+        array &$queries,
+        SignalQuerySpec $spec,
+        SignalQueryEntity $entity,
+        array $definitions,
+        string $tbs,
+        int $num,
+    ): void {
+        if (! $entity->hasCompanyNumber()) {
+            return;
+        }
+
+        $region = $spec->regions[0] ?? SearchRegion::Gb;
+
+        foreach ($this->unionSourcesFor($definitions) as $kind) {
+            if (! $kind->addressesSubject()) {
+                continue;
             }
 
-            // The trailing dot matters: `rival.ae.` is a valid absolute FQDN resolving to the same
-            // place, but a different string — and the comparison downstream is a string one.
-            $value = Str::replaceStart('www.', '', rtrim($value, '.'));
+            $config = $this->subjectConfigFor($kind, $definitions);
 
-            if ($value !== '' && ! in_array($value, $domains, strict: true)) {
-                $domains[] = $value;
+            if ($config === []) {
+                continue;
+            }
+
+            $key = $kind->value.'|subject|'.$entity->companyNumber;
+
+            if (isset($queries[$key])) {
+                continue;
+            }
+
+            $queries[$key] = new SignalSourceQuery(
+                eventKey: self::ENTITY_KEY,
+                q: $entity->primaryName(),
+                region: $region,
+                gl: $region->gl(),
+                hl: $region->hl(),
+                tbs: $tbs,
+                num: $num,
+                ignoreDomains: $spec->ignoreDomains,
+                kind: $kind,
+                config: $config,
+                entity: $entity,
+            );
+        }
+    }
+
+    /**
+     * One query per definition for every source addressed by the **definition** itself (S13b) —
+     * a feed, whose URL is on the definition, and the webhook, whose stored events are keyed to it.
+     *
+     * Exactly once each, whatever the spec's places, regions and templates: there is one document
+     * behind a feed URL and one set of inbound events behind a type, and asking for either forty
+     * times would fetch the same thing forty times.
+     *
+     * The config carries the definition's own slice plus the two ids the webhook source needs to
+     * find its rows. Those ids are **ours**, not a caller's: the webhook endpoint resolves a
+     * definition from a key within the authenticated team before anything is stored, so by the time
+     * an id reaches here it has already been established as that team's (ADR 0023 §7).
+     *
+     * @param  array<string, SignalSourceQuery>  $queries
+     */
+    private function pushDefinitionQueries(
+        array &$queries,
+        SignalQuerySpec $spec,
+        SignalDefinition $definition,
+        string $tbs,
+        int $num,
+    ): void {
+        $region = $spec->regions[0] ?? SearchRegion::Gb;
+
+        foreach ($this->definitionAddressedKinds($definition) as $kind) {
+            $key = $kind->value.'|definition|'.$definition->getKey();
+
+            if (isset($queries[$key])) {
+                continue;
+            }
+
+            $config = $definition->sourceConfig($kind);
+            $config['definition_id'] = $definition->getKey() === null ? null : (int) $definition->getKey();
+            $config['team_id'] = $definition->team_id === null ? null : (int) $definition->team_id;
+
+            $queries[$key] = new SignalSourceQuery(
+                eventKey: $definition->key,
+                // No search string: this source is told *which* definition, not *what* to look for.
+                q: '',
+                region: $region,
+                gl: $region->gl(),
+                hl: $region->hl(),
+                tbs: $tbs,
+                num: $num,
+                ignoreDomains: $spec->ignoreDomains,
+                kind: $kind,
+                config: $config,
+            );
+        }
+    }
+
+    /**
+     * The sources that this definition is itself the address for — a feed's URL, the webhook's
+     * stored events (S13b).
+     *
+     * One list, asked by {@see self::pushDefinitionQueries()} to emit them and by
+     * {@see self::definitionQueryCount()} to budget for them, because a watchlist run that budgets
+     * a different number from the one the builder emits is the trim biting an entity nobody meant
+     * to drop (S13b review, finding 7). `supports()` is part of the definition of "addressed": a
+     * definition that names the feed source without a URL is not an address, and the two callers
+     * have to agree about that too.
+     *
+     * @return list<SignalSourceKind>
+     */
+    private function definitionAddressedKinds(SignalDefinition $definition): array
+    {
+        $kinds = [];
+
+        foreach ($definition->sourceKinds() as $kind) {
+            if ($kind->isQueryBased() || $kind->addressesSubject()) {
+                continue;
+            }
+
+            $provider = $this->sources->find($kind);
+
+            if ($provider === null || ! $provider->supports($definition)) {
+                continue;
+            }
+
+            $kinds[] = $kind;
+        }
+
+        return $kinds;
+    }
+
+    /**
+     * How many queries these definitions will contribute **before** any place, region, template or
+     * entity multiplies anything (S13b review, finding 7).
+     *
+     * Asked by `RunSignalWatchAction::planFor()` so the entity window is filled out of what is left
+     * of `max_queries_per_run` rather than out of all of it. These queries are pushed **first**, and
+     * the plan's trim keeps the first N — so a window filled to exactly the budget had its last
+     * entity's queries trimmed away while the cursor still stepped past that entity. Which is the
+     * failure the ring exists to prevent, arriving by the one door the ring did not watch.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     */
+    public function definitionQueryCount(array $definitions): int
+    {
+        $count = 0;
+
+        foreach ($definitions as $definition) {
+            $count += count($this->definitionAddressedKinds($definition));
+        }
+
+        return $count;
+    }
+
+    /**
+     * The union of the offered definitions' settings for one subject-addressed source.
+     *
+     * For Companies House this is the filing to signal-type map, built from each definition's
+     * `source_config.companies_house.filings` list of form codes and categories. Later keys do not
+     * overwrite earlier ones, so where two definitions claim the same filing the first in pivot
+     * order wins — the same first-match-wins rule the ICP buying-signal mapping uses, and
+     * deterministic for the same reason.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     * @return array<string, mixed>
+     */
+    private function subjectConfigFor(SignalSourceKind $kind, array $definitions): array
+    {
+        $filings = [];
+
+        foreach ($definitions as $definition) {
+            $declared = $definition->sourceConfig($kind)['filings'] ?? [];
+
+            if (! is_array($declared)) {
+                continue;
+            }
+
+            foreach ($declared as $filingKey) {
+                if (! is_string($filingKey) || trim($filingKey) === '') {
+                    continue;
+                }
+
+                $filings[mb_strtolower(trim($filingKey))] ??= $definition->key;
             }
         }
 
-        return $domains;
+        return $filings === [] ? [] : ['filings' => $filings];
+    }
+
+    /**
+     * Only the sources that run a search string.
+     *
+     * @param  list<SignalSourceKind>  $kinds
+     * @return list<SignalSourceKind>
+     */
+    private function queryBased(array $kinds): array
+    {
+        return array_values(array_filter(
+            $kinds,
+            static fn (SignalSourceKind $kind): bool => $kind->isQueryBased(),
+        ));
+    }
+
+    /**
+     * The sources a definition runs on, and its own settings for each.
+     *
+     * @return array{0: list<SignalSourceKind>, 1: array<string, array<string, mixed>>}
+     */
+    private function sourcesFor(SignalDefinition $definition): array
+    {
+        $kinds = [];
+        $config = [];
+
+        foreach ($this->sources->forDefinition($definition) as $provider) {
+            $kind = $provider->kind();
+            $kinds[] = $kind;
+            $config[$kind->value] = $definition->sourceConfig($kind);
+        }
+
+        return [$kinds, $config];
+    }
+
+    /**
+     * The union of every definition's sources, in enum declaration order.
+     *
+     * For the queries that belong to no single type: an entity watch's bare company names (S10) and
+     * the ICP's buying-signal queries. Both ask "what happened to / around this", and the answer
+     * could be classified as any of the watched types — so if **any** watched type runs on the wider
+     * web, the question is worth asking there too. The alternative, picking the first definition's
+     * sources, would make the result depend on pivot order.
+     *
+     * @param  list<SignalDefinition>  $definitions
+     * @return list<SignalSourceKind>
+     */
+    public function unionSourcesFor(array $definitions): array
+    {
+        $kinds = [];
+
+        foreach ($definitions as $definition) {
+            foreach ($this->sources->forDefinition($definition) as $provider) {
+                $kind = $provider->kind();
+
+                if (! in_array($kind, $kinds, strict: true)) {
+                    $kinds[] = $kind;
+                }
+            }
+        }
+
+        // Enum order, so a plan's queries come out in a stable order whatever order the definitions
+        // arrived in — which is what makes the trim deterministic.
+        return array_values(array_filter(
+            SignalSourceKind::cases(),
+            static fn (SignalSourceKind $kind): bool => in_array($kind, $kinds, strict: true),
+        ));
     }
 }

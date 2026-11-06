@@ -16,6 +16,7 @@ use App\Modules\Reporting\Actions\BuildLeadTrendAction;
 use App\Modules\Reporting\Actions\BuildOutreachPerformanceAction;
 use App\Modules\Reporting\Actions\BuildPipelineBreakdownAction;
 use App\Modules\Reporting\Actions\BuildSignalBreakdownAction;
+use App\Modules\Reporting\Actions\BuildSignalPerformanceAction;
 use App\Modules\Reporting\Actions\BuildSourceBreakdownAction;
 use App\Modules\Reporting\Actions\BuildTeamActivityAction;
 use App\Modules\Reporting\Data\DashboardReport;
@@ -51,6 +52,7 @@ final readonly class DashboardReportBuilder
         private BuildSourceBreakdownAction $sources,
         private BuildSignalBreakdownAction $signals,
         private BuildIcpPerformanceAction $icpPerformance,
+        private BuildSignalPerformanceAction $signalPerformance,
         private BuildOutreachPerformanceAction $outreach,
         private BuildTeamActivityAction $activity,
         private BuildAiUsageAction $aiUsage,
@@ -96,12 +98,13 @@ final readonly class DashboardReportBuilder
         return array_map(
             fn (ReportKey $key): ReportTable => match ($key) {
                 ReportKey::IcpPerformance => $this->icpPerformance->handle($team, $range),
+                ReportKey::SignalPerformance => $this->signalPerformance->handle($team, $range),
                 ReportKey::Outreach => $this->outreach->handle($team, $range),
                 ReportKey::TeamActivity => $this->activity->handle($team, $range),
                 ReportKey::AiUsage => $this->aiUsage->handle($team, $range),
-                // Unreachable: `tabular()` returns the four above. The arm exists so that adding a
-                // fifth is a compile-time decision rather than a missing tab somebody notices in
-                // production.
+                // Unreachable: `tabular()` returns the five above. The arm exists so that adding a
+                // sixth is a compile-time decision rather than a missing tab somebody notices in
+                // production — which is exactly how S12's signal-performance table got its tab.
                 default => throw new LogicException("{$key->value} is not a tabular report."),
             },
             ReportKey::tabular(),

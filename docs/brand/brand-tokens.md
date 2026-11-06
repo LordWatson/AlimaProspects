@@ -629,3 +629,212 @@ Four things were left as judgements rather than changed, and are flagged here fo
 4. **Grade B still depends on `--info`** (§7.6, §7.7) and the dark `--brand`, `--warning`, `--info`
    and `--destructive` values remain unapproved (§7.10). Nothing new was built on them; the two
    places that had been were moved off (items 9 and 13 above).
+
+### 7i. Added 2026-11-02 (the Signals watch form, S8)
+
+Geography made the watch form the one settings screen in the product with a **legal** consequence:
+choosing where to look also chooses how the resulting leads may be approached. Four things came out
+of the brand review of it, and two are records rather than changes.
+
+1. **The approach note is not helper text.** It was styled exactly like every other muted hint in
+   the dialog, so the one sentence on the form with a legal consequence read as advice to skim. The
+   per-row note is now `text-foreground` rather than muted, and the summary that repeats it is a
+   real `<h3>` in a labelled `<section>` rather than a mono eyebrow — a tracked-caps label reads as
+   a category, and this is a statement.
+2. **It moved to immediately above Save.** The code comment claimed it sat "where somebody is about
+   to press Save" and it did not: four more groups came after it, so at phone width or 200% zoom it
+   was off screen by the time anybody reached the button. A claim like that in a comment is worth
+   checking against the DOM order.
+3. **`text-warning` on the trim line is correct and stays.** `--warning` `#8A5A00` is
+   `status.warning`, nowhere near Signal Orange `#F03D2A`, 5.3:1 on canvas at `text-sm`, and the
+   words carry the meaning without the colour. Reduced coverage is a real degradation rather than a
+   §7f.5 "not a problem", so amber is the right register. The copy gained the way out ("use fewer
+   places or types to cover everything") — a warning with no remedy is just an apology.
+4. **A `<textarea>` whose value is a filtered round trip is not keyboard-operable.** Pressing Enter
+   at the end of the text removed the line break it had just inserted, so the only way to add a
+   second place was to split an existing line or paste one in (WCAG 2.1.1). Both lists on this form
+   had it — the skip list since S6 — and both now keep their raw text in a `ref` and parse one way
+   into the form. **Worth checking anywhere else a two-way computed filters what it writes back.**
+
+**Flagged for brand-owner approval (§7):**
+
+1. **The approach-note wording, in both languages.** It is compliance copy: the UAE note now
+   carries "never" with the force the English intends, and the UK note says what a member may
+   actually do rather than naming a document. The Arabic was rewritten in the same pass and needs a
+   native **legal-register** reader — the first version said "sea" for "search", softened "never" to
+   "and not", and used "customers" for prospects on a line where that imprecision matters.
+2. **Whether the region note should link to the LIA page.** It currently names the assessment in
+   words. A link would be more useful and puts a second action inside a checkbox label.
+3. **The dark `--warning` `#D9B15A` is still the unapproved §7.10 value**, and this is now one more
+   place that depends on it. Added to the re-measure list.
+
+**Left standing, recorded so the next pass does not rediscover it:** the region rows are the fourth
+hand-rolled checkbox row in this dialog (`accent-brand` on a native input inside a `<Label>`, with
+`has-[:checked]` styling). They pass focus, hit area, keyboard and 1.4.1 — the native tick carries
+the state, not the tint — but the dialog now shows two checkbox looks, this one and
+`ui/checkbox/Checkbox.vue`'s Ink-filled one. **One `ChoiceRow` component should take both, before a
+fifth copy.** The dialog also still hand-rolls `Label` + control + `InputError` rather than using
+`FormField` (§7h); S8 wired the describedby chain and `aria-invalid` on the two fields it touched
+rather than converting the form, which is a bigger change than a geography phase should carry.
+
+### 7j. Added 2026-11-02 (the signal builder, S9)
+
+The builder put three things on one screen that the product had not had together before: an AI
+drafting box, a live cost figure, and a result panel whose job is to explain a rejection. The review
+of it produced one code bug, four accessibility fixes and a wholesale regroup of the panel.
+
+1. **One card per article, each carrying its own copy of the advice, is wallpaper.** Six cards could
+   say "tighten the templates" six times. The panel is now **grouped by verdict** — the problem
+   stated once with its count, the headlines under it as evidence, and no advice at all on the kept
+   group because the badge is the advice. The per-card metadata line went with it: the scores show
+   only on the two verdicts they explain, and the queries sit behind a `<details>`.
+2. **Two numbers, in a sentence.** The stat row had four, of which "events" restated the diagnosis
+   and "searches" restated the member's own template count. A number nobody acts on is decoration.
+3. **`aria-disabled` while busy, not `disabled`.** A focused button that becomes disabled drops focus
+   to `<body>` — and the composer's button then opens a dialog whose return-focus target is nothing
+   (WCAG 2.4.3). The handler guards instead. The busy state is still in the label ("Looking…",
+   "Drafting…"), so it was never colour-only.
+4. **The result takes focus when it arrives** (`tabindex="-1"`, §7h.10's precedent) rather than being
+   announced: a polite live region would read all six groups, and the result is long enough that
+   landing on it beats hearing it. It had no announcement at all before.
+5. **Three example briefs are not a field description.** They were in the textarea's
+   `aria-describedby`, so every focus read 240 characters of examples. The field is labelled by its
+   heading and described by its error only, and choosing an example now **moves focus into the box**
+   — filling a textarea from a button otherwise announces nothing.
+6. **Examples look pressable now.** Muted text with a dotted underline is the convention for an
+   abbreviation. They are bordered rows with a leading icon.
+7. **"About $0.00" reads as free**, which is a different claim from "too small to bill". Under a cent
+   the line says so in words. The formatted figure is also bidi-isolated, because `US$3.20`
+   interpolated into Arabic running text can reorder its symbol and digits.
+8. **"Kept" was wrong for a preview** — nothing has been kept. It is "Would appear". And **"Rare"**
+   on a thin preset read as a prize rather than a markdown; it is "Finds less", in the same direction
+   as the sentence beside it.
+9. **One primary per view.** The composer is the page's primary action since S9, so the hero's "New
+   type" became `hero` — two lime buttons on one screen was two offers of the same weight.
+10. **Verdict advice names fields by the labels the form uses** — "What doesn't", "How sure Alima must
+    be", "How well it must fit you". It said "does not count", "the relevance floor" and "the AI"
+    for one review cycle, which is advice about a form the member is not looking at. The Arabic had
+    drifted further, because it was translated from the jargon rather than from the labels.
+
+**Flagged for brand-owner approval (§7):**
+
+1. **A `brand`-filled badge as a positive result marker**, with one neutral `outline` for every
+   negative verdict. It is a solid fill rather than a tint (Cream on Deep Teal, ~7.5:1), so §7f.3
+   does not apply, and filled-versus-outlined survives forced colours. Confirm — and with it, that
+   the negative verdicts are deliberately **one** treatment rather than five.
+2. **The cost figure is in USD** in a UK and UAE product, because that is what the search provider
+   bills in. Confirm, or it shows in the team's currency with a conversion nobody can audit.
+3. **The Arabic for this phase** — the pack names and audience lines, the verdict labels and advice,
+   the cost sentences and the example briefs — was written in-phase and corrected once by review
+   (seven meaning errors, including "you employ talent" for "you place people"). It needs a native
+   reader, the same flag as §7i, and the money and advice lines first.
+
+**Recorded, not changed:** `text-lg` (18px) headings are not a step on the §3 scale and are now
+product-wide (§7c, §7e.2) — the composer adds one more. The hand-rolled checkbox-row pattern from
+§7i is untouched by this phase and still wants one `ChoiceRow`.
+
+### 7k. Added 2026-11-02 (the operations panel overhaul, 19d)
+
+The panel was rebuilt after the verdict "every page is boring, navigation is terrible, there are no
+graphs, there's no branding". Most of the answer was **applying the book to a surface that had been
+built without it**, which needs no approval and is recorded here so the next person knows it was
+deliberate:
+
+1. **One header for every screen** (`components/admin/AdminPageHeader.vue`). Eighteen hand-rolled
+   `<header>` blocks had drifted into eighteen type scales and spacings. It carries the tenant
+   `PageHero`'s **statement device** — a `|` marks where the accent tail begins — plus the DM Mono
+   eyebrow at the tracked 12px floor and a mono meta line that says **UTC** once per page instead of
+   per cell (§7f).
+2. **Deep Teal is the panel's one accent** (§1.2's one-hero-accent rule). Not Acid Lime: lime is the
+   tenant shell's hero, and an operator must never mistake one surface for the other (ADR 0014).
+   It carries the statement tail, the rail's active pill, the palette's highlighted row, the
+   series switcher's pressed state, the header's optional index numeral, and the chart mark — which
+   is **`chart-2`** (#205557, 8.1:1), the set's Teal single-series token. The first build used
+   `chart-1` and a comment that called it Deep Teal; `chart-1` is **Blue** (#4e91d4, about 3:1 as a
+   2px mark), so the panel briefly had a second data hue beside its accent. The brand review caught
+   both the hue and the comment. **Status is not among teal's uses**: the dashboard's "all clear"
+   panel uses `status.success` on its own 12% tint like the other two levels, because spending the
+   accent on a status is how a real accent stops meaning anything.
+3. **Charts are the existing set's rules on a new shape.** `components/admin/AdminSeriesChart.vue`
+   draws one daily series — one y-axis, a thin mark, a three-rule recessive grid, **direct labels**
+   for the peak and the last point rather than a tooltip, and a **text-equivalent table** in
+   `sr-only`. It exists rather than reusing `charts/TrendChart` because that one carries two series
+   cut in a _team's_ timezone, and the panel has one series always in UTC.
+4. **Status panels follow §7f.2–3 unchanged**: a 12% tint, a `/30` border, the status colour kept to
+   the icon and the border, the words in `text-foreground`, and a visually hidden level word beside
+   each icon so `warning` and `critical` do not differ by hue alone.
+5. **The rail keeps its Cloud Cream focus ring** (§7e.3) and gains a filter box and collapsible
+   groups. Each collapsible group label is a `<button>` with `aria-expanded`; the permanent ones
+   stay `<p>`, because the difference is real and should be carried by the element rather than by an
+   icon.
+
+**Flagged for brand-owner approval** — offered, not taken:
+
+- **A peek on the panel's header.** §5's product application sets one peek, one colour, one
+  placement, and it is defined against the **tenant** `PageHero`'s Ink card. The panel's header is a
+  cream editorial block with a rule, so putting the mark on it would be a _new_ application of the
+  element rather than the agreed one. It is deliberately absent; say the word and it goes on.
+- **The spectrum gradient as a chrome band.** §1.4 allows it for hero bands, motion and loaders. A
+  2px band under the panel's topbar would give the tool an unmistakable signature, but "the thin
+  rule above an operations table" is not one of the three named uses, so it is not taken here.
+- Everything already pending still is: `status.info` (§7f.4), the dark-mode `warning` / `info` /
+  `destructive` values (§7.10), and the off-scale spacing steps inherited product-wide (§7c).
+
+### 7l. Added 2026-11-04 (the post-S16 Signals audit)
+
+Nothing new was decided here. **Every one of these was an existing rule in this file that the
+Signals screens had not been brought in line with** — which is the useful finding, because it says
+the rules are right and the propagation is what fails.
+
+- **`status.info` is not a badge, and the running watch was the last one setting it.** §7g.2
+  restricts info to a non-text icon until §7.6 approves the token, because it is about 4.4:1 over
+  its own 12% tint; §7h.2 had already moved the leads list and the lead's rail to "an `outline`
+  badge with a `Spinner`". `Watches.vue` was setting `variant="info"` on a badge **that already
+  contained the Spinner**, so the fix was one word. `GradeBadge`'s grade B remains the only
+  deliberate holdout, as §7h.1 records.
+- **Body copy on a status tint is `text-foreground/80`.** §7h.2 settled this product-wide and
+  `ConvertSignalModal`'s compliance notice was still `text-muted-foreground` on `bg-warning/12`.
+  The panel was also missing the `border-warning/30` that every other status panel in the module
+  carries (`Playbooks.vue`, `PlaybookActivity.vue`), so it read as a flat wash rather than a notice.
+- **A brand tint does not carry its own words** (§7h.1). The feed's active scope pill was
+  `text-brand` on `bg-brand/10`; the brand colour stays on the border and the tint, and the label
+  is `text-foreground`. The status tabs beside it set `text-brand` on plain canvas, which is fine
+  and was left.
+- **A focus indicator is the ring at full strength.** Three hand-rolled `<select>` elements in
+  `Watches.vue` — in a file that _already imported_ `NativeSelect` for its others — had drifted
+  apart from each other on shadow and text size, two were at `focus-visible:ring-ring/50` which is
+  below the 3:1 WCAG 1.4.11 minimum, and all three had dropped the `disabled` and `aria-invalid`
+  states. `NativeSelect`'s own docblock predicted exactly this ("several screens were already
+  hand-rolling this element ... which the hand-rolled copies had all quietly dropped"). All three
+  now use the component.
+- **An action's accessible name has to say what it acts on.** Every card in the feed offered
+  "Dismiss", "Convert to lead" and "Bring it back" with the same name on every row, so a screen
+  reader's element list was a column of identical buttons. The name now carries the headline, with
+  the visible word kept as its **prefix** so voice control still matches what is on screen, and the
+  `<article>` names itself with `aria-labelledby` pointing at its `h2`.
+
+**The Arabic brand name had drifted and is now consistent again.** §7a fixes `أليما` for running
+copy. 181 lines used it and **16 — all from S14–S16 — had introduced `عليمة`**, so a member could
+meet both spellings on one screen. Normalised to `أليما`. **The open question is unchanged and still
+the brand owner's:** whether an Arabic _wordmark_ is approved at all, or whether the transliteration
+is the intended rendering. Three Arabic strings also want a native reader's eye rather than a
+mechanical fix, and are listed in `docs/modules/signals.md` under the audit section.
+
+**Judgement calls offered and not taken** — these need a brand-owner decision, not a developer's:
+
+- **Four hues on the watch list.** Each card carries a `success` "On" badge, the running badge,
+  lilac type chips and a lime hero CTA. Collapsing "On" to a quiet `outline` or a plain text label
+  would bring it back to one accent plus the type chips, as `SignalCard` does. Left as it is.
+- **Lilac icon circles in the Types body**, beside a lilac hero peek and a lime CTA — the
+  three-accent combination §5 approved for `PageHero` specifically. Either confirm it for the body
+  or switch the circles to `bg-accent`.
+- **`warning` for the compliance notice on conversion.** It is a legal restriction rather than a
+  degradation, so §7f.5 argues against spending amber on it while §7i.3 accepts amber for a real
+  legal consequence. It now only appears where a restriction actually applies, which makes the case
+  for amber stronger than it was.
+- **Bare `rounded`** (Tailwind's 4px, below the brand scale's `sm` = 8) at eight sites across the
+  module, plus `rounded-md` and `rounded-xl` off-scale at two more. `SignalCard` already notes this
+  for its own disclosure buttons and uses `rounded-sm`. A sweep, whenever those files are next
+  touched.
+- **The 24px remove button** on the accounts list meets WCAG 2.5.8 exactly; §7h.2 asks for a 40px
+  hit area via an invisible `before` pseudo-element when it is next touched.

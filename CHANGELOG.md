@@ -5,6 +5,786 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-11-04 — Signals: an audit, and the things it found
+
+A pass over the whole of Signals rather than over one change, looking for the places where
+something true when it was written stopped being true as the module grew.
+
+**The convert dialog was telling some people the wrong law.** It said "not cold email — UAE data law
+needs their say-so first" on _every_ conversion. That was right when Signals only watched the UAE,
+and wrong from the moment a watch could cover London: a UK prospect may be approached by email, and
+a team was being told otherwise on the one screen where they decide how to make contact. The dialog
+now shows the restriction that actually applies to that prospect, and nothing at all where there is
+none — resolved by the same code the save uses, so the two cannot disagree.
+
+**The watch screen now tells you when you are at your plan's limit**, before you fill in the form
+rather than after. The signal-types, accounts and automations screens already did.
+
+**Deleting a watch no longer leaves miscounted cards behind.** Where two watches covered the same
+story, removing one left the card claiming more outlets than it could show, and sometimes split one
+event into several. It is now put right as the watch goes, rather than overnight.
+
+**A feed's web address can no longer reach our logs.** Some addresses carry a private token, and a
+failed fetch was recording the whole address. It records what kind of failure it was and nothing
+else.
+
+**Two things that looked broken and were not.** Previewing a signal type at the same moment as a
+colleague showed an error page; it now says "someone else on your team is previewing right now, try
+again in a moment". And an automation that could never finish a batch now says so in the log instead
+of stopping quietly.
+
+**Faster housekeeping.** The nightly tidy-up and the monthly allowance figures had no database
+indexes behind them, which costs nothing at small scale and a great deal at large. Added.
+
+**Smaller things.** The "running" badge and some notice text failed contrast guidelines; three
+dropdowns on the watch form were missing their focus outline and their disabled state; every card in
+the feed offered a screen reader three buttons called "Dismiss", "Convert to lead" and "Bring it
+back" with no indication of which story they belonged to, and now names the story. In Arabic, one
+misspelled word, our own name spelled two different ways, and one phrase reworded to match how the
+rest of the product already says it. Some Arabic wording still needs a native speaker's eye and is
+listed in the module notes.
+
+**For developers:** the test suite could not run in parallel at all — it exited having run zero
+tests — for two separate reasons, both now fixed. It runs in 21 seconds instead of 122.
+
+### Added — 2026-11-04 — Signals: an allowance that means something, and nothing kept longer than it should be
+
+Signals has grown a lot in the last week, and every one of those additions was a new way to spend
+money on your behalf: a signal type is multiplied by every watch and every place it covers, a
+watchlist is a search for each company on it, a preview is a button that pays for searches, an
+automation is evaluated against every signal, and a feed is a request we make on your behalf to an
+address you chose. None of it was bounded by anything your plan could set. This is the release that
+fixes that, and it is deliberately boring — the best outcome here is that nobody notices.
+
+**Your plan now says what Signals may do, in eight numbers.** How many signal types and watches you
+may keep; how many companies on one watchlist; how many searches and how many previews a month; how
+much reading of full articles; and whether automations and the events API are included. The numbers
+for each plan are on the pricing page and your own are on **Plan & billing**, beside companies found
+and AI credits, as a bar with a figure on it.
+
+**And when a limit bites, you are told.** A watch that stops because the month's searches are gone
+says so, on the run, in a sentence you can act on — not an empty feed you have to work out for
+yourself. Near the ceiling a run gets **smaller rather than refused**, and says its coverage was
+trimmed: a team with twelve searches left gets a twelve-search run rather than nothing. Pressing
+"Run now" when there is nothing left tells you immediately and does not cost you your next press.
+Reading of full articles stops at its ceiling without stopping the signals, which keep arriving from
+the headline and the summary. On a paid plan, work continues past your included allowance and the
+extra is billed — up to twice the allowance, and no further, because an uncapped bill is not
+something anybody agreed to.
+
+**Nothing is kept longer than it needs to be.** Alima used to prune four of the tables behind
+Signals and now prunes all ten. Records that are about a person get the shortest window the product
+can work with: a dismissed signal after ninety days, an unactioned one after a hundred and eighty,
+and — new in this release — the record of what an automation did about somebody's event after a
+hundred and eighty, including for a signal that became a lead and is therefore never pruned itself.
+Figures that are about **cost** rather than people are kept far longer, because "what did Signals
+cost us last March" is a question asked in arrears. Everything else goes when the thing it was about
+goes: a preview's accounting row after a month, the tally for a news outlet nobody has seen for six
+months, and a watched company whose lead you deleted.
+
+**A data-subject request now reaches everywhere Signals holds a name.** It used to search the feed.
+It also searches the people on your watchlists — a name on a watchlist is a standing instruction to
+look for them, and erasing the stories while leaving the instruction would just find them again
+— and the body of any event one of your systems pushed to us, which we did not write and therefore
+have to read. The three are reported as three different kinds of record, because what somebody needs
+to be told is the difference between something we found, something we are looking for and something
+somebody else told us about them. Erasing a story that was one of several covering the same event
+now tidies that card up straight away, rather than at the following night's sweep.
+
+**You are not charged for the searches that cost us nothing.** Three of the five places Signals
+looks are free to us — Companies House, a feed you point us at, and events your own systems push —
+and the allowance counts only the ones we are billed for. A watchlist watched through the company
+register does not eat your month's searches.
+
+**Four smaller fixes you might have hit.** The signal-types and watchlist screens were showing the
+product's own maximum rather than your plan's, so a team allowed fifteen types was told
+twenty-five and found out by being refused. The "allowance is running low" message could have
+described your signal allowance as AI credit. The pricing line under your usage bars listed two
+things when there are now three. And if your plan stopped including automations, the only way to
+stop a rule being listed as live was to delete it — you can pause it now.
+
+### Fixed — 2026-11-03 — Signals: the library and the round-up, hardened
+
+Review of the three features below found several things worth knowing about, and all of them are
+fixed.
+
+**Two of them were about seeing somebody else's numbers, or your own in the wrong place.** On the
+admin side, the figures shown beside a signal type a business had offered us were the totals for
+every business running a type with that name, rather than that one business's — which is the only
+thing that decision is supposed to be made on. And a signal type added to the shared library while a
+business happened to be open in the same session was quietly saved as _their_ type instead of
+Alima's: it worked, it looked right, and nobody could find it afterwards. Both are closed, with
+tests that reproduce the conditions they needed.
+
+**The cost figure was in the wrong currency.** Each signal type's "what it cost" was shown with a
+pound sign over a dollar amount. The searches are billed in dollars and now say so.
+
+**Withdrawing a type from the library used to break its name for good** — adding anything under the
+same name afterwards failed outright, and withdrawn types stayed on the operator's screen. Both
+fixed; naming a withdrawn type's name when accepting a new submission now brings it back with the
+new content, which is what somebody typing it means.
+
+**An offered type kept more of your work.** Accepting a submission into the library was carrying its
+searches but not its include and exclude rules, its keywords or its suggested approach — which, for
+most types, is the part that does the work. It carries all of it now.
+
+**And if you deleted a type while your offer was waiting, you could not take the offer back.** You
+can now.
+
+Also: a signal check that failed and retried could end up billing twice for searches it had already
+recorded once; a problem writing the cost figures can no longer fail a check that has already paid
+for its searches.
+
+On the screens: in the "the library version of this has changed" panel, each change is now a
+properly labelled group, so a screen reader reads out what you are agreeing to rather than just the
+name of the part; the round-up email no longer runs the headline and the event together, and its
+"before you reach out" line now says so in words rather than relying on italics; buttons that repeat
+down the page carry the type's name; a read-only member is no longer invited to press a button they
+do not have; and the Arabic reads properly throughout — "pause" now says pause, "take it back" and
+"withdrawn" use one verb between them, and the round-up's count is grammatical for every number.
+
+### Added — 2026-11-03 — Signals: the round-up, the receipts, and a library that grows
+
+Three things at once, and they all answer the same complaint: Signals asked you to come and look at
+a screen, and never told you whether looking was worth it.
+
+**Your round-up now names the news.** The daily or weekly digest used to say "11 new signals
+waiting". It now names the ones worth your morning — the headline itself, the kind of event, how hot
+it is, and **how you may approach that prospect**, which matters because you are reading this in your
+inbox where nothing can warn you. One story is one line however many papers covered it, and it is
+capped at three, because a round-up you skim is a round-up you stop opening. It can come as a phone
+notification as well as an email; your existing round-up settings decide, and switching signals off
+switches them off here too.
+
+**Every signal type now shows what it found and what it cost.** On the signal types screen, each
+type you run carries its own figures: how much of what it brought you you kept, how many became
+leads, what it has cost, and what each lead cost. Where it has produced no leads, it says so in
+words rather than showing a nought — a nought would read as "free", and the truth is the money
+bought nothing. Types with too little history to judge stay quiet rather than showing you a panel of
+zeros.
+
+**And where a type is plainly not working, Alima says so.** A type that has found plenty, that you
+have kept almost none of and that has produced no leads gets a "pause this one?" card with the
+numbers behind it. As with every suggestion on that panel: it proposes, you decide, and nothing
+changes until you say so.
+
+**The library is now curated rather than shipped.** If you have built a signal type that works, you
+can **offer it to Alima's library** for other businesses to start from — with a note, and you can
+take the offer back. Nothing about your own type changes whatever we decide: it keeps its name, its
+history and its schedule, and it keeps running. We answer in writing either way.
+
+**And when the library improves something you took a copy of, you are asked rather than updated.**
+Your copy keeps running exactly as you set it up. You see what changed, side by side with what you
+have, and you take the parts you want — or keep yours, which is a real answer and stops us asking
+about that version again.
+
+Finally, if you are new, the library now leads with the pack written for **your** market rather than
+the general shelf.
+
+### Fixed — 2026-11-03 — Signals: rules, hardened
+
+Review of the rules feature below found three things worth knowing about, and all of them are fixed.
+
+**A rule could act on a signal you had already dismissed** — making the lead and writing a draft for
+something you had said no to. It now leaves a dismissed signal completely alone. Your decision
+stands.
+
+**A busy morning quietly lost its tail.** There is a limit on how many leads one check may create
+and how many drafts it may write, and signals past that limit were being refused permanently rather
+than waiting their turn. The same went for a very large check: anything past its ceiling was dropped
+and never handled. Both now come back on the next pass, so a long run finishes the job over a few
+passes instead of doing part of it once.
+
+**A problem with a rule could cost you a search.** If anything went wrong while queuing a rule, the
+signal check that had just finished was marked failed — and retried, re-running the paid search it
+had already done. A rule's problems are now its own.
+
+Also: the activity log now says when a rule started on a signal and did not finish, rather than
+showing it as having done nothing; a rule that is only rehearsing can no longer change what your
+live rules do; a rule stops acting as somebody whose access has since been reduced; and the log no
+longer reports a label as added when your lead was already at its limit.
+
+On the screens: the "something needs fixing" links at the top of the rule builder now take you to
+the field that is wrong, reordering a step keeps your place on the keyboard, a rehearsed step is no
+longer shown with the same tick as one that really happened, and the Arabic reads properly in the
+summary rows. You can now also narrow a rule to particular account lists, which was previously
+possible only through the API.
+
+### Added — 2026-11-03 — Signals: rules that handle the morning for you
+
+A signal arriving can now become work Alima does for you. A **rule** says _when a signal looks like
+this, do these things_ — make the lead, hand it to someone, move it to a stage, label it, put a task
+on somebody's list, tell the right person, and write an approach for you to read.
+
+**It never sends anything.** A rule can write a message and keep it as a draft for a person to read,
+and it will refuse even that where the prospect may not be approached — a UAE prospect who has not
+given consent, or anybody on your do-not-contact list. When it refuses, the log says so, says which
+rule said no, and says what to do instead. That is a decision about how the product works rather
+than a limitation we will lift later.
+
+**A new rule rehearses.** It watches for a week, records what it _would_ have done, and changes
+nothing. Reading that log is how you decide whether to switch it on, and switching it on is one
+button. Before you even save it, "check the last few days" tells you how many of the signals you
+already have it would have picked — "4 of 120" is a rule you can switch on; "118 of 120" is one to
+narrow first.
+
+**Everything a rule does is written down**, including the things it declined to do and the ones that
+did not apply. Removing a rule keeps its history: the explanation for why a lead is where it is does
+not disappear with the rule that put it there.
+
+Four limits keep it safe without anybody configuring them: a rule handles any one signal once and
+only once; there is a ceiling on how many leads one check may create and how many drafts it may
+write; and a rehearsal spends nothing.
+
+On the phone you get the half that matters in the field: **what fired, and what needs you** — the
+refusals first. Rules are built on the web.
+
+### Fixed — 2026-11-03 — Signals: the three new sources, hardened
+
+Review found a set of problems in the three sources added above, and all of them are fixed. The ones
+worth knowing about:
+
+**Your own events would not have worked at all.** Pushed events were accepted and stored correctly
+and then failed to be read back, every time, on a type mismatch no test covered. Found by writing
+the missing test. Nothing had been lost — the events were on disk — but nothing had been classified
+either.
+
+**One dead address could stop a whole watch.** A company that had been struck off the register, or a
+feed whose publisher had moved it, made the entire run fail — taking the news results on the same
+watch with it, and doing it again on every run. A missing address is now a skipped query: the rest of
+the run proceeds and the skip is counted where support can see it.
+
+**Feeds are no longer shared between customers.** Two companies watching the same public newsletter
+were, in effect, taking turns: the first to poll it got the articles and the second got nothing.
+Each team now has its own reading of every feed. Previewing a feed type no longer leaves its first
+real run empty, either.
+
+**A burst of pushed events is no longer truncated.** If your system sent two hundred events at once
+— a backfill, or a retry loop — only the newest fifty were ever looked at, because the fifty Alima
+reads per run were spent on events it had already dealt with. Each run now reads fifty it has not
+seen, so a burst is worked through over the following runs instead of being lost.
+
+**The subject you send is now used.** `company_name` and `person_name` were accepted and ignored.
+Alima now reads them when deciding what an event is about and which of your leads it concerns.
+
+**A signal type that names a feed now requires its address**, instead of saving quietly and finding
+nothing.
+
+Security hardening, for the technically minded: requests to `POST /api/v1/signal-events` must put
+every field in the signed body — anything in the URL is refused, because it is not covered by the
+signature. Feed fetches pin the address they checked, so a DNS record cannot change between the
+check and the request, and a feed address that does not resolve is refused rather than attempted.
+The read limit on a feed is now enforced as it was always documented to be.
+
+### Added — 2026-11-03 — Signals: the registry, a feed, and your own events
+
+Three more places a signal type can watch, and each one answers a different complaint.
+
+**Companies House.** For the companies on a watchlist, Alima now reads what they file: a director
+appointed or resigned, a change of ownership, a charge registered, an insolvency notice. This is the
+cheapest and most certain thing in the product — the registry has already parsed the form, so there
+is nothing to guess and no AI to pay for, and the event arrives with the officer's name and the date
+attached. It is free.
+
+What it does **not** do is watch a whole sector: filings can only be read one company at a time, so
+this follows the accounts you have told us you care about. We looked at the alternative — every new
+company registered in a sector and a city — and it came to 2,422 in a month. That is a list, not a
+reason to pick up the phone.
+
+**A feed you choose.** Paste the address of an industry newsletter, a regulator's notices or a trade
+portal's press releases, and everything it publishes is read. For a niche sector that often beats
+any search, because the publication nobody else reads is the one your competitors are not watching.
+
+**Your own events.** `POST /api/v1/signal-events` lets your systems push events to Alima — a renewal
+closed, a usage threshold crossed, whatever your business treats as a moment worth acting on. Each
+signal type gets its own signing secret, shown once, and every request is signed, time-limited and
+safe to retry. Pushed events are read and judged exactly like news: you tell us what happened, and
+Alima still decides whether it is worth your morning. That is deliberate — an event that could set
+its own score could put itself at the top of somebody's day.
+
+Together these finish what a signal type can be: the press, the wider web, the public record, a
+publication you trust, and your own data.
+
+### Added — 2026-11-03 — Signals: a signal type can watch more than the news
+
+A signal type meant one thing — a news search — and three of the events teams most want to hear
+about never reach a news desk. A planning decision appears in a council's register, an award in the
+organiser's own press release, a new office on the company's blog. So **where to look** is now part
+of a signal type, and the type form offers it with each source's trade-off written down rather than
+sold: web search finds events the press missed, and finds more noise with them.
+
+Behind it, a source is a registry entry rather than a hard-wired client, mirroring how lead
+providers already work. Each source gets its own circuit breaker, so a team running both does not
+lose their news when web search is unwell; each is priced separately, and the cost line on the type
+form moves as a source is ticked, because one template on two sources is two paid searches on every
+run. A card names its source when that is not the news — most cards are news, and badging all of
+them would distinguish nothing — and the "why you're seeing this" panel now also names **the query
+that found it**, which it could not do before because no row stored it.
+
+Operations gained the matching half: `/admin/signal-runs` shows what each source cost, found and had
+refused, with each source's breaker beside it.
+
+**Two things the live spike changed.** Serper refuses `site:` and quoted-phrase queries outright on
+this account tier, and the old client treated that as the provider being unreachable — and
+_retryable_. So one template a member had typed with a quotation mark in it failed their whole
+watch, was retried three times (re-paying for every other search each time), and told them the news
+service was down. A refused query is now skipped and recorded, the run finishes, and the breaker
+stays shut: a provider's health and a query's validity are different questions.
+
+And the planned job-postings source was **dropped on the evidence**, not built. A job advert is not a
+trigger event — the events it was meant to find (a hiring surge, a new office, a new function) are
+patterns _over_ postings, which need counting per company over time, and the hiring-surge signal has
+been shipping on news since the vertical packs landed. The spike table and the reasoning are in the
+module doc so nobody pays to learn it twice.
+
+Companies House filings, RSS feeds and an inbound events API are the next step; the decision record
+covers all three, including why a pushed event is never trusted to set its own score or its own
+jurisdiction.
+
+### Added — 2026-11-03 — Signals: a ranked feed that can explain itself
+
+The feed was in date order, which answered "what is newest" and never "what is worth my morning".
+Every signal now carries a **heat** out of 100, the feed is sorted by it, and **every card can show
+its working** — eight components, what each one was worth, and the evidence behind it. A ranking
+nobody can interrogate is worse than date order, so the breakdown is stored with the signal and the
+panel reads it back: it explains the score the feed was actually ordered by, not what today's
+weights would say about yesterday's order.
+
+The eight are the AI's relevance and confidence, how recent the event is, the amount **banded
+against the team's own history** (a £2m exit matters to one team and not another), how much Alima has
+learned to trust the outlet, the subject's seniority, how many outlets carried the story, and fit
+against the active ICP — reusing Scoring's criteria rather than inventing a second fit score. The
+scorer is deterministic and has no AI in it. **A component with nothing to judge is left out of the
+average rather than scored zero**, because otherwise the number would measure how much we know about
+an event instead of how much the event is worth; a signal nothing could be judged about says so
+rather than showing a cold score.
+
+**The product now learns from dismissals, and proposes rather than acts.** `signal_source_stats`
+records what each team does with each outlet's stories, per signal type. When the evidence is
+one-sided a weekly job raises a suggestion — silence this outlet, raise this type's confidence floor,
+retire this query — each with its numbers, each accepted or declined on the watch settings screen.
+Nothing auto-applies: a feature that silently retunes itself is a feature nobody can debug.
+Accepting one is an ordinary audited edit to the columns a member could have typed themselves, and a
+declined suggestion is kept so it is never raised again.
+
+**Behind a flag that is off**, Alima can read the whole article for the few signals at the top of a
+feed and correct the amount, the role and the company name a search snippet could only guess at —
+the oldest limitation in the module. Five things bound it: the flag, a heat floor, five pages a run,
+a per-team monthly ceiling, and `robots.txt`. The article is read, used, and **dropped**: nothing of
+the body is stored, because retention and subject-access requests both get harder the moment a
+product keeps prose.
+
+**And a report that says which trigger events are worth paying for** — signals, kept, became leads,
+picked up and worked, per type and per outlet, over the window, exportable like every other table.
+
+Operators: `signals:rescore` applies a retune to history, `signals:advise` is the weekly suggestion
+job, and `SIGNALS_SCORING_*`, `SIGNALS_TUNING_*` and `SIGNALS_ARTICLE_FETCH_*` are in
+`.env.example`. The full-article fetch is off by default and has a compliance note in
+`docs/compliance.md` §5a worth reading before it is turned on for a customer.
+
+### Added — 2026-11-03 — Signals: one event, one card
+
+A Dubai acquisition reported by Gulf News, Khaleej Times, Zawya, Arabian Business and three
+aggregators was five to eight cards in the feed, each one costing an AI classification and each one
+needing its own dismiss. The feed's perceived quality was dominated by it.
+
+**It is now one card that says "Reported by 8 sources"**, opening to the list. Every article is
+still a real article with a real link worth reading; what changed is that the feed lists _events_
+and the tab counts count them the same way. Dismissing clears the event rather than one of its
+seven duplicates.
+
+**The run also stopped paying per article.** It groups the coverage of a story before it asks the
+model anything, classifies one representative, and applies the verdict to the rest — so a story that
+travels well costs one classification instead of eight. `SIGNALS_CLUSTER_BEFORE_AI=false` restores
+the old behaviour exactly, and the cards stay consolidated either way, because that half is done
+after classification by the event's own subject rather than by comparing headlines.
+
+**The counts agree now, everywhere.** The daily digest, the dashboard's "signals waiting" figure
+and the per-type breakdown all count events rather than articles, as the feed does — a dashboard
+saying eight over a screen showing one was the thing the clustering was supposed to fix, and
+teaching only the feed about it would have moved the problem rather than removed it. The watch
+card's "signals created" counts events too; the number of articles is still beside it. A lead the
+event is about gets one timeline entry, not one per outlet.
+
+**And it remembers being told no.** A "ten biggest deals of the year" round-up sitting inside the
+week-long recency window used to cost an AI batch every single day it stayed there. A rejection is
+now remembered for 30 days, keyed by the article _and_ the set of signal types that were offered —
+so adding a signal type asks about every article again, and changing nothing costs nothing twice. It
+stores hashes, a verdict and a count: no headline, no URL, no name.
+
+### Fixed — 2026-11-03 — Signals: the same article stopped arriving as a new one every day
+
+Our news provider sometimes hands back a Google redirect instead of the publisher's link, with the
+publisher's name alongside it. The redirect carries an opaque token that cannot be unwrapped, and
+when it changed between requests the article's identity changed with it — so the same story
+re-entered the feed on every run, at the cost of a fresh search and a fresh AI classification each
+time.
+
+A redirected article is now identified by its outlet and its headline rather than by the token, and
+that identity is what the database enforces. The team's own "never show me this source" list learned
+to match the **outlet's name** as well as the domain for the same reason: behind a redirect every
+item's domain is `google.com`, so a domain-only list could not express "not Khaleej Times" about
+precisely the items that needed it.
+
+`signals:cluster-backfill` groups the last 90 days of an existing feed so it reads the same on the
+day this ships as it will the day after. It leaves a converted signal alone: that row is the record
+of where a real lead came from.
+
+### Added — 2026-11-02 — two switches that turn billing off
+
+"Not charging anybody yet" is a state the product should support, so it is two lines of
+configuration rather than code to remove and put back later.
+
+**`BILLING_STRIPE_ENABLED=false`** stops every Stripe call: checkout, the customer portal, plan
+swaps, cancellation, resumption and metered overage all refuse, and the webhook is rejected. It
+deliberately changes nobody's entitlement — a team on Scale stays on Scale — because "we will not
+take a card today" and "you may not use this feature" are different statements.
+
+**`BILLING_ENFORCE_PLANS=false`** is the second one: nothing is gated on a plan any more. Every
+feature is available to every team, lead discovery is unquotaed and seats are unlimited. It is not
+"everybody is on Free"; it is "a plan decides nothing". Suspension still works, an operator can
+still turn a feature off for one tenant or for everybody, and the AI credit allowance still applies
+— that one is a cost guard every tenant has had since the AI platform shipped, not a plan feature.
+
+Both default to on, so a deployment that does not ask for them sees no change.
+
+### Fixed — 2026-11-03 — the test suite stopped depending on your `.env`
+
+Turning Stripe or plan enforcement off in your own `.env` — which is what those switches are for —
+used to make about forty tests fail, in Billing, Admin, AI Platform, Notifications and Signals. The
+switches are deployment settings read from the environment, and the suite was quietly inheriting
+them, so it stopped asserting the behaviour it exists to assert and blamed whatever you were working
+on. The test environment pins them on now, and the one file that deliberately turns them off puts
+them back properly afterwards.
+
+Two more of the same shape, found while fixing it. A running `npm run dev` suppresses the content
+security policy on purpose, which made two tests _about_ the policy fail on any machine with a dev
+server up; they now describe the built environment they are about, and a new test proves the dev
+server skip still happens. And the AI response cache made a couple of new Signals tests pass for
+the wrong reason — a second run over the same article was a cache hit, which looks exactly like the
+de-duplication having worked — so the tests that count AI calls now turn it off.
+
+### Changed — 2026-11-02 — the operations panel got a front page, a way to navigate it, and the brand
+
+The verdict was "every page is boring, navigation is terrible, there are no graphs, there's no
+branding", and it was fair on all four counts.
+
+**Navigation.** The rail was fifty-five links in one flat column, so finding a screen was a scan
+rather than a search. It now opens with a filter box, puts the eight screens an operator actually
+uses daily at the top in two short groups, and files the forty-four record browsers in collapsible
+groups that remember what you left open. **⌘K** searches every destination by name, by group and by
+the words of the problem — "dsar" finds Compliance, "kill switch" finds Platform settings, "tenant"
+finds Teams.
+
+**A front page worth opening.** It was eight live counts, which tell you the size of a thing and
+nothing about its direction. It now says first whether anything is on fire — failed jobs, providers
+we have stopped calling, and whether last night's figures were actually computed — then shows five
+headline numbers _with their trend_, and a chart of the last thirty days you can flick between
+series on without the page reloading. The live counts are still there, demoted to a strip where
+facts without a direction belong.
+
+**The same page, eighteen times.** Every screen had grown its own header, and they had drifted into
+eighteen type scales and spacings. They share one now, with the product's own editorial device: a
+mono eyebrow, a statement whose last phrase takes the accent, and one "all times UTC" line per page
+instead of a label on every cell.
+
+**It looks like Alima.** Deep Teal is the panel's single accent throughout — never the app's lime,
+because an operator must never mistake the panel for a customer's screen. Two stronger brand moves,
+a panda peek on the header and the spectrum gradient as a chrome band, are written up for the brand
+owner to approve rather than taken quietly.
+
+### Fixed — 2026-11-02 — the admin panel was unusable on a fresh operator account
+
+Reported as "nothing works, every link in the sidebar 404s, and it sends me to a password screen".
+None of it was the panel: with a second factor set up, every screen in it — including all 44 record
+browsers — already answered correctly. The way **in** was broken, in three compounding ways.
+
+Signing in went to the product's dashboard, which an account with no team cannot render. The panel's
+two-factor requirement then sent the operator to the _product's_ security settings — so they were
+standing in the customer shell, whose navigation is entirely team-scoped: every link 404ed, and the
+password confirmation Laravel asks for before arming a second factor read as a password reset.
+
+The panel owns enrolment now, on its own screen, in its own shell, where every link works: scan,
+confirm, and the panel opens. The product's navigation offers an account with no team only the
+things that exist for it. And the panel's own links are built from the path it is actually served
+on, so moving it with `ADMIN_PATH` no longer breaks every link inside it.
+
+### Fixed — 2026-11-02 — signing in as the platform operator landed on a 404
+
+The operator account belongs to no team, on purpose — that is what makes it an operator rather than
+a customer. But a login goes to one configured page for everybody, and that page is the product's
+dashboard, which needs a team. So signing in as `super@admin.com` showed a 404, as did opening the
+sign-in page again afterwards, as did the panel's own **Leave the panel** button.
+
+All three now ask the same narrow question — no team, but a platform role — and open the panel
+instead; the panel's header offers **Sign out**, because for an account with no team there is
+nowhere to leave to. Everybody who has a team is unaffected, including an operator who also belongs
+to one.
+
+### Added — 2026-11-02 — Signals S10: account monitoring
+
+**Signals can now watch the accounts you already have, not only the strangers who just came into
+money.**
+
+A watch used to ask one question: _what happened in Dubai?_ It can now ask the warm version —
+_what happened to the forty companies I am working?_ The obvious list is the team's own pipeline, so
+Alima mirrors it every night and nobody types anything: point a list at a stage or two, and an
+acquisition of a company somebody is mid-deal with lands on that lead's page the morning it is
+published, in that person's notifications.
+
+**The event goes on the lead, not beside it.** Every signal any watch finds is matched against the
+team's own leads. Where it matches, the card stops offering _Convert to lead_ — which would make a
+second copy of a company somebody is already working — and offers **Add to Acme Ltd**, which creates
+nothing, fills only the gaps in the record and writes the event onto the lead's history. The lead
+page's "The event" panel became a **list** of events in date order, which is a small change with a
+large effect on whether the page is worth opening in the morning.
+
+**It errs toward saying nothing.** The way account monitoring fails is an event pinned to the wrong
+company, so there are exactly two confidences and no third: the team's own statement or an identical
+name, and a name that agrees once the legal form is set aside. Anything weaker is **not a match** and
+the signal behaves exactly as it did before. The confidence is named and explained in words on the
+card, and **Convert anyway** is a real button beside the primary one — the member is the one who
+knows whether two companies with the same name are the same company.
+
+**The spike contradicted the plan, and the plan asked it to.** S10 was written expecting a company
+name to be the one case where exact-phrase quoting is right. Twenty-four live calls later: **every
+quoted query returned zero, twelve of twelve**, and adding a keyword to a bare name _lost_ genuine
+results rather than sharpening them — one subject went from nine results to none. So an entity query
+is a bare name and the classifier decides what it found. That changed the cost shape too: one
+account is one search per region, so a 250-account list cannot be covered in one run. It is searched
+as a **ring** — as many as one check can afford, continuing where the last stopped, round again about every six days — and the
+screen says that number out loud, because a long list that seems quiet otherwise reads as a broken
+feature.
+
+A watch is pointed at a list from the watch editor itself, and the two reviews this phase went through are worth a line of their own: between them they found that **nothing outside the tests could point a watch at a list at all** — a green suite sitting on top of an unreachable feature, because every test reached the state through a factory. What was decided was right; what was missing was the wiring. Both are now tested from the form in.
+
+Also in this phase: the one company-name rule was extracted so the deduplicator and the matcher read
+the same normalisation (three normalisers is how two leads become three); erasure reaches the
+watchlists, in Compliance's own transaction; and nine web and nine API routes, with the counts of a
+bulk add travelling beside the list rather than inside it. ADR 0021 records the decisions.
+
+### Added — 2026-11-02 — Signals S9: the builder
+
+**You can describe a signal in a sentence, and see what it finds before you keep it.**
+
+S7 made a signal type a row a team owns. That was the right change, and it left the team holding a
+blank page — because "a good template" is not a matter of taste. The S0 spike exists for one
+reason: **nobody can tell whether a query template works by reading it.** Seven of eight
+hand-written ones returned zero results. That was a developer losing an afternoon before shipping.
+Handing the same problem to customers without the afternoon means a team writes three plausible
+templates, saves them, and finds out in a week — except what they see is an empty feed, which reads
+as _Signals does not work_ rather than _that template is too specific_, and the templates have been
+running daily in the meantime.
+
+So this phase is not a nicer form. It is the two things that make a type written by a customer as
+good as one written by us.
+
+**A draft they did not have to invent.** The composer takes a sentence — "tell me when a UK
+manufacturer changes hands or the owner sells a controlling stake" — and returns a complete draft:
+the searches, the rules that tell a real event from the round-up that reads like one, the thresholds,
+the approach hint. It runs on the **reasoning** tier, because the cheap tier writes templates that
+look right and find nothing. And it **never saves**: the member reads the draft, changes what they
+like, and commits. An AI that wrote directly to the library would be a prompt with write access to a
+standing instruction to spend money every day. "Find me rich people in Dubai" gets a **refusal with
+a reason**, which is a better answer than a plausible search that cannot work.
+
+**An answer before they commit.** Press "show me what this finds" and the draft runs against live
+news — classified by the _real_ extraction prompt, not a stand-in — and every article comes back
+with one of six verdicts: kept, not an event, wrong place, not sure enough, not relevant enough, or
+a skipped source. Six rather than a boolean, because each one is a **different thing to change**, and
+an empty list tells somebody that something is wrong without telling them which thing. A run drops a
+skip-listed source silently; the preview shows it labelled, because "your templates work and every
+result is on your skip list" is a diagnosis nobody reaches from an empty list.
+
+It persists **no signals** — a definition nobody has saved has no business putting rows in a feed —
+and exactly one ledger row, which is the new `signal_previews` table. That table is why the per-team
+daily preview budget can be enforced at all: **a cost with no ledger row is a cost nobody can cap.**
+Three independent caps bound the spend, because each fails differently — four queries per press, ten
+presses per member per hour, and a team-wide daily budget that a rate limiter could never express.
+
+**The library grew into something that reads as a product**: 30 presets in seven groupings —
+general, luxury real estate, recruitment, B2B software, wealth management, construction, M&A — with
+the audience line for each, so the chip says who it is for rather than what it contains. Every one of
+the 66 candidate templates was run against live news first, for about eight cents. Eight returned
+**zero** and were replaced; one preset the plan asked for was **dropped**, because the news for a
+sports contract is transfer gossip rather than signed deals; three ship marked **Rare**, because the
+event is real and the news for it is sparse, and shipping those silently beside the strong ones would
+teach a team the feature is unreliable using our own content. The table is in
+`docs/modules/signals.md`, and the lesson it repeats is the shape of the failures rather than their
+topic: every zero was a four-word noun phrase a press officer would write and a journalist would not.
+That finding is now in the composer's system prompt, with its reason.
+
+The AI shortcut is the one part behind a plan (`Capability::SignalComposer`). The library, the
+hand-written form and the preview stay on every plan that has Signals — gating the builder would
+have made the cheaper plans worse than they were before it existed, and gating the preview would have
+sold them the ability to write templates without the ability to find out whether they work.
+
+**The review pass is worth a paragraph of its own, because of what it says about the shape of the
+work.** Three agents read the finished phase, and every serious finding was in the **accounting**
+rather than in the feature: the ledger row was written at the end, so a provider failure left
+searches paid for and nothing recorded; the budget check was a read-then-write, so everyone pressing
+at once read the same "remaining"; and the AI's failure branches booked a cost of zero while two
+attempts had been billed — which a member could trigger on purpose, because their own exclusion
+rules go into that prompt. The row is reserved before the spend and settled after it now. A spend
+loop is easy to design and easy to under-account for, and under-accounting is invisible to every
+test that only checks the happy path.
+
+Two behavioural defects were caught before anybody met them. Previewing a **saved** signal type
+turned it into a new one — the preview sent the submitted draft back so the form would survive the
+redirect, and the screen could not tell that echo from a composer draft, so Save created a duplicate
+and the unsaved-changes guard had quietly stopped firing. And the preview reported _our_ AI outage as
+"not an event", which tells somebody to rewrite templates that are working; that has its own verdict
+now. The preview panel was also regrouped by verdict, because one card per article carrying its own
+copy of the same advice is wallpaper rather than guidance.
+
+Three smaller things worth knowing. **`SignalQuerySpec`** was extracted so building queries no longer
+needs a saved watch, which is what made the preview possible at all — a builder that needs a
+persisted row is the reason previews are hard. **`IgnoredDomains`** was extracted so the run and the
+preview cannot disagree by a hair of host normalisation about what "skipped" means. And the four list
+boxes in the type editor **could not be typed into**: a two-way computed that filtered blank lines
+and wrote the result back ate the Enter key, so the only way to add a second template was to split a
+line or paste one in. That is the same WCAG 2.1.1 defect S8's review found in the watch form, and the
+note to check wherever else the pattern appeared is what found it here.
+
+### Added — 2026-11-02 — Signals S8: a watch covers places, plural — and a restriction follows the person
+
+**One watch can now cover Dubai and London.** v1 gave a watch a single `location` and a `market`,
+and the market picked both the country Serper searched and the compliance rule stamped on every lead
+the watch produced. A watch now carries a list of **places** (up to ten) and a list of **regions**
+(up to five), the UK is a first-class market with its own six-type preset pack, and `market` is
+demoted to what it should always have been: the team's declared regime for that watch, a default and
+a backstop.
+
+**The reason those two jobs had to be separated is a compliance defect, and it is the important part
+of this phase.** While every watch was UAE-only, "where we looked" and "whose law applies" had the
+same answer, so one column could serve both and nobody had to notice. The moment a watch spans
+places the conflation is wrong in both directions — and the serious direction is the permissive
+one: a UK-market watch catching a Dubai relocation would have produced a lead with **no restriction
+at all**, and Outreach would have seen no reason to refuse a cold email to somebody whose law
+requires their prior consent. The restriction now comes from the signal's **own** jurisdiction,
+resolved from the article's place at extraction, with the watch's market as a backstop and its
+regions able only to add. Unknown fails _toward_ the restriction, never away from it. The fix
+shipped in the same phase that made the defect reachable rather than in a later one, which is the
+whole point of doing it this way round. ADR 0019 records the reasoning; `docs/compliance.md` §3.11
+states it as a rule every future source is held to.
+
+Five of the seven regions the code knows about are **switched off**, and that is deliberate: what
+they lack is a compliance position, not code. `Core\Enums\Market` was not grown to cover them,
+because every case on it asserts a position the business has actually taken, and a `Market` case
+with nothing behind it is a legal claim made by a programmer. Turning one on is a config line _and_
+a question for counsel (⚖️ `docs/compliance.md` §5).
+
+Two smaller things worth knowing. The query count is now
+`regions × places × types × templates`, which is twelve hundred paid searches for one run of one
+watch at the limits where v1 could not exceed eight — so the ceiling added in S7's review now bites
+in a second dimension, the trim drops **whole places** rather than a slice of everything (a gap a
+member can see), and the run records what it _wanted_ beside what it ran so the card can say
+coverage was reduced. A silent trim is a lie about what was searched. And `hl` became a property of
+the region rather than one setting for the whole product, with definitions able to carry translated
+templates — the plumbing for Arabic search, shipped without the content, because a
+machine-translated search query finds nothing while looking like it works.
+
+**The review pass found five backend defects and four frontend ones, and they are worth naming**
+because they share a shape: every backend one was a place where a second reading of an existing
+concept had been adopted without anybody deciding to. The switch that says a region may no longer
+be searched was also deciding whether leads it had already produced were restricted. The order a
+member ticked region boxes in was deciding an ambiguous jurisdiction, so "UK founder relocates to
+Dubai" could resolve to the UK and come out unrestricted. A watch's compliance regime was
+re-applied from the team row on every save, so renaming a watch moved it — and `teams.market`
+defaults to `uk`. A rollback deleting "its own" rows read that as including a team's tuned clone.
+Three of the five failed permissively, and none would have failed a test that existed. The fifth was
+arithmetic: the query plan was nested region-major, so a tight ceiling spent the whole budget on the
+first region and gave the second nothing — asking for two jurisdictions and silently getting one.
+
+On the frontend the sharpest one was simpler: the places textarea could not be typed into. A
+two-way computed filtered blank lines and wrote the result straight back, so pressing Enter at the
+end of the text removed the line break it had just inserted, and the only way to add a second place
+was to split an existing line or paste one in. The skip list had had the same defect since S6. The
+Arabic for the new copy also needed rewriting rather than correcting: it said "sea" where it meant
+"search", softened "never" to "and not", and called prospects customers on a line about what the
+law permits.
+
+Every UK template was spiked against live Serper before shipping, the same way S0 spiked the UAE
+ones, and the same lesson held: two of fourteen returned **zero** results and no amount of reading
+them would have told us which. `uk_psc_change` ships in the library but **not** as a starter,
+because a change in people with significant control is a registry filing rather than a story a
+journalist files — S13's Companies House source is what will make it work. The table is in
+`docs/modules/signals.md`.
+
+### Added — 2026-11-02 — Signals S7: signal types became data
+
+**You can write your own signal types.** v1 shipped three — acquisition, funding round, relocation —
+in a PHP enum, chosen for one customer. Adding a fourth meant a code change in nine files, a new
+case in an AI schema's `enum`, a release and a deploy, which made "the feature is generic" a claim
+rather than a fact. It is now a fact: a signal type is a `SignalDefinition` row, created and tuned
+on **`/signals/types`** — its name, the plain-keyword searches that find it, the rules that tell it
+from the round-ups and trackers that read just like it, and its own confidence and relevance floors.
+
+v1's three types are the first three entries in a **platform preset library** teams clone from.
+They clone rather than reference, and that is the decision rather than an implementation detail: a
+definition is a standing instruction to spend money on searches, so a change we make must not
+silently alter what a team is paying to run, and a team's own tuning must not leak back upward.
+ADR 0018 records all of it, including the test for when a "type" should be an enum and when it
+should be a row — **does the application branch on the value?** — which is the only reason
+`CLAUDE.md` §2 is set aside here.
+
+The one real safety change is worth stating plainly. v1 constrained the AI's `event_type` with a
+JSON-schema `enum`, so a hijacked or hallucinated response naming an unknown type was refused before
+our code saw it: the schema was the guard. Per-team keys make that enum impossible, so
+`signals.extract_event` **v2** injects the watch's own keys and rules into the prompt body and
+`RunSignalWatchAction::resolveDefinition()` rejects any key the run did not offer. A prompt
+describes a constraint; it does not enforce one. There is a test that feeds a hostile key back.
+
+Three bugs found while building it, each worth remembering:
+
+- **A stored generated column refuses a cascading foreign key on its base column in MySQL.**
+  `scope_id` (which makes `unique(scope_id, key)` mean "one key per scope", something
+  `unique(team_id, key)` cannot because MySQL treats NULLs as distinct) was `STORED`. SQLite
+  accepted it and the whole suite passed; `php artisan migrate` against MySQL failed on the first
+  statement with error 1215. It is `VIRTUAL` now.
+- **Laravel's generated index name for the new pivot is 67 characters** against MySQL's 64-character
+  identifier limit. Both pivot indexes are named explicitly.
+- **`Event::fake()` suppresses Eloquent model events.** `scope_id` had been maintained by a model
+  `creating` hook, so every row written by a test that fakes events landed in the platform scope and
+  collided. A column carrying a uniqueness invariant cannot depend on anything a caller might skip —
+  bulk `insert()` fires no model events either — so the database computes it.
+
+The migrations were run round-trip against the local MySQL (apply, verify, roll back, verify,
+re-apply) because the data migration touches every existing team's live watches. Nine watches and
+eight signals repointed with no cross-tenant rows and no losses either way.
+
+**The review round found three more**, all of them in this phase's own new code:
+
+- **Deleting a signal type and re-adding it from the library was a 500.** `unique(scope_id, key)`
+  knows nothing about `deleted_at`, so the soft-deleted row still held its key while the clone path
+  looked for an existing one with the default scope and could not see what it was about to collide
+  with. The same collision arrived from a team writing their own type called "Acquisition". Both go
+  through one place now, which restores a deleted clone rather than re-creating it and gives a clone
+  a suffixed key when somebody else took its own.
+- **A deleted type stopped naming the signals it had found.** `Signal::definition()` was a plain
+  `belongsTo`, and the soft-delete scope applies to a relation read — so every card, report row and
+  lead-origin panel for those signals quietly degraded from the team's own words to a humanised
+  slug, which is the opposite of what ADR 0018 §4 promises.
+- **Filtering the feed by a deleted type's key returned everything.** An unknown key was _dropped_,
+  which was right when a key could only be a removed enum case and meaningless — and wrong now that
+  the signals of a deleted type are still in the feed carrying that key. A filtered request was
+  being answered with the unfiltered page, and those signals could not be isolated at all. Keys are
+  honoured as given; a key matching nothing gives an empty page, which the screen already explains.
+
+Plus a cost ceiling this phase needed and did not have. v1 could not exceed eight paid searches per
+run, because the three event types had three, three and two templates between them. A team can now
+hold 25 types of up to ten templates, so the same arithmetic reaches ~250 — and neither the
+per-watch 15-minute throttle nor the per-member rate limit helps, because both bound how _often_ a
+run happens rather than how big one is. `signals.max_queries_per_run` (default 40) is that bound,
+and a run that trims says so rather than quietly covering less.
+
+On the frontend the editor could not scroll — `DialogContent` is a fixed, centred panel with no
+overflow, and a ten-field form puts Save out of reach on a laptop and at 200% zoom (WCAG 1.4.10) —
+and closing it discarded a long hand-written form with no prompt. It is now the scrolling variant,
+guarded by the same unsaved-changes dialog as the product's other long forms, and rebuilt on the
+shared `FormField` set so it has `aria-invalid`, an error summary and required-or-optional in words
+rather than an asterisk.
+
 ### Fixed — 2026-11-01 — Phase 20, the review round
 
 `security-review`, `laravel-module-reviewer` and `brand-reviewer` on the finished phase. Three real

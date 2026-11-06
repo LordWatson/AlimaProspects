@@ -3,11 +3,12 @@
 declare(strict_types=1);
 
 use App\Modules\Core\Support\TeamContext;
-use App\Modules\Signals\Contracts\NewsSearchClient;
-use App\Modules\Signals\Data\SignalQuery;
-use App\Modules\Signals\Enums\SignalEventType;
+use App\Modules\Signals\Contracts\SignalSourceProvider;
+use App\Modules\Signals\Data\SignalSourceQuery;
+use App\Modules\Signals\Enums\SearchRegion;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalQueryBuilder;
+use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 
@@ -29,18 +30,31 @@ function watchIgnoring(array $ignore): SignalWatch
     $user = createUserWithTeam();
     $team = $user->currentTeam()->firstOrFail();
 
-    return app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()->create([
-        'team_id' => $team->getKey(),
-        'location' => 'Dubai',
-        'event_types' => ['funding_round'],
-        'ignore_domains' => $ignore,
-    ]));
+    return app(TeamContext::class)->run($team, fn (): SignalWatch => SignalWatch::factory()
+        ->watchingPresets([SignalPresetCatalogue::FUNDING_ROUND])
+        ->create([
+            'team_id' => $team->getKey(),
+            'locations' => ['Dubai'],
+            'ignore_domains' => $ignore,
+        ]));
+}
+
+/**
+ * The queries that watch would run. Since S7 the builder takes the definitions as an argument
+ * rather than loading them (ADR 0018), so a caller has to say which types it is building for - here,
+ * whatever the watch is attached to.
+ *
+ * @return list<SignalSourceQuery>
+ */
+function queriesFor(SignalWatch $watch): array
+{
+    return app(SignalQueryBuilder::class)->build($watch, $watch->activeDefinitions()->all())->queries;
 }
 
 it('carries a watch’s own ignore list onto every query it builds', function (): void {
     $watch = watchIgnoring(['rival.ae']);
 
-    $queries = app(SignalQueryBuilder::class)->build($watch);
+    $queries = queriesFor($watch);
 
     expect($queries)->not->toBeEmpty();
 
@@ -60,7 +74,7 @@ it('normalises whatever the team typed into a bare host', function (): void {
         'RIVAL.ae',
     ]);
 
-    $queries = app(SignalQueryBuilder::class)->build($watch);
+    $queries = queriesFor($watch);
 
     expect($queries[0]->ignoreDomains)->toBe(['rival.ae', 'other-rival.com']);
 });
@@ -68,7 +82,7 @@ it('normalises whatever the team typed into a bare host', function (): void {
 it('leaves the list empty when the watch has none', function (): void {
     $watch = watchIgnoring([]);
 
-    expect(app(SignalQueryBuilder::class)->build($watch)[0]->ignoreDomains)->toBe([]);
+    expect(queriesFor($watch)[0]->ignoreDomains)->toBe([]);
 });
 
 it('drops results from a team’s own ignored domain as well as the global list', function (): void {
@@ -101,8 +115,9 @@ it('drops results from a team’s own ignored domain as well as the global list'
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
-        eventType: SignalEventType::FundingRound,
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
         gl: 'ae',
         hl: 'en',
@@ -131,8 +146,9 @@ it('still applies the global list when a watch adds none', function (): void {
         ]),
     ]);
 
-    $items = app(NewsSearchClient::class)->search(new SignalQuery(
-        eventType: SignalEventType::FundingRound,
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
         q: 'Dubai startup raises funding',
         gl: 'ae',
         hl: 'en',
@@ -141,4 +157,104 @@ it('still applies the global list when a watch adds none', function (): void {
     ));
 
     expect($items)->toBe([]);
+});
+
+// --- Matching the outlet's name (S11) -----------------------------------------------------------
+
+it('drops a result by the outlet’s name, not only by its host', function (): void {
+    config()->set('signals.ignore_domains', []);
+
+    Http::fake([
+        'google.serper.dev/*' => Http::response([
+            'news' => [
+                [
+                    'title' => 'A genuine Dubai funding round',
+                    'link' => 'https://gulfbusiness.com/real-event',
+                    'snippet' => 'A Dubai company raised a round.',
+                    'source' => 'Gulf Business',
+                ],
+                [
+                    // Behind a Google redirect, the host is `google.com` for **every** item, so a
+                    // host-only list cannot express "not this publisher" about the items most in
+                    // need of it - and adding `google.com` would silently drop a large share of
+                    // everything. The outlet's name is the only handle there is.
+                    'title' => 'Another Dubai round',
+                    'link' => 'https://google.com/goto?url=OPAQUE-TOKEN',
+                    'snippet' => 'Also a round.',
+                    'source' => 'Khaleej Times',
+                ],
+            ],
+        ]),
+    ]);
+
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
+        q: 'Dubai startup raises funding',
+        gl: 'ae',
+        hl: 'en',
+        tbs: 'qdr:w',
+        num: 20,
+        // What a team actually types when they mean an outlet rather than a domain.
+        ignoreDomains: ['Khaleej Times'],
+    ));
+
+    expect($items)->toHaveCount(1)
+        ->and($items[0]->source)->toBe('Gulf Business');
+});
+
+it('compares an outlet name as a slug, so spacing and case do not matter', function (): void {
+    config()->set('signals.ignore_domains', ['  KHALEEJ   times ']);
+
+    Http::fake([
+        'google.serper.dev/*' => Http::response([
+            'news' => [[
+                'title' => 'A Dubai round',
+                'link' => 'https://google.com/goto?url=TOKEN',
+                'snippet' => 'A round.',
+                'source' => 'Khaleej Times',
+            ]],
+        ]),
+    ]);
+
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
+        q: 'Dubai startup raises funding',
+        gl: 'ae',
+        hl: 'en',
+        tbs: 'qdr:w',
+        num: 20,
+    ));
+
+    expect($items)->toBe([]);
+});
+
+it('never drops an item merely because the provider named no outlet', function (): void {
+    config()->set('signals.ignore_domains', ['Khaleej Times']);
+
+    Http::fake([
+        'google.serper.dev/*' => Http::response([
+            'news' => [[
+                'title' => 'A Dubai round',
+                'link' => 'https://gulfbusiness.com/round',
+                'snippet' => 'A round.',
+                // No `source` at all.
+            ]],
+        ]),
+    ]);
+
+    $items = app(SignalSourceProvider::class)->fetch(new SignalSourceQuery(
+        eventKey: SignalPresetCatalogue::FUNDING_ROUND,
+        region: SearchRegion::Ae,
+        q: 'Dubai startup raises funding',
+        gl: 'ae',
+        hl: 'en',
+        tbs: 'qdr:w',
+        num: 20,
+    ));
+
+    // "We were not told who published this" is not the same statement as "this publisher is
+    // excluded", and treating it as one would drop every item whose provider omitted the field.
+    expect($items)->toHaveCount(1);
 });

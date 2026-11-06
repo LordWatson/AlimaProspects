@@ -155,6 +155,65 @@ final class BillingFixtures
             config()->set("billing.plans.{$plan->value}.{$metric->allowanceKey()}", $amount);
         }
 
+        self::flushPlans();
+    }
+
+    /**
+     * Set one of the plan's **Signals** limits on every plan at once, and flush the memo behind it.
+     *
+     * The Signals counterpart of {@see self::capAllowance()}, and the reason it exists is the one
+     * thing S16 changed for every test that was already there: the module's own floors in
+     * `config/signals.php` are now the *fallback*, and a plan's figure wins over them
+     * (`PlanSignalQuotaSource`). A test that caps `signals.max_watches_per_team` and then expects a
+     * refusal is capping the thing the plan overrides, so it passes a limit of 15 instead of 1 and
+     * quietly stops testing anything.
+     *
+     * `$key` is one of the eight in a plan's `signals` block — `max_definitions`, `max_watches`,
+     * `max_watchlist_entries`, `monthly_source_queries`, `monthly_preview_queries`,
+     * `article_fetch_micros`, `playbooks`, `webhook_source`.
+     *
+     * **`null` here means unlimited**, as it does in the config itself — not "the plan says
+     * nothing". The third state is {@see self::forgetSignalAllowance()}, and the two are not
+     * interchangeable: an explicit null wins over the module's floor and an absent key falls back
+     * to it.
+     */
+    public static function capSignalAllowance(string $key, int|bool|null $value): void
+    {
+        foreach (PlanKey::cases() as $plan) {
+            config()->set("billing.plans.{$plan->value}.signals.{$key}", $value);
+        }
+
+        self::flushPlans();
+    }
+
+    /**
+     * Take one of the plan's Signals limits out of the price list altogether, on every plan.
+     *
+     * The "no position taken" state, which is the only one that reaches the module's own floor in
+     * `config/signals.php`. Worth having its own helper because the difference from passing null is
+     * invisible at the call site otherwise, and it is the difference the fall-through turns on.
+     */
+    public static function forgetSignalAllowance(string $key): void
+    {
+        foreach (PlanKey::cases() as $plan) {
+            // `Config\Repository` has a `set` and no `forget`, so the block is rewritten without
+            // the key rather than the key being removed.
+            $signals = (array) config("billing.plans.{$plan->value}.signals", []);
+            unset($signals[$key]);
+            config()->set("billing.plans.{$plan->value}.signals", $signals);
+        }
+
+        self::flushPlans();
+    }
+
+    /**
+     * Drop the memos that sit in front of `config('billing.plans')`.
+     *
+     * `PlanRegistry` caches the parsed price list and `PlanResolver` memoises per team, so a test
+     * that edits config without this is testing the plan the first resolution happened to see.
+     */
+    private static function flushPlans(): void
+    {
         app(PlanRegistry::class)->flush();
         app(PlanResolver::class)->forget();
     }

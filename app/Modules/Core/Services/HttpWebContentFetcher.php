@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Core\Services;
 
 use App\Modules\Core\Contracts\WebContentFetcher;
+use App\Modules\Core\Support\Security\SafeUrl;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Psr\Http\Message\UriInterface;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -38,22 +38,7 @@ final class HttpWebContentFetcher implements WebContentFetcher
         try {
             $this->assertSafeUrl($url);
 
-            $response = $this->http
-                ->timeout((int) config('web-fetch.timeout', 10))
-                ->connectTimeout((int) config('web-fetch.connect_timeout', 5))
-                ->withHeaders(['User-Agent' => (string) config('web-fetch.user_agent', 'AlimaProspectsBot/1.0')])
-                ->withOptions([
-                    'stream' => true,
-                    // Re-validate the target of every redirect so a public site can't bounce to an
-                    // internal address; cap the hop count.
-                    'allow_redirects' => [
-                        'max' => 3,
-                        'on_redirect' => function ($request, $response, UriInterface $uri): void {
-                            $this->assertSafeUrl((string) $uri);
-                        },
-                    ],
-                ])
-                ->get($url);
+            $response = $this->request($url);
 
             if ($response->failed()) {
                 return '';
@@ -77,102 +62,103 @@ final class HttpWebContentFetcher implements WebContentFetcher
     }
 
     /**
+     * Fetch a line-oriented text file, line breaks intact (S12).
+     *
+     * Shares every guard {@see self::fetch()} applies — the same `assertSafeUrl`, the same
+     * redirect re-validation, the same byte cap — and differs in exactly one way: it does **not**
+     * run {@see self::toText()}, because collapsing whitespace destroys the only structure a file
+     * like `robots.txt` has.
+     *
+     * Returns null for "could not read" and '' for "the host says there is no such file", which is
+     * the distinction a caller enforcing a rule needs; see the contract for why.
+     */
+    public function fetchLines(?string $url): ?string
+    {
+        $url = $this->normaliseUrl($url);
+
+        if ($url === null) {
+            return null;
+        }
+
+        try {
+            $this->assertSafeUrl($url);
+
+            $response = $this->request($url);
+
+            // A 404 is an answer: there is no such file. Anything else that failed is a failure to
+            // read, which is a different thing and must not be mistaken for permission.
+            if ($response->status() === 404) {
+                return '';
+            }
+
+            if ($response->failed()) {
+                return null;
+            }
+
+            return $this->readCapped($response);
+        } catch (Throwable $e) {
+            Log::channel('ai')->warning('Line-oriented fetch failed.', [
+                'url' => $url,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * The one guarded request both reads share.
+     *
+     * Extracted when S12 added {@see self::fetchLines()} — two copies of the timeouts, the user
+     * agent and above all the redirect re-validation would have been two places for the SSRF guard
+     * to be subtly different, which is the one thing this class exists to prevent.
+     */
+    private function request(string $url): Response
+    {
+        return $this->http
+            ->timeout((int) config('web-fetch.timeout', 10))
+            ->connectTimeout((int) config('web-fetch.connect_timeout', 5))
+            ->withHeaders(['User-Agent' => (string) config('web-fetch.user_agent', 'AlimaProspectsBot/1.0')])
+            ->withOptions([
+                'stream' => true,
+                // Re-validate the target of every redirect so a public site can't bounce to an
+                // internal address; cap the hop count.
+                'allow_redirects' => [
+                    'max' => 3,
+                    'on_redirect' => function ($request, $response, UriInterface $uri): void {
+                        $this->assertSafeUrl((string) $uri);
+                    },
+                ],
+            ])
+            ->get($url);
+    }
+
+    /**
      * Accept a bare domain or a full URL; reject anything that isn't http(s).
+     */
+    /**
+     * Normalise a user-supplied address, or null when it cannot be one.
+     *
+     * Delegated to {@see SafeUrl} since Signals S13b, when a second caller needed the same rule.
      */
     private function normaliseUrl(?string $url): ?string
     {
-        $url = trim((string) $url);
-
-        if ($url === '') {
-            return null;
-        }
-
-        if (! Str::startsWith($url, ['http://', 'https://'])) {
-            $url = 'https://'.$url;
-        }
-
-        $scheme = parse_url($url, PHP_URL_SCHEME);
-
-        if (! in_array($scheme, ['http', 'https'], strict: true)) {
-            return null;
-        }
-
-        return $url;
+        return SafeUrl::normalise($url);
     }
 
     /**
      * Reject non-http(s) schemes, non-standard ports, and hosts that resolve to a non-public address
      * (loopback, private, link-local or reserved) — the core SSRF guard.
+     *
+     * **One copy, in {@see SafeUrl}.** It lived here as three private methods while this class was
+     * the only thing fetching a customer-supplied address; Signals' RSS source is the second, and it
+     * needs response headers and a conditional GET that this class's contract does not express. A
+     * second copy of an SSRF guard that is 1% more permissive is a hole nobody notices, because the
+     * permissive copy passes every test the strict one does.
      */
     private function assertSafeUrl(string $url): void
     {
-        $parts = parse_url($url);
-        $scheme = $parts['scheme'] ?? null;
-        $host = $parts['host'] ?? null;
-        $port = $parts['port'] ?? null;
-
-        if (! in_array($scheme, ['http', 'https'], strict: true) || ! is_string($host) || $host === '') {
-            throw new RuntimeException('Disallowed URL scheme or host.');
-        }
-
-        // parse_url keeps the brackets on an IPv6 literal host (e.g. "[::1]"); strip them so the
-        // address validates and can't slip past the private-range check as an unresolvable "host".
-        $host = trim($host, '[]');
-
-        if ($port !== null && ! in_array((int) $port, [80, 443], strict: true)) {
-            throw new RuntimeException('Disallowed port.');
-        }
-
-        foreach ($this->resolveIps($host) as $ip) {
-            if ($this->isBlockedIp($ip)) {
-                throw new RuntimeException('URL resolves to a non-public address.');
-            }
-        }
-    }
-
-    /**
-     * Resolve a host to the IPs it points at. A host given as an IP literal resolves to itself. A
-     * host that can't be resolved yields no IPs — treated as safe to attempt (the request then just
-     * fails on connect), so we never block a legitimate site on a flaky DNS lookup.
-     *
-     * @return list<string>
-     */
-    private function resolveIps(string $host): array
-    {
-        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
-            return [$host];
-        }
-
-        $ips = [];
-
-        $v4 = gethostbynamel($host);
-        if (is_array($v4)) {
-            $ips = $v4;
-        }
-
-        // IPv6, when present.
-        $records = @dns_get_record($host, DNS_AAAA);
-        if (is_array($records)) {
-            foreach ($records as $record) {
-                if (isset($record['ipv6']) && is_string($record['ipv6'])) {
-                    $ips[] = $record['ipv6'];
-                }
-            }
-        }
-
-        return array_values(array_unique($ips));
-    }
-
-    /**
-     * True for any address outside the public internet (loopback, private, link-local, reserved).
-     */
-    private function isBlockedIp(string $ip): bool
-    {
-        return filter_var(
-            $ip,
-            FILTER_VALIDATE_IP,
-            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE,
-        ) === false;
+        SafeUrl::assert($url);
     }
 
     /**

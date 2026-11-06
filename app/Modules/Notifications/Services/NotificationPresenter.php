@@ -40,6 +40,8 @@ final class NotificationPresenter
             NotificationType::TaskDue => $this->taskDue($payload),
             NotificationType::LeadAssigned => $this->leadAssigned($payload),
             NotificationType::SignalsDetected => $this->signalsDetected($payload),
+            NotificationType::SignalOnAccount => $this->signalOnAccount($payload),
+            NotificationType::PlaybookFired => $this->playbookFired($payload),
             NotificationType::InsightsReady => $this->insightsReady($payload),
             NotificationType::CreditLow => $this->creditLow($payload),
             NotificationType::PaymentFailed => $this->paymentFailed($payload),
@@ -152,6 +154,63 @@ final class NotificationPresenter
     /**
      * @param  array<string, mixed>  $payload
      */
+    private function signalOnAccount(array $payload): NotificationContent
+    {
+        // `count` is **accounts**, not events: the sentence is about companies, and six articles
+        // about one company is still news about one account (S10 review finding). `events` is the
+        // other number, and the body uses it where it differs.
+        $count = $this->count($payload, 'count');
+        $events = max($count, $this->count($payload, 'events'));
+        $company = $this->text($payload, 'company');
+        $leadId = $this->id($payload, 'lead_id');
+
+        // Leads with the company, because that is what makes this worth opening: the member knows
+        // the name, and "something happened to one of yours" is the whole message. One account gets
+        // its own sentence and a link straight to the lead; several get the count and the feed,
+        // since no single lead is the right destination.
+        return new NotificationContent(
+            type: NotificationType::SignalOnAccount,
+            title: $count === 1 ? 'News about :company' : 'News about :count of your accounts',
+            body: $count === 1
+                ? 'Something happened at a company you are working. Worth a look while it is fresh.'
+                : 'Alima found events at companies you are working. Worth a look while they are fresh.',
+            params: ['count' => $count, 'company' => $company, 'events' => $events],
+            url: $count === 1 && $leadId !== null ? '/leads/'.$leadId : '/signals?status=new&scope=accounts',
+            actionLabel: $count === 1 ? 'Open the lead' : 'See what happened',
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function playbookFired(array $payload): NotificationContent
+    {
+        $count = $this->count($payload, 'count');
+        $playbook = $this->text($payload, 'playbook');
+        $leadId = $this->id($payload, 'lead_id');
+
+        // **The rule's name leads**, because that is the only thing that tells a member which of
+        // their rules to go and look at — "a playbook ran" is a sentence they would have to open
+        // the log to make use of. The count is signals, not steps: a member thinks in events.
+        //
+        // One signal with a lead goes straight to the lead, which is where the work is. Anything
+        // else goes to the run log, because that is the screen that shows what was refused, and
+        // the refusals are the rows worth reading.
+        return new NotificationContent(
+            type: NotificationType::PlaybookFired,
+            title: $playbook === '' ? 'One of your rules ran' : '“:playbook” ran',
+            body: $count === 1
+                ? 'Alima handled a signal for you. Here is what it did.'
+                : 'Alima handled :count signals for you. Here is what it did.',
+            params: ['count' => $count, 'playbook' => $playbook],
+            url: $count === 1 && $leadId !== null ? '/leads/'.$leadId : '/signals/playbooks/activity',
+            actionLabel: $count === 1 && $leadId !== null ? 'Open the lead' : 'See what it did',
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function insightsReady(array $payload): NotificationContent
     {
         $contact = $this->count($payload, 'contact_count');
@@ -196,7 +255,10 @@ final class NotificationPresenter
         $remaining = $this->count($payload, 'remaining_percent');
         $metric = BillingMetric::tryFrom((string) ($payload['metric'] ?? '')) ?? BillingMetric::AiCredits;
 
-        $thing = $metric === BillingMetric::Leads ? 'Your search allowance' : 'AI credit';
+        // **The enum names it, not a ternary here.** This was `$metric === Leads ? … : 'AI credit'`,
+        // which was exhaustive while there were two metrics and would have described S16's signal
+        // allowance as AI credit the day a third arrived — a `match` over the enum cannot.
+        $thing = $metric->subjectLabel();
 
         return new NotificationContent(
             type: NotificationType::CreditLow,

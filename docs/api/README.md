@@ -48,6 +48,83 @@ A client may **pin** itself by sending `X-Api-Version: 1` (or `v1`). A mismatch 
 `unsupported_api_version` rather than a best-effort answer, because a client that asked for v2 and
 silently got v1 would misread everything it then parsed.
 
+**A judgement call worth recording (Signals S11, 2026-11-03).** `GET /api/v1/signals` now returns
+**one row per event** rather than one per article: where several outlets reported the same thing, the
+list carries the cluster's representative and a new nullable `cluster` object naming the rest. The
+response shape is additive — nothing was removed, renamed or restructured — so this stayed inside
+v1. What did change is the **number of rows** a given page holds and therefore `meta.total`, which a
+client measuring "how many signals this week" off that figure will read differently. That was
+treated as the endpoint answering its own question better rather than as a contract break: a feed
+that returned eight copies of one event was wrong, and a client cannot have been relying on the
+duplication. A client that wants every article has `cluster.sources`, which carries each one's id,
+outlet, link and date.
+
+**A new endpoint, and the only one that is not a resource (Signals S13b, 2026-11-03).**
+`POST /api/v1/signal-events` accepts an event a customer's own system pushes. It is unlike every
+other route in this contract in three ways, each of them deliberate:
+
+- **It answers 202, not 201**, and a replay answers 202 as well. The event has been _accepted_, not
+  acted upon: it is classified, scored and clustered by the next run of a watch that uses its signal
+  type. There is no resource to go and read, because a pushed event is not a signal until Alima has
+  decided it is one. A retrying client asked for the event to exist, and it does — `data.created`
+  distinguishes the call that stored it.
+- **It is signed as well as authenticated.** The token says which team; an HMAC-SHA256 over
+  `{timestamp}.{raw body}`, in the `X-Signal-Signature` header with the timestamp in
+  `X-Signal-Timestamp`, says the payload is intact and is not a replay. The secret is per **signal
+  type**, created on the type's own screen and shown exactly once. The signature covers the _raw_
+  bytes, so a proxy that re-encodes the JSON will invalidate it.
+- **It has its own rate limit**, separate from the shared `api` bucket, because a webhook's caller is
+  a machine that will retry in a loop — and a loop against the shared bucket would lock a customer
+  out of every endpoint they would need to diagnose it with.
+
+Fields the body may carry: `event_type` (a signal type's **key**, resolved within the authenticated
+team), `idempotency_key`, `title`, `summary`, `url`, `source_name`, `occurred_at`, `company_name`,
+`person_name`. Fields it may **not**, which are stripped rather than rejected: `heat`,
+`score_breakdown`, `confidence`, `relevance`, `jurisdiction`, `resolved_market`, `lead_id`,
+`matched_lead_id`, `team_id`, `signal_definition_id`, `status`. Each is a conclusion the product
+reaches rather than an input, and the jurisdiction pair is not a matter of taste — it decides which
+outreach restriction a converted lead carries.
+
+Every refusal answers the same way. A bad signature, an unknown `event_type`, a key belonging to
+another team and a stale timestamp are all `403` with one message, because the differences are an
+oracle: "that key exists but the signature is wrong" is how somebody enumerates another tenant's
+signal types.
+
+**Nothing goes in the URL.** A request carrying _any_ query string is refused with that same 403
+(S13b review). The signature covers the raw body with the timestamp inside it, and Laravel's
+`input()` falls back to the query string for a key the body omits — so a captured, still-fresh
+request replayed with `?summary=...` appended would have had that value reach the stored row with
+the signature still verifying, because it was never inside the signed message. Put every field in
+the body.
+
+**The idempotency key is unique per team, not per signal type.** Reusing one key for two different
+`event_type`s acknowledges the second call with `created: false` and stores nothing, because the
+first row already holds that key. Key your events however you like, as long as the key is unique
+across everything you push.
+
+**`created: false` means "already stored", not "already processed".** It is the database's unique
+index answering, which is what makes a retry safe without a pre-query: two concurrent retries of one
+event both pass a `SELECT` and only one survives the `INSERT`.
+
+Also additive on the existing endpoints: `/signal-definitions` gained `source_config` (a feed's
+address, the registry filings a type claims) and, **where the server loaded it**,
+`webhook_secret_hint` and `webhook_secret_used_at` — the tail of the secret and when it was last
+used, never the secret. Those two keys are absent rather than null when not loaded, which is the
+same `whenLoaded` contract `watches_count` follows.
+
+**A second one (Signals S13a, 2026-11-03).** A signal now records **which source found it**, and a
+signal definition records which sources it runs on. Both changes are additive: `GET /api/v1/signals`
+gained `source_kind`, `source_kind_label` and `matched_template` (the last nullable, for a source
+that does not search by keyword), and `/api/v1/signal-definitions` gained `source_keys`.
+
+The write side is where the compatibility rule mattered. `source_keys` on a definition is
+**`nullable`**, and a payload that omits it stores `["news"]` — which is what every definition
+created before this release does, so an existing client that has never heard of sources keeps
+behaving exactly as it did. An **explicitly empty** array is a `422`: omitting the field means "the
+default" and sending `[]` means "search nowhere", and only one of those is a request anybody meant.
+A key for a source with no implementation behind it (`companies_house`, `feed`, `webhook` today) is
+also a `422` rather than a stored value that would quietly contribute no searches.
+
 ## 3. Authentication and token scopes
 
 ```http
@@ -80,10 +157,52 @@ A first-party browser **session** is also accepted — that is how the web app's
 these endpoints — and carries no scopes, because the app it stands in for has none.
 
 Scopes are one read/write pair per resource group, defined in `App\Modules\Auth\Enums\TokenAbility`
+**A third one (Signals S15, 2026-11-03).** Five additive endpoints around the shared signal
+library, all under the existing `signals:*` scopes:
+
+| Method   | Path                                            | Scope           | What                                                     |
+| -------- | ----------------------------------------------- | --------------- | -------------------------------------------------------- |
+| `GET`    | `/signal-definitions/submissions`               | `signals:read`  | What this team has offered the library, newest first     |
+| `POST`   | `/signal-definitions/{definition}/submit`       | `signals:write` | Offer a type (optional `note`, 500 chars)                |
+| `DELETE` | `/signal-definitions/submissions/{submission}`  | `signals:write` | Take the offer back                                      |
+| `GET`    | `/signal-definitions/preset-offers`             | `signals:read`  | What the library changed since this team took their copy |
+| `PATCH`  | `/signal-definitions/{definition}/adopt-preset` | `signals:write` | Take some of it: `fields` (a list, **`present`**)        |
+
+Three things a client should know about them.
+
+**Offering a type changes nothing about it.** The team's own definition keeps its name, its history
+and its schedule whatever the answer is. A submission's `status` moves `pending` → `promoted` /
+`rejected` / `withdrawn`, and `status_label` and `status_description` are **translation keys** for
+the client to render; `note` and `review_note` are **prose**, because they are two people's own
+words to each other.
+
+**`fields: []` on `adopt-preset` is a real request, not a no-op.** It records that the member saw
+this version of the preset and is keeping theirs, which is what stops the offer coming back — hence
+`present` rather than `required`. A field named that has not actually changed is dropped rather than
+written, so a stale form cannot copy a value over one the team edited in the meantime.
+
+**A refusal is the module's own error envelope, not a validation bag.** Offering a type with no
+searches, offering one that already has an open offer, or adopting into something that is not a
+clone are `422`s with a `signals.*` code in `error.code` — whether a type is worth offering is a
+domain rule rather than a shape rule (ADR 0013).
+
 and enforced per route by `EnsureTokenAbility`:
 
 `leads:*` · `discovery:*` · `icp:*` · `scoring:*` · `outreach:*` · `signals:*` · `insights:*` ·
-`notifications:*` · `reports:read` · `team:*`
+
+> **`signals:*` covers signal definitions, watchlists, playbooks and library submissions too**
+> (S7/S10/S14/S15 — ADR 0018, 0021, 0024). A signal type is part of
+> Signals, so `/signal-definitions` reuses `signals:read`/`signals:write` rather than getting
+> a scope of its own: a token that could read the feed but not the types it is grouped by is a
+> credential nobody would mean to issue. `GET /signal-definitions/presets` is the read-only
+> platform library and is **not paginated** — it is a curated set measured in tens, and making a
+> client page through it to render a picker would be work for nothing. `POST
+> /signal-playbooks/preview` takes **`signals:write`** although it spends nothing and changes
+> nothing: a scope asks what a _credential_ may do (ADR 0013), and previewing means posting a rule,
+> so there is nothing here for a read-only token to preview. The policy is the other half — a
+> read-only _member_ may preview, because reviewing a colleague's rule is exactly the question the
+> most cautious person on the team wants answered.
+> `notifications:*` · `reports:read` · `team:*`
 
 A token without the ability gets `403 insufficient_token_ability`, with what would have been enough
 in `error.details.required_abilities` — so a client can say "reissue this token with `leads:write`"
@@ -133,6 +252,15 @@ Two conventions worth knowing:
 
 - **A record on another team is `404`, never `403`.** Whether it exists is itself not yours to know.
   A `403` means "you, on this team, may not do this" — a different answer, and a different fix.
+- **A plan limit is a `429` or a `403`, and the two mean different things to a client.** `429` is a
+  _spent allowance_ — the month's signal searches are gone, today's preview budget is — so a retry
+  is pointless now and sensible later; `403` is a _plan does not include it_ — signal automations,
+  the events API — so a retry is pointless until somebody buys something. A standing ceiling (too
+  many watches, too many signal types) is a `422`, because the fix is to remove one. Signals' codes
+  for these are `signals.source_quota_spent`, `signals.preview_quota_spent`,
+  `signals.playbooks_unavailable`, `signals.webhook_source_unavailable` and the five
+  `signals.too_many_*` (S16). **No route changed and no version was bumped** — a new error code is
+  additive by §2.
 - **The envelope is scoped to `api/*` by path, not by `Accept`.** Inertia requests also expect JSON
   and every form in the web app reads its error bag from Laravel's native `{message, errors}`;
   widening the envelope to all JSON would break every one of them silently.
@@ -213,6 +341,15 @@ Scramble is a **dev dependency**: the document is a build artefact, so productio
 generator nor the `/docs/api` route. `config/scramble.php` therefore references no Scramble class —
 every config file is loaded on boot, and a class constant from a package that isn't installed is a
 fatal error rather than a missing feature.
+
+**What the generator cannot see.** Scramble builds the schema from the resource's literal return
+expression, so a field whose value comes from a mapped collection or a private helper is
+under-described — `signals.cluster.sources` is generated as an empty array of strings, which is
+wrong. The free edition also does not read Laravel Data objects (it says so on every run, for three
+endpoints). Where that happens the field's **description** carries the real shape, because that is
+the one part of the entry the generator takes from our own words. Do not hand-edit `openapi.json`
+to correct it: the file is generated and committed, and the next regeneration would silently undo
+the edit.
 
 ## 9. Review (2026-10-31)
 

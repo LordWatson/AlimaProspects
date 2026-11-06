@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { Satellite, Settings2, SlidersHorizontal } from '@lucide/vue';
+import {
+    Building2,
+    Satellite,
+    Settings2,
+    SlidersHorizontal,
+} from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ActiveFilters, FilterGroup, FilterToggle } from '@/components/list';
 import PageHero from '@/components/PageHero.vue';
@@ -12,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import { useI18n } from '@/composables/useI18n';
 import { useNavigating } from '@/composables/useNavigating';
 import type {
@@ -19,10 +25,16 @@ import type {
     PaginationLink,
     PipelineStage,
     Signal,
+    SignalDefinition,
     SignalDismissReasonOption,
-    SignalEventType,
-    SignalEventTypeOption,
+    SignalEventKey,
     SignalFilterState,
+    SignalScope,
+    SignalScopeOption,
+    SignalSortOption,
+    SignalSourceKind,
+    SignalSourceOption,
+    SignalSortOrder,
     SignalsDetectedPayload,
     SignalStatus,
 } from '@/types';
@@ -48,8 +60,15 @@ const props = defineProps<{
     filters: SignalFilterState;
     counts: Record<SignalStatus, number>;
     options: {
-        event_types: SignalEventTypeOption[];
+        /** The team's own signal types — the chips are drawn from these since S7 (ADR 0018). */
+        definitions: SignalDefinition[];
         dismiss_reasons: SignalDismissReasonOption[];
+        /** The two halves of the feed (S10), each with the sentence its empty state shows. */
+        scopes: SignalScopeOption[];
+        /** How it may be ordered (S12), each with its own description. */
+        sorts: SignalSortOption[];
+        /** Which sources the feed may be narrowed to (S13). */
+        sources: SignalSourceOption[];
     };
     stages: PipelineStage[];
     watchCount: number;
@@ -82,19 +101,58 @@ const tabs: { value: SignalStatus; label: string }[] = [
     { value: 'dismissed', label: 'Dismissed' },
 ];
 
+/**
+ * The second axis (S10): whose companies these events are about.
+ *
+ * Deliberately **not** a fourth status tab. "New events about my accounts" and "converted events
+ * about my accounts" are both questions somebody asks, so the two sets of tabs cross rather than
+ * concatenate — and the status row keeps its counts, which are scoped to the chosen half.
+ */
+const scope = computed<SignalScope>(() => props.filters.scope ?? 'all');
+
+/**
+ * How the feed is ordered (S12). Heat by default — what each event is worth to this team — with
+ * "most recent" kept as a real choice, because a ranking nobody has learned to trust yet needs the
+ * order they already understand to fall back to.
+ */
+const sort = computed<SignalSortOrder>(() => props.filters.sort ?? 'heat');
+
+const currentSort = computed<SignalSortOption | undefined>(() =>
+    props.options.sorts.find((option) => option.value === sort.value),
+);
+
+const currentScope = computed<SignalScopeOption | undefined>(() =>
+    props.options.scopes.find((option) => option.value === scope.value),
+);
+
 // --- Server-driven filtering --------------------------------------------------------------------
 // Every change is a real navigation, so the URL always reproduces what is on screen and a shared
 // link opens the same feed.
 const showFilters = ref(
-    props.filters.event_types.length > 0 ||
+    props.filters.event_keys.length > 0 ||
+        props.filters.source_kinds.length > 0 ||
         props.filters.from !== null ||
         props.filters.to !== null ||
         props.filters.min_relevance !== null,
 );
 
+/**
+ * A type's name is Alima's words or the team's, and only the server knows which. Translating the
+ * team's own wording would be the app overwriting what somebody typed.
+ */
+function typeLabel(definition: SignalDefinition): string {
+    return definition.translatable ? t(definition.name) : definition.name;
+}
+
 type SignalQueryParams = {
     status: SignalStatus;
-    event_types: SignalEventType[];
+    /** Omitted when it is "everything", so the plain feed keeps the URL it always had. */
+    scope?: SignalScope;
+    /** Omitted when it is the default, for the same reason. */
+    sort?: SignalSortOrder;
+    event_keys: SignalEventKey[];
+    /** Which sources to show (S13). Empty means every one, so the plain feed keeps its URL. */
+    source_kinds: SignalSourceKind[];
     from?: string;
     to?: string;
     min_relevance?: number;
@@ -106,7 +164,10 @@ function queryFor(changes: Partial<SignalFilterState>): SignalQueryParams {
 
     return {
         status: next.status,
-        event_types: next.event_types,
+        scope: next.scope === 'accounts' ? 'accounts' : undefined,
+        sort: next.sort === 'published' ? 'published' : undefined,
+        event_keys: next.event_keys,
+        source_kinds: next.source_kinds,
         from: next.from ?? undefined,
         to: next.to ?? undefined,
         min_relevance: next.min_relevance ?? undefined,
@@ -114,12 +175,15 @@ function queryFor(changes: Partial<SignalFilterState>): SignalQueryParams {
 }
 
 /** The tab's href, so a tab is a real, shareable URL rather than a button that fetches. */
-function tabHref(status: SignalStatus): string {
-    const query = queryFor({ status });
+function tabHref(changes: Partial<SignalFilterState>): string {
+    const query = queryFor(changes);
     const params = new URLSearchParams();
 
     params.set('status', query.status);
-    query.event_types.forEach((type) => params.append('event_types[]', type));
+    if (query.scope) params.set('scope', query.scope);
+    if (query.sort) params.set('sort', query.sort);
+    query.event_keys.forEach((key) => params.append('event_keys[]', key));
+    query.source_kinds.forEach((key) => params.append('source_kinds[]', key));
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
     if (query.min_relevance !== undefined) {
@@ -137,26 +201,49 @@ function navigate(changes: Partial<SignalFilterState>): void {
     });
 }
 
-function toggleEventType(type: SignalEventType): void {
+function toggleEventKey(key: SignalEventKey): void {
     navigate({
-        event_types: props.filters.event_types.includes(type)
-            ? props.filters.event_types.filter((t) => t !== type)
-            : [...props.filters.event_types, type],
+        event_keys: props.filters.event_keys.includes(key)
+            ? props.filters.event_keys.filter((candidate) => candidate !== key)
+            : [...props.filters.event_keys, key],
+    });
+}
+
+function toggleSourceKind(kind: SignalSourceKind): void {
+    navigate({
+        source_kinds: props.filters.source_kinds.includes(kind)
+            ? props.filters.source_kinds.filter(
+                  (candidate) => candidate !== kind,
+              )
+            : [...props.filters.source_kinds, kind],
     });
 }
 
 function clearFilters(): void {
     navigate({
-        event_types: [],
+        event_keys: [],
+        source_kinds: [],
         from: null,
         to: null,
         min_relevance: null,
     });
 }
 
+/**
+ * Whether anything on this page is one event reported by several outlets (S11).
+ *
+ * The caption below the tabs is conditional on it rather than always on, because it explains
+ * something the member can see on screen — the alternative is a standing sentence about clustering
+ * on a feed where nothing happens to be clustered.
+ */
+const hasClusters = computed(() =>
+    props.signals.data.some((signal) => signal.cluster !== null),
+);
+
 const isNarrowed = computed(
     () =>
-        props.filters.event_types.length > 0 ||
+        props.filters.event_keys.length > 0 ||
+        props.filters.source_kinds.length > 0 ||
         props.filters.from !== null ||
         props.filters.to !== null ||
         props.filters.min_relevance !== null,
@@ -176,15 +263,35 @@ const busy = useNavigating();
 const activeChips = computed<ActiveFilterChip[]>(() => {
     const chips: ActiveFilterChip[] = [];
 
-    for (const type of props.filters.event_types) {
-        const option = props.options.event_types.find(
-            (candidate) => candidate.value === type,
+    for (const key of props.filters.event_keys) {
+        const definition = props.options.definitions.find(
+            (candidate) => candidate.key === key,
         );
 
         chips.push({
-            id: 'event_types:' + type,
-            group: t('Event type'),
-            label: option ? t(option.label) : type,
+            id: 'event_keys:' + key,
+            group: t('Signal type'),
+            // The server drops a key the team no longer has, so a chip without a definition should
+            // not happen — the key is shown rather than a blank if it ever does.
+            label: definition ? typeLabel(definition) : key,
+        });
+    }
+
+    for (const kind of props.filters.source_kinds) {
+        const source = props.options.sources.find(
+            (candidate) => candidate.value === kind,
+        );
+
+        chips.push({
+            id: 'source_kinds:' + kind,
+            // **Not the shared `'Source'` key.** It is translated in `lang/ar.json` as
+            // الاستكشاف — "Discovery" — which is right for the lead screens that ask which
+            // *provider* found a lead, and wrong here: in Arabic this chip would have read
+            // "Discovery: Web search". Its own key, with its own Arabic (brand review).
+            group: t('Where it came from'),
+            // The server drops a source this build does not know, so a chip without an option
+            // should not happen — the key is shown rather than a blank if it ever does.
+            label: source ? t(source.label) : kind,
         });
     }
 
@@ -214,10 +321,20 @@ const activeChips = computed<ActiveFilterChip[]>(() => {
 function removeChip(chip: ActiveFilterChip): void {
     const [key, raw] = chip.id.split(':');
 
-    if (key === 'event_types') {
+    if (key === 'event_keys') {
         navigate({
-            event_types: props.filters.event_types.filter(
-                (type) => type !== raw,
+            event_keys: props.filters.event_keys.filter(
+                (candidate) => candidate !== raw,
+            ),
+        });
+
+        return;
+    }
+
+    if (key === 'source_kinds') {
+        navigate({
+            source_kinds: props.filters.source_kinds.filter(
+                (candidate) => candidate !== raw,
             ),
         });
 
@@ -232,6 +349,30 @@ function removeChip(chip: ActiveFilterChip): void {
 // --- Modals -------------------------------------------------------------------------------------
 const converting = ref<Signal | null>(null);
 const dismissing = ref<Signal | null>(null);
+
+/**
+ * "Add this to Acme Ltd" — the match, accepted (S10).
+ *
+ * No modal: there is nothing to decide. Converting asks for a stage and an owner because it makes
+ * a lead; this one adds an event to a lead that already has both. **Convert anyway** stays on the
+ * card for the member who thinks the match is wrong, which is the whole reason the confidence is
+ * shown next to it.
+ */
+function attach(signal: Signal): void {
+    router.post(
+        `/signals/${signal.id}/attach`,
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () =>
+                announce(
+                    t('Added to :company.', {
+                        company: signal.matched_lead?.company_name ?? '',
+                    }),
+                ),
+        },
+    );
+}
 
 function restore(signal: Signal): void {
     router.post(
@@ -364,6 +505,45 @@ onBeforeUnmount(() => {
 
             <!-- Tabs -->
             <div class="space-y-4">
+                <!-- Which half of the feed. Pills rather than a second underlined row, so the
+                     two axes do not read as one list of six. -->
+                <nav
+                    class="flex flex-wrap items-center gap-2"
+                    :aria-label="t('Which signals to show')"
+                >
+                    <Link
+                        v-for="option in options.scopes"
+                        :key="option.value"
+                        :href="tabHref({ scope: option.value })"
+                        preserve-scroll
+                        :aria-current="
+                            scope === option.value ? 'page' : undefined
+                        "
+                        :data-test="`scope-${option.value}`"
+                        class="rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        :class="
+                            scope === option.value
+                                ? 'border-brand bg-brand/10 font-semibold text-foreground rtl:font-bold'
+                                : 'border-border font-medium text-muted-foreground hover:text-foreground'
+                        "
+                    >
+                        {{ t(option.label) }}
+                    </Link>
+
+                    <Button
+                        v-if="can.manageWatches"
+                        variant="ghost"
+                        size="sm"
+                        class="ms-auto"
+                        as-child
+                    >
+                        <Link href="/signals/accounts">
+                            <Building2 class="size-4" aria-hidden="true" />
+                            {{ t('Accounts') }}
+                        </Link>
+                    </Button>
+                </nav>
+
                 <!-- Links, not tabs: each one navigates, so it can be opened in a new tab,
                      bookmarked and shared. `role="tab"` would promise arrow-key traversal and a
                      tabpanel that aren't there — and the Filters button could not live inside a
@@ -373,12 +553,12 @@ onBeforeUnmount(() => {
                 >
                     <nav
                         class="flex flex-wrap items-center gap-2"
-                        :aria-label="t('Signals')"
+                        :aria-label="t('Signal status')"
                     >
                         <Link
                             v-for="tab in tabs"
                             :key="tab.value"
-                            :href="tabHref(tab.value)"
+                            :href="tabHref({ status: tab.value })"
                             preserve-scroll
                             :aria-current="
                                 filters.status === tab.value
@@ -402,18 +582,81 @@ onBeforeUnmount(() => {
                         </Link>
                     </nav>
 
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        class="ms-auto mb-1"
-                        :aria-expanded="showFilters"
-                        aria-controls="signal-filters"
-                        @click="showFilters = !showFilters"
-                    >
-                        <SlidersHorizontal class="size-4" aria-hidden="true" />
-                        {{ t('Filters') }}
-                    </Button>
+                    <div class="ms-auto mb-1 flex flex-wrap items-center gap-2">
+                        <!-- The sort (S12). A real `<select>` through the shared base component,
+                             not a menu: two options, one of which is almost always right, and a
+                             native control is the one every assistive technology already knows.
+                             The label is visible rather than a placeholder, because "Best for you"
+                             on its own does not say what it is describing. -->
+                        <Label
+                            for="signal-sort"
+                            class="text-xs text-muted-foreground"
+                        >
+                            {{ t('Order') }}
+                        </Label>
+                        <NativeSelect
+                            id="signal-sort"
+                            class="h-9 w-auto text-sm"
+                            :model-value="sort"
+                            :aria-describedby="
+                                currentSort ? 'signal-sort-help' : undefined
+                            "
+                            @change="
+                                navigate({
+                                    sort: ($event.target as HTMLSelectElement)
+                                        .value as SignalSortOrder,
+                                })
+                            "
+                        >
+                            <option
+                                v-for="option in options.sorts"
+                                :key="option.value"
+                                :value="option.value"
+                            >
+                                {{ t(option.label) }}
+                            </option>
+                        </NativeSelect>
+
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            :aria-expanded="showFilters"
+                            aria-controls="signal-filters"
+                            @click="showFilters = !showFilters"
+                        >
+                            <SlidersHorizontal
+                                class="size-4"
+                                aria-hidden="true"
+                            />
+                            {{ t('Filters') }}
+                        </Button>
+                    </div>
                 </div>
+
+                <!-- What the chosen order means. One line, and it earns its place: "Best for you"
+                     is a claim, and a member deciding whether to trust it needs to know the claim
+                     is checkable on every card. -->
+                <p
+                    v-if="currentSort"
+                    id="signal-sort-help"
+                    class="text-xs text-muted-foreground"
+                >
+                    {{ t(currentSort.description) }}
+                </p>
+
+                <!-- What the numbers on those tabs count, said once and only where it applies:
+                     one event, however many outlets ran it (S11). -->
+                <p
+                    v-if="hasClusters"
+                    class="text-xs text-muted-foreground"
+                    data-test="cluster-note"
+                >
+                    {{
+                        t(
+                            'One card per event, however many outlets reported it. The counts above work the same way.',
+                        )
+                    }}
+                </p>
 
                 <!-- Filters -->
                 <div
@@ -424,16 +667,39 @@ onBeforeUnmount(() => {
                     <!-- The same chip as the leads list, so a filter looks like a filter
                          wherever a member meets one. The tick is what keeps the on state from
                          being colour alone (WCAG 1.4.1). -->
-                    <FilterGroup :legend="t('Event type')">
+                    <FilterGroup
+                        v-if="options.definitions.length"
+                        :legend="t('Signal type')"
+                    >
                         <FilterToggle
-                            v-for="option in options.event_types"
-                            :key="option.value"
+                            v-for="definition in options.definitions"
+                            :key="definition.id"
                             :pressed="
-                                filters.event_types.includes(option.value)
+                                filters.event_keys.includes(definition.key)
                             "
-                            :label="t(option.label)"
-                            :data-test="'filter-event-' + option.value"
-                            @toggle="toggleEventType(option.value)"
+                            :label="typeLabel(definition)"
+                            :data-test="'filter-event-' + definition.key"
+                            @toggle="toggleEventKey(definition.key)"
+                        />
+                    </FilterGroup>
+
+                    <!-- Which source found it (S13, task 9). Only shown when there is more than
+                         one to choose between: a team running news alone would get a group with a
+                         single chip that cannot change anything, which is a control that teaches
+                         somebody the screen is cluttered. -->
+                    <FilterGroup
+                        v-if="options.sources.length > 1"
+                        :legend="t('Where it came from')"
+                    >
+                        <FilterToggle
+                            v-for="source in options.sources"
+                            :key="source.value"
+                            :pressed="
+                                filters.source_kinds.includes(source.value)
+                            "
+                            :label="t(source.label)"
+                            :data-test="'filter-source-' + source.value"
+                            @toggle="toggleSourceKind(source.value)"
                         />
                     </FilterGroup>
 
@@ -521,6 +787,7 @@ onBeforeUnmount(() => {
                     :signal="signal"
                     :can-action="can.action"
                     @convert="converting = $event"
+                    @attach="attach"
                     @dismiss="dismissing = $event"
                     @restore="restore"
                 />
@@ -545,6 +812,20 @@ onBeforeUnmount(() => {
             >
                 <Button variant="outline" @click="clearFilters">
                     {{ t('Clear filters') }}
+                </Button>
+            </EmptyState>
+
+            <EmptyState
+                v-else-if="scope === 'accounts'"
+                :icon="Building2"
+                :title="t('Nothing about your own accounts yet')"
+                :description="t(currentScope?.empty_message ?? '')"
+                data-test="no-account-signals"
+            >
+                <Button v-if="can.manageWatches" variant="outline" as-child>
+                    <Link href="/signals/accounts">{{
+                        t('Set up an account list')
+                    }}</Link>
                 </Button>
             </EmptyState>
 

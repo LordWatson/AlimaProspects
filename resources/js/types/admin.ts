@@ -447,6 +447,29 @@ export type AdminPagination = {
     per_page: number;
 };
 
+/**
+ * What one signal source cost and found (S13, ADR 0023) — a row of `signal_runs.source_breakdown`.
+ *
+ * `rejected` is counted apart from `queries` on purpose: a query the provider refused as a *pattern*
+ * never ran, so including it would make cost-per-query wrong. `skipped` is apart from both (S13b
+ * review): it is a query that found **nothing at the address it named** — a struck-off company, a
+ * feed a publisher has moved — which is a different problem with different advice, and is the one
+ * 4xx that must never fail a run. `breaker_open` is null rather than false where this build watches
+ * no breaker for the source, which is the same rule the provider health screen follows — a green
+ * light nobody wired up is worse than no light.
+ */
+export type AdminSignalRunSource = {
+    source: string;
+    label: string;
+    queries: number;
+    results: number;
+    rejected: number;
+    skipped?: number;
+    cost_micros: number;
+    breaker_open?: boolean | null;
+    breaker_failures?: number | null;
+};
+
 export type AdminSignalRun = {
     id: number;
     team: string | null;
@@ -457,6 +480,8 @@ export type AdminSignalRun = {
     results: number;
     created: number;
     cost_micros: number;
+    /** Where this run's money went, per source. Empty for every run from before S13. */
+    sources: AdminSignalRunSource[];
     /** Null when the run never started or never finished — which is the finding on a stuck run. */
     duration_ms: number | null;
     error: string | null;
@@ -548,4 +573,58 @@ export type AdminWindowFilters = {
     range: string;
     from: string | null;
     to: string | null;
+};
+
+/**
+ * One platform preset, as the library screen reads it (S15 task 4).
+ *
+ * `clones` and `clones_behind` are the two figures that decide whether a preset is worth
+ * maintaining: how many teams run a copy, and how many of those have not taken the latest change.
+ * A preset with ninety clones all one version behind is a change nobody wanted.
+ */
+export type AdminSignalPreset = {
+    id: number;
+    key: string;
+    name: string;
+    description: string | null;
+    category: string;
+    icon: string;
+    /** Whether the library still offers it. Withdrawing one leaves every clone running. */
+    is_active: boolean;
+    version: number;
+    templates: number;
+    /** The templates themselves, so the editor can round-trip a preset. */
+    query_templates: string[];
+    min_confidence: number | null;
+    min_relevance: number | null;
+    markets: string[] | null;
+    source_keys: string[] | null;
+    clones: number;
+    clones_behind: number;
+    created_at: string | null;
+    updated_at: string | null;
+};
+
+/**
+ * A team's offer of their own signal type, as the review queue reads it (S15 task 4).
+ *
+ * **There is deliberately no team here.** An operator choosing between two submissions should be
+ * choosing on the evidence, and the evidence is `performance` — the type's own funnel. The row
+ * carries the author server-side, because the team has to be told the answer; the payload does not.
+ */
+export type AdminSignalSubmission = {
+    id: number;
+    name: string | null;
+    description: string | null;
+    key: string;
+    category: string | null;
+    templates: string[];
+    markets: string[] | null;
+    source_keys: string[] | null;
+    /** The author's own covering note. Prose, not a translation key. */
+    note: string | null;
+    performance: { found: number; kept: number; converted: number };
+    /** False when the team deleted the type while the offer waited — nothing left to promote. */
+    is_available: boolean;
+    created_at: string | null;
 };

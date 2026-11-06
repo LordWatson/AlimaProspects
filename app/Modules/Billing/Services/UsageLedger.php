@@ -11,6 +11,7 @@ use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Billing\Models\UsageMeter;
 use App\Modules\Core\Models\Team;
 use App\Modules\LeadSourcing\Services\LeadUsageCounter;
+use App\Modules\Signals\Services\SignalUsageCounter;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -19,7 +20,8 @@ use Illuminate\Support\Facades\DB;
  * Two jobs, deliberately separated:
  *
  * - **Reading** ({@see self::usage()}) goes straight to the authoritative ledgers — `ai_requests`
- *   for spend, `discovery_runs` for leads — through each owning module's own counter. The guards
+ *   for spend, `discovery_runs` for leads, `signal_runs` for signal searches — through each owning
+ *   module's own counter. The guards
  *   call this on every AI request and every discovery run, so it has to be a number that cannot be
  *   stale: an increment the app forgot to make is an allowance a team silently overspends, and an
  *   increment made twice is one they are wrongly refused.
@@ -37,6 +39,7 @@ final class UsageLedger
         private readonly PlanResolver $plans,
         private readonly AiUsageLogger $aiUsage,
         private readonly LeadUsageCounter $leadUsage,
+        private readonly SignalUsageCounter $signalUsage,
     ) {}
 
     /**
@@ -83,6 +86,9 @@ final class UsageLedger
             BillingMetric::AiCredits => $metric->fromMicros(
                 $this->aiUsage->usedMicrosBetween($team, $period->start, $period->end),
             ),
+            // S16. `signal_runs.queries_count`, through the module that owns the table — the same
+            // arrangement as the two above, and the reason Billing does not learn what a signal is.
+            BillingMetric::SignalQueries => $this->signalUsage->sourceQueriesBetween($team, $period->start, $period->end),
         };
     }
 
