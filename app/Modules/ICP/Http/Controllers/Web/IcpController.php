@@ -7,6 +7,7 @@ namespace App\Modules\ICP\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Modules\Core\Models\Team;
+use App\Modules\ICP\Actions\ComposeIcpAction;
 use App\Modules\ICP\Actions\CreateIcpAction;
 use App\Modules\ICP\Actions\DeleteIcpAction;
 use App\Modules\ICP\Actions\FindIcpAction;
@@ -15,7 +16,9 @@ use App\Modules\ICP\Actions\SetActiveIcpAction;
 use App\Modules\ICP\Actions\UpdateIcpAction;
 use App\Modules\ICP\Data\IcpData;
 use App\Modules\ICP\Enums\CriterionType;
+use App\Modules\ICP\Http\Requests\ComposeIcpRequest;
 use App\Modules\ICP\Http\Requests\SaveIcpRequest;
+use App\Modules\ICP\Http\Resources\IcpDraftResource;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
 use Illuminate\Http\RedirectResponse;
@@ -55,6 +58,43 @@ final class IcpController extends Controller
             'icp' => null,
             'criterionTypes' => $this->criterionTypes(),
         ]);
+    }
+
+    /**
+     * Draft a profile from a sentence about who the team sells to.
+     *
+     * **Nothing is saved.** The draft is flashed back to the editor, which fills its fields with it;
+     * the member then changes what they like and presses save, which is `store` below. A flash
+     * rather than a prop because that is exactly how long a draft should exist — until this screen
+     * is left.
+     *
+     * Authorised as a `create`, because a draft is the first half of one.
+     */
+    public function compose(ComposeIcpRequest $request, ComposeIcpAction $action): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $team = $this->team($request);
+
+        $this->authorize('create', $this->transientIcp($team));
+
+        $draft = $action->handle($team, $user, $request->brief());
+
+        Inertia::flash('draft', (new IcpDraftResource($draft))->resolve($request));
+        // The brief survives on purpose: a composer that cleared the box would make its own reason
+        // unactionable.
+        Inertia::flash('brief', $request->brief());
+
+        if (! $draft->viable) {
+            Inertia::flash('toast', [
+                'type' => 'info',
+                // The model's own reason, not ours: it knows why it refused and the member is owed
+                // it. Bounded to 300 characters by the prompt's schema.
+                'message' => $draft->reason ?? __('That does not describe the customers you are looking for.'),
+            ]);
+        }
+
+        return to_route('icp.create');
     }
 
     public function store(SaveIcpRequest $request, CreateIcpAction $action): RedirectResponse

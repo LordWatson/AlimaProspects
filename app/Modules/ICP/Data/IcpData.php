@@ -6,6 +6,7 @@ namespace App\Modules\ICP\Data;
 
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Http\Requests\SaveIcpRequest;
+use Illuminate\Validation\Rule;
 use Spatie\LaravelData\Data;
 
 /**
@@ -24,6 +25,28 @@ final class IcpData extends Data
         public bool $isActive,
         public array $criteria,
     ) {}
+
+    /**
+     * The one definition of what an ICP write may contain — shared by {@see SaveIcpRequest} (a
+     * member filling in the form) and {@see DraftIcp::fromAi()} (the composer re-validating what
+     * the AI drafted). A prompt describes a constraint; it does not enforce one, so the draft is
+     * run through the save path's own rules rather than trusted.
+     *
+     * @return array<string, mixed>
+     */
+    public static function rules(): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:120'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'is_active' => ['boolean'],
+
+            'criteria' => ['present', 'array', 'max:50'],
+            'criteria.*.type' => ['required', Rule::enum(CriterionType::class)],
+            'criteria.*.value' => ['required', 'string', 'max:255'],
+            'criteria.*.weight' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ];
+    }
 
     /**
      * Build from already-validated request input.

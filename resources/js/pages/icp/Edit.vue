@@ -1,7 +1,16 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, Ban, Loader2, Plus, Sparkles, X } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import {
+    ArrowLeft,
+    Ban,
+    CornerDownLeft,
+    Loader2,
+    Plus,
+    Sparkles,
+    Wand,
+    X,
+} from '@lucide/vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import {
     FormActions,
     FormErrorSummary,
@@ -21,7 +30,12 @@ import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import { useUnsavedGuard } from '@/composables/useUnsavedGuard';
 import { importanceKey } from '@/lib/importance';
-import type { CriterionFormRow, CriterionTypeMeta, Icp } from '@/types';
+import type {
+    CriterionFormRow,
+    CriterionTypeMeta,
+    Icp,
+    IcpDraft,
+} from '@/types';
 
 /*
  * The ideal-customer editor — the screen that decides how every lead in the account is graded.
@@ -209,6 +223,104 @@ const topWeight = computed(() =>
     Math.max(1, ...filledSignals.value.map((r) => r.row.weight ?? 0)),
 );
 
+// --- Draft it from a sentence --------------------------------------------------------------
+// A description in, a filled-in form out. Offered on a new profile only: on an existing one it
+// would replace criteria a member has already tuned, and "redraft my profile" is not a thing
+// anybody asked for.
+const brief = ref('');
+const composing = ref(false);
+const composeError = ref<string | null>(null);
+const draftSummary = ref<string | null>(null);
+
+/** Examples in brand voice — deliberately not three variations of the same shape. */
+const examples = computed(() => [
+    t(
+        'We are a design agency looking for startup food brands that need packaging or social media work.',
+    ),
+    t(
+        'We fit commercial kitchens, so we want independent restaurants and cafés opening a second site.',
+    ),
+    t('Small UK law firms with no in-house marketing team.'),
+]);
+
+const briefField = ref<HTMLTextAreaElement | null>(null);
+
+/** Take an example into the box, and put the cursor where the member now has to type. */
+function useExample(example: string): void {
+    brief.value = example;
+    requestAnimationFrame(() => briefField.value?.focus());
+}
+
+function composeDraft(): void {
+    // Guarded here rather than by `disabled` on the button, because a focused button that becomes
+    // disabled drops focus to `<body>` (WCAG 2.4.3).
+    if (composing.value || brief.value.trim() === '') {
+        return;
+    }
+
+    composeError.value = null;
+
+    router.post(
+        '/icp/compose',
+        { brief: brief.value },
+        {
+            preserveScroll: true,
+            onStart: () => {
+                composing.value = true;
+            },
+            onFinish: () => {
+                composing.value = false;
+            },
+            onError: (errors) => {
+                composeError.value = errors.brief ?? null;
+            },
+        },
+    );
+}
+
+// The draft arrives **flashed**, not as a prop: it lasts until this page is left, which is exactly
+// how long an unsaved draft should exist. Same channel the product's toasts arrive on.
+const stopListening = router.on('flash', (event) => {
+    const flash = (event as CustomEvent).detail?.flash as
+        | { draft?: IcpDraft; brief?: string }
+        | undefined;
+
+    if (!flash) {
+        return;
+    }
+
+    if (typeof flash.brief === 'string') {
+        brief.value = flash.brief;
+    }
+
+    if (flash.draft) {
+        applyDraft(flash.draft);
+    }
+});
+
+onBeforeUnmount(() => stopListening());
+
+/**
+ * Fill the form from a draft.
+ *
+ * A refusal fills nothing: the toast carries the model's own reason, and a half-filled form
+ * underneath it would read as though something had been drafted anyway.
+ *
+ * Assigned rather than set as defaults, so the form stays **dirty** — a draft is unsaved work, and
+ * the leave-guard should treat it as such.
+ */
+function applyDraft(draft: IcpDraft): void {
+    if (!draft.viable || draft.profile === null) {
+        return;
+    }
+
+    draftSummary.value = draft.summary;
+    form.clearErrors();
+    form.name = draft.profile.name;
+    form.description = draft.profile.description ?? '';
+    form.criteria = draft.profile.criteria.map((c) => ({ ...c }));
+}
+
 // Bumped on every submit so the error summary announces a repeat rejection rather than
 // sitting still because the number of failures happens to be the same.
 const attempt = ref(0);
@@ -267,6 +379,115 @@ function submit(): void {
             :anchors="errorAnchors"
             :attempt="attempt"
         />
+
+        <!-- Draft it from a sentence. New profiles only (see `composeDraft`). -->
+        <section
+            v-if="!isEditing"
+            class="space-y-4 rounded-2xl border border-border bg-background/40 p-6"
+            aria-labelledby="composer-heading"
+        >
+            <div class="flex items-start gap-3">
+                <Wand
+                    class="mt-1 size-5 shrink-0 text-brand"
+                    aria-hidden="true"
+                />
+                <div class="space-y-1">
+                    <h2
+                        id="composer-heading"
+                        class="text-lg font-semibold text-foreground rtl:font-bold"
+                    >
+                        {{ t('Describe who you want to reach') }}
+                    </h2>
+                    <p class="max-w-prose text-sm text-muted-foreground">
+                        {{
+                            t(
+                                'Say what you do and the kind of business you are after. Alima fills in the profile below; you change anything you like before saving.',
+                            )
+                        }}
+                    </p>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <!-- Labelled by the heading above rather than by an `sr-only` copy of the same
+                     words, and described by its error only: the examples are three long buttons,
+                     and reading all three every time the field takes focus is noise. -->
+                <Textarea
+                    id="composer-brief"
+                    ref="briefField"
+                    v-model="brief"
+                    rows="3"
+                    aria-labelledby="composer-heading"
+                    :placeholder="
+                        t(
+                            'We are a design agency looking for startup food businesses that need branding on their packaging.',
+                        )
+                    "
+                    :aria-invalid="composeError ? true : undefined"
+                    aria-describedby="composer-error"
+                    dir="auto"
+                    data-test="composer-brief"
+                />
+                <p
+                    v-if="composeError"
+                    id="composer-error"
+                    class="text-sm text-destructive"
+                    role="alert"
+                >
+                    {{ composeError }}
+                </p>
+            </div>
+
+            <!-- Examples as buttons rather than prose: the point of an example here is to be
+                 taken, and a member reading three sentences they have to retype types nothing. -->
+            <div class="space-y-2">
+                <p
+                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                >
+                    {{ t('Or start from one of these') }}
+                </p>
+                <ul class="flex flex-col gap-1.5">
+                    <li v-for="example in examples" :key="example">
+                        <button
+                            type="button"
+                            class="flex w-full items-start gap-2 rounded-xl border border-border px-3 py-2 text-start text-sm text-foreground transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                            dir="auto"
+                            @click="useExample(example)"
+                        >
+                            <CornerDownLeft
+                                class="mt-0.5 size-4 shrink-0 text-muted-foreground rtl:rotate-180"
+                                aria-hidden="true"
+                            />
+                            {{ example }}
+                        </button>
+                    </li>
+                </ul>
+            </div>
+
+            <Button
+                type="button"
+                variant="lime"
+                :disabled="brief.trim() === ''"
+                :aria-disabled="composing ? true : undefined"
+                :aria-busy="composing ? true : undefined"
+                data-test="compose-draft"
+                @click="composeDraft"
+            >
+                <Loader2 v-if="composing" class="size-4 animate-spin" />
+                {{ composing ? t('Drafting…') : t('Draft my profile') }}
+            </Button>
+
+            <!-- What the composer took the brief to mean. Shown because a draft a member did not
+                 expect is one to correct rather than trust. -->
+            <p
+                v-if="draftSummary"
+                class="max-w-prose border-s-2 border-brand ps-3 text-sm text-muted-foreground"
+                dir="auto"
+                data-test="draft-summary"
+            >
+                {{ draftSummary }}
+            </p>
+        </section>
 
         <!-- Profile basics -->
         <FormSection step="01" :title="t('The profile')">

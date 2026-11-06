@@ -5,6 +5,29 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-06 — ICP: draft a whole profile from a sentence
+
+The ideal-customer editor started from a blank page: a member had to know what each criterion type
+means and what weight to give it before the product could grade anything. It now takes a description
+— _"we are a design agency looking for startup food businesses that need branding on their
+packaging"_ — and fills itself in. `ComposeIcpAction` runs the new `icp.compose_profile` **reasoning**
+prompt and returns a `DraftIcp`: a name, a description and 5–10 weighted criteria plus exclusions,
+flashed back to the editor for the member to change and save. **The call persists nothing** — ADR
+0020's arrangement from the Signals builder, for the same reason: the active profile grades every
+lead in the account, so a prompt that wrote one directly would be a prompt with write access to the
+team's grading.
+
+The prompt's actual job is an **inversion**. A brief describes the seller as much as the buyer, and
+returning the seller's own trade is the failure this codebase has already had twice
+(`business_intel.background_check` v2, `lead_sourcing.shape_query`) — so the model is given the
+team's own `BusinessProfile`, told never to return their trade as an industry signal, and told to put
+it in an **exclusion**, where a competitor belongs. `IcpData::rules()` was extracted so the draft is
+re-validated against exactly the rules the editor's save posts through, because a prompt describes a
+constraint and does not enforce one; `is_viable: false` with the model's own reason is a first-class
+answer, and it fills nothing in. No plan capability — the hand-written editor is the same screen, so
+gating the shortcut would only make the cheaper plans worse than they were the day before it existed;
+the ceilings are the AI credit allowance and a per-member `throttle:10,60`.
+
 ### Added — 2026-11-06 — Phase 7c: the AI lead source, and why a discovered lead could not reach an A
 
 A fourth source in the discovery picker, behind the same `LeadSourceProvider` contract as the other

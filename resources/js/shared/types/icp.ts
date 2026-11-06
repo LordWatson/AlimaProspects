@@ -29,6 +29,25 @@ export type Icp = {
     updated_at: string | null;
 };
 
+/**
+ * What the AI composer drafted from a sentence — never a saved profile.
+ *
+ * `viable: false` with a `reason` is a real answer ("rich people in Dubai" is not a profile), and
+ * the shape of `profile` is the shape the editor posts back, so nothing has to be translated.
+ * `is_active` is absent on purpose: whether this becomes the account's active profile is the
+ * member's decision, so the editor's own tick box keeps whatever it was set to.
+ */
+export type IcpDraft = {
+    viable: boolean;
+    reason: string | null;
+    summary: string | null;
+    profile: {
+        name: string;
+        description: string | null;
+        criteria: CriterionFormRow[];
+    } | null;
+};
+
 /** An editable criterion row in the editor form (weight null for exclusions). */
 export type CriterionFormRow = {
     type: string;

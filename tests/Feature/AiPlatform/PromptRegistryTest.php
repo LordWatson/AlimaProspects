@@ -46,6 +46,21 @@ function cannedResponses(): array
                 ['type' => 'exclusion', 'value' => 'competitor.com', 'weight' => null, 'rationale' => 'Rival.'],
             ],
         ],
+        // The ICP composer. A **viable** draft, because that is the branch with a schema to
+        // satisfy — a refusal is `is_viable: false` and a reason, and would validate trivially.
+        'icp.compose_profile' => [
+            'is_viable' => true,
+            'reason' => null,
+            'summary' => 'Early-stage food brands that need packaging work.',
+            'profile' => [
+                'name' => 'UK craft food startups',
+                'description' => 'Young food producers selling a packaged product.',
+                'criteria' => [
+                    ['type' => 'industry', 'value' => 'Craft food producers', 'weight' => 85],
+                    ['type' => 'exclusion', 'value' => 'Design agencies', 'weight' => null],
+                ],
+            ],
+        ],
         'lead.enrich_extract' => [
             'company_name' => 'Acme', 'website' => 'https://acme.test', 'industry' => 'Retail',
             'employee_range' => '11-50', 'locations' => ['London'], 'technologies' => ['Shopify'],
@@ -98,7 +113,7 @@ function cannedResponses(): array
 it('seeds every prompt from docs/ai-prompts.md', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    // Thirteen **rows** for ten keys. Three have a v2, and all three v1 rows stay seeded so a
+    // Fourteen **rows** for eleven keys. Three have a v2, and all three v1 rows stay seeded so a
     // report, message or signal that recorded `prompt_version: 1` can still be traced back to what
     // produced it; the registry resolves the highest active version.
     //
@@ -113,9 +128,15 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
     //
     // `lead_sourcing.ai_discovery` (Phase 7c) is the tenth, and the only one whose output becomes
     // **rows a team acts on** rather than a judgement about rows that already exist.
-    expect(AiPromptTemplate::query()->count())->toBe(13)
+    //
+    // `icp.compose_profile` is the eleventh: the second prompt that writes **configuration** rather
+    // than prose, and the one whose job is an inversion — the brief describes the seller as much as
+    // the buyer, and returning the seller's own trade is the failure two other prompts here already
+    // learned about.
+    expect(AiPromptTemplate::query()->count())->toBe(14)
         ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
+            'icp.compose_profile',
             'icp.refine_suggestions',
             'insights.periodic_digest',
             'lead.enrich_extract',
@@ -158,5 +179,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(13);
+    expect(AiPromptTemplate::query()->count())->toBe(14);
 });

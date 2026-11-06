@@ -33,6 +33,7 @@ a field a reader has to guess at is a bug waiting for a consumer.
 | --------------------------------- | --------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- | ----------------------------------------- |
 | `business_intel.background_check` | Business Intelligence       | reasoning | Research the signed-up business from its site + public sources → profile. **v2 splits the seller from the buyer:** `own_industry` + `competitors` describe the team, `customer_industries` + `target_customers` + `decision_maker_titles` describe who buys                                                                                                                                                                                                                                                                                | yes (object)                 | live v2 (Ph. 7c)                          |
 | `icp.refine_suggestions`          | ICP / Business Intelligence | reasoning | Suggest ICP refinements from the business profile                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | yes (object → suggestions[]) | seeded v1 (Ph. 6)                         |
+| `icp.compose_profile`             | ICP                         | reasoning | Draft a **whole ideal customer profile** from a member's sentence about who they sell to: name, description and 5–10 weighted criteria plus 1–3 exclusions — or a refusal with a reason. The brief is wrapped as untrusted content, and the model is given the team's own business profile so it can tell the seller from the buyer                                                                                                                                                                                                        | yes (object)                 | live v1                                   |
 | `lead_sourcing.shape_query`       | Lead Sourcing               | reasoning | Turn the business profile + ICP into a provider-ready search for the team's **customers**, with negative terms for its own trade and competitors                                                                                                                                                                                                                                                                                                                                                                                           | yes (object)                 | live v1 (Ph. 7c)                          |
 | `lead_sourcing.ai_discovery`      | Lead Sourcing               | reasoning | **Name the companies themselves.** Given the shaped brief, return up to N real companies with a trade, an approximate headcount band, a place, an ISO-2 country, a homepage and one line of why — company facts only, never a person. The one prompt whose output becomes **rows a team acts on** rather than a judgement about rows that exist, so a fabricated name is a fabricated prospect: the brief is wrapped untrusted, the source is ranked below every index, and nothing it asserts about a company is believed over a register | yes (object → companies[])   | live v1 (Ph. 7c)                          |
 | `lead.enrich_extract`             | Enrichment                  | cheap     | Extract structured company/contact facts from fetched public web text                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | yes (object)                 | live v1 (Ph. 8)                           |
@@ -61,6 +62,37 @@ guard the schema used to be, and it is covered by a test that feeds a hostile ke
 The lesson generalises: when a prompt's constraint cannot live in the schema, it has to live in the
 code that reads the response. It never lives only in the prompt — a prompt describes a constraint, it
 does not enforce one.
+
+### `icp.compose_profile` v1 — the prompt whose job is an inversion
+
+The second prompt here that writes **configuration** rather than prose, and the one with the
+narrowest failure mode. A member types one sentence that describes **both** sides — _"we are a design
+agency looking for startup food businesses that need branding on their packaging"_ — and a profile
+describes only the second. Return the first and the product breaks in the way it has already broken
+twice: `business_intel.background_check` v2 exists because a background check's "industry" was being
+read as the customer's, and `lead_sourcing.shape_query` exists because a design studio was handed a
+list of design studios. So:
+
+1. **The inversion is stated, with its reason, and so is where the seller's own trade goes** — into
+   an `exclusion`, which is a real field of a profile and the one place a competitor belongs.
+2. **The team's own `BusinessProfile` is in the body**, absent-rather-than-invented when onboarding
+   has not run, because telling the two apart needs something to tell apart. A model told nothing
+   drafts from the brief alone, which is the right failure; a model told something made up drafts a
+   confident profile for the wrong business.
+3. **A value has to be the words a buyer is findable by**, because it is: `DiscoveryQuery::fromIcp()`
+   searches an industry value more or less verbatim when the shaper is skipped, so "businesses
+   needing a rebrand" finds nothing and "craft food producers" finds companies.
+4. **Weights are told to spread.** A profile where everything is 90 grades every prospect identically
+   and teaches a member that the slider does nothing.
+5. **A refusal is a first-class answer.** "Get me the mobile numbers of rich people in Dubai" is not
+   an ideal customer profile, and criteria drafted for it would grade the whole account against
+   nonsense.
+
+**And the constraint that cannot live in the schema lives in the code**, exactly as below:
+`DraftIcp::fromAi()` re-validates against `IcpData::rules()` — the rules the editor's own save posts
+through — so a draft the save path would reject becomes a refusal the member can act on rather than
+a half-filled form. Nothing is saved by the call; the draft is flashed to the editor and the member
+presses save.
 
 ### `signals.compose_definition` v1 — the prompt that writes configuration
 

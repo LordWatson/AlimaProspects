@@ -2353,5 +2353,12 @@
     ":price per :count signal searches": ":price لكل :count عملية بحث عن الإشارات",
     "One company per line.": "شركة واحدة في كل سطر.",
     "Ready to contact": "جاهز للتواصل",
-    ":percent of what we need to reach them": ":percent مما نحتاجه للتواصل معهم"
+    ":percent of what we need to reach them": ":percent مما نحتاجه للتواصل معهم",
+    "Describe who you want to reach": "اوصف من تريد الوصول إليهم",
+    "Say what you do and the kind of business you are after. Alima fills in the profile below; you change anything you like before saving.": "اشرح ما تقدمه ونوع الشركات التي تبحر عنها.",
+    "We are a design agency looking for startup food businesses that need branding on their packaging.": "نحن وكالة تصميم نبحر عن شركات أغذية ناشئة تحتاج هوية على علبها.",
+    "We are a design agency looking for startup food brands that need packaging or social media work.": "نحن وكالة تصميم نبحر عن علامات أغذية ناشئة تحتاج عمل تغليف أو وسائل تواصل.",
+    "We fit commercial kitchens, so we want independent restaurants and cafés opening a second site.": "نركب مطابخ تجارية، لذلك نريد مطاعم ومقاهي مستقلة تفتح فرعًا ثانيًا.",
+    "Small UK law firms with no in-house marketing team.": "مكاتب محاماة بريطانية صغيرة بلا فريق تسويق داخلي.",
+    "Draft my profile": "اصيغ ملفي"
 }
