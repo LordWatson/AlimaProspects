@@ -38,9 +38,7 @@
         ],
         "ask": [
             "Bash(git push:*)",
-            "Bash(php artisan migrate:fresh:*)",
-            "Bash(php artisan migrate:rollback:*)",
-            "Bash(php artisan db:wipe:*)"
+            "Bash(php artisan migrate:rollback:*)"
         ],
         "deny": [
             "Read(./.env)",
@@ -52,6 +50,18 @@
             "Edit(./.env.testing)",
             "Edit(./.env.production)",
             "Bash(php artisan horizon:*)",
+            "Bash(php artisan migrate:fresh:*)",
+            "Bash(php artisan migrate:refresh:*)",
+            "Bash(php artisan migrate:reset:*)",
+            "Bash(php artisan db:wipe:*)",
+            "Bash(php.bat artisan migrate:fresh:*)",
+            "Bash(php.bat artisan migrate:refresh:*)",
+            "Bash(php.bat artisan migrate:reset:*)",
+            "Bash(php.bat artisan db:wipe:*)",
+            "Bash(C:/Users/alexa/.config/herd/bin/php.bat artisan migrate:fresh:*)",
+            "Bash(C:/Users/alexa/.config/herd/bin/php.bat artisan migrate:refresh:*)",
+            "Bash(C:/Users/alexa/.config/herd/bin/php.bat artisan migrate:reset:*)",
+            "Bash(C:/Users/alexa/.config/herd/bin/php.bat artisan db:wipe:*)",
             "Bash(git push --force:*)",
             "Bash(git push -f:*)",
             "Edit(./vendor/**)",
@@ -64,6 +74,18 @@
         ]
     },
     "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "statusMessage": "Checking for destructive migration command",
+                        "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/block-destructive-migrations.cjs\""
+                    }
+                ]
+            }
+        ],
         "PostToolUse": [
             {
                 "matcher": "Write|Edit",
