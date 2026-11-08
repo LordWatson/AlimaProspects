@@ -44,9 +44,6 @@ final readonly class BillingPeriod
     }
 
     /**
-     * The period before this one — what an invoice is settled against once a month closes.
-     */
-    /**
      * This period as `YYYY-MM` — the key `usage_ledger` rows are stamped with (PL4).
      *
      * From `start`, which is already UTC (ADR 0012), so the key cannot shift with a team's
@@ -58,6 +55,21 @@ final readonly class BillingPeriod
         return $this->start->format('Y-m');
     }
 
+    /**
+     * The period a `YYYY-MM` key names (PL4).
+     *
+     * The inverse of {@see self::key()}, and it exists because a ledger row carries the key and a
+     * settle has to lock the `usage_meters` row for the period that row belongs to — not for
+     * today's, which is a different row the moment a month turns over mid-retry.
+     */
+    public static function fromKey(string $key): self
+    {
+        return self::containing(CarbonImmutable::createFromFormat('Y-m-d H:i:s', $key.'-01 00:00:00', 'UTC'));
+    }
+
+    /**
+     * The period before this one — what an invoice is settled against once a month closes.
+     */
     public function previous(): self
     {
         return self::containing($this->start->subDay());

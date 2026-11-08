@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Billing\Services;
 
 use App\Modules\Billing\Enums\BillingMetric;
-use App\Modules\Billing\Services\UsageAllowance;
 use App\Modules\Core\Models\Team;
 use App\Modules\Enrichment\Contracts\CreditReserver;
 use App\Modules\Enrichment\Data\CreditReservation;
@@ -30,11 +29,21 @@ use App\Modules\Enrichment\Enums\EnrichmentScope;
  */
 final class PlanCreditReserver implements CreditReserver
 {
-    public function __construct(private readonly UsageAllowance $allowance) {}
+    public function __construct(
+        private readonly UsageAllowance $allowance,
+        private readonly MarginGuard $margin,
+    ) {}
 
     public function reserve(Team $team, EnrichmentScope $scope, int $units): CreditReservation
     {
         $metric = $this->metricFor($scope);
+
+        // The margin check comes **before** the hold, not after it: a refusal that had already
+        // reserved would have to be unwound, and the way that fails is a hold nobody settles
+        // sitting against the allowance until the month turns over.
+        if ($this->margin->blocks($team, $metric)) {
+            return CreditReservation::refuse($scope, 'billing.margin_guard.'.$metric->value);
+        }
 
         $handle = $this->allowance->reserve($team, $metric, $units, meta: ['scope' => $scope->value]);
 

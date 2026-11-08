@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Billing\Enums\PlanKey;
 use App\Modules\Core\Enums\Capability;
 
@@ -148,6 +149,19 @@ return [
                 Capability::CsvExport->value,
                 Capability::ApiAccess->value,
             ],
+            // PL4. The six ledgered allowances, keyed by `BillingMetric` value. **Absent means
+            // none**, so every plan states all six — a forgotten key is an allowance of zero, which
+            // is the fail-closed direction, but a silent one.
+            'contacts' => [
+                'people_search' => (int) env('BILLING_FREE_PEOPLE_SEARCH', 10),
+                'email_reveal' => (int) env('BILLING_FREE_EMAIL_REVEAL', 15),
+                // Zero, deliberately: a mobile number is the most expensive thing we buy and the
+                // one a free account would be opened to harvest.
+                'phone_reveal' => (int) env('BILLING_FREE_PHONE_REVEAL', 0),
+                'email_verification' => (int) env('BILLING_FREE_EMAIL_VERIFICATION', 25),
+                'export_rows' => (int) env('BILLING_FREE_EXPORT_ROWS', 100),
+                'crm_sync' => (int) env('BILLING_FREE_CRM_SYNC', 0),
+            ],
             'signals' => [
                 // Signals is not on this plan at all (`capabilities` above says so), so these are
                 // the floor a Free team would meet if an operator granted them the capability for
@@ -185,6 +199,15 @@ return [
                 Capability::ApiAccess->value,
                 // The price list promises “AI scoring, drafting and insights” from here up.
                 Capability::AiInsights->value,
+            ],
+            // The plan's own proposal in `pre-launch.md`, confirmed for launch.
+            'contacts' => [
+                'people_search' => (int) env('BILLING_STARTER_PEOPLE_SEARCH', 150),
+                'email_reveal' => (int) env('BILLING_STARTER_EMAIL_REVEAL', 250),
+                'phone_reveal' => (int) env('BILLING_STARTER_PHONE_REVEAL', 25),
+                'email_verification' => (int) env('BILLING_STARTER_EMAIL_VERIFICATION', 500),
+                'export_rows' => (int) env('BILLING_STARTER_EXPORT_ROWS', 2_000),
+                'crm_sync' => (int) env('BILLING_STARTER_CRM_SYNC', 1_000),
             ],
             'signals' => [
                 // As Free: Signals is not on this plan, and these are what an operator's override
@@ -229,6 +252,14 @@ return [
                 // get it automatically, since they declare `Capability::values()`.
                 Capability::SignalComposer->value,
             ],
+            'contacts' => [
+                'people_search' => (int) env('BILLING_TEAM_PEOPLE_SEARCH', 600),
+                'email_reveal' => (int) env('BILLING_TEAM_EMAIL_REVEAL', 1_000),
+                'phone_reveal' => (int) env('BILLING_TEAM_PHONE_REVEAL', 100),
+                'email_verification' => (int) env('BILLING_TEAM_EMAIL_VERIFICATION', 2_000),
+                'export_rows' => (int) env('BILLING_TEAM_EXPORT_ROWS', 10_000),
+                'crm_sync' => (int) env('BILLING_TEAM_CRM_SYNC', 5_000),
+            ],
             'signals' => [
                 // The first plan the price list actually promises Signals on, so this is the shape
                 // of the offer. The query allowance is sized from the cadence: one daily watch over
@@ -272,6 +303,14 @@ return [
             'credits' => (int) env('BILLING_SCALE_CREDITS', 250_000),
             'overage' => true,
             'capabilities' => Capability::values(),
+            'contacts' => [
+                'people_search' => (int) env('BILLING_SCALE_PEOPLE_SEARCH', 2_000),
+                'email_reveal' => (int) env('BILLING_SCALE_EMAIL_REVEAL', 3_500),
+                'phone_reveal' => (int) env('BILLING_SCALE_PHONE_REVEAL', 400),
+                'email_verification' => (int) env('BILLING_SCALE_EMAIL_VERIFICATION', 7_000),
+                'export_rows' => (int) env('BILLING_SCALE_EXPORT_ROWS', 50_000),
+                'crm_sync' => (int) env('BILLING_SCALE_CRM_SYNC', 25_000),
+            ],
             'signals' => [
                 'max_definitions' => (int) env('BILLING_SCALE_SIGNAL_TYPES', 25),
                 'max_watches' => (int) env('BILLING_SCALE_SIGNAL_WATCHES', 15),
@@ -305,6 +344,17 @@ return [
             // Everything. Listed rather than omitted, because omitting the key means
             // “no declaration” and this plan's answer is a decision, not an absence.
             'capabilities' => Capability::values(),
+            // **Large numbers, not nulls** — the one place this plan is not unlimited. A null
+            // here would read as "no cap on what we buy for them per month", and there is no
+            // contract term that says that; a signed deal's real figures go in `.env`.
+            'contacts' => [
+                'people_search' => (int) env('BILLING_ENTERPRISE_PEOPLE_SEARCH', 6_000),
+                'email_reveal' => (int) env('BILLING_ENTERPRISE_EMAIL_REVEAL', 12_000),
+                'phone_reveal' => (int) env('BILLING_ENTERPRISE_PHONE_REVEAL', 1_500),
+                'email_verification' => (int) env('BILLING_ENTERPRISE_EMAIL_VERIFICATION', 25_000),
+                'export_rows' => (int) env('BILLING_ENTERPRISE_EXPORT_ROWS', 250_000),
+                'crm_sync' => (int) env('BILLING_ENTERPRISE_CRM_SYNC', 100_000),
+            ],
             'signals' => [
                 // Unlimited, listed rather than omitted — for the same reason `capabilities` is
                 // listed here: omitting the block means "no declaration" and leaves the module's
@@ -327,6 +377,78 @@ return [
             ],
         ],
 
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Top-ups (PL4)
+    |--------------------------------------------------------------------------
+    |
+    | Extra allowance, bought outright for the period the team is already in. One list per toppable
+    | metric ({@see BillingMetric::isToppable()}); each option is a quantity, a price in minor
+    | units for the screen, and the Stripe price the Checkout session is created against.
+    |
+    | **The client names an option, never a price.** The POST carries the metric and the option's
+    | index into this list, and the Stripe price is looked up here — a request that could name a
+    | price would be a request that could name a cheaper one.
+    |
+    | A metric with no configured options simply has no "Buy more" button, which is also what a
+    | deployment with no Stripe prices yet gets. Like `overage` below, the prices have **no
+    | default**: a placeholder would create a Checkout session against a price that does not exist,
+    | and the customer would meet that error with their card details already typed in.
+    |
+    | Top-ups **lapse with the period they are bought in** and do not roll over. See ADR 0031: the
+    | alternative needs consumption tracked per grant across periods, and the way that fails is
+    | resurrecting units somebody has already spent.
+    */
+    'topups' => [
+
+        BillingMetric::EmailReveal->value => [
+            [
+                'quantity' => 250,
+                'amount' => (int) env('BILLING_TOPUP_EMAIL_AMOUNT', 1_500),
+                'stripe_price' => env('STRIPE_PRICE_TOPUP_EMAIL_REVEAL'),
+            ],
+        ],
+
+        BillingMetric::PhoneReveal->value => [
+            [
+                'quantity' => 50,
+                'amount' => (int) env('BILLING_TOPUP_PHONE_AMOUNT', 1_500),
+                'stripe_price' => env('STRIPE_PRICE_TOPUP_PHONE_REVEAL'),
+            ],
+        ],
+
+        BillingMetric::PeopleSearch->value => [
+            [
+                'quantity' => 150,
+                'amount' => (int) env('BILLING_TOPUP_PEOPLE_AMOUNT', 1_500),
+                'stripe_price' => env('STRIPE_PRICE_TOPUP_PEOPLE_SEARCH'),
+            ],
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Margin guard (PL4)
+    |--------------------------------------------------------------------------
+    |
+    | What we spend with vendors on one team, over the period, against what that team pays us. Above
+    | `max_vendor_cost_ratio` the guard stops **phone reveals** — the most expensive unit and the
+    | one a single enthusiastic week can run up — and leaves everything else alone. A breach is
+    | visible on the admin margin screen.
+    |
+    | Phone reveals only, deliberately. A guard that stopped everything would turn a pricing problem
+    | into an outage for a paying customer; stopping the one line item that moves the ratio buys the
+    | time to have the conversation.
+    |
+    | A team on a free or unpriced plan is **exempt**: the ratio has no denominator, and a guard
+    | that read "any cost at all" as a breach would refuse the first reveal of every trial.
+    */
+    'margin_guard' => [
+        'enabled' => (bool) env('BILLING_MARGIN_GUARD', true),
+        'max_vendor_cost_ratio' => (float) env('BILLING_MAX_VENDOR_COST_RATIO', 0.35),
     ],
 
     /*

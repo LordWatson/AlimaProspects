@@ -10,7 +10,32 @@ export type SubscriptionState =
     | 'grace_period'
     | 'cancelled';
 
-export type BillingMetric = 'leads' | 'ai_credits';
+export type BillingMetric =
+    | 'leads'
+    | 'ai_credits'
+    | 'signal_queries'
+    // PL4's six. The first four are what a contact costs, the last two are rows and records
+    // leaving — see `BillingMetric::isLedgered()` for why they read a different table.
+    | 'people_search'
+    | 'email_reveal'
+    | 'phone_reveal'
+    | 'email_verification'
+    | 'export_rows'
+    | 'crm_sync';
+
+/**
+ * One thing a team can buy outright (PL4): so many units of one metric, for a price in **minor
+ * units**.
+ *
+ * `index` is what the "Buy more" button sends back. The browser never sees a Stripe price — a
+ * request that could name one could name a cheaper one — so this carries no price id.
+ */
+export type TopUpOption = {
+    metric: BillingMetric;
+    index: number;
+    quantity: number;
+    amount: number;
+};
 
 /**
  * One plan from the price list.

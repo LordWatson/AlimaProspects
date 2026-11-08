@@ -5,6 +5,81 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-08 — PL4: one ledger for the things that cost money per unit
+
+PL3 built a waterfall that can spend real money per lead, behind a reserve/commit seam whose default
+was a no-op. This is the thing that makes the seam real — and the shape of it was decided by a rule
+this codebase has had since Phase 16: **nothing increments a counter at the point of use.** An
+increment the app forgot is an allowance a team silently overspends; one made twice is an allowance
+they are wrongly refused. So the three meters Billing already had each read a table somebody else
+owns, written by the work itself.
+
+A contact reveal has no such table. It is a discrete chargeable act with nothing behind it but the
+fact that somebody clicked, so `usage_ledger` is where that fact goes — and it is deliberately the
+**same shape** as the three it joins: append-only, read by aggregate, never incremented. Only the
+source differs, which is the whole point of `BillingMetric`.
+
+**The plan's second table was not built.** It asked for a `team_allowances` projection carrying
+`included`, `topped_up`, `used` and `reserved`. Every one of those is derivable from the rows plus
+the plan, and a second table holding the same answers is a second answer — the one that drifts being
+the one a customer reads. What a reserve genuinely needs is a **mutex**, and that already existed:
+the `usage_meters` row for the same `(team, metric, period)`, uniquely keyed on precisely the thing
+being serialised. The reserve locks it and then **recounts inside the lock**, because the lock alone
+would have serialised two requests that both read "one left".
+
+**A hold is settled by writing beside it, never by updating it.** "We held three and spent one" is a
+different fact from "we held one", and a disputed month has to stay readable. Settling is idempotent
+on the handle, which is the failure that actually happens: a worker dies between its last provider
+call and its commit, gets retried, and a double commit is a team charged twice for one run.
+
+**An absent allowance means zero for the six new metrics, and unlimited for the three old ones.**
+That asymmetry is the argument `StubSignalQuotaSource` already makes. Leads and AI credits are
+things the product does, so a plan that does not mention them has no ceiling. A reveal costs us
+money per unit, so a plan that does not mention it includes **none** — a config that forgot one must
+fail closed rather than hand out an unmetered vendor bill. For the same reason there is no unlimited
+contacts plan at all: Enterprise gets large numbers somebody chose, not nulls.
+
+**The fifth seam is bound whatever `BILLING_ENFORCE_PLANS` says** — the first of them to be. A
+reveal is money leaving the building per unit, so the reserve path is a cost guard rather than a
+plan feature, exactly as the AI credit allowance is. What still follows the flag is the _size_ of
+the allowance.
+
+**Contact metrics never meter; they top up.** A metered reveal is an uncapped vendor bill, so
+`overageAllowed` is false for all six whatever the plan says. The commercial answer is extra
+allowance bought outright, before the spend — three metrics only (leads and signal searches are
+standing instructions to spend, and charging for export rows is charging for a team's own data on
+its way out). The client sends an **option index**, never a Stripe price: a request that could name
+a price could name a cheaper one. Nothing is granted at purchase, because a grant written then is an
+allowance given to somebody who closed the tab at the card form; it arrives on the paid webhook,
+idempotent on the Stripe event id.
+
+That listener is on **`WebhookReceived`**, not `WebhookHandled`, and the difference is not cosmetic:
+Cashier fires `WebhookHandled` only for the event types it has a handler method for, and
+`checkout.session.completed` is not one of them. A listener on the other event would have granted
+nothing, silently, for ever, with a 200 going back to Stripe. (Which turned up a defect that is
+**not** fixed here and is written down in `docs/prelaunch/progress.md`: `invoice.payment_failed` is
+in the subscription listener's allow-list and Cashier has no handler for it either, so the
+"your card was declined" notification added in Phase 19b has never fired.)
+
+**The margin guard stops one thing.** Vendor spend over the period against what the team pays; above
+0.35 it refuses **phone reveals** and nothing else, because a guard that stopped everything would
+turn a pricing problem into an outage for a customer who is paying us. A team with no price is
+exempt — the ratio has no denominator, and reading "any cost at all" as a breach would refuse the
+first phone reveal of every trial. The check runs before the hold, so a refusal leaves nothing
+unsettled.
+
+And `enrichment_attempts` joined the platform cost rollup, which is ADR 0016's own risk note
+arriving: without it the margin screen would have flattered every tenant by the one cost that scales
+with use — authoritative-looking and short.
+
+Three things the plan asked for and did not need code: **rollover** (an allowance is derived per
+period, so a new month starts fresh on its own), the **low-balance notices** (`UsageAlerter` is
+generic over whatever the summary returns, so the 80% and 100% messages covered the six for free),
+and **`can-*` gates** (`remaining()` is the one answer, asked at the point of spend).
+
+See `docs/decisions/0031-the-usage-ledger-and-top-ups.md` and
+`docs/modules/billing-plans.md` → Key flows §6–§7.
+
 ### Added — 2026-11-15 — PL3: the waterfall, and the one judgement it makes
 
 PL2 gave the module contracts and no orchestration. This is the thing that uses them: ask vendors in

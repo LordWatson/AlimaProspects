@@ -15,6 +15,7 @@ import type {
     MetricUsage,
     OveragePricing,
     Plan,
+    TopUpOption,
     SeatUsage,
     Subscription,
 } from '@/types';
@@ -54,6 +55,12 @@ const props = defineProps<{
     seats: SeatUsage;
     invoices: Invoice[];
     overage: OveragePricing;
+    /**
+     * What this team can buy more of, keyed by metric (PL4). Empty for anybody who cannot spend
+     * money, and empty on a deployment whose Stripe top-up prices are not configured — the
+     * catalogue's own rule, so there is no button rather than a button that fails at Stripe.
+     */
+    topups: Record<string, TopUpOption[]>;
     sales_email: string;
     can: { manage: boolean };
 }>();
@@ -240,6 +247,26 @@ function choose(plan: Plan): void {
     router.post('/billing/checkout', { plan: plan.key }, done);
 }
 
+/**
+ * Buy more of one metric (PL4).
+ *
+ * Sends the **option's index**, never a price or a quantity: the server looks the price up in
+ * `config('billing.topups')`, so a request cannot name a cheaper one or a larger amount.
+ */
+function buyTopUp(option: TopUpOption): void {
+    if (!props.can.manage || pending.value !== null) {
+        return;
+    }
+
+    pending.value = `topup:${option.metric}:${option.index}`;
+
+    router.post(
+        '/billing/topup',
+        { metric: option.metric, option: option.index },
+        { onFinish: () => (pending.value = null) },
+    );
+}
+
 function openPortal(): void {
     pending.value = 'portal';
     router.post(
@@ -412,6 +439,9 @@ function resume(): void {
                     :overage-price="overagePriceFor(metric)"
                     :overage-unit="overageUnitFor(metric)"
                     :currency="overage.currency"
+                    :topups="topups[metric.metric] ?? []"
+                    :buying="pending !== null"
+                    @buy="buyTopUp"
                 />
             </div>
 

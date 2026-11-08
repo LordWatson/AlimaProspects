@@ -39,6 +39,18 @@ final class PlanData extends Data
          * Signals live there too and one of them split out would be the one that drifts.
          */
         public readonly ?int $signalQueries,
+        /**
+         * The six contact-data allowances (PL4), keyed by {@see BillingMetric} value. Read from the
+         * plan's own `contacts` block, for the reason `signalQueries` is read from `signals`.
+         *
+         * **An absent key means none**, not unlimited — see {@see BillingMetric}'s note. Every one
+         * of these costs us money per unit, so there is deliberately no way for a plan to be
+         * unlimited in them: an Enterprise contract gets a large number in `config/billing.php`,
+         * which is a number somebody chose, where a null would be a vendor bill nobody capped.
+         *
+         * @var array<string, int>
+         */
+        public readonly array $contacts,
         /** Whether work continues past the allowance and is metered, or simply stops. */
         public readonly bool $overage,
         public readonly array $features,
@@ -65,9 +77,32 @@ final class PlanData extends Data
             signalQueries: self::nullableInt(
                 is_array($config['signals'] ?? null) ? ($config['signals']['monthly_source_queries'] ?? null) : null,
             ),
+            contacts: self::contactsFrom($config['contacts'] ?? null),
             overage: (bool) ($config['overage'] ?? false),
             features: $features,
         );
+    }
+
+    /**
+     * The plan's `contacts` block, sanitised to a map of metric value => non-negative integer.
+     *
+     * @return array<string, int>
+     */
+    private static function contactsFrom(mixed $block): array
+    {
+        if (! is_array($block)) {
+            return [];
+        }
+
+        $contacts = [];
+
+        foreach ($block as $meter => $quantity) {
+            if (is_string($meter) && is_numeric($quantity)) {
+                $contacts[$meter] = max(0, (int) $quantity);
+            }
+        }
+
+        return $contacts;
     }
 
     /**
@@ -100,6 +135,8 @@ final class PlanData extends Data
             // in `config/billing.php` under an Enterprise plan today; adding a column here without
             // one to read would be a method that silently did nothing.
             signalQueries: $this->signalQueries,
+            // Not grantable either, and for the same reason: `plan_grants` has no column for them.
+            contacts: $this->contacts,
             overage: $this->overage,
             features: $this->features,
         );
@@ -114,6 +151,15 @@ final class PlanData extends Data
             BillingMetric::Leads => $this->leads,
             BillingMetric::AiCredits => $this->credits,
             BillingMetric::SignalQueries => $this->signalQueries,
+            // The six ledgered metrics (PL4), from the plan's `contacts` block, keyed by the
+            // metric's own value. Listed case by case rather than behind a `default`, so a tenth
+            // metric is a PHPStan error here instead of an allowance quietly read as *none*.
+            BillingMetric::PeopleSearch,
+            BillingMetric::EmailReveal,
+            BillingMetric::PhoneReveal,
+            BillingMetric::EmailVerification,
+            BillingMetric::ExportRows,
+            BillingMetric::CrmSync => $this->contacts[$metric->value] ?? null,
         };
     }
 

@@ -40,6 +40,7 @@ final class UsageLedger
         private readonly AiUsageLogger $aiUsage,
         private readonly LeadUsageCounter $leadUsage,
         private readonly SignalUsageCounter $signalUsage,
+        private readonly UsageAllowance $allowance,
     ) {}
 
     /**
@@ -48,15 +49,41 @@ final class UsageLedger
     public function usage(Team $team, BillingMetric $metric, ?BillingPeriod $period = null): MetricUsage
     {
         $period ??= BillingPeriod::containing();
-        $plan = $this->plans->planFor($team);
+        [$included, $ceiling, $overage] = $this->position($team, $metric, $period);
 
         return new MetricUsage(
             metric: $metric,
             used: $this->used($team, $metric, $period),
-            included: $plan->allowanceFor($metric),
-            ceiling: $plan->ceilingFor($metric),
-            overageAllowed: $plan->overage,
+            included: $included,
+            ceiling: $ceiling,
+            overageAllowed: $overage,
         );
+    }
+
+    /**
+     * What this team is entitled to on one metric: included, ceiling, and whether it meters.
+     *
+     * The one place the two kinds of metric differ on the screen (PL4). For the original three the
+     * figures come from the plan. For a ledgered one `included` is the plan's figure **plus what
+     * has been bought**, because a top-up is extra allowance and a bar that ignored it would show
+     * a team who had just paid us as still being out; and `overageAllowed` is **false** whatever
+     * the plan says, because a reveal is bought in advance rather than invoiced afterwards — a
+     * metered reveal is an uncapped vendor bill, which is the thing the margin guard exists to
+     * prevent.
+     *
+     * @return array{0: ?int, 1: ?int, 2: bool}
+     */
+    private function position(Team $team, BillingMetric $metric, BillingPeriod $period): array
+    {
+        $plan = $this->plans->planFor($team);
+
+        if (! $metric->isLedgered()) {
+            return [$plan->allowanceFor($metric), $plan->ceilingFor($metric), $plan->overage];
+        }
+
+        $entitled = $this->allowance->entitled($team, $metric, $period);
+
+        return [$entitled, $entitled, false];
     }
 
     /**
@@ -89,6 +116,19 @@ final class UsageLedger
             // S16. `signal_runs.queries_count`, through the module that owns the table — the same
             // arrangement as the two above, and the reason Billing does not learn what a signal is.
             BillingMetric::SignalQueries => $this->signalUsage->sourceQueriesBetween($team, $period->start, $period->end),
+            // PL4. `usage_ledger`, through the service that owns it — the same arrangement as the
+            // three above, except that this ledger is Billing's own because a reveal is a
+            // chargeable act with nothing else behind it. Committed rows only: a hold is money
+            // about to be spent and is not consumption until it settles.
+            //
+            // Listed case by case rather than behind a `default`, so that a tenth metric is a
+            // PHPStan error here instead of a figure silently read from the wrong table.
+            BillingMetric::PeopleSearch,
+            BillingMetric::EmailReveal,
+            BillingMetric::PhoneReveal,
+            BillingMetric::EmailVerification,
+            BillingMetric::ExportRows,
+            BillingMetric::CrmSync => $this->allowance->used($team, $metric, $period),
         };
     }
 
@@ -115,20 +155,21 @@ final class UsageLedger
     public function sync(Team $team, ?BillingPeriod $period = null): array
     {
         $period ??= BillingPeriod::containing();
-        $plan = $this->plans->planFor($team);
 
-        return DB::transaction(function () use ($team, $period, $plan): array {
+        return DB::transaction(function () use ($team, $period): array {
             $summary = [];
 
             foreach (BillingMetric::cases() as $metric) {
                 $meter = $this->meter($team, $metric, $period);
+                [$included, $ceiling, $overage] = $this->position($team, $metric, $period);
 
                 if (! $this->isSealed($meter)) {
                     $meter->forceFill([
                         'used' => $this->used($team, $metric, $period),
                         // Re-snapshotted every sync, so a team that upgrades mid-month is metered
-                        // against the allowance it now has rather than the one it started on.
-                        'included' => $plan->allowanceFor($metric) ?? 0,
+                        // against the allowance it now has rather than the one it started on —
+                        // and, on a ledgered metric, so a top-up bought this morning is in it.
+                        'included' => $included ?? 0,
                         'synced_at' => now(),
                     ])->save();
                 }
@@ -136,9 +177,9 @@ final class UsageLedger
                 $summary[$metric->value] = new MetricUsage(
                     metric: $metric,
                     used: $meter->used,
-                    included: $plan->allowanceFor($metric),
-                    ceiling: $plan->ceilingFor($metric),
-                    overageAllowed: $plan->overage,
+                    included: $included,
+                    ceiling: $ceiling,
+                    overageAllowed: $overage,
                 );
             }
 

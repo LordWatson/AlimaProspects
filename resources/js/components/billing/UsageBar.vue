@@ -2,7 +2,8 @@
 import { computed } from 'vue';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
-import type { MetricUsage } from '@/types';
+import { Button } from '@/components/ui/button';
+import type { MetricUsage, TopUpOption } from '@/types';
 
 /*
  * One metered allowance: what has been used, what is left, and what happens at the end.
@@ -30,7 +31,13 @@ const props = defineProps<{
     /** How many of the metric one billed unit covers (1 for leads, 1,000 for credits). */
     overageUnit?: number;
     currency?: string;
+    /** What more of this can be bought in (PL4). Empty for a metric that isn't sold that way. */
+    topups?: TopUpOption[];
+    /** A purchase is in flight somewhere on the page, so no button on it should take a second press. */
+    buying?: boolean;
 }>();
+
+const emit = defineEmits<{ buy: [option: TopUpOption] }>();
 
 const { t } = useI18n();
 const { number, currency: money } = useFormat();
@@ -140,6 +147,20 @@ const note = computed(() => {
         remaining: number(props.usage.remaining ?? 0),
     });
 });
+
+/**
+ * Buying more is offered **alongside** the bar, not only once it is empty.
+ *
+ * A button that appeared at zero would be a button somebody meets mid-task, having already been
+ * stopped; one that is always there is a price list. It is the honest place for it too, because a
+ * top-up changes `included` — so the bar beside it is what the purchase moves.
+ *
+ * The visible label leaves the metric out, because the bar's own heading is right above it. The
+ * **accessible** label puts it back in and contains the visible text word for word (WCAG 2.5.3):
+ * six of these bars on one screen means six buttons reading "Buy 250 more for £15", and a buttons
+ * list or a tab through them is where that becomes a guess.
+ */
+const buyable = computed(() => props.topups ?? []);
 </script>
 
 <template>
@@ -181,5 +202,33 @@ const note = computed(() => {
         >
             {{ note }}
         </p>
+
+        <!-- One button per option. A `<Button>` rather than a link: it POSTs, because pressing it
+             creates a Checkout session at Stripe. -->
+        <div v-if="buyable.length > 0" class="flex flex-wrap gap-2 pt-1">
+            <Button
+                v-for="option in buyable"
+                :key="option.index"
+                variant="secondary"
+                size="sm"
+                :disabled="buying"
+                :aria-busy="buying"
+                :aria-label="
+                    t('Buy :quantity more :metric for :cost', {
+                        quantity: number(option.quantity),
+                        metric: t(usage.label),
+                        cost: money(option.amount, currency),
+                    })
+                "
+                @click="emit('buy', option)"
+            >
+                {{
+                    t('Buy :quantity more for :cost', {
+                        quantity: number(option.quantity),
+                        cost: money(option.amount, currency),
+                    })
+                }}
+            </Button>
+        </div>
     </div>
 </template>

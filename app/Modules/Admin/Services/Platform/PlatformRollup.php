@@ -17,6 +17,7 @@ use App\Modules\Billing\Models\UsageMeter;
 use App\Modules\Billing\Services\PlanRegistry;
 use App\Modules\Compliance\Actions\PurgeExpiredDataAction;
 use App\Modules\Core\Models\Team;
+use App\Modules\Enrichment\Models\EnrichmentAttempt;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
@@ -898,7 +899,11 @@ final class PlatformRollup
 
         $dataCurrency = (string) config('admin.reporting.data_cost_currency', 'usd');
 
-        foreach ([DiscoveryRun::class, SignalRun::class] as $model) {
+        // `enrichment_attempts` joined the list in PL4: a reveal is the first thing we buy per
+        // unit, so leaving it out would have made the margin screen flatter every tenant exactly
+        // as the unattributed note above warns about — authoritative-looking and short by the one
+        // cost that scales with use.
+        foreach ([DiscoveryRun::class, SignalRun::class, EnrichmentAttempt::class] as $model) {
             /** @var Builder<Model> $query */
             $query = $model::query()->withoutGlobalScopes();
 

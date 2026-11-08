@@ -43,4 +43,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
 
     Route::post('billing/portal', [BillingController::class, 'portal'])
         ->name('billing.portal');
+
+    // PL4. A POST for the same reason `checkout` is one: it creates a Checkout session at Stripe,
+    // and a GET that creates is a GET a link prefetcher fires.
+    Route::post('billing/topup', [BillingController::class, 'topUp'])
+        ->name('billing.topup');
 });

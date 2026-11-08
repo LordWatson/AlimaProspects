@@ -12,10 +12,12 @@ use App\Modules\Billing\Console\SyncUsageCommand;
 use App\Modules\Billing\Contracts\BillingGateway;
 use App\Modules\Billing\Contracts\StripeSwitch;
 use App\Modules\Billing\Http\Middleware\RefuseStripeWhenDisabled;
+use App\Modules\Billing\Listeners\GrantTopUpFromStripe;
 use App\Modules\Billing\Listeners\SyncSubscriptionFromStripe;
 use App\Modules\Billing\Services\ConfiguredStripeSwitch;
 use App\Modules\Billing\Services\DisabledBillingGateway;
 use App\Modules\Billing\Services\PlanCapabilityGate;
+use App\Modules\Billing\Services\PlanCreditReserver;
 use App\Modules\Billing\Services\PlanCreditSource;
 use App\Modules\Billing\Services\PlanLeadQuotaSource;
 use App\Modules\Billing\Services\PlanRegistry;
@@ -26,6 +28,7 @@ use App\Modules\Billing\Services\StripeBillingGateway;
 use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
+use App\Modules\Enrichment\Contracts\CreditReserver;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\ModuleServiceProvider;
 use App\Modules\Signals\Contracts\SignalQuotaSource;
@@ -36,6 +39,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Cashier\Cashier;
 use Laravel\Cashier\Events\WebhookHandled;
+use Laravel\Cashier\Events\WebhookReceived;
 use RuntimeException;
 
 /**
@@ -84,6 +88,20 @@ final class BillingServiceProvider extends ModuleServiceProvider
                 ? $this->app->make(StripeBillingGateway::class)
                 : $this->app->make(DisabledBillingGateway::class),
         );
+
+        // **The fifth seam (PL4), and the first bound whatever `billing.enforce_plans` says.**
+        //
+        // Deliberate, and the same argument `config/billing.php` already makes about the AI credit
+        // allowance and `StubSignalQuotaSource`: a contact reveal is **money leaving the building
+        // per unit**, so the reserve/commit path is a cost guard rather than a plan feature.
+        // Turning plan enforcement off must not turn an unmetered vendor bill on — which is what
+        // leaving Enrichment's permissive `UnmeteredCreditReserver` standing would do the moment a
+        // vendor is enabled.
+        //
+        // What *does* follow the flag is the size of the allowance: with plans off a team's figures
+        // still come from `config/billing.php` through `PlanResolver`, which stays bound either
+        // way, so the floor is the plan's own number rather than nothing.
+        $this->app->bind(CreditReserver::class, PlanCreditReserver::class);
 
         // **Plan enforcement, all of it, behind one check** (`billing.enforce_plans`).
         //
@@ -151,6 +169,14 @@ final class BillingServiceProvider extends ModuleServiceProvider
         parent::boot(); // routes + policies
 
         Event::listen(WebhookHandled::class, SyncSubscriptionFromStripe::class);
+
+        // PL4. A second listener rather than a branch in the first: that one re-reads a
+        // subscription, this one writes a ledger row, and one listener doing both is one listener
+        // where a failure in either half loses the other.
+        //
+        // **On `WebhookReceived`**, because Cashier fires `WebhookHandled` only for the event types
+        // it handles itself and `checkout.session.completed` is not one of them. See the listener.
+        Event::listen(WebhookReceived::class, GrantTopUpFromStripe::class);
 
         // Cashier's routes carry no middleware of their own and are not ours to annotate, so the
         // webhook refusal goes on the global stack. See the middleware's own note.

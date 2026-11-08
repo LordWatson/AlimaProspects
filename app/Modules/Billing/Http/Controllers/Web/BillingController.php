@@ -12,6 +12,7 @@ use App\Modules\Billing\Actions\OpenBillingPortalAction;
 use App\Modules\Billing\Actions\RefreshUsageAction;
 use App\Modules\Billing\Actions\ResumeSubscriptionAction;
 use App\Modules\Billing\Actions\StartCheckoutAction;
+use App\Modules\Billing\Actions\StartTopUpCheckoutAction;
 use App\Modules\Billing\Actions\SwapPlanAction;
 use App\Modules\Billing\Contracts\BillingGateway;
 use App\Modules\Billing\Contracts\StripeSwitch;
@@ -22,6 +23,7 @@ use App\Modules\Billing\Data\PlanData;
 use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Billing\Enums\BillingMode;
 use App\Modules\Billing\Exceptions\BillingException;
+use App\Modules\Billing\Http\Requests\BuyTopUpRequest;
 use App\Modules\Billing\Http\Requests\ChoosePlanRequest;
 use App\Modules\Billing\Http\Resources\InvoiceResource;
 use App\Modules\Billing\Http\Resources\PlanResource;
@@ -29,6 +31,7 @@ use App\Modules\Billing\Http\Resources\SubscriptionResource;
 use App\Modules\Billing\Http\Resources\UsageResource;
 use App\Modules\Billing\Services\PlanRegistry;
 use App\Modules\Billing\Services\PlanResolver;
+use App\Modules\Billing\Services\TopUpCatalogue;
 use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Models\Team;
 use Illuminate\Http\RedirectResponse;
@@ -63,6 +66,7 @@ final class BillingController extends Controller
         BillingGateway $gateway,
         StripeSwitch $stripe,
         CapabilityGate $capabilities,
+        TopUpCatalogue $topups,
     ): Response {
         $team = $this->team($request);
         $user = $this->user($request);
@@ -107,6 +111,12 @@ final class BillingController extends Controller
                     },
                 )),
             ),
+            // PL4. What this team can buy more of, keyed by metric — read by the usage bars so a
+            // team that has run out of reveals is offered the thing that fixes it rather than an
+            // upgrade to a plan they may not need. Empty for anybody who cannot spend money, and
+            // empty when Stripe is off or its top-up prices are not configured: the catalogue's
+            // own rule, so a deployment without them has no button rather than a broken one.
+            'topups' => $canManage && $selfServe ? $topups->all() : [],
             'period' => [
                 'start' => $period->start->toIso8601String(),
                 'end' => $period->end->toIso8601String(),
@@ -228,6 +238,38 @@ final class BillingController extends Controller
         $this->authorize('billing.manage', $team);
 
         $url = $action->handle($team, $this->user($request), returnUrl: route('billing.index'));
+
+        return Inertia::location($url);
+    }
+
+    /**
+     * Buy more of one metric (PL4).
+     *
+     * Thin like its three siblings: gate, FormRequest, one Action, external redirect. The one
+     * branch is a withdrawn option — a price that existed when the page rendered and does not now —
+     * which is a 404 rather than a 422, because the request was well formed and the thing it names
+     * has gone.
+     */
+    public function topUp(
+        BuyTopUpRequest $request,
+        TopUpCatalogue $catalogue,
+        StartTopUpCheckoutAction $action,
+    ): HttpResponse {
+        $team = $this->team($request);
+
+        $this->authorize('billing.manage', $team);
+
+        $option = $request->option($catalogue);
+
+        abort_if($option === null, HttpResponse::HTTP_NOT_FOUND);
+
+        $url = $action->handle(
+            $team,
+            $option,
+            $this->user($request),
+            successUrl: route('billing.index'),
+            cancelUrl: route('billing.index'),
+        );
 
         return Inertia::location($url);
     }

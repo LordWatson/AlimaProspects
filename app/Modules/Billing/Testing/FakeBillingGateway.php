@@ -83,6 +83,32 @@ final class FakeBillingGateway implements BillingGateway
     }
 
     /**
+     * A top-up checkout (PL4). Records the price, quantity and metadata, because the metadata is
+     * what the grant reads back off the webhook — a fake that dropped it would let a test pass
+     * against a session Stripe could never attribute to a team.
+     *
+     * @param  array<string, string>  $metadata
+     */
+    public function topUpUrl(
+        Team $team,
+        string $stripePrice,
+        int $quantity,
+        array $metadata,
+        string $successUrl,
+        string $cancelUrl,
+    ): string {
+        $this->record('topup', $team, [
+            'stripe_price' => $stripePrice,
+            'quantity' => $quantity,
+            'metadata' => $metadata,
+            'success_url' => $successUrl,
+            'cancel_url' => $cancelUrl,
+        ]);
+
+        return 'https://checkout.stripe.test/topup/'.$stripePrice;
+    }
+
+    /**
      * Records the swap **and moves the subscription row**, because Cashier's `swap()` does.
      *
      * A fake that only recorded the call would leave the team on its old price, and then nothing

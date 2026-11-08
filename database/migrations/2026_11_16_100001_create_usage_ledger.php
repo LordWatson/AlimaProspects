@@ -69,8 +69,11 @@ return new class extends Migration
             $table->unsignedBigInteger('reference_id')->nullable();
 
             // For a reserve: the handle a commit or a release finds it by. For a grant: nothing.
-            // Unique, which is what makes a commit idempotent — a retried worker settles the same
-            // reservation rather than booking a second one.
+            //
+            // **Not unique**, deliberately: a reservation legitimately has up to three rows — the
+            // reserve, and a commit and a release beside it. What makes settling once-only is
+            // therefore not an index but the `usage_meters` row lock `UsageAllowance::commit()`
+            // takes before it asks whether the hold is already settled.
             $table->uuid('reservation')->nullable();
 
             // The external fact that caused this, where there is one: a Stripe event id on a

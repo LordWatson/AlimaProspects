@@ -7,13 +7,18 @@ use App\Modules\AiPlatform\Contracts\CreditSource;
 use App\Modules\Auth\Contracts\SeatLimitSource;
 use App\Modules\Billing\Contracts\BillingGateway;
 use App\Modules\Billing\Contracts\StripeSwitch;
+use App\Modules\Billing\Enums\BillingMetric;
 use App\Modules\Billing\Enums\PlanKey;
 use App\Modules\Billing\Exceptions\BillingException;
 use App\Modules\Billing\Services\OverageReporter;
+use App\Modules\Billing\Services\PlanCreditReserver;
 use App\Modules\Billing\Services\PlanRegistry;
 use App\Modules\Billing\Services\PlanResolver;
 use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Enums\Capability;
+use App\Modules\Core\Support\TeamContext;
+use App\Modules\Enrichment\Contracts\CreditReserver;
+use App\Modules\Enrichment\Enums\EnrichmentScope;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -218,6 +223,28 @@ it('leaves entitlement alone when Stripe is off but plans are enforced', functio
     // team on Scale is still on Scale with its allowances intact.
     expect(app(PlanResolver::class)->for($team->refresh())->plan->key)->toBe(PlanKey::Scale)
         ->and(app(StripeSwitch::class)->isEnabled())->toBeFalse();
+});
+
+it('still meters a contact reveal with plan enforcement off', function (): void {
+    // **The fifth seam is bound whatever this switch says** (PL4), and this is the claim.
+    //
+    // A reveal is money leaving the building per unit, so the reserve/commit path is a cost guard
+    // rather than a plan feature — exactly the argument `config/billing.php` already makes about
+    // the AI credit allowance and `StubSignalQuotaSource`. Leaving Enrichment's permissive
+    // `UnmeteredCreditReserver` standing here would turn an unmetered vendor bill on the moment a
+    // vendor is enabled, which is the one thing this switch must not do.
+    reboot(['BILLING_ENFORCE_PLANS' => 'false']);
+
+    [, $team] = Billing::team();
+    Billing::capAllowance(BillingMetric::PhoneReveal, 0);
+
+    $reserver = app(CreditReserver::class);
+
+    expect($reserver)->toBeInstanceOf(PlanCreditReserver::class);
+
+    app(TeamContext::class)->run($team, function () use ($team, $reserver): void {
+        expect($reserver->reserve($team, EnrichmentScope::Phone, 1)->granted())->toBeFalse();
+    });
 });
 
 it('rejects the Stripe webhook when Stripe is off', function (): void {

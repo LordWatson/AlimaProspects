@@ -11,6 +11,7 @@ use App\Modules\Billing\Models\UsageEntry;
 use App\Modules\Billing\Models\UsageMeter;
 use App\Modules\Core\Models\Team;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -104,9 +105,9 @@ final class UsageAllowance
         return DB::transaction(function () use ($team, $metric, $quantity, $period, $reference, $meta): ?string {
             // The mutex: everything below recounts inside this lock, so a second request for the
             // same metric and period waits rather than reading a position that is about to change.
-            $this->lockMeter($team, $metric, $period);
+            $this->lockMeter((int) $team->getKey(), $metric, $period);
 
-            $remaining = $this->remaining($team, $metric, $period);
+            $remaining = $this->remainingUnderLock($team, $metric, $period);
 
             if ($remaining !== null && $remaining < $quantity) {
                 return null;
@@ -114,7 +115,7 @@ final class UsageAllowance
 
             $reservation = (string) Str::uuid();
 
-            $this->write($team, $metric, LedgerDirection::Reserve, $quantity, $period, $reservation, $reference, $meta);
+            $this->write($team, $metric, LedgerDirection::Reserve, $quantity, $period->key(), $reservation, $reference, $meta);
 
             return $reservation;
         });
@@ -141,7 +142,19 @@ final class UsageAllowance
         DB::transaction(function () use ($reservation, $used): void {
             $held = $this->heldEntry($reservation);
 
-            if ($held === null || $this->isSettled($reservation)) {
+            if ($held === null) {
+                return;
+            }
+
+            // **Lock first, then ask whether it is settled.** `isSettled()` is a check followed by
+            // an insert, and a retried worker overlapping the original — or a commit racing the
+            // `finally` release in the waterfall's job — would otherwise pass the check twice and
+            // write two settlements. The lock is the same `usage_meters` row the reserve took, for
+            // the period **the hold belongs to** rather than today's, which is a different row the
+            // moment a month turns over mid-retry.
+            $this->lockMeter($held->team_id, $held->meter, BillingPeriod::fromKey($held->period));
+
+            if ($this->isSettled($reservation)) {
                 return;
             }
 
@@ -169,7 +182,14 @@ final class UsageAllowance
         DB::transaction(function () use ($reservation): void {
             $held = $this->heldEntry($reservation);
 
-            if ($held === null || $this->isSettled($reservation)) {
+            if ($held === null) {
+                return;
+            }
+
+            // Lock before the check, for the reason {@see self::commit()} gives.
+            $this->lockMeter($held->team_id, $held->meter, BillingPeriod::fromKey($held->period));
+
+            if ($this->isSettled($reservation)) {
                 return;
             }
 
@@ -205,17 +225,26 @@ final class UsageAllowance
             return false;
         }
 
-        $this->write(
-            $team,
-            $metric,
-            $direction,
-            $quantity,
-            BillingPeriod::containing()->key(),
-            null,
-            null,
-            $meta,
-            $idempotencyKey,
-        );
+        try {
+            $this->write(
+                $team,
+                $metric,
+                $direction,
+                $quantity,
+                BillingPeriod::containing()->key(),
+                null,
+                null,
+                $meta,
+                $idempotencyKey,
+            );
+        } catch (UniqueConstraintViolationException) {
+            // The check above lost a race with a concurrent delivery of the same Stripe event, and
+            // the unique index is the thing that actually guarantees once-only. Caught rather than
+            // left to bubble: an exception here becomes a 500, Stripe reads a 500 as "retry" and
+            // retries for three days — over an event that has already been granted. The caller
+            // reads false as "already done", which is exactly what happened.
+            return false;
+        }
 
         return true;
     }
@@ -264,10 +293,69 @@ final class UsageAllowance
      */
     private function sum(Team $team, BillingMetric $metric, BillingPeriod $period, array $directions): int
     {
+        // `withoutGlobalScopes`, like every other read here: `forMeter()` already pins `team_id`
+        // explicitly, and leaving the scope on means a reader running inside **another** team's
+        // context gets a second, conflicting `team_id` and a sum of zero — which `remaining()`
+        // would then report as the full allowance. An over-spend, from a tenancy scope doing its
+        // job in the wrong place.
         return (int) UsageEntry::query()
+            ->withoutGlobalScopes()
             ->forMeter((int) $team->getKey(), $metric, $period->key())
             ->whereIn('direction', $directions)
             ->sum('quantity');
+    }
+
+    /**
+     * What is left, counted by a **locking** read of this meter's rows for the period.
+     *
+     * Only ever called inside {@see self::reserve()}'s transaction, and the reason it exists is a
+     * MySQL detail that makes the plain recount wrong (`laravel-module-reviewer`, PL4):
+     *
+     * InnoDB's default isolation is REPEATABLE READ, and a transaction's snapshot is taken at its
+     * **first consistent read** — which is `lockMeter()`'s `firstOrCreate`, *before* it blocks on
+     * the lock. So a second request would wait for the lock exactly as intended, acquire it, and
+     * then count from a snapshot taken before the winner committed: both would see one unit left
+     * and both would reserve it. The lock was serialising two requests that read the same stale
+     * number.
+     *
+     * A locking read is a **current** read in InnoDB, so this sees whatever the previous holder of
+     * the lock committed. It is also one query instead of four, and the arithmetic moves to PHP
+     * where the three directions are visible together.
+     *
+     * (`lockForUpdate()` is a no-op on SQLite, which is why the sequential test in
+     * `UsageAllowanceTest` passes either way and cannot prove this. See that file's note.)
+     */
+    private function remainingUnderLock(Team $team, BillingMetric $metric, BillingPeriod $period): ?int
+    {
+        $entitledByPlan = $this->plans->planFor($team)->allowanceFor($metric);
+
+        $totals = [];
+
+        /** @var UsageEntry $row */
+        foreach (UsageEntry::query()
+            ->withoutGlobalScopes()
+            ->forMeter((int) $team->getKey(), $metric, $period->key())
+            ->lockForUpdate()
+            ->get(['direction', 'quantity']) as $row) {
+            $key = $row->direction->value;
+            $totals[$key] = ($totals[$key] ?? 0) + $row->quantity;
+        }
+
+        $of = static fn (LedgerDirection ...$directions): int => array_sum(array_map(
+            static fn (LedgerDirection $direction): int => $totals[$direction->value] ?? 0,
+            $directions,
+        ));
+
+        $added = $of(LedgerDirection::Grant, LedgerDirection::TopUp, LedgerDirection::Adjustment);
+
+        if ($entitledByPlan === null && ! $metric->isLedgered()) {
+            return null; // unlimited, for the metrics where an absent figure means unlimited
+        }
+
+        $committed = $of(LedgerDirection::Commit);
+        $held = max(0, $of(LedgerDirection::Reserve) - $committed - $of(LedgerDirection::Release));
+
+        return max(0, (int) ($entitledByPlan ?? 0) + $added - $committed - $held);
     }
 
     /**
@@ -322,15 +410,16 @@ final class UsageAllowance
      * touched — and two requests racing to create it is settled by the unique key, which is the
      * same reason `UsageLedger::meter()` does it this way.
      */
-    private function lockMeter(Team $team, BillingMetric $metric, BillingPeriod $period): void
+    private function lockMeter(int $teamId, BillingMetric $metric, BillingPeriod $period): void
     {
-        UsageMeter::query()->firstOrCreate(
-            ['team_id' => $team->getKey(), 'metric' => $metric->value, 'period_start' => $period->start],
+        UsageMeter::query()->withoutGlobalScopes()->firstOrCreate(
+            ['team_id' => $teamId, 'metric' => $metric->value, 'period_start' => $period->start],
             ['period_end' => $period->end, 'used' => 0, 'included' => 0],
         );
 
         UsageMeter::query()
-            ->where('team_id', $team->getKey())
+            ->withoutGlobalScopes()
+            ->where('team_id', $teamId)
             ->where('metric', $metric->value)
             ->where('period_start', $period->start)
             ->lockForUpdate()

@@ -66,7 +66,11 @@ final class StripeBillingGateway implements BillingGateway
         string $successUrl,
         string $cancelUrl,
     ): string {
-        return $this->attempt($team, 'topup', function () use ($team, $stripePrice, $quantity, $metadata, $successUrl, $cancelUrl): string {
+        // `$quantity` is **not** sent to Stripe, and that is not an oversight: the price itself is
+        // "+250 email reveals", so the line item is one of it. The parameter stays on the contract
+        // because it is what the *grant* is for, and the fake gateway records it so a test can
+        // assert that the thing a team was charged for matches the thing they were given.
+        return $this->attempt($team, 'topup', function () use ($team, $stripePrice, $metadata, $successUrl, $cancelUrl): string {
             // `checkout()` on the billable rather than `newSubscription()`: a one-off price is a
             // payment, and Cashier's subscription builder would try to create a recurring item.
             $checkout = $team->checkout([$stripePrice => 1], [
