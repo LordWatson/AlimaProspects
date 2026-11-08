@@ -100,7 +100,7 @@ final class ScoreLeadAction
         $model = null;
 
         if (! $deterministic->excluded) {
-            $response = $this->assessQualitatively($lead, $icp);
+            $response = $this->assessQualitatively($lead, $icp, $deterministic);
 
             if ($response !== null) {
                 [$fit, $cost, $promptVersion, $model] = $response;
@@ -211,13 +211,16 @@ final class ScoreLeadAction
      *
      * @return array{QualitativeFit, int, int, string}|null
      */
-    private function assessQualitatively(Lead $lead, Icp $icp): ?array
+    private function assessQualitatively(Lead $lead, Icp $icp, DeterministicScore $deterministic): ?array
     {
         try {
             $response = $this->ai->structured(self::PROMPT_KEY, [
                 'icp' => $this->payload->icpBlock($icp),
                 // Provider-sourced and page-extracted facts: data, never instructions.
                 'lead' => $this->payload->leadBlock($lead),
+                // The criteria the rules could not settle (v2 of the prompt reads this), so the
+                // model judges exactly the gaps rather than re-deriving the whole fit.
+                'deferred' => $this->payload->deferredBlock($deterministic),
             ]);
         } catch (AiCreditExceededException|InvalidAiResponseException $e) {
             $this->logDegraded($lead, $icp, $e);
@@ -247,6 +250,14 @@ final class ScoreLeadAction
 
     /**
      * Blend the two halves by the configured weights, dropping whichever half has nothing to say.
+     *
+     * The deterministic weight is scaled by the rules' **coverage** — the share of the ICP's weight
+     * they could settle confidently (see {@see DeterministicScore::coverage()}). When the rules only
+     * settled a sliver (a light geography criterion matched while the heavy industry one was
+     * deferred to the AI half), their 0.6 shrinks toward 0 and the qualitative half — which actually
+     * judged the deferred criteria — carries the score. Without this, one confidently-matched light
+     * criterion could pin a lead's score high on the rules alone while the AI's verdict on the real,
+     * heavy question barely moved it.
      */
     private function blend(DeterministicScore $deterministic, ?QualitativeFit $fit): int
     {
@@ -255,7 +266,7 @@ final class ScoreLeadAction
         }
 
         $deterministicWeight = $deterministic->hasSignals()
-            ? max(0.0, (float) config('scoring.blend.deterministic', 0.6))
+            ? max(0.0, (float) config('scoring.blend.deterministic', 0.6)) * $deterministic->coverage()
             : 0.0;
 
         $qualitativeWeight = $fit !== null

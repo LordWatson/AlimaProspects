@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use App\Modules\Compliance\Models\LiaRecord;
 use App\Modules\Core\Models\Team;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\LeadSourcing\Models\Lead;
@@ -51,6 +52,19 @@ it('leaves a demo tenancy somebody can actually look at', function (): void {
     expect($profiles)->not->toBeEmpty()
         ->and(Icp::query()->withoutGlobalScopes()->count())->toBeGreaterThan(0)
         ->and(Lead::query()->withoutGlobalScopes()->count())->toBe(0);
+
+    // The lawful basis is seeded signed off and in force, so discovery is open for the demo rather
+    // than stalling on the assessment. Each demo team has one, for its own market, in force — the
+    // question the discovery gate actually asks.
+    foreach (['Alima UK' => 'uk', 'Alima Gulf' => 'uae'] as $teamName => $market) {
+        $team = Team::query()->where('name', $teamName)->sole();
+        $assessment = LiaRecord::query()->withoutGlobalScopes()
+            ->where('team_id', $team->getKey())
+            ->sole();
+
+        expect($assessment->market->value)->toBe($market)
+            ->and($assessment->isInForce())->toBeTrue();
+    }
 
     foreach ($profiles as $profile) {
         // The two columns that were being discarded. A profile seeded without them is one the app

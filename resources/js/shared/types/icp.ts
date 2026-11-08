@@ -54,3 +54,29 @@ export type CriterionFormRow = {
     value: string;
     weight: number | null;
 };
+
+/** How one criterion has fared across the team's graded leads (the calibration preview). */
+export type CriterionCalibration = {
+    type: string;
+    type_label: string;
+    value: string;
+    weight: number | null;
+    matched: number;
+    not_matched: number;
+    weak: number;
+    unknown: number;
+    total: number;
+};
+
+/**
+ * How the active profile is actually grading the team's leads — the grade mix and, per criterion,
+ * how often it matched, missed, was left to the AI review, or had no data. Null when there is no
+ * active profile. The grade mix is exact; the criterion counts are over a recent sample.
+ */
+export type IcpCalibration = {
+    scored_leads: number;
+    excluded: number;
+    grades: Record<'A' | 'B' | 'C' | 'D', number>;
+    criteria: CriterionCalibration[];
+    sample_size: number;
+};

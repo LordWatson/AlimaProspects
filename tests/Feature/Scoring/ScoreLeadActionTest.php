@@ -112,12 +112,57 @@ it('blends the rules with the AI assessment into a graded score with an explanat
         ->and($score->strengths)->toBe(['Right industry', 'Right city'])
         ->and($score->concerns)->toBe(['No size on record'])
         ->and($score->prompt_key)->toBe('scoring.qualitative_fit')
-        ->and($score->prompt_version)->toBe(1)
+        ->and($score->prompt_version)->toBe(2)
         ->and($score->breakdown)->toHaveCount(1)
         ->and($score->scored_at)->not->toBeNull()
         ->and($score->cost_micros)->toBeGreaterThan(0);
 
     expect($lead->fresh()?->status)->toBe(LeadStatus::Scored);
+});
+
+it('leans on the AI half when the rules could only settle a light criterion', function (): void {
+    // A heavy industry the taxonomy can't place (deferred) and a light geography that matches. The
+    // rules "score" 100 on the geography alone, but their coverage is only 0.2, so the AI's low
+    // verdict on the real question carries the blend down instead of being drowned out.
+    [$team, , $fakeAi] = bootScoring([
+        [CriterionType::Industry, 'Artisan taxidermy', 80],
+        [CriterionType::Geography, 'London', 20],
+    ]);
+
+    $lead = leadToScore($team, ['industry' => 'Bespoke umbrella repair', 'locality' => 'London']);
+
+    $fakeAi->queueStructured(fitPayload(score: 30, grade: 'D'));
+
+    $score = app(TeamContext::class)->run(
+        $team,
+        fn (): ?LeadScore => app(ScoreLeadAction::class)->execute($lead),
+    );
+
+    // deterministic 100 at coverage 0.2 → weight 0.12; AI 30 at 0.4 → (100·0.12 + 30·0.4) / 0.52 ≈ 46.
+    expect($score?->deterministic_score)->toBe(100)
+        ->and($score?->ai_score)->toBe(30)
+        ->and($score?->score)->toBe(46)
+        ->and($score?->grade)->toBe(ScoreGrade::C);
+});
+
+it('hands the criteria the rules could not settle to the model as a deferred block', function (): void {
+    [$team, , $fakeAi] = bootScoring([
+        [CriterionType::Industry, 'Coffee roasting', 80],
+        [CriterionType::Technographic, 'Shopify', 20],
+    ]);
+
+    // Industry matches literally; the technology is present but unmatched → deferred.
+    $lead = leadToScore($team, ['technologies' => ['WooCommerce']]);
+
+    $fakeAi->queueStructured(fitPayload());
+
+    app(TeamContext::class)->run($team, fn () => app(ScoreLeadAction::class)->execute($lead));
+
+    $prompt = $fakeAi->lastRequest()?->prompt ?? '';
+
+    expect($prompt)->toContain('could not settle')
+        ->and($prompt)->toContain('Technology used')
+        ->and($prompt)->toContain('WooCommerce');
 });
 
 it('sends only stored facts to the model, as untrusted data', function (): void {

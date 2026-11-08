@@ -14,6 +14,7 @@ use App\Modules\ICP\Actions\FindIcpAction;
 use App\Modules\ICP\Actions\GetIcpsAction;
 use App\Modules\ICP\Actions\SetActiveIcpAction;
 use App\Modules\ICP\Actions\UpdateIcpAction;
+use App\Modules\ICP\Contracts\IcpCalibrationSource;
 use App\Modules\ICP\Data\IcpData;
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Http\Requests\ComposeIcpRequest;
@@ -33,7 +34,7 @@ use Inertia\Response;
  */
 final class IcpController extends Controller
 {
-    public function index(Request $request, GetIcpsAction $getIcps): Response
+    public function index(Request $request, GetIcpsAction $getIcps, IcpCalibrationSource $calibration): Response
     {
         $team = $this->team($request);
 
@@ -41,9 +42,15 @@ final class IcpController extends Controller
 
         $icps = $getIcps->handle($team);
 
+        // How the active profile is actually grading the team's leads, so the screen can say which
+        // criterion is sending leads to C/D rather than leaving the team to guess. Read-only and
+        // AI-free; null when there is no active profile to calibrate.
+        $active = $icps->firstWhere('is_active', true);
+
         return Inertia::render('icp/Index', [
             'icps' => $icps->map(fn (Icp $icp): array => $this->serializeIcp($icp))->all(),
             'criterionTypes' => $this->criterionTypes(),
+            'calibration' => $active instanceof Icp ? $calibration->summarise($active)->toArray() : null,
             'can' => ['manage' => $request->user()?->can('create', $this->transientIcp($team)) ?? false],
         ]);
     }

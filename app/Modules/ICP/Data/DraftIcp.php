@@ -85,6 +85,16 @@ final class DraftIcp extends Data
             return self::refused('Alima drafted something it could not turn into a profile. Try describing your customers in one or two sentences.');
         }
 
+        /** @var array<string, mixed> $validated */
+        $validated = $validator->validated();
+
+        // Viable, but no criteria followed — a profile with nothing in it grades nothing and
+        // searches for nothing, so it is a refusal with a nudge rather than an empty editor. The
+        // schema no longer lets a viable answer omit the profile, but it can still come back thin.
+        if (($validated['criteria'] ?? []) === []) {
+            return self::refused('Alima couldn’t pull specific criteria from that. Add a detail or two — the kind of business, roughly how big, or where — and try again.');
+        }
+
         return new self(
             viable: true,
             reason: null,
@@ -93,7 +103,7 @@ final class DraftIcp extends Data
                 : null,
             // Through `fromValidated`, so a drafted criterion is trimmed, weighted and
             // exclusion-normalised by exactly the code that does it for a hand-written one.
-            profile: IcpData::fromValidated($validator->validated()),
+            profile: IcpData::fromValidated($validated),
         );
     }
 }

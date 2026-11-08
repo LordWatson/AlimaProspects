@@ -39,7 +39,13 @@ final class LeadReadiness
         /** @var array<string, int> $weights */
         $weights = (array) config('enrichment.readiness_weights', []);
 
+        // An inferred contact is a guess, not something we can reliably reach them by, so it earns no
+        // readiness: the three contact factors are measured over the contacts we actually read off a
+        // page. A lead with nothing but inferred guesses therefore still scores low here — which is
+        // the honest reading of "we only have a guess", and keeps readiness the one figure allowed to
+        // punish missing data from turning a guess into a reachable contact.
         $contacts = $lead->contacts;
+        $reachable = $contacts->reject(fn (LeadContact $contact): bool => $contact->is_inferred);
 
         $held = [
             // Somewhere to read about them, and the thing every later enrichment hangs off.
@@ -48,12 +54,12 @@ final class LeadReadiness
             'company_size' => $lead->employee_range !== null && trim($lead->employee_range) !== '',
             'location' => $this->hasLocation($lead),
             // Somebody to write to, then the two things that decide whether writing would work.
-            'contact' => $contacts->isNotEmpty(),
-            'routable_email' => $contacts->contains(
+            'contact' => $reachable->isNotEmpty(),
+            'routable_email' => $reachable->contains(
                 fn (LeadContact $contact): bool => $contact->email_verification_status === EmailVerificationStatus::MxFound,
             ),
             // `info@` is a letterbox; a named mailbox is a person who can answer.
-            'named_contact' => $contacts->contains(
+            'named_contact' => $reachable->contains(
                 fn (LeadContact $contact): bool => $contact->email !== null && ! $contact->is_role_based,
             ),
         ];

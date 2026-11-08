@@ -2,8 +2,12 @@
 
 export type ScoreGrade = 'A' | 'B' | 'C' | 'D';
 
-/** Whether one ICP criterion matched the lead — `unknown` means the lead has no data for it. */
-export type CriterionMatch = 'matched' | 'not_matched' | 'unknown';
+/**
+ * Whether one ICP criterion matched the lead. `unknown` means the lead has no data for it; `weak`
+ * means it had data the deterministic rules couldn't confirm (a different vocabulary) and handed to
+ * the AI half to judge — neither counts for or against the deterministic score.
+ */
+export type CriterionMatch = 'matched' | 'not_matched' | 'weak' | 'unknown';
 
 export type FeedbackRating = 'good' | 'bad';
 

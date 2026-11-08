@@ -28,6 +28,8 @@ function fakePlaces(): void
                     'displayName' => ['text' => 'Acme Coffee Roasters', 'languageCode' => 'en'],
                     'formattedAddress' => '1 Trade St, Dubai, UAE',
                     'websiteUri' => 'https://acme.ae',
+                    'internationalPhoneNumber' => '+971 4 123 4567',
+                    'nationalPhoneNumber' => '04 123 4567',
                     'googleMapsUri' => 'https://maps.google.com/?cid=123',
                     'types' => ['cafe', 'food'],
                     'addressComponents' => [
@@ -54,8 +56,37 @@ it('maps Places results into sourced leads', function (): void {
         ->and($lead->locality)->toBe('Dubai')
         ->and($lead->country)->toBe('AE')
         ->and($lead->companyType)->toBe('cafe')
+        // The international number (it carries the country code) is preferred over the national one.
+        ->and($lead->phone)->toBe('+971 4 123 4567')
         ->and($lead->sourceUrl)->toBe('https://maps.google.com/?cid=123')
         ->and($lead->dedupeKey())->toBe('domain:acme.ae');
+});
+
+it('asks the Places field mask for the phone number', function (): void {
+    fakePlaces();
+
+    app(GooglePlacesProvider::class)->discover(placesQuery());
+
+    Http::assertSent(function ($request): bool {
+        $mask = (string) $request->header('X-Goog-FieldMask')[0];
+
+        return str_contains($mask, 'internationalPhoneNumber')
+            && str_contains($mask, 'nationalPhoneNumber');
+    });
+});
+
+it('falls back to the national phone number when there is no international one', function (): void {
+    Http::fake([
+        'places.googleapis.com/*' => Http::response([
+            'places' => [
+                ['displayName' => ['text' => 'Local Cafe'], 'websiteUri' => 'https://local.ae', 'nationalPhoneNumber' => '04 999 0000'],
+            ],
+        ]),
+    ]);
+
+    $leads = app(GooglePlacesProvider::class)->discover(placesQuery());
+
+    expect($leads[0]->phone)->toBe('04 999 0000');
 });
 
 it('sends a text search biased to the location with the api key header', function (): void {

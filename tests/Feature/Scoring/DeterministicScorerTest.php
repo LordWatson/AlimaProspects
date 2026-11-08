@@ -77,15 +77,16 @@ function rowFor(array $breakdown, CriterionType $type): CriterionScore
 }
 
 it('normalises weights so the score is the matched share of what could be assessed', function (): void {
-    // Industry (80) matches, technologies (20) does not → 80 / 100 = 80.
+    // Industry (80) matches, geography (20) is a confident miss → 80 / 100 = 80. (Geography is one
+    // of the dimensions a non-match counts against; a technology or job-title non-match defers.)
     [$team, $icp] = icpWith([
         [CriterionType::Industry, 'Coffee roasting', 80],
-        [CriterionType::Technographic, 'Shopify', 20],
+        [CriterionType::Geography, 'London', 20],
     ]);
 
     $lead = scorableLead($team, [
         'industry' => 'Speciality coffee roasting',
-        'technologies' => ['WooCommerce'],
+        'locality' => 'Manchester',
     ]);
 
     $result = app(DeterministicScorer::class)->score($lead, $icp);
@@ -98,24 +99,23 @@ it('normalises weights so the score is the matched share of what could be assess
 });
 
 it('is unaffected by how many criteria an ICP has, only by their weights', function (): void {
-    // Same 50/50 split, very different criterion counts: both score 50.
+    // Same 50/50 split of confidently-assessed weight, very different criterion counts: both 50.
     [$teamA, $icpA] = icpWith([
         [CriterionType::Industry, 'Coffee', 50],
-        [CriterionType::Technographic, 'Shopify', 50],
+        [CriterionType::Geography, 'London', 50],
     ]);
     [$teamB, $icpB] = icpWith([
         [CriterionType::Industry, 'Coffee', 10],
-        [CriterionType::Technographic, 'Shopify', 10],
-        [CriterionType::Geography, 'London', 10],
         [CriterionType::CompanySize, '11-50', 10],
+        [CriterionType::Geography, 'London', 10],
+        [CriterionType::Geography, 'Bristol', 10],
     ]);
 
-    $leadA = scorableLead($teamA, ['industry' => 'Coffee', 'technologies' => ['Stripe']]);
+    $leadA = scorableLead($teamA, ['industry' => 'Coffee', 'locality' => 'Manchester']);
     $leadB = scorableLead($teamB, [
         'industry' => 'Coffee',
-        'technologies' => ['Stripe'],
-        'locality' => 'London',
-        'employee_range' => '200-500',
+        'employee_range' => '25-60',
+        'locality' => 'Manchester',
     ]);
 
     $scorer = app(DeterministicScorer::class);
@@ -218,14 +218,147 @@ it('reads a comma-separated criterion as "any of these"', function (): void {
 });
 
 it('requires a word boundary for very short criterion values', function (): void {
-    // "IT" must not match inside "Security", but must match "IT services".
+    // "IT" must not match inside "Security"; "IT services" matches literally. The non-match no
+    // longer counts against the lead — "Security monitoring" is an unmappable vocabulary here, so
+    // the rules defer it (Weak) rather than scoring it a confident zero.
     [$teamA, $icpA] = icpWith([[CriterionType::Industry, 'IT', 50]]);
     [$teamB, $icpB] = icpWith([[CriterionType::Industry, 'IT', 50]]);
 
     $scorer = app(DeterministicScorer::class);
 
-    expect($scorer->score(scorableLead($teamA, ['industry' => 'Security monitoring']), $icpA)->score)->toBe(0)
+    $securityResult = $scorer->score(scorableLead($teamA, ['industry' => 'Security monitoring']), $icpA);
+
+    expect(rowFor($securityResult->breakdown, CriterionType::Industry)->match)->toBe(CriterionMatch::Weak)
+        ->and($securityResult->hasSignals())->toBeFalse()
         ->and($scorer->score(scorableLead($teamB, ['industry' => 'IT services']), $icpB)->score)->toBe(100);
+});
+
+it('matches an industry across vocabularies that share no words, via the sector taxonomy', function (): void {
+    // "SaaS" and "cloud software development" are the same sector and not one shared word — the old
+    // literal compare scored this a hard zero on the heaviest criterion the moment enrichment filled
+    // the industry in, which is the regression this fixes.
+    [$team, $icp] = icpWith([[CriterionType::Industry, 'SaaS', 80]]);
+    $lead = scorableLead($team, ['industry' => 'Cloud software development']);
+
+    $result = app(DeterministicScorer::class)->score($lead, $icp);
+
+    expect($result->score)->toBe(100)
+        ->and(rowFor($result->breakdown, CriterionType::Industry)->match)->toBe(CriterionMatch::Matched);
+});
+
+it('still counts a genuinely different sector as a confident miss', function (): void {
+    // The taxonomy keeps real filtering: logistics is not software.
+    [$team, $icp] = icpWith([[CriterionType::Industry, 'Logistics', 80]]);
+    $lead = scorableLead($team, ['industry' => 'Cloud software development']);
+
+    $result = app(DeterministicScorer::class)->score($lead, $icp);
+
+    expect($result->score)->toBe(0)
+        ->and(rowFor($result->breakdown, CriterionType::Industry)->match)->toBe(CriterionMatch::NotMatched)
+        ->and($result->hasSignals())->toBeTrue();
+});
+
+it('defers an industry it cannot place rather than failing it', function (): void {
+    // Neither the profile value nor the lead's industry is in the taxonomy → the rules abstain and
+    // hand it to the AI half, instead of guessing a miss.
+    [$team, $icp] = icpWith([[CriterionType::Industry, 'Artisan taxidermy', 80]]);
+    $lead = scorableLead($team, ['industry' => 'Bespoke umbrella repair']);
+
+    $result = app(DeterministicScorer::class)->score($lead, $icp);
+
+    expect(rowFor($result->breakdown, CriterionType::Industry)->match)->toBe(CriterionMatch::Weak)
+        ->and($result->hasSignals())->toBeFalse()
+        ->and($result->deferredWeight)->toBe(80);
+});
+
+it('defers an unmatched technology instead of counting it against the lead', function (): void {
+    [$team, $icp] = icpWith([
+        [CriterionType::Industry, 'Coffee', 50],
+        [CriterionType::Technographic, 'Shopify', 50],
+    ]);
+    $lead = scorableLead($team, ['industry' => 'Coffee', 'technologies' => ['WooCommerce']]);
+
+    $result = app(DeterministicScorer::class)->score($lead, $icp);
+
+    // Industry matches; the technology is unconfirmed, not a failure → 50 / 50 = 100.
+    expect($result->score)->toBe(100)
+        ->and(rowFor($result->breakdown, CriterionType::Technographic)->match)->toBe(CriterionMatch::Weak)
+        ->and($result->deferredWeight)->toBe(50);
+});
+
+it('matches seniority up the ladder so "Director or above" accepts a CEO', function (): void {
+    [$team, $icp] = icpWith([[CriterionType::Seniority, 'Director or above', 70]]);
+    $lead = scorableLead($team);
+
+    app(TeamContext::class)->run($team, fn () => LeadContact::factory()->create([
+        'team_id' => $team->getKey(),
+        'lead_id' => $lead->getKey(),
+        'title' => 'Chief Executive Officer',
+    ]));
+
+    expect(app(DeterministicScorer::class)->score($lead->fresh() ?? $lead, $icp)->score)->toBe(100);
+});
+
+it('counts a seniority below the floor as a confident miss', function (): void {
+    [$team, $icp] = icpWith([[CriterionType::Seniority, 'Director or above', 70]]);
+    $lead = scorableLead($team);
+
+    app(TeamContext::class)->run($team, fn () => LeadContact::factory()->create([
+        'team_id' => $team->getKey(),
+        'lead_id' => $lead->getKey(),
+        'title' => 'Marketing Analyst',
+    ]));
+
+    $result = app(DeterministicScorer::class)->score($lead->fresh() ?? $lead, $icp);
+
+    expect($result->score)->toBe(0)
+        ->and(rowFor($result->breakdown, CriterionType::Seniority)->match)->toBe(CriterionMatch::NotMatched);
+});
+
+it('defers a seniority it cannot rank', function (): void {
+    [$team, $icp] = icpWith([[CriterionType::Seniority, 'Director or above', 70]]);
+    $lead = scorableLead($team);
+
+    app(TeamContext::class)->run($team, fn () => LeadContact::factory()->create([
+        'team_id' => $team->getKey(),
+        'lead_id' => $lead->getKey(),
+        'title' => 'Growth Ninja',
+    ]));
+
+    $result = app(DeterministicScorer::class)->score($lead->fresh() ?? $lead, $icp);
+
+    expect(rowFor($result->breakdown, CriterionType::Seniority)->match)->toBe(CriterionMatch::Weak)
+        ->and($result->hasSignals())->toBeFalse();
+});
+
+it('reports coverage as the share of judgeable weight the rules settled confidently', function (): void {
+    // Industry (80) is deferred (unknown vocabulary), geography (20) is a confident match. Of the
+    // judgeable weight (assessed 20 + deferred 80 = 100), the rules settled 20 → coverage 0.2.
+    [$team, $icp] = icpWith([
+        [CriterionType::Industry, 'Artisan taxidermy', 80],
+        [CriterionType::Geography, 'London', 20],
+    ]);
+    $lead = scorableLead($team, ['industry' => 'Bespoke umbrella repair', 'locality' => 'London']);
+
+    $result = app(DeterministicScorer::class)->score($lead, $icp);
+
+    expect($result->assessedWeight)->toBe(20)
+        ->and($result->deferredWeight)->toBe(80)
+        ->and($result->coverage())->toBe(0.2);
+});
+
+it('reports full coverage when nothing was deferred', function (): void {
+    [$team, $icp] = icpWith([
+        [CriterionType::Industry, 'Coffee', 60],
+        [CriterionType::CompanySize, '11-50', 40],
+    ]);
+    $lead = scorableLead($team, ['industry' => 'Coffee', 'employee_range' => '200-500']);
+
+    $result = app(DeterministicScorer::class)->score($lead, $icp);
+
+    // Both assessed (one match, one confident miss), nothing deferred → coverage 1.0.
+    expect($result->coverage())->toBe(1.0)
+        ->and($result->deferredWeight)->toBe(0);
 });
 
 it('matches job titles against the lead’s contacts', function (): void {
@@ -280,14 +413,14 @@ it('weights an unweighted signal with the configured default', function (): void
 
     [$team, $icp] = icpWith([
         [CriterionType::Industry, 'Coffee', null],
-        [CriterionType::Technographic, 'Shopify', 50],
+        [CriterionType::Geography, 'London', 50],
     ]);
 
-    $lead = scorableLead($team, ['industry' => 'Coffee', 'technologies' => ['Stripe']]);
+    $lead = scorableLead($team, ['industry' => 'Coffee', 'locality' => 'Manchester']);
 
     $result = app(DeterministicScorer::class)->score($lead, $icp);
 
-    // Both carry 50, one matched → 50.
+    // Both carry 50, industry matched and geography is a confident miss → 50.
     expect($result->score)->toBe(50)
         ->and(rowFor($result->breakdown, CriterionType::Industry)->weight)->toBe(50);
 });
@@ -296,19 +429,21 @@ it('spreads contributions across the matched rows so they add up to the score', 
     [$team, $icp] = icpWith([
         [CriterionType::Industry, 'Coffee', 60],
         [CriterionType::Geography, 'London', 20],
-        [CriterionType::Technographic, 'Shopify', 20],
+        [CriterionType::CompanySize, '11-50', 20],
     ]);
 
     $lead = scorableLead($team, [
         'industry' => 'Coffee',
         'locality' => 'London',
-        'technologies' => ['Stripe'],
+        'employee_range' => '200-500',
     ]);
 
     $result = app(DeterministicScorer::class)->score($lead, $icp);
 
     $total = array_sum(array_map(static fn (CriterionScore $row): int => $row->contribution, $result->breakdown));
 
+    // Industry (60) and geography (20) match; the size band is a confident miss → 80, and the
+    // contributions of the matched rows add up to it.
     expect($result->score)->toBe(80)->and($total)->toBe(80);
 });
 

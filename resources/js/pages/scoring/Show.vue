@@ -71,14 +71,23 @@ const scoredAt = computed(() =>
     props.score?.scored_at ? dateTime(props.score.scored_at) : null,
 );
 
-// Criteria the lead has no data for are listed apart: they are a data-coverage gap, not a failure,
-// and they never counted towards the score. The rest are ordered by weight, because "what cost
-// this lead its grade" is a question about the heavy criteria.
+// The breakdown splits three ways, because the rules give three kinds of answer. Only a *confident*
+// match or miss belongs in the scored table; the rest are set apart so neither reads as a mark
+// against the lead:
+//  - `assessed` — matched or confidently missed, ordered by weight because "what cost this lead its
+//    grade" is a question about the heavy criteria;
+//  - `deferred` — the lead had data the rules couldn't confirm from its wording, so the AI review
+//    judged it (CriterionMatch::Weak). It counted towards neither side of the rule score;
+//  - `unassessed` — the lead has no data for it at all (a coverage gap, never a failure).
 const assessed = computed<ScoreBreakdownRow[]>(() =>
     (props.score?.breakdown ?? [])
-        .filter((row) => row.match !== 'unknown')
+        .filter((row) => row.match === 'matched' || row.match === 'not_matched')
         .slice()
         .sort((a, b) => b.weight - a.weight),
+);
+
+const deferred = computed(
+    () => props.score?.breakdown.filter((row) => row.match === 'weak') ?? [],
 );
 
 const unassessed = computed(
@@ -93,6 +102,7 @@ const topWeight = computed(() =>
 const matchVariant: Record<CriterionMatch, 'success' | 'outline'> = {
     matched: 'success',
     not_matched: 'outline',
+    weak: 'outline',
     unknown: 'outline',
 };
 
@@ -504,6 +514,46 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                         </ListRow>
                     </tbody>
                 </ListTable>
+
+                <!-- Criteria the lead had data for but the rules couldn't confirm from its wording,
+                     so the AI review judged them. Neutral: they counted towards neither side. -->
+                <div
+                    v-if="deferred.length"
+                    class="space-y-2 rounded-2xl border border-dashed border-border bg-card/50 p-5"
+                    data-test="deferred"
+                >
+                    <h3
+                        class="text-sm font-semibold text-foreground rtl:font-bold"
+                    >
+                        {{ t('Left to the AI review') }}
+                    </h3>
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            t(
+                                'The lead describes these differently than your profile, so the rules couldn’t confirm them for sure. The AI review weighed them instead — they didn’t count for or against the rule score.',
+                            )
+                        }}
+                    </p>
+                    <ul class="space-y-1.5 pt-1">
+                        <li
+                            v-for="(row, index) in deferred"
+                            :key="`${row.type}-${index}`"
+                            class="text-sm text-muted-foreground"
+                            dir="auto"
+                        >
+                            <span class="text-foreground">{{ row.value }}</span>
+                            <span class="text-xs">
+                                · {{ t(row.type_label) }}
+                                <template v-if="row.evidence">
+                                    · {{ t('lead has') }}
+                                    <span class="text-foreground">{{
+                                        row.evidence
+                                    }}</span>
+                                </template>
+                            </span>
+                        </li>
+                    </ul>
+                </div>
 
                 <!-- Criteria we couldn't judge: a data gap, never a mark against the lead -->
                 <div

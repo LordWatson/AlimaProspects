@@ -9,6 +9,10 @@ use App\Modules\Auth\Actions\CreateTeamAction;
 use App\Modules\Auth\Data\CreateTeamData;
 use App\Modules\Auth\Models\TeamInvitation;
 use App\Modules\Auth\Support\TeamMembership;
+use App\Modules\Compliance\Actions\SaveLiaRecordAction;
+use App\Modules\Compliance\Data\LiaRecordData;
+use App\Modules\Compliance\Enums\LiaStatus;
+use App\Modules\Compliance\Services\LegitimateInterestGate;
 use App\Modules\Core\Enums\Currency;
 use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Enums\TeamRole;
@@ -43,6 +47,13 @@ use Illuminate\Support\Facades\DB;
  * per ADR 0011) a watch with signals. **No leads are seeded** — the lead list is what the product
  * is for, so it starts empty and is filled by running discovery; the consequence is that the
  * dashboard and the Reporting charts land on their first-run empty states until it is.
+ *
+ * Each team's Legitimate Interest Assessment is seeded **signed off and in force** for its own
+ * market (UK team → UK, Gulf team → UAE), so discovery is open from the first login and a demo
+ * never stalls on filling the assessment out ({@see LegitimateInterestGate} would otherwise refuse
+ * every discovery run). It goes through {@see SaveLiaRecordAction} with `sign: true`, exactly as
+ * the compliance screen's "sign off" does, so `completed_by`, `completed_at`, the review date and
+ * the audit entry are all real.
  *
  * Everything goes through the real Actions / {@see TeamMembership} so the demo data is identical
  * in shape to what registration and invitations produce (pivot role + spatie role kept in sync,
@@ -140,6 +151,11 @@ class DemoSeeder extends Seeder
             'customer_examples' => ['Desert Rose', 'Gulf Star'],
         ]);
 
+        // --- Signed-off legitimate-interest assessments, so discovery is open for the demo -----
+        // Each team's own market, signed by its owner — the lawful basis the discovery gate checks.
+        $this->compliance($uk, $alex, Market::Uk);
+        $this->compliance($gulf, $layla, Market::Uae);
+
         // --- Prospecting history, so the dashboard reports on something ------------------------
         $this->prospecting($teamContext, $uk, 'UK growth agencies');
         $this->prospecting($teamContext, $gulf, 'UAE hospitality');
@@ -148,6 +164,7 @@ class DemoSeeder extends Seeder
         $this->signals($teamContext, $gulf);
 
         $this->command?->info('DemoSeeder: seeded 5 users, 2 teams (UK/en + UAE/ar) and 3 invitations.');
+        $this->command?->info('DemoSeeder: each team has a signed-off legitimate-interest assessment — discovery is open.');
         $this->command?->info('DemoSeeder: log in with  alex@user.com  /  password');
     }
 
@@ -195,6 +212,32 @@ class DemoSeeder extends Seeder
                 ->forceFill(['completed_at' => now()])
                 ->save();
         });
+    }
+
+    /**
+     * Sign off a team's Legitimate Interest Assessment for the given market, so the discovery gate
+     * is open from the first login and a demo never has to fill the assessment out.
+     *
+     * Goes through the real {@see SaveLiaRecordAction} with `sign: true` (signed by the given team
+     * member), so the row is identical in shape to one produced by the compliance screen's sign-off:
+     * {@see LiaStatus::Active}, a signatory, a completed date and a review date in force. The three
+     * mandatory sections are written out in full because the gate refuses to sign a thin assessment.
+     */
+    private function compliance(Team $team, User $signatory, Market $market): void
+    {
+        $uae = $market === Market::Uae;
+
+        app(SaveLiaRecordAction::class)->handle($team, $signatory, new LiaRecordData(
+            market: $market,
+            purpose: $uae
+                ? 'To identify UAE businesses whose published characteristics match our ideal-customer profile, and approach them about a service relevant to their trade.'
+                : 'To identify UK businesses whose published characteristics match our ideal-customer profile, and approach them about a service relevant to their trade.',
+            necessity: 'Public company and business-listing data is the only way to identify these businesses at all; we hold role-based contact points in preference to personal ones.',
+            balancing: 'The data is business contact data, the approach is relevant to the recipient’s trade, an opt-out is honoured immediately and globally, and nothing is retained past its window.',
+            safeguards: 'Role-based data preferred, opt-out honoured platform-wide, retention windows enforced by a nightly sweep.',
+            signalsScope: $uae ? 'Trigger-event prospecting on public funding, acquisition and relocation announcements only.' : null,
+            sign: true,
+        ));
     }
 
     /**

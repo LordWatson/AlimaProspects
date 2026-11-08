@@ -55,6 +55,11 @@ final class SourcedLead extends Data
         public ?string $region = null,
         public ?string $postalCode = null,
         public ?string $country = null,
+        // The company's own published switchboard number, when the provider gives one (Google Places
+        // does). Company-level contact data, not a named person's — so it is stored at discovery,
+        // unlike the personal contacts Enrichment derives. Enrichment uses it as the phone on a
+        // lead's first contact when the site states none.
+        public ?string $phone = null,
         public array $address = [],
         public array $sicCodes = [],
         public ?string $sourceUrl = null,
@@ -140,6 +145,7 @@ final class SourcedLead extends Data
             'region' => $this->text($this->region),
             'postal_code' => $this->text($this->postalCode),
             'country' => $this->country !== null ? Str::upper(Str::substr(trim($this->country), 0, 2)) : null,
+            'phone' => $this->text($this->phone),
             'address' => $this->address === [] ? null : $this->address,
             'sic_codes' => $this->sicCodes === [] ? null : $this->sicCodes,
             'source_url' => $this->safeUrl($this->sourceUrl, self::MAX_URL),

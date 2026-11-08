@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Ban, Check, Pencil, Plus, Star, Target, Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import IcpCalibrationPanel from '@/components/icp/IcpCalibrationPanel.vue';
 import MeterBar from '@/components/MeterBar.vue';
 import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +11,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import { importanceKey } from '@/lib/importance';
-import type { Icp, IcpCriterion } from '@/types';
+import type { Icp, IcpCalibration, IcpCriterion } from '@/types';
 
 /*
  * The team's ideal-customer profiles.
@@ -33,6 +34,7 @@ defineOptions({
 
 const props = defineProps<{
     icps: Icp[];
+    calibration: IcpCalibration | null;
     can: { manage: boolean };
 }>();
 
@@ -73,6 +75,10 @@ function importance(weight: number | null): string {
 // The active profile first, and the rest in the order the server sent them.
 const ordered = computed(() =>
     [...props.icps].sort((a, b) => Number(b.is_active) - Number(a.is_active)),
+);
+
+const activeIcpName = computed(
+    () => props.icps.find((icp) => icp.is_active)?.name ?? '',
 );
 
 function activate(icp: Icp): void {
@@ -350,5 +356,13 @@ function destroy(icp: Icp): void {
                 </div>
             </li>
         </ul>
+
+        <!-- How the active profile is actually grading leads. Below the profiles because it is the
+             feedback on them: read a card, then see what it is doing to the pipeline. -->
+        <IcpCalibrationPanel
+            v-if="calibration && icps.length"
+            :calibration="calibration"
+            :icp-name="activeIcpName"
+        />
     </div>
 </template>

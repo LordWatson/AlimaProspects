@@ -9,6 +9,9 @@ use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\Scoring\Data\CriterionScore;
+use App\Modules\Scoring\Data\DeterministicScore;
+use App\Modules\Scoring\Enums\CriterionMatch;
 use Illuminate\Support\Str;
 
 /**
@@ -107,6 +110,41 @@ final class ScoringPayloadBuilder
         ];
 
         return UntrustedContent::from(implode("\n", $lines));
+    }
+
+    /**
+     * The criteria the deterministic rules could not settle — present on the lead, but in a
+     * vocabulary a literal compare can't confirm (an industry the sector taxonomy doesn't carry, a
+     * title the seniority ladder can't rank, a technology that didn't match a name). The rules
+     * deferred them ({@see CriterionMatch::Weak}); this block hands each to the model with what the
+     * ICP wanted and what the lead actually holds, so the qualitative half judges exactly the gaps
+     * the rules left rather than re-deriving the whole fit. Trusted text (ICP values and the lead's
+     * own stored field, both already stated in the two blocks above).
+     *
+     * Returns a plain line when nothing was deferred, so the prompt reads cleanly either way.
+     */
+    public function deferredBlock(DeterministicScore $deterministic): string
+    {
+        $rows = array_values(array_filter(
+            $deterministic->breakdown,
+            static fn (CriterionScore $row): bool => $row->match === CriterionMatch::Weak,
+        ));
+
+        if ($rows === []) {
+            return 'None — the rules settled every criterion the lead had data for.';
+        }
+
+        $lines = array_map(
+            fn (CriterionScore $row): string => sprintf(
+                '- %s: the profile wants "%s"; the lead\'s data is "%s". Decide whether this is a fit.',
+                $row->type->label(),
+                $this->value($row->value),
+                $this->value((string) ($row->evidence ?? 'unknown')),
+            ),
+            array_slice($rows, 0, self::MAX_LIST),
+        );
+
+        return implode("\n", $lines);
     }
 
     private function location(Lead $lead): ?string

@@ -23,6 +23,12 @@ final class SourcedValue extends Data
 
     public const string METHOD_MERGE = 'merge';
 
+    /** A website found by searching for the company, then confirmed against the page (Phase 8+). */
+    public const string METHOD_WEB_RESOLVED = 'web_resolved';
+
+    /** An email inferred from the company domain and a named person — a guess, never read off a page. */
+    public const string METHOD_AI_INFERRED = 'ai_inferred';
+
     public function __construct(
         public string $source,
         public string $method,
@@ -38,6 +44,21 @@ final class SourcedValue extends Data
         return new self(
             source: self::METHOD_AI_EXTRACT,
             method: self::METHOD_AI_EXTRACT,
+            sourceUrl: $sourceUrl,
+            collectedAt: Carbon::now(),
+        );
+    }
+
+    /**
+     * Build the provenance for a website the resolver found and the caller confirmed against the
+     * page it describes (now). Distinct from {@see self::fromAiExtract()} because the value did not
+     * come off the page — it was searched for, then verified.
+     */
+    public static function fromWebResolved(?string $sourceUrl): self
+    {
+        return new self(
+            source: self::METHOD_WEB_RESOLVED,
+            method: self::METHOD_WEB_RESOLVED,
             sourceUrl: $sourceUrl,
             collectedAt: Carbon::now(),
         );

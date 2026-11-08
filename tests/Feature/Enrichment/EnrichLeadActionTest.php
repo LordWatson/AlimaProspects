@@ -17,10 +17,12 @@ use App\Modules\Enrichment\Data\SourcedValue;
 use App\Modules\Enrichment\Enums\EmailVerificationStatus;
 use App\Modules\Enrichment\Enums\EnrichmentStatus;
 use App\Modules\Enrichment\Testing\FakeDnsResolver;
+use App\Modules\LeadSourcing\Contracts\CompanyWebsiteResolver;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Enums\LeadStatus;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadSourcing\Support\CompanyNameKey;
+use App\Modules\LeadSourcing\Testing\FakeCompanyWebsiteResolver;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -45,9 +47,11 @@ function extractPayload(): array
 }
 
 /**
- * Bind the fake AI transport, web fetcher and DNS resolver and return the fakes plus a team.
+ * Bind the fake AI transport, web fetcher, DNS resolver and website resolver, and return the fakes
+ * plus a team. The website resolver defaults to finding nothing, so a website-less lead behaves
+ * exactly as it did before resolution existed unless a test tells it otherwise.
  *
- * @return array{Team, FakeAiTransport, FakeWebContentFetcher, FakeDnsResolver}
+ * @return array{Team, FakeAiTransport, FakeWebContentFetcher, FakeDnsResolver, FakeCompanyWebsiteResolver}
  */
 function bootEnrichment(string $webText = 'Acme makes coffee for UK offices. Contact info@acme.test.'): array
 {
@@ -63,7 +67,10 @@ function bootEnrichment(string $webText = 'Acme makes coffee for UK offices. Con
     $dns = (new FakeDnsResolver)->defaultsTo(true);
     app()->instance(DnsResolver::class, $dns);
 
-    return [$team, $fakeAi, $fetcher, $dns];
+    $resolver = new FakeCompanyWebsiteResolver;
+    app()->instance(CompanyWebsiteResolver::class, $resolver);
+
+    return [$team, $fakeAi, $fetcher, $dns, $resolver];
 }
 
 function makeLead(Team $team, array $attributes = []): Lead
@@ -357,4 +364,148 @@ it('builds a name dedupe key through one shared rule', function (): void {
         ->and(CompanyNameKey::isNameDerived('name:web_search:acme-ltd:abc'))->toBeTrue()
         ->and(CompanyNameKey::isNameDerived('domain:acme.test'))->toBeFalse()
         ->and(CompanyNameKey::isNameDerived(null))->toBeFalse();
+});
+
+// --- (1) Website resolution: unlock enrichment for website-less leads ---
+
+it('resolves a homepage for a website-less lead and confirms it matches the company', function (): void {
+    [$team, $fakeAi, , , $resolver] = bootEnrichment('Acme Ltd — coffee roasters for UK offices. info@acme.test');
+    $resolver->returns('https://acme.test');
+    $fakeAi->queueStructured([...extractPayload(), 'company_name' => 'Acme Ltd'], model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team, ['website' => null, 'company_name' => 'Acme Ltd', 'locality' => 'London']);
+    enrich($team, $lead);
+
+    $lead->refresh();
+
+    expect($lead->website)->toBe('https://acme.test')
+        ->and($lead->field_sources)->toHaveKey('website')
+        ->and($lead->field_sources['website']->method)->toBe(SourcedValue::METHOD_WEB_RESOLVED)
+        ->and($lead->industry)->toBe('Coffee roasting') // the pipeline ran off the resolved site
+        ->and($resolver->asked)->toBe([['company' => 'Acme Ltd', 'location' => 'London']]);
+});
+
+it('discards a resolved website whose page is a different company', function (): void {
+    [$team, $fakeAi, , , $resolver] = bootEnrichment('Bean Masters — speciality coffee. hello@beanmasters.test');
+    $resolver->returns('https://beanmasters.test');
+    $fakeAi->queueStructured(
+        [...extractPayload(), 'company_name' => 'Bean Masters', 'website' => null, 'emails' => [], 'phone' => null],
+        model: 'claude-haiku-5-5',
+    );
+
+    $lead = makeLead($team, ['website' => null, 'company_name' => 'Acme Coffee Roasters']);
+    enrich($team, $lead);
+
+    $lead->refresh();
+
+    // The search found a competitor — the site and everything extracted from it are thrown away
+    // rather than pinned to the wrong company.
+    expect($lead->website)->toBeNull()
+        ->and($lead->field_sources)->not->toHaveKey('website')
+        ->and($lead->industry)->toBeNull()
+        ->and($lead->contacts()->count())->toBe(0);
+});
+
+it('does not try to resolve a website when the lead already has one', function (): void {
+    [$team, $fakeAi, , , $resolver] = bootEnrichment();
+    $resolver->returns('https://wrong.test');
+    $fakeAi->queueStructured(extractPayload(), model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team); // already has https://acme.test
+    enrich($team, $lead);
+
+    expect($lead->refresh()->website)->toBe('https://acme.test')
+        ->and($resolver->asked)->toBe([]);
+});
+
+// --- (2) Multi-page fetch: find the contacts that live off the homepage ---
+
+it('gathers contact pages and feeds their text to the extractor', function (): void {
+    [$team, $fakeAi, $fetcher] = bootEnrichment('Acme makes coffee. There is no email on this page.');
+    $fetcher->returnsForUrl('https://acme.test/contact', 'Reach the team at hello@acme.test.');
+    $fakeAi->queueStructured([...extractPayload(), 'emails' => ['hello@acme.test']], model: 'claude-haiku-5-5');
+
+    enrich($team, makeLead($team));
+
+    expect($fetcher->fetched)->toContain('https://acme.test')
+        ->and($fetcher->fetched)->toContain('https://acme.test/contact');
+
+    // The contact page's text reached the one extraction call.
+    expect($fakeAi->lastRequest()?->prompt ?? '')->toContain('hello@acme.test');
+});
+
+// --- (3) The phone a provider discovered becomes a contact ---
+
+it('uses a discovered switchboard number as a contact when the page states none', function (): void {
+    [$team, $fakeAi] = bootEnrichment('Acme makes coffee for UK offices.');
+    $fakeAi->queueStructured([...extractPayload(), 'emails' => [], 'phone' => null], model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team, ['phone' => '+44 20 7946 0000']);
+    enrich($team, $lead);
+
+    $contact = $lead->refresh()->contacts()->first();
+
+    expect($lead->contacts()->count())->toBe(1)
+        ->and($contact->email)->toBeNull()
+        ->and($contact->phone)->toBe('+44 20 7946 0000')
+        ->and($contact->is_personal)->toBeFalse()
+        ->and($contact->method)->toBe(SourcedValue::METHOD_PROVIDER);
+});
+
+// --- (4) Inferred contacts: a name on the page, but no email ---
+
+it('infers a contact email from a named person when the page gives none', function (): void {
+    [$team, $fakeAi, , $dns] = bootEnrichment('Acme coffee. Our founder is Jane Smith.');
+    $dns->set('acme.test', true);
+    $fakeAi->queueStructured([
+        ...extractPayload(),
+        'emails' => [],
+        'phone' => null,
+        'people' => [['name' => 'Jane Smith', 'title' => 'Founder']],
+    ], model: 'claude-haiku-5-5');
+
+    $lead = makeLead($team);
+    enrich($team, $lead);
+
+    $contact = $lead->refresh()->contacts()->where('is_inferred', true)->first();
+
+    expect($contact)->not->toBeNull()
+        ->and($contact->email)->toBe('jane.smith@acme.test')
+        ->and($contact->name)->toBe('Jane Smith')
+        ->and($contact->title)->toBe('Founder')
+        ->and($contact->is_personal)->toBeTrue()
+        ->and($contact->email_confidence)->toBeLessThanOrEqual(25)
+        ->and($contact->method)->toBe(SourcedValue::METHOD_AI_INFERRED)
+        ->and($lead->has_personal_data)->toBeTrue();
+});
+
+it('does not infer a contact when the page already states a routable email', function (): void {
+    [$team, $fakeAi, , $dns] = bootEnrichment('Acme coffee. Our founder is Jane Smith. info@acme.test');
+    $dns->set('acme.test', true);
+    $fakeAi->queueStructured([
+        ...extractPayload(),
+        'emails' => ['info@acme.test'],
+        'people' => [['name' => 'Jane Smith', 'title' => 'Founder']],
+    ], model: 'claude-haiku-5-5');
+
+    enrich($team, makeLead($team));
+
+    $lead = Lead::query()->firstOrFail();
+
+    expect($lead->contacts()->where('is_inferred', true)->count())->toBe(0);
+});
+
+it('does not infer a contact when the company domain cannot route mail', function (): void {
+    [$team, $fakeAi, , $dns] = bootEnrichment('Acme coffee. Our founder is Jane Smith.');
+    $dns->set('acme.test', false); // no MX → an inferred guess would be worthless
+    $fakeAi->queueStructured([
+        ...extractPayload(),
+        'emails' => [],
+        'phone' => null,
+        'people' => [['name' => 'Jane Smith', 'title' => 'Founder']],
+    ], model: 'claude-haiku-5-5');
+
+    enrich($team, makeLead($team));
+
+    expect(Lead::query()->firstOrFail()->contacts()->count())->toBe(0);
 });

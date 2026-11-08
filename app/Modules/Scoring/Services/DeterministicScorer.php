@@ -13,6 +13,8 @@ use App\Modules\Scoring\Contracts\LeadSignalSource;
 use App\Modules\Scoring\Data\CriterionScore;
 use App\Modules\Scoring\Data\DeterministicScore;
 use App\Modules\Scoring\Enums\CriterionMatch;
+use App\Modules\Scoring\Support\SectorTaxonomy;
+use App\Modules\Scoring\Support\SeniorityLadder;
 use Illuminate\Support\Str;
 
 /**
@@ -21,17 +23,25 @@ use Illuminate\Support\Str;
  * no network — given the same (lead, ICP) it always returns the same answer, which is what makes
  * the explanation auditable.
  *
- * Three rules shape the arithmetic:
+ * Four rules shape the arithmetic:
  *
  * 1. **Weights are normalised, not summed.** The score is `matchedWeight / assessedWeight`, so an
  *    ICP with three criteria and one with thirty sit on the same 0–100 scale, and nobody can inflate
  *    a lead by adding more criteria.
  * 2. **Missing data is not a failure.** When the lead has nothing on a criterion's dimension the row
  *    is {@see CriterionMatch::Unknown} and its weight leaves *both* sides of the ratio — otherwise
- *    the score would measure enrichment coverage rather than fit. That holds for a **buying signal**
- *    too: since Q3 the rules judge one against what {@see LeadSignalSource} says the lead has been
- *    seen doing, and a lead with no signals is Unknown rather than a miss.
- * 3. **An exclusion is absolute.** A matched exclusion returns 0 immediately — no partial credit,
+ *    the score would measure enrichment coverage rather than fit.
+ * 3. **An uncertain read is deferred, not failed.** When the lead *has* data but the rules cannot
+ *    settle it confidently — an industry in a vocabulary the {@see SectorTaxonomy} doesn't carry, a
+ *    title the {@see SeniorityLadder} can't rank, a technology or job title that didn't match
+ *    literally — the row is {@see CriterionMatch::Weak}. It abstains from the ratio like Unknown,
+ *    but is handed to the AI half to judge. This is the correction for the regression where better
+ *    enrichment made scores *worse*: a literal `str_contains` across two vocabularies ("SaaS" vs
+ *    "cloud software") says nothing reliable, yet the old code counted that non-match as a hard zero
+ *    on the heaviest criterion, dragging good leads to C/D the instant enrichment gave them an
+ *    industry. A confident {@see CriterionMatch::NotMatched} — a company-size band that doesn't
+ *    overlap, a location that isn't wanted, two sectors the taxonomy separates — still counts.
+ * 4. **An exclusion is absolute.** A matched exclusion returns 0 immediately — no partial credit,
  *    and the caller skips the AI call entirely.
  */
 final class DeterministicScorer
@@ -42,7 +52,11 @@ final class DeterministicScorer
      */
     private const int SHORT_VALUE = 4;
 
-    public function __construct(private readonly LeadSignalSource $signals) {}
+    public function __construct(
+        private readonly LeadSignalSource $signals,
+        private readonly SectorTaxonomy $sectors,
+        private readonly SeniorityLadder $seniority,
+    ) {}
 
     public function score(Lead $lead, Icp $icp): DeterministicScore
     {
@@ -56,6 +70,7 @@ final class DeterministicScorer
         $rows = [];
         $matchedWeight = 0;
         $assessedWeight = 0;
+        $deferredWeight = 0;
 
         foreach ($icp->criteria as $criterion) {
             if ($criterion->isExclusion()) {
@@ -79,6 +94,7 @@ final class DeterministicScorer
             }
 
             $weight = $this->weightOf($criterion);
+
             $row = $this->assess($criterion, $lead, $weight);
             $rows[] = $row;
 
@@ -88,6 +104,10 @@ final class DeterministicScorer
                 if ($row->match === CriterionMatch::Matched) {
                     $matchedWeight += $weight;
                 }
+            } elseif ($row->match->isDeferred()) {
+                // The lead had data the rules couldn't settle — it leaves the ratio, but counts
+                // against the rules' authority in the blend (see DeterministicScore::coverage()).
+                $deferredWeight += $weight;
             }
         }
 
@@ -98,18 +118,34 @@ final class DeterministicScorer
             breakdown: $this->withContributions($rows, $assessedWeight),
             matchedWeight: $matchedWeight,
             assessedWeight: $assessedWeight,
+            deferredWeight: $deferredWeight,
         );
     }
 
     /**
-     * Judge one positive signal against the lead's data for that dimension.
+     * Judge one positive signal against the lead's data for that dimension. Industry, seniority and
+     * company size have their own semantics (a taxonomy, a ladder, numeric ranges); everything else
+     * is literal containment with a {@see self::missOutcomeFor()} verdict when it doesn't land.
      */
     private function assess(IcpCriterion $criterion, Lead $lead, int $weight): CriterionScore
     {
-        if ($criterion->type === CriterionType::CompanySize) {
-            return $this->assessCompanySize($criterion, $lead, $weight);
-        }
+        return match ($criterion->type) {
+            CriterionType::CompanySize => $this->assessCompanySize($criterion, $lead, $weight),
+            CriterionType::Industry => $this->assessIndustry($criterion, $lead, $weight),
+            CriterionType::Seniority => $this->assessSeniority($criterion, $lead, $weight),
+            default => $this->assessGeneric($criterion, $lead, $weight),
+        };
+    }
 
+    /**
+     * Literal-containment dimensions (geography, job title, technographic, buying signal). A hit is
+     * a match; a miss is a *confident* {@see CriterionMatch::NotMatched} only where the data is
+     * reliable enough to say so (geography), and {@see CriterionMatch::Weak} otherwise — our
+     * technology detection and contact-title coverage are both partial, so an absence there is not
+     * evidence of a true mismatch, and the AI half is the right place to judge it.
+     */
+    private function assessGeneric(IcpCriterion $criterion, Lead $lead, int $weight): CriterionScore
+    {
         $haystack = $this->haystackFor($criterion->type, $lead);
 
         if ($haystack === []) {
@@ -128,47 +164,180 @@ final class DeterministicScorer
             type: $criterion->type,
             value: $criterion->value,
             weight: $weight,
-            match: $hit !== null ? CriterionMatch::Matched : CriterionMatch::NotMatched,
+            match: $hit !== null ? CriterionMatch::Matched : $this->missOutcomeFor($criterion->type),
             evidence: $hit ?? implode(', ', array_slice($haystack, 0, 3)),
         );
     }
 
     /**
+     * Industry through the {@see SectorTaxonomy}: a literal hit wins outright; otherwise both sides
+     * are placed on a canonical sector. Same sector is a match ("SaaS" ≈ "cloud software"); two
+     * *different known* sectors are a confident miss ("logistics" is not "software"); an unmappable
+     * vocabulary on either side defers to the AI half rather than guessing.
+     */
+    private function assessIndustry(IcpCriterion $criterion, Lead $lead, int $weight): CriterionScore
+    {
+        $industry = trim((string) $lead->industry);
+
+        if ($industry === '') {
+            return $this->unknownRow($criterion, $weight);
+        }
+
+        if (($hit = $this->matchAny($criterion->value, [$industry])) !== null) {
+            return $this->row($criterion, $weight, CriterionMatch::Matched, $hit);
+        }
+
+        $leadSector = $this->sectors->sectorOf($industry);
+
+        $icpSectors = [];
+        foreach ($this->alternatives($criterion->value) as $alternative) {
+            $sector = $this->sectors->sectorOf($alternative);
+            if ($sector !== null) {
+                $icpSectors[] = $sector;
+            }
+        }
+
+        if ($leadSector !== null && in_array($leadSector, $icpSectors, strict: true)) {
+            return $this->row($criterion, $weight, CriterionMatch::Matched, $industry);
+        }
+
+        // Both sides mapped, to different sectors → a confident miss. Otherwise one side is a
+        // vocabulary the taxonomy doesn't carry, so the rules cannot be sure and defer.
+        $confidentMiss = $leadSector !== null && $icpSectors !== [];
+
+        return $this->row(
+            $criterion,
+            $weight,
+            $confidentMiss ? CriterionMatch::NotMatched : CriterionMatch::Weak,
+            $industry,
+        );
+    }
+
+    /**
+     * Seniority through the {@see SeniorityLadder}: the criterion names a floor and the contact
+     * titles are ranked. A title at or above the floor matches; a ranked title below it is a
+     * confident miss; a title the ladder can't place defers. When the criterion names no known
+     * level ("decision maker"), fall back to a literal compare — a hit matches, a miss defers.
+     */
+    private function assessSeniority(IcpCriterion $criterion, Lead $lead, int $weight): CriterionScore
+    {
+        $titles = $this->contactTitles($lead);
+
+        if ($titles === []) {
+            return $this->unknownRow($criterion, $weight);
+        }
+
+        $floor = $this->seniority->floorOf($criterion->value);
+
+        if ($floor === null) {
+            $hit = $this->matchAny($criterion->value, $titles);
+
+            return $this->row(
+                $criterion,
+                $weight,
+                $hit !== null ? CriterionMatch::Matched : CriterionMatch::Weak,
+                $hit ?? $titles[0],
+            );
+        }
+
+        $bestRank = null;
+        $bestTitle = null;
+
+        foreach ($titles as $title) {
+            $rank = $this->seniority->rankOf($title);
+
+            if ($rank !== null && ($bestRank === null || $rank > $bestRank)) {
+                $bestRank = $rank;
+                $bestTitle = $title;
+            }
+        }
+
+        if ($bestRank === null) {
+            // Titles are present but none could be ranked — defer rather than fail.
+            return $this->row($criterion, $weight, CriterionMatch::Weak, $titles[0]);
+        }
+
+        return $this->row(
+            $criterion,
+            $weight,
+            $bestRank >= $floor ? CriterionMatch::Matched : CriterionMatch::NotMatched,
+            $bestTitle ?? $titles[0],
+        );
+    }
+
+    /**
      * Company size compares ranges, not words: "11–50 employees" matches a lead on "25-60" because
-     * the bands overlap. When either side carries no numbers at all, fall back to text matching.
+     * the bands overlap, and a confident miss when they don't. When either side carries no numbers
+     * at all, fall back to a literal compare — but a miss there *defers* (a size written "SME" vs
+     * "enterprise" is a vocabulary gap, not a measured contradiction).
      */
     private function assessCompanySize(IcpCriterion $criterion, Lead $lead, int $weight): CriterionScore
     {
         $range = trim((string) $lead->employee_range);
 
         if ($range === '') {
-            return new CriterionScore(
-                type: $criterion->type,
-                value: $criterion->value,
-                weight: $weight,
-                match: CriterionMatch::Unknown,
-                evidence: $this->missingDataNote($criterion->type),
-            );
+            return $this->unknownRow($criterion, $weight);
         }
 
         $wanted = $this->bounds($criterion->value);
         $actual = $this->bounds($range);
 
-        $matched = $wanted !== null && $actual !== null
-            ? $wanted[0] <= $actual[1] && $actual[0] <= $wanted[1]
-            : $this->matchAny($criterion->value, [$range]) !== null;
+        if ($wanted !== null && $actual !== null) {
+            $overlaps = $wanted[0] <= $actual[1] && $actual[0] <= $wanted[1];
 
+            return $this->row(
+                $criterion,
+                $weight,
+                $overlaps ? CriterionMatch::Matched : CriterionMatch::NotMatched,
+                $range,
+            );
+        }
+
+        $hit = $this->matchAny($criterion->value, [$range]);
+
+        return $this->row(
+            $criterion,
+            $weight,
+            $hit !== null ? CriterionMatch::Matched : CriterionMatch::Weak,
+            $range,
+        );
+    }
+
+    private function row(IcpCriterion $criterion, int $weight, CriterionMatch $match, ?string $evidence): CriterionScore
+    {
         return new CriterionScore(
             type: $criterion->type,
             value: $criterion->value,
             weight: $weight,
-            match: $matched ? CriterionMatch::Matched : CriterionMatch::NotMatched,
-            evidence: $range,
+            match: $match,
+            evidence: $evidence,
+        );
+    }
+
+    private function unknownRow(IcpCriterion $criterion, int $weight): CriterionScore
+    {
+        return new CriterionScore(
+            type: $criterion->type,
+            value: $criterion->value,
+            weight: $weight,
+            match: CriterionMatch::Unknown,
+            evidence: $this->missingDataNote($criterion->type),
         );
     }
 
     /**
+     * The verdict for a literal-containment dimension that had data but didn't match. Only geography
+     * is reliable enough to call a confident miss; the rest defer to the AI half.
+     */
+    private function missOutcomeFor(CriterionType $type): CriterionMatch
+    {
+        return $type === CriterionType::Geography ? CriterionMatch::NotMatched : CriterionMatch::Weak;
+    }
+
+    /**
      * The lead values a criterion type is judged against. An empty list means "no data" (Unknown).
+     * Industry, seniority and company size are handled by their own methods and are listed here only
+     * to keep the match exhaustive.
      *
      * @return list<string>
      */
@@ -188,11 +357,8 @@ final class DeterministicScorer
             ],
             CriterionType::JobTitle, CriterionType::Seniority => $this->contactTitles($lead),
             CriterionType::Technographic => $lead->technologies ?? [],
-            // What the lead has been seen *doing* (Q3). This criterion abstained unconditionally
-            // until then, on the grounds that funding and hiring "aren't in any column we hold" —
-            // Signals has held them since S10, and `LeadSignalSource` is how we ask without this
-            // module depending on that one. A team without Signals gets an empty list, which is
-            // Unknown, which is the behaviour this replaced.
+            // What the lead has been seen *doing* (Q3). A team without Signals gets an empty list,
+            // which is Unknown.
             CriterionType::BuyingSignal => $this->signals->labelsFor($lead),
             // Company size is handled by assessCompanySize() and exclusions by the caller. Listed
             // so the match stays exhaustive.

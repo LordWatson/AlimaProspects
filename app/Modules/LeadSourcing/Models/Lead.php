@@ -53,6 +53,8 @@ use Illuminate\Support\Str;
  * @property list<string>|null $technologies
  * @property Carbon|null $incorporated_on
  * @property string|null $website
+ * @property string|null $phone the company's own published switchboard number, when a provider gave
+ *                              one at discovery (Google Places) — company data, not a named person's
  * @property string|null $locality
  * @property string|null $region
  * @property string|null $postal_code
@@ -103,6 +105,7 @@ class Lead extends Model
         'technologies',
         'incorporated_on',
         'website',
+        'phone',
         'locality',
         'region',
         'postal_code',

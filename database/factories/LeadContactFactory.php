@@ -36,6 +36,7 @@ class LeadContactFactory extends Factory
             'email_confidence' => EmailVerificationStatus::MxFound->confidence(),
             'is_role_based' => false,
             'is_personal' => true,
+            'is_inferred' => false,
             'source' => SourcedValue::METHOD_AI_EXTRACT,
             'source_url' => 'https://'.fake()->domainName(),
             'method' => SourcedValue::METHOD_AI_EXTRACT,

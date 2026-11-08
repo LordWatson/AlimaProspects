@@ -30,6 +30,7 @@ final class DeterministicScore extends Data
         public ?string $excludedBy = null,
         public int $matchedWeight = 0,
         public int $assessedWeight = 0,
+        public int $deferredWeight = 0,
     ) {}
 
     /**
@@ -39,6 +40,30 @@ final class DeterministicScore extends Data
     public function hasSignals(): bool
     {
         return $this->assessedWeight > 0;
+    }
+
+    /**
+     * The rules' **authority** over the data the lead actually held (0.0–1.0): of the weight the
+     * rules *could* have judged (assessed + deferred), the share they settled confidently —
+     * `assessedWeight / (assessedWeight + deferredWeight)`. The blend scales the deterministic half
+     * by this, so when the rules settled a heavy criterion confidently but punted a light one to the
+     * AI they keep most of their say, and when they confidently settled only a light criterion while
+     * deferring the heavy one (industry phrased in an unknown vocabulary) their say shrinks and the
+     * AI half — which judged the deferral — carries the score.
+     *
+     * Deliberately ignores {@see CriterionMatch::Unknown} weight: missing data is a blind spot the
+     * *AI half shares*, so it is no reason to shift authority between them. 1.0 when nothing was
+     * deferred.
+     */
+    public function coverage(): float
+    {
+        $judgeable = $this->assessedWeight + $this->deferredWeight;
+
+        if ($judgeable <= 0) {
+            return 0.0;
+        }
+
+        return min(1.0, $this->assessedWeight / $judgeable);
     }
 
     /**

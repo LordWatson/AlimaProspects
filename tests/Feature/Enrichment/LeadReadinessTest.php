@@ -110,6 +110,25 @@ it('counts an unroutable email as a contact but not a routable one', function ()
     expect($routable)->toBeGreaterThan($not);
 });
 
+it('earns nothing from an inferred contact — a guess is not a reachable contact', function (): void {
+    $attributes = ['website' => 'https://acme.test'];
+    $realContact = [
+        'email' => 'jane@acme.test',
+        'email_verification_status' => EmailVerificationStatus::MxFound,
+        'is_role_based' => false,
+        'is_inferred' => false,
+    ];
+
+    $withReal = readinessOf($attributes, [$realContact]);
+    $withInferred = readinessOf($attributes, [[...$realContact, 'is_inferred' => true]]);
+    $withNone = readinessOf($attributes);
+
+    // The inferred guess earns nothing the real contact earns, so the lead scores exactly as if it
+    // had no contact at all — and strictly below the lead whose contact we actually read off a page.
+    expect($withInferred)->toBe($withNone)
+        ->and($withInferred)->toBeLessThan($withReal);
+});
+
 it('accepts an extracted operating location when there is no postal address', function (): void {
     // Q1's `locations` is the only location a web-sourced lead ever has, so without them such a
     // lead's location factor could never be earned.

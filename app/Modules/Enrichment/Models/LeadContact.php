@@ -31,6 +31,9 @@ use Illuminate\Support\Carbon;
  * @property int|null $email_confidence
  * @property bool $is_role_based
  * @property bool $is_personal
+ * @property bool $is_inferred whether the email was inferred from the domain + a named person rather
+ *                             than read off a page — a guess (no SMTP probe, ADR 0008), so it counts
+ *                             toward nothing in a lead's readiness
  * @property string $source
  * @property string|null $source_url
  * @property string|null $method
@@ -59,6 +62,7 @@ class LeadContact extends Model
         'email_confidence',
         'is_role_based',
         'is_personal',
+        'is_inferred',
         'source',
         'source_url',
         'method',
@@ -85,6 +89,7 @@ class LeadContact extends Model
             'email_confidence' => 'integer',
             'is_role_based' => 'boolean',
             'is_personal' => 'boolean',
+            'is_inferred' => 'boolean',
             'collected_at' => 'datetime',
         ];
     }

@@ -79,4 +79,44 @@ return [
         'squarespace.com', 'godaddysites.com', 'wordpress.com', 'blogspot.com', 'weebly.com',
     ],
 
+    // --- Website resolution: unlock enrichment for website-less leads --------------------------------
+    //
+    // Enrichment hangs entirely off a website — no site, no fact extraction, no contacts — yet a
+    // Companies House record never carries one and a Google Places listing often doesn't. Before
+    // giving up, enrichment asks the web-search provider (Serper, ADR 0010) for the company's likely
+    // homepage. A resolved site is NEVER trusted on the search alone: the page is fetched and the
+    // company it describes must match the lead's name (distinctive-token overlap at or above
+    // `resolve_match_threshold`), or the site is discarded rather than pinned to the wrong company —
+    // the direction S10 warned to fail in. Switch the whole step off with `resolve_websites=false`.
+    'resolve_websites' => (bool) env('ENRICHMENT_RESOLVE_WEBSITES', true),
+    'resolve_match_threshold' => (float) env('ENRICHMENT_RESOLVE_MATCH_THRESHOLD', 0.5),
+
+    // --- Multi-page fetch: find the contacts that live off the homepage -----------------------------
+    //
+    // A homepage rarely states an email; a contact/about page usually does. Enrichment gathers text
+    // from the homepage plus these conventional paths (relative to the site root) and extracts over
+    // the combined, capped text in ONE AI call — the fetches are free, the model call is not. Pages
+    // are tried in order up to `max_pages_per_lead` (the homepage counts as one), and the combined
+    // text is clamped to `max_combined_chars` so the prompt can't bloat.
+    'contact_paths' => [
+        '/contact', '/contact-us', '/contacts', '/about', '/about-us', '/team',
+    ],
+    'max_pages_per_lead' => (int) env('ENRICHMENT_MAX_PAGES', 4),
+    'max_combined_chars' => (int) env('ENRICHMENT_MAX_COMBINED_CHARS', 18_000),
+
+    // --- Inferred contacts: a name on the page, but no email ----------------------------------------
+    //
+    // When a page names people but states no routable email, enrichment infers ONE candidate address
+    // per person from the company domain using the pattern below (`{first}`, `{last}`, `{f}`, `{l}`
+    // tokens), keeps only those whose domain accepts mail (MX), and stores them flagged `is_inferred`
+    // with a confidence capped at `inferred_email_confidence`. An inferred address is a GUESS — the
+    // MVP has no SMTP probe (ADR 0008), so it cannot be told apart from any other pattern on the same
+    // domain — so it counts toward nothing in a lead's readiness and is flagged personal for
+    // compliance (whether it may be contacted is still OutreachGuard's call). Off with
+    // `infer_emails=false` or a zero `max_inferred_contacts`.
+    'infer_emails' => (bool) env('ENRICHMENT_INFER_EMAILS', true),
+    'inferred_email_pattern' => (string) env('ENRICHMENT_INFERRED_EMAIL_PATTERN', '{first}.{last}'),
+    'max_inferred_contacts' => (int) env('ENRICHMENT_MAX_INFERRED_CONTACTS', 3),
+    'inferred_email_confidence' => (int) env('ENRICHMENT_INFERRED_EMAIL_CONFIDENCE', 25),
+
 ];

@@ -113,15 +113,20 @@ function cannedResponses(): array
 it('seeds every prompt from docs/ai-prompts.md', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
 
-    // Fourteen **rows** for eleven keys. Three have a v2, and all three v1 rows stay seeded so a
-    // report, message or signal that recorded `prompt_version: 1` can still be traced back to what
-    // produced it; the registry resolves the highest active version.
+    // Seventeen **rows** for eleven keys. Six have a v2, and every v1 row stays seeded so a report,
+    // message, signal, score or draft that recorded `prompt_version: 1` can still be traced back to
+    // what produced it; the registry resolves the highest active version.
     //
     // - `outreach.draft_message` v2 (Phase 11)
     // - `business_intel.background_check` v2 (Phase 7c — split the team's own industry from its
     //   customers')
     // - `signals.extract_event` v2 (Phase S7 — signal types became rows, so the schema's
     //   `event_type` enum had to go; ADR 0018 section 7)
+    // - `lead.enrich_extract` v2 (cheap tier — adds the people array for inferred contacts)
+    // - `scoring.qualitative_fit` v2 (reads the criteria the deterministic rules deferred, so the
+    //   model judges the vocabulary gaps rather than re-deriving the whole fit)
+    // - `icp.compose_profile` v2 (the profile is required when viable — v1 could return
+    //   `{"is_viable": true}` with no profile — and need-based/horizontal customers are handled)
     //
     // `signals.compose_definition` (S9) is the ninth key: the builder's drafting prompt, and the
     // only one on the reasoning tier that writes **configuration** rather than prose.
@@ -133,7 +138,7 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
     // than prose, and the one whose job is an inversion — the brief describes the seller as much as
     // the buyer, and returning the seller's own trade is the failure two other prompts here already
     // learned about.
-    expect(AiPromptTemplate::query()->count())->toBe(14)
+    expect(AiPromptTemplate::query()->count())->toBe(17)
         ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.compose_profile',
@@ -154,7 +159,7 @@ it('resolves the active version of a seeded prompt', function (): void {
 
     $template = app(PromptRegistry::class)->resolve('scoring.qualitative_fit');
 
-    expect($template->version)->toBe(1)
+    expect($template->version)->toBe(2)
         ->and($template->hasSchema())->toBeTrue();
 });
 
@@ -179,5 +184,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(14);
+    expect(AiPromptTemplate::query()->count())->toBe(17);
 });

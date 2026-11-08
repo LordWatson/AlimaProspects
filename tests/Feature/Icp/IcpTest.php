@@ -188,6 +188,9 @@ it('renders the ICP index with the team ICPs', function (): void {
             ->where('icps.0.name', 'UK growth agencies')
             ->where('icps.0.is_active', true)
             ->has('icps.0.criteria', 3)
+            // The calibration preview for the active profile — empty here (nothing scored yet).
+            ->where('calibration.scored_leads', 0)
+            ->has('calibration.grades')
             ->where('can.manage', true));
 });
 

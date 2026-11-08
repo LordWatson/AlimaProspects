@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
  */
 final class GooglePlacesProvider extends AbstractHttpLeadSourceProvider
 {
-    private const string FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.websiteUri,places.googleMapsUri,places.types,places.addressComponents';
+    private const string FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.websiteUri,places.googleMapsUri,places.types,places.addressComponents,places.internationalPhoneNumber,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.businessStatus';
 
     public function source(): LeadSource
     {
@@ -137,6 +137,8 @@ final class GooglePlacesProvider extends AbstractHttpLeadSourceProvider
             companyType: $this->firstType($place),
             incorporatedOn: null,
             website: is_string($place['websiteUri'] ?? null) ? $place['websiteUri'] : null,
+            // Prefer the international format (it carries the country code) over the national one.
+            phone: $this->phone($place),
             locality: $this->component($components, 'locality') ?? $this->component($components, 'postal_town'),
             region: $this->component($components, 'administrative_area_level_1'),
             postalCode: $this->component($components, 'postal_code'),
@@ -148,6 +150,25 @@ final class GooglePlacesProvider extends AbstractHttpLeadSourceProvider
             // The place id dedupes website-less places that a shared name would otherwise merge.
             externalId: $placeId,
         );
+    }
+
+    /**
+     * The company's published phone number — international format first (it carries the country
+     * code), falling back to the national one.
+     *
+     * @param  array<array-key, mixed>  $place
+     */
+    private function phone(array $place): ?string
+    {
+        foreach (['internationalPhoneNumber', 'nationalPhoneNumber'] as $field) {
+            $value = $place[$field] ?? null;
+
+            if (is_string($value) && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+
+        return null;
     }
 
     /**

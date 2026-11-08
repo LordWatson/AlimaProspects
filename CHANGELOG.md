@@ -5,6 +5,81 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — 2026-11-08 — Enrichment stored malformed field values
+
+A real lead came back with `employee_range` = `11-50','locality':'London'}]}<br>Skip<br>` — the
+extraction model leaked a fragment of its own JSON structure and some page markup into the field,
+and nothing sanitised it, so it rendered as garbage on the screen (and the scorer reads this field
+as a numeric band). `ExtractedFacts` now strips HTML and decodes entities on **every** extracted
+text field, and normalises `employee_range` to a size band: a value carrying structural junk
+(quotes, braces, brackets, tags) is reduced to its leading size figure (`11-50`) or dropped. A data
+cleanup re-runs the stored values through the same normaliser.
+
+### Fixed — 2026-11-08 — ICP composer refused valid briefs
+
+"Draft my profile" came back with "Alima drafted something it could not turn into a profile" for
+perfectly good descriptions like _"a design and marketing agency looking for small businesses and
+startups that need websites, branding, or social media content"_. The `icp.compose_profile` prompt's
+schema made the `profile` object **optional**, so the model satisfied the single required field and
+returned `{"is_viable": true}` with no profile at all — which then failed the save-path validation.
+Prompt **v2** makes `profile` required (still nullable, so a genuine refusal is just
+`is_viable: false` + a reason), and teaches the model to handle **need-based / horizontal** customers
+— an agency whose buyers are defined by a need rather than an industry now drafts from company size,
+geography and decision-maker titles instead of stalling. A viable-but-empty draft now refuses with a
+nudge rather than filling the editor with nothing. v1 stays seeded for traceability.
+
+### Changed — 2026-11-08 — Scoring: match by meaning, defer when unsure, and show the team why
+
+Leads kept coming back C/D even after lead discovery improved. Root cause: the deterministic scorer
+compared heterogeneous vocabularies with a literal `str_contains`, so a genuinely-good lead missed on
+its heaviest criterion (usually industry) the moment enrichment filled an industry in — better
+enrichment made scores _worse_, because it flipped free-pass `Unknown`s into hard-zero `NotMatched`es.
+
+- **Defer, don't fail.** A new `CriterionMatch::Weak` is for data the lead _has_ but the rules can't
+  confirm in a different vocabulary. It abstains from the rule score (like `Unknown`) and is **handed
+  to the AI half** to adjudicate — `scoring.qualitative_fit` **v2** takes a `{{deferred}}` block of
+  exactly those gaps. A confident `NotMatched` is kept for a non-overlapping size band, a wrong
+  location, a different _known_ sector, a seniority below the floor.
+- **Match by meaning.** `SectorTaxonomy` places an industry on a canonical sector, so "SaaS" and
+  "cloud software" match and "logistics" still doesn't; `SeniorityLadder` ranks titles, so "Director
+  or above" accepts a CEO. Both live in `config/scoring.php` and a team can grow them.
+- **The blend follows the evidence.** The deterministic half is now weighted by its **coverage**
+  (`assessed / (assessed + deferred)`), so when the rules punt the heavy question to the AI half, the
+  AI half carries the score instead of a light matched criterion pinning it high.
+- **A calibration preview.** The ICP screen now shows how the active profile is actually grading the
+  team's leads — the grade mix and each criterion's match rate — so a team can see which criterion is
+  sending leads to C/D and tune it. Built over stored scores via a new `IcpCalibrationSource` seam
+  (ICP owns it, Scoring fills it); read-only and AI-free.
+
+See `docs/modules/scoring-matching.md` and `docs/modules/icp.md`.
+
+### Added — 2026-11-07 — Enrichment: reach the leads that used to come back empty
+
+Discovery returns a lot of thin records — a Companies House lead has a registered name and a company
+number but no website and no contacts, and enrichment hung entirely off a website, so those leads
+enriched to nothing. Four config-gated additions widen what a lead actually yields:
+
+- **Website resolution.** When a lead has no website, `EnrichLeadAction` asks Lead Sourcing's new
+  `CompanyWebsiteResolver` (Serper, ADR 0010) for a candidate homepage, then **confirms** it is the
+  company's own site — the fetched page's name and the domain must overlap the lead's distinctive
+  name tokens — before trusting it. A search returns competitors and directories for the words that
+  name a business, so an unconfirmed site is **discarded, never pinned** (the direction S10 warned to
+  fail in). This alone unlocks the whole pipeline for every registry lead. Best-effort and never
+  fatal; off with `ENRICHMENT_RESOLVE_WEBSITES=false`.
+- **Multi-page gather.** `WebsiteTextGatherer` now reads the homepage **and** the conventional
+  contact/about pages — where emails actually sit — and extracts over the combined, capped text in
+  **one** AI call (the fetches are free; the model call is not).
+- **The Places phone.** Google Places' field mask now requests the switchboard number (and rating /
+  status), stored on `leads.phone` at discovery and used as a contact when the page states none.
+- **Inferred contacts.** When a page names people (`lead.enrich_extract` **v2** adds `people`) but
+  states no routable email, `EmailPatternInferrer` guesses one address per person from the company
+  domain, keeps the ones the domain can route to, and stores them flagged `is_inferred` with a capped
+  confidence. An inferred address is a **guess** — the MVP has no SMTP probe (ADR 0008) — so it earns
+  **nothing** toward a lead's readiness and is flagged personal; whether it may be approached stays
+  `OutreachGuard`'s call. Off with `ENRICHMENT_INFER_EMAILS=false`.
+
+See `docs/modules/enrichment-data-quality.md` and `docs/modules/lead-sourcing.md`.
+
 ### Added — 2026-11-06 — ICP: draft a whole profile from a sentence
 
 The ideal-customer editor started from a blank page: a member had to know what each criterion type
