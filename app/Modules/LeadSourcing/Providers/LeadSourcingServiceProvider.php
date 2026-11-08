@@ -6,12 +6,17 @@ namespace App\Modules\LeadSourcing\Providers;
 
 use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\Core\Support\CircuitBreaker;
+use App\Modules\LeadSourcing\Console\BackfillEvidenceCommand;
+use App\Modules\LeadSourcing\Console\EvidenceSourceQualityCommand;
 use App\Modules\LeadSourcing\Contracts\CompanyWebsiteResolver;
 use App\Modules\LeadSourcing\Contracts\LeadInterestGate;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Models\LeadEvidence;
+use App\Modules\LeadSourcing\Observers\LeadProvenanceObserver;
 use App\Modules\LeadSourcing\Policies\DiscoveryRunPolicy;
+use App\Modules\LeadSourcing\Policies\LeadEvidencePolicy;
 use App\Modules\LeadSourcing\Policies\LeadPolicy;
 use App\Modules\LeadSourcing\Services\AiLeadSourceProvider;
 use App\Modules\LeadSourcing\Services\AllowAllLeadInterestGate;
@@ -34,6 +39,7 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
     protected array $policies = [
         DiscoveryRun::class => DiscoveryRunPolicy::class,
         Lead::class => LeadPolicy::class,
+        LeadEvidence::class => LeadEvidencePolicy::class,
     ];
 
     public function register(): void
@@ -80,5 +86,22 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
         $this->app->bind(DiscoveryLimitGuard::class, fn ($app): DiscoveryLimitGuard => new DiscoveryLimitGuard(
             $app->make(LeadQuotaSource::class),
         ));
+    }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        // Every lead records where it came from as its first item of evidence (PL1). Hung off the
+        // row rather than called from each creating Action, so the "every lead has evidence"
+        // guarantee survives the next path that creates one — see the observer's own note.
+        Lead::observe(LeadProvenanceObserver::class);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                BackfillEvidenceCommand::class,
+                EvidenceSourceQualityCommand::class,
+            ]);
+        }
     }
 }

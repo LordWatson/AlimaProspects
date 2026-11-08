@@ -28,6 +28,7 @@ use Laravel\Cashier\Billable;
  * @property string $timezone
  * @property string $locale
  * @property string $market
+ * @property int|null $min_lead_confidence the team's own lead-confidence floor (PL1); null = config
  * @property string|null $stripe_id
  * @property string|null $pm_type
  * @property string|null $pm_last_four
@@ -54,6 +55,10 @@ class Team extends Model
         'timezone',
         'locale',
         'market',
+        // The team's own line for "too thin to show me" (PL1), 30-90. **Null means the config
+        // default** rather than "no threshold", so moving `evidence.default_min_confidence` moves
+        // every team that never expressed a preference - which is what a default is for.
+        'min_lead_confidence',
     ];
 
     /**
@@ -104,6 +109,7 @@ class Team extends Model
             // (card-less) trial — a string would compare as a string and silently never expire.
             'trial_ends_at' => 'datetime',
             'suspended_at' => 'datetime',
+            'min_lead_confidence' => 'integer',
         ];
     }
 

@@ -6,10 +6,13 @@ namespace App\Modules\LeadsWorkspace\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Modules\Core\Enums\PrelaunchFeature;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Http\Resources\LeadResource;
+use App\Modules\LeadSourcing\Models\LeadEvidence;
 use App\Modules\LeadSourcing\Policies\LeadPolicy;
+use App\Modules\LeadSourcing\Services\LeadConfidence;
 use App\Modules\LeadsWorkspace\Actions\CreateLeadAction;
 use App\Modules\LeadsWorkspace\Actions\EnsureDefaultPipelineStagesAction;
 use App\Modules\LeadsWorkspace\Actions\FindLeadAction;
@@ -29,6 +32,7 @@ use App\Modules\LeadsWorkspace\Http\Resources\SavedViewResource;
 use App\Modules\LeadsWorkspace\Models\LeadTag;
 use App\Modules\LeadsWorkspace\Models\SavedView;
 use App\Modules\LeadsWorkspace\Policies\SavedViewPolicy;
+use App\Modules\LeadsWorkspace\Services\LeadQueryBuilder;
 use App\Modules\LeadsWorkspace\Support\LeadFilterOptions;
 use App\Modules\Scoring\Http\Resources\LeadScoreResource;
 use App\Modules\Scoring\Models\LeadScore;
@@ -56,6 +60,8 @@ final class LeadController extends Controller
         ListLeadsAction $list,
         ListSavedViewsAction $listViews,
         EnsureDefaultPipelineStagesAction $ensureStages,
+        LeadQueryBuilder $leadQuery,
+        LeadConfidence $confidence,
     ): Response {
         $user = $this->user($request);
         $team = $this->team($request);
@@ -70,6 +76,7 @@ final class LeadController extends Controller
         $stages = $ensureStages->handle($team);
 
         $leads = $list->handle($team, $filters, $request->perPage());
+        $whyNow = PrelaunchFeature::WhyNow->activeFor($team);
 
         return Inertia::render('leads/Index', [
             // The whole paginator, so the screen gets `links` and `meta` for its pager rather than
@@ -90,6 +97,14 @@ final class LeadController extends Controller
                 'export' => $user->can('export', $this->transientLead($team)),
             ],
             'maxBulk' => (int) config('leads-workspace.max_bulk_leads', 500),
+            // --- Why now (PL1) ---
+            'whyNow' => $whyNow,
+            // The N in "Hidden: N low-confidence leads". Asked of the query builder so it counts
+            // exactly what the toggle would reveal: these filters, that switch flipped. Skipped
+            // entirely when the list is not hiding anything, so a team without the flag pays
+            // nothing for a question that has no answer.
+            'hiddenCount' => $whyNow ? $leadQuery->suppressedCount($team, $filters) : 0,
+            'minConfidence' => $confidence->thresholdFor($team),
         ]);
     }
 
@@ -160,6 +175,8 @@ final class LeadController extends Controller
 
         return Inertia::render('leads/Show', [
             'lead' => LeadResource::make($model)->resolve($request),
+            // --- Why now (PL1) ---
+            'whyNow' => PrelaunchFeature::WhyNow->activeFor($team),
             // The badge and the summary panel; the full breakdown stays on the score screen.
             'score' => $score === null ? null : LeadScoreResource::make($score)->resolve($request),
             'activities' => LeadActivityResource::collection($model->activities)->resolve($request),
@@ -185,8 +202,24 @@ final class LeadController extends Controller
             ],
             'can' => [
                 'work' => $user->can('work', $model),
+                // Flagging a reason lowers the lead's confidence for the whole team, so it is work
+                // rather than reading — the same line the policy draws for everything else a
+                // member does *to* a lead.
+                'flagEvidence' => $user->can('flag', $this->transientEvidence($team)),
             ],
         ]);
+    }
+
+    /**
+     * An unsaved evidence row belonging to the team, so the policy can be asked about the
+     * *ability* without a row to ask it about — the same trick `transientLead()` uses above.
+     */
+    private function transientEvidence(Team $team): LeadEvidence
+    {
+        $evidence = (new LeadEvidence)->forceFill(['team_id' => $team->getKey()]);
+        $evidence->setRelation('team', $team);
+
+        return $evidence;
     }
 
     /**

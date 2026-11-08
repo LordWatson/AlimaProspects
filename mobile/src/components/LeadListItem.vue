@@ -15,11 +15,22 @@ import { t } from '@/lib/i18n';
  *
  * `outreach_restriction` earns its place in the row because it changes what the member is allowed
  * to do next, and finding that out only after drafting a message is the wrong order (ADR 0007).
+ *
+ * **Why now (PL1)** earns its place for the same reason: a member standing outside a building is
+ * deciding whether to go in, and the reason is the whole of that decision. One line, Alima's
+ * sentence if it has written one and the strongest reason's own headline otherwise, clamped to two
+ * lines. No confidence pill here - the figure is a statement about our data and a phone row has no
+ * space to say so without it reading as a verdict on the company; it is on the detail screen,
+ * in words.
  */
 const props = defineProps<{ lead: Lead }>();
 
 const place = computed(() =>
     [props.lead.locality, props.lead.country].filter(Boolean).join(', '),
+);
+
+const whyNow = computed(
+    () => props.lead.why_now_summary ?? props.lead.top_evidence?.title ?? null,
 );
 </script>
 
@@ -44,6 +55,7 @@ const place = computed(() =>
                 <span v-if="place && lead.industry" aria-hidden="true">·</span>
                 <span v-if="lead.industry">{{ lead.industry }}</span>
             </p>
+            <p v-if="whyNow" class="row__why" dir="auto">{{ whyNow }}</p>
             <p v-if="lead.outreach_restriction" class="row__flag">
                 {{ t(lead.outreach_restriction.label) }}
             </p>
@@ -71,6 +83,19 @@ const place = computed(() =>
     flex-wrap: wrap;
     gap: 4px;
     font-size: 0.8125rem;
+    color: var(--alima-text-muted);
+}
+
+/* Why this lead is worth a call now. Muted and clamped: it is a prompt to open the lead, not
+   the panel. No status colour - a reason is not a state. */
+.row__why {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 2px;
+    font-size: 0.8125rem;
+    line-height: 1.35;
     color: var(--alima-text-muted);
 }
 

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useI18n } from '@/composables/useI18n';
 
 type RoleOption = { value: string; label: string };
 type Member = {
@@ -36,6 +37,16 @@ type TeamData = {
     timezone: string;
     locale: string;
     market: string;
+    /** The team's own lead-confidence floor (PL1). Null means the platform default. */
+    min_lead_confidence: number | null;
+};
+/** The why-now feature's state and bounds (PL1). */
+type ConfidenceSettings = {
+    enabled: boolean;
+    /** What "not set" currently means, so the hint can say it rather than showing a blank. */
+    default: number;
+    min: number;
+    max: number;
 };
 type Can = {
     updateTeam: boolean;
@@ -48,6 +59,7 @@ const props = defineProps<{
     members: Member[];
     invitations: Invitation[];
     roleOptions: RoleOption[];
+    confidence: ConfidenceSettings;
     can: Can;
 }>();
 
@@ -56,6 +68,11 @@ defineOptions({
         breadcrumbs: [{ title: 'Team settings', href: '/settings/team' }],
     },
 });
+
+// Only the PL1 copy below goes through `t()`. The rest of this screen predates the convention and
+// is bare English; translating it wholesale is not this phase's work, but shipping *new* English
+// onto an EN/AR product would be (ADR 0007).
+const { t } = useI18n();
 
 const localeOptions = [
     { value: 'en', label: 'English' },
@@ -176,6 +193,46 @@ function revokeInvitation(invitation: Invitation): void {
                         </select>
                         <InputError :message="errors.market" />
                     </div>
+                </div>
+
+                <!-- Why now (PL1). A number rather than a slider on purpose: the member is
+                     choosing a threshold they will later have to recognise in a sentence
+                     ("12 hidden, under 50"), and a slider hides the figure that sentence quotes.
+                     Shown only to a team with the feature, because a control over something they
+                     cannot see is a control that does nothing. -->
+                <div v-if="confidence.enabled" class="grid gap-2">
+                    <Label for="min_lead_confidence">{{
+                        t('Hide leads below this confidence')
+                    }}</Label>
+                    <Input
+                        id="min_lead_confidence"
+                        name="min_lead_confidence"
+                        type="number"
+                        inputmode="numeric"
+                        :min="confidence.min"
+                        :max="confidence.max"
+                        :default-value="team.min_lead_confidence ?? ''"
+                        :disabled="!can.updateTeam"
+                        :placeholder="String(confidence.default)"
+                        class="max-w-32"
+                        aria-describedby="min-lead-confidence-hint"
+                    />
+                    <p
+                        id="min-lead-confidence-hint"
+                        class="text-xs text-muted-foreground"
+                    >
+                        {{
+                            t(
+                                'Confidence is how much Alima knows about a lead, not how good the company is. Leads below your line are still in your list — the leads screen says how many and offers to show them. Leave it blank for Alima’s default (:default), or pick anything from :min to :max.',
+                                {
+                                    default: confidence.default,
+                                    min: confidence.min,
+                                    max: confidence.max,
+                                },
+                            )
+                        }}
+                    </p>
+                    <InputError :message="errors.min_lead_confidence" />
                 </div>
 
                 <div class="grid gap-2">

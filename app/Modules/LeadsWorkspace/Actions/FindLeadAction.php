@@ -50,6 +50,12 @@ final class FindLeadAction
                 'scores.team',
                 'scores.icp:id,name,is_active',
                 'scores.feedback' => fn ($query) => $query->where('user_id', $forUserId),
+                // The why-now panel (PL1): the reasons, and the viewer's own verdict on each. The
+                // constraint is named on the relation rather than filtered afterwards because an
+                // eager load is a second query that re-applies the scope — the same trap the admin
+                // signal-library queue fell into (ADR 0018 §9).
+                'evidence',
+                'evidence.feedback' => fn ($query) => $query->where('user_id', $forUserId),
                 'activities' => fn ($query) => $query
                     ->orderByDesc('occurred_at')
                     ->orderByDesc('id')

@@ -617,6 +617,193 @@
                 }
             }
         },
+        "/leads/{lead}/evidence": {
+            "get": {
+                "operationId": "v1.lead-sourcing.evidence.index",
+                "tags": [
+                    "Evidence"
+                ],
+                "parameters": [
+                    {
+                        "name": "lead",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `LeadEvidenceResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/LeadEvidenceResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/{lead}/evidence/{evidence}/feedback": {
+            "post": {
+                "operationId": "v1.lead-sourcing.evidence.feedback",
+                "tags": [
+                    "Evidence"
+                ],
+                "parameters": [
+                    {
+                        "name": "lead",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "evidence",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SubmitEvidenceFeedbackRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`LeadEvidenceResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/LeadEvidenceResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/icps": {
             "get": {
                 "operationId": "v1.icps.index",
@@ -1364,30 +1551,45 @@
                         "name": "grades[]",
                         "in": "query",
                         "schema": {
-                            "type": "array",
+                            "type": [
+                                "array",
+                                "null"
+                            ],
                             "items": {
                                 "$ref": "#/components/schemas/ScoreGrade"
-                            }
+                            },
+                            "maxItems": 4,
+                            "uniqueItems": true
                         }
                     },
                     {
                         "name": "sources[]",
                         "in": "query",
                         "schema": {
-                            "type": "array",
+                            "type": [
+                                "array",
+                                "null"
+                            ],
                             "items": {
                                 "$ref": "#/components/schemas/LeadSource"
-                            }
+                            },
+                            "maxItems": 7,
+                            "uniqueItems": true
                         }
                     },
                     {
                         "name": "enrichment_statuses[]",
                         "in": "query",
                         "schema": {
-                            "type": "array",
+                            "type": [
+                                "array",
+                                "null"
+                            ],
                             "items": {
                                 "$ref": "#/components/schemas/EnrichmentStatus"
-                            }
+                            },
+                            "maxItems": 4,
+                            "uniqueItems": true
                         }
                     },
                     {
@@ -1405,37 +1607,93 @@
                         "name": "stages[]",
                         "in": "query",
                         "schema": {
-                            "type": "array",
+                            "type": [
+                                "array",
+                                "null"
+                            ],
                             "items": {
                                 "type": "integer",
                                 "minimum": 1
-                            }
+                            },
+                            "maxItems": 20,
+                            "uniqueItems": true
                         }
                     },
                     {
                         "name": "tags[]",
                         "in": "query",
                         "schema": {
-                            "type": "array",
+                            "type": [
+                                "array",
+                                "null"
+                            ],
                             "items": {
                                 "type": "integer",
                                 "minimum": 1
-                            }
+                            },
+                            "maxItems": 20,
+                            "uniqueItems": true
                         }
                     },
                     {
                         "name": "assignees[]",
                         "in": "query",
                         "schema": {
-                            "type": "array",
+                            "type": [
+                                "array",
+                                "null"
+                            ],
                             "items": {
                                 "type": "integer",
                                 "minimum": 1
-                            }
+                            },
+                            "maxItems": 20,
+                            "uniqueItems": true
                         }
                     },
                     {
                         "name": "unassigned",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "boolean",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "evidence_sources[]",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "array",
+                                "null"
+                            ],
+                            "items": {
+                                "type": "string",
+                                "maxLength": 32
+                            },
+                            "maxItems": 20,
+                            "uniqueItems": true
+                        }
+                    },
+                    {
+                        "name": "evidence_kinds[]",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "array",
+                                "null"
+                            ],
+                            "items": {
+                                "$ref": "#/components/schemas/EvidenceKind"
+                            },
+                            "maxItems": 5,
+                            "uniqueItems": true
+                        }
+                    },
+                    {
+                        "name": "include_low_confidence",
                         "in": "query",
                         "schema": {
                             "type": [
@@ -4865,24 +5123,24 @@
                         "name": "event_keys[]",
                         "in": "query",
                         "schema": {
-                            "type": "array",
+                            "type": [
+                                "array",
+                                "null"
+                            ],
                             "items": {
                                 "type": "string",
                                 "maxLength": 32
-                            }
+                            },
+                            "maxItems": 25
                         }
                     },
                     {
                         "name": "source_kinds[]",
                         "in": "query",
                         "schema": {
-                            "type": "array",
-                            "enum": [
-                                "news",
-                                "web_search",
-                                "companies_house",
-                                "feed",
-                                "webhook"
+                            "type": [
+                                "array",
+                                "null"
                             ],
                             "items": {
                                 "type": "string",
@@ -4893,7 +5151,9 @@
                                     "feed",
                                     "webhook"
                                 ]
-                            }
+                            },
+                            "maxItems": 5,
+                            "uniqueItems": true
                         }
                     },
                     {
@@ -10152,6 +10412,29 @@
                 ],
                 "title": "EnrichmentStatus"
             },
+            "EvidenceKind": {
+                "type": "string",
+                "description": "What sort of fact an item of {@see LeadEvidence} is (PL1). **This is an enum and the row's `source` beside it is not**, which looks inconsistent until you apply ADR 0018 \u00a71's test \u2014 *does the application branch on the value?* The kind decides the half-life its decay is measured against, and only {@see self::Signal} counts towards `leads.timing_score`, so {@see LeadConfidence} branches on it in two places. Nothing branches on *which provider* said a thing: the weight is a lookup in `config/evidence.php` and an unknown key is legal. A source is therefore data, and a kind is a type.  Five cases, and the distinction that matters most is the last two: {@see self::RegisterRecord} is something a company filed, and {@see self::AiInference} is something a model thought. Both are useful; only one of them may be repeated to a prospect.\n| |\n|---|\n| `signal` <br/> A trigger event \u2014 a filing, an announcement, a news story. The only kind that times. |\n| `firmographic` <br/> A fact about the company as it stands: sector, size, location, technologies. |\n| `web_research` <br/> Something read off the company's own site or the open web. |\n| `ai_inference` <br/> The model's own reading, rather than a document. Always the weakest reason on a lead. |\n| `register_record` <br/> A statutory or official record: Companies House, a gazette notice, a register entry. |",
+                "enum": [
+                    "signal",
+                    "firmographic",
+                    "web_research",
+                    "ai_inference",
+                    "register_record"
+                ],
+                "title": "EvidenceKind"
+            },
+            "EvidenceVerdict": {
+                "type": "string",
+                "description": "A member's verdict on one item of evidence (PL1) \u2014 the reason-level sibling of {@see FeedbackRating}, which does the same job for a score. Four cases and only one of them changes anything today: {@see self::Wrong} says *this did not happen, or not to this company*, and an item flagged wrong contributes nothing to the lead's confidence from that moment. The other three are kept and reported, and deliberately **do not** move a number: \"outdated\" is what decay already measures, \"irrelevant\" is a statement about this team's interests rather than about the fact, and \"useful\" is the signal the post-launch outcome loop will learn from.  That asymmetry is the point. A system that let four buttons each nudge a weight would be learning from four different questions at once, and nobody could say afterwards what a confidence of 61 had been told.\n| |\n|---|\n| `wrong` <br/> Didn't happen, or not to this company. Zeroes the item's contribution. |\n| `outdated` <br/> It happened, but it's old news. Recorded; decay is what already answers this. |\n| `irrelevant` <br/> True, and not a reason this team cares about. Recorded, never applied to the fact. |\n| `useful` <br/> This is why I picked up the phone. The one the outcome loop will want. |",
+                "enum": [
+                    "wrong",
+                    "outdated",
+                    "irrelevant",
+                    "useful"
+                ],
+                "title": "EvidenceVerdict"
+            },
             "FeedbackRating": {
                 "type": "string",
                 "description": "A member's verdict on a {@see ScoreFeedback} row: was this grade right or wrong? Deliberately binary for the MVP \u2014 it is a training signal for weight/prompt tuning, not a rating scale. Values are stable storage keys; {@see self::label()} is the display name.\n",
@@ -10554,6 +10837,116 @@
                 ],
                 "title": "LeadDetailResource"
             },
+            "LeadEvidenceResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "signal",
+                            "firmographic",
+                            "web_research",
+                            "ai_inference",
+                            "register_record"
+                        ]
+                    },
+                    "kind_label": {
+                        "type": "string",
+                        "enum": [
+                            "Trigger event",
+                            "Company profile",
+                            "Web research",
+                            "AI inference",
+                            "Official record"
+                        ]
+                    },
+                    "source": {
+                        "type": "string"
+                    },
+                    "source_label": {
+                        "type": "string",
+                        "description": "Falls back to the source key so a row always has something to attribute itself to."
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "summary": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "source_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "observed_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "When it happened, and when we found out \u2014 both, because the gap between them is the\nhonest answer to \"is this fresh?\"."
+                    },
+                    "captured_at": {
+                        "type": "string"
+                    },
+                    "reliability": {
+                        "type": "integer"
+                    },
+                    "weight": {
+                        "type": "integer"
+                    },
+                    "is_disputed": {
+                        "type": "boolean"
+                    },
+                    "is_timing": {
+                        "type": "boolean"
+                    },
+                    "signal_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "my_verdict": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "The viewer's own verdict, when the caller loaded it \u2014 the panel shows a member what\nthey* said, not what the team said, exactly as the score screen does.",
+                        "enum": [
+                            "wrong",
+                            "outdated",
+                            "irrelevant",
+                            "useful",
+                            null
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "kind",
+                    "kind_label",
+                    "source",
+                    "source_label",
+                    "title",
+                    "summary",
+                    "source_url",
+                    "observed_at",
+                    "captured_at",
+                    "reliability",
+                    "weight",
+                    "is_disputed",
+                    "is_timing",
+                    "signal_id"
+                ],
+                "title": "LeadEvidenceResource"
+            },
             "LeadNoteResource": {
                 "type": "object",
                 "properties": {
@@ -10739,6 +11132,54 @@
                         ],
                         "description": "How ready the lead is to be contacted (Q4). Null means not computed, never zero."
                     },
+                    "confidence": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "--- Why now (PL1) ---\nThe three figures a lead answers with. `confidence` is how much its evidence is\nworth and `timing_score` is how much of a reason there is to act now; fit is on the\nscore below, because fit is measured against an ICP and these two are not. All\nnullable, and **null means not judged yet** rather than zero."
+                    },
+                    "confidence_band": {
+                        "type": "string"
+                    },
+                    "timing_score": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "why_now_summary": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "why_now_generated_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "low_confidence": {
+                        "type": "boolean",
+                        "description": "Below the team's threshold, so hidden from the list unless it asked to see these.\nSent on every lead rather than only on a hidden one: the client shows a lead opened\nfrom a link why it was not on the list it came from."
+                    },
+                    "top_evidence": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "description": "The strongest reason, for a list row that has no summary yet \u2014 a card must say\nsomething on the first page load, before the summary job has run.",
+                        "items": {}
+                    },
+                    "evidence_count": {
+                        "type": "integer"
+                    },
+                    "evidence": {
+                        "type": "array",
+                        "description": "The full timeline, detail screens only (the list never loads this relation).",
+                        "items": {}
+                    },
                     "sic_codes": {
                         "type": "array",
                         "items": {
@@ -10774,49 +11215,16 @@
                         "description": "A legal limit on how this company may be approached, when one applies (ADR 0007) \u2014\ne.g. a lead converted from a UAE signal, where PDPL needs prior consent that a news\narticle plainly isn't. Sent on every lead, not just the detail screen: Outreach\n(Phase 11) and the mobile app both have to honour it, and a flag the client has to\nask for separately is a flag that gets missed.",
                         "properties": {
                             "value": {
-                                "anyOf": [
-                                    {
-                                        "type": "string"
-                                    },
-                                    {
-                                        "type": "string",
-                                        "enum": [
-                                            "uae_prior_consent"
-                                        ]
-                                    }
-                                ]
+                                "type": "string"
                             },
                             "label": {
-                                "anyOf": [
-                                    {
-                                        "type": "string"
-                                    },
-                                    {
-                                        "type": "string",
-                                        "enum": [
-                                            "Get consent first"
-                                        ]
-                                    }
-                                ]
+                                "type": "string"
                             },
                             "guidance": {
-                                "anyOf": [
-                                    {
-                                        "type": "string"
-                                    },
-                                    {
-                                        "type": "string",
-                                        "enum": [
-                                            "Approach via LinkedIn or a referral \u2014 not cold email."
-                                        ]
-                                    }
-                                ]
+                                "type": "string"
                             },
                             "allows_direct_marketing": {
-                                "type": [
-                                    "boolean",
-                                    "string"
-                                ]
+                                "type": "boolean"
                             }
                         },
                         "required": [
@@ -10978,6 +11386,12 @@
                     "country",
                     "locations",
                     "readiness",
+                    "confidence",
+                    "confidence_band",
+                    "timing_score",
+                    "why_now_summary",
+                    "why_now_generated_at",
+                    "low_confidence",
                     "sic_codes",
                     "source_url",
                     "collected_at",
@@ -11167,13 +11581,15 @@
             },
             "LeadSort": {
                 "type": "string",
-                "description": "The orderings the leads list offers (Phase 10). Each case maps to a sortable column \u2014 or, for {@see self::Fit}, to a correlated sub-query over the lead's score against the active ICP \u2014 so a request can never name an arbitrary column. No magic strings. {@see self::Fit} and {@see self::Readiness} are the two different questions a lead answers (Q4): whether we should want them, and whether we can actually reach them. They are separate orderings because an A-grade lead with no contact details and a fully enriched poor fit are both real, and a member sorting the list is asking one of the two.\n",
+                "description": "The orderings the leads list offers (Phase 10). Each case maps to a sortable column \u2014 or, for {@see self::Fit}, to a correlated sub-query over the lead's score against the active ICP \u2014 so a request can never name an arbitrary column. No magic strings. {@see self::Fit} and {@see self::Readiness} are the two different questions a lead answers (Q4): whether we should want them, and whether we can actually reach them. They are separate orderings because an A-grade lead with no contact details and a fully enriched poor fit are both real, and a member sorting the list is asking one of the two.  PL1 adds the other two questions, and the set is now four rather than one figure dressed four ways: **fit** is whether we should want them, **readiness** is whether we can reach them, **timing** is whether now is the moment, and **confidence** is how much of this we actually know. A lead can be strong on any three and weak on the fourth, which is why none of them collapses into the others and why the list offers all four.\n| |\n|---|\n| `newest` <br/>  |\n| `company` <br/>  |\n| `fit` <br/>  |\n| `readiness` <br/>  |\n| `freshness` <br/>  |\n| `timing` <br/> How much of a reason there is to act NOW: the strongest decayed trigger event (PL1). |\n| `confidence` <br/> How much the lead's evidence is worth (PL1) \u2014 about our data, not about the company. |",
                 "enum": [
                     "newest",
                     "company",
                     "fit",
                     "readiness",
-                    "freshness"
+                    "freshness",
+                    "timing",
+                    "confidence"
                 ],
                 "title": "LeadSort"
             },
@@ -12296,7 +12712,7 @@
             },
             "SaveIcpRequest": {
                 "type": "object",
-                "description": "Validates an ICP create/update payload (name, flag and the full criteria set). Authorisation is\nhandled in the controller via {@see IcpPolicy}. Weight is only meaningful\nfor positive signals \u2014 it's optional here and normalised in {@see IcpData}.",
+                "description": "Validates an ICP create/update payload (name, flag and the full criteria set). Authorisation is\nhandled in the controller via {@see IcpPolicy}. The rules themselves live on\n{@see IcpData::rules()}, because the AI composer validates a draft against exactly the same set.",
                 "properties": {
                     "name": {
                         "type": "string",
@@ -14299,18 +14715,51 @@
                                 "type": "integer"
                             },
                             "sources_count": {
-                                "type": "integer",
-                                "description": "How many articles reported this event, including this one. Always 2 or more: a\ncluster of one is sent as a null `cluster`."
+                                "type": "integer"
                             },
                             "first_published_at": {
-                                "type": "string"
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
                             },
                             "last_published_at": {
-                                "type": "string"
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
                             },
                             "sources": {
                                 "type": "array",
-                                "items": {}
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "integer"
+                                        },
+                                        "source_name": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "source_url": {
+                                            "type": "string"
+                                        },
+                                        "published_at": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "id",
+                                        "source_name",
+                                        "source_url",
+                                        "published_at"
+                                    ]
+                                }
                             }
                         },
                         "required": [
@@ -14778,6 +15227,26 @@
                     "company_name"
                 ],
                 "title": "StoreLeadRequest"
+            },
+            "SubmitEvidenceFeedbackRequest": {
+                "type": "object",
+                "description": "Validates a member's verdict on one item of evidence (PL1).\n\nNothing here authorises anything \u2014 {@see LeadEvidencePolicy}\ndoes, at the controller. The note is capped at the column's own length rather than left to be\ntruncated silently: a member writing why a filing is wrong should be told their explanation is\ntoo long, not have the end of it quietly dropped.",
+                "properties": {
+                    "verdict": {
+                        "$ref": "#/components/schemas/EvidenceVerdict"
+                    },
+                    "note": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 500
+                    }
+                },
+                "required": [
+                    "verdict"
+                ],
+                "title": "SubmitEvidenceFeedbackRequest"
             },
             "SubmitSignalDefinitionRequest": {
                 "type": "object",

@@ -41,13 +41,13 @@ label on it, and "silence is not permission" cost that plan five sources of seve
 
 To be completed by Alex. Candidates carried over from `pre-launch.md` §2:
 
-| Capability          | Candidates                                      | Terms allow embedding? | Per-call cost | Decision |
-| ------------------- | ----------------------------------------------- | ---------------------- | ------------- | -------- |
-| Email find          | Prospeo                                         | _unconfirmed_          | _unknown_     | PENDING  |
-| Email + mobile (waterfall) | FullEnrich, BetterContact                | _unconfirmed_          | _unknown_     | PENDING  |
-| Email verification  | ZeroBounce, MillionVerifier, NeverBounce        | _unconfirmed_          | _unknown_     | PENDING  |
-| People / decision-makers | _to identify_                              | _unconfirmed_          | _unknown_     | PENDING  |
-| Job-change webhooks | Crustdata                                       | _unconfirmed_          | _unknown_     | **Post-launch** — out of scope |
+| Capability                 | Candidates                               | Terms allow embedding? | Per-call cost | Decision                       |
+| -------------------------- | ---------------------------------------- | ---------------------- | ------------- | ------------------------------ |
+| Email find                 | Prospeo                                  | _unconfirmed_          | _unknown_     | PENDING                        |
+| Email + mobile (waterfall) | FullEnrich, BetterContact                | _unconfirmed_          | _unknown_     | PENDING                        |
+| Email verification         | ZeroBounce, MillionVerifier, NeverBounce | _unconfirmed_          | _unknown_     | PENDING                        |
+| People / decision-makers   | _to identify_                            | _unconfirmed_          | _unknown_     | PENDING                        |
+| Job-change webhooks        | Crustdata                                | _unconfirmed_          | _unknown_     | **Post-launch** — out of scope |
 
 Each row needs three things before it is Accepted: the clause permitting embedding, the per-call
 cost in **micros** (ADR 0026 §3 — PL4's margin guard reads it), and the account's rate limit.

@@ -112,6 +112,45 @@ enum LeadSource: string
     }
 
     /**
+     * What kind of **evidence** a lead from this source carries about itself (PL1): the baseline
+     * "here is where we read this company" row every lead gets as it is created.
+     *
+     * A register is a filing; a directory listing is a fact about the company as it stands; a web
+     * hit is research; and a model's recollection is an inference, which is why it is the one
+     * source whose own provenance row is worth the least. {@see self::Signal} never reaches this
+     * method in practice — a converted signal writes the article's own, richer evidence instead —
+     * but it answers honestly if it does.
+     */
+    public function evidenceKind(): EvidenceKind
+    {
+        return match ($this) {
+            self::CompaniesHouse => EvidenceKind::RegisterRecord,
+            self::GooglePlaces, self::Import, self::Manual => EvidenceKind::Firmographic,
+            self::WebSearch => EvidenceKind::WebResearch,
+            self::Ai => EvidenceKind::AiInference,
+            self::Signal => EvidenceKind::Signal,
+        };
+    }
+
+    /**
+     * The one-line heading on that baseline evidence row — what a member reads in the lead's
+     * timeline as the oldest entry. Says where the company came from, in the voice of the record
+     * rather than of the pipeline.
+     */
+    public function provenanceTitle(): string
+    {
+        return match ($this) {
+            self::CompaniesHouse => __('Registered company record'),
+            self::GooglePlaces => __('Business listing found'),
+            self::WebSearch => __('Found on the web'),
+            self::Ai => __('Suggested by AI research'),
+            self::Import => __('Imported by your team'),
+            self::Manual => __('Added by your team'),
+            self::Signal => __('Converted from a signal'),
+        };
+    }
+
+    /**
      * @return list<string>
      */
     public static function values(): array

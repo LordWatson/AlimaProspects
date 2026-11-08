@@ -5,6 +5,67 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-13 — PL1: every lead now says why it is worth a call, and when
+
+A lead was a company record with a grade on it, which answered _should we want them_ and left the
+question a salesperson actually asks — _why this morning rather than last month?_ — unanswered.
+
+**`lead_evidence`** is now a lead's history: one row per fact, each with the source's own name, the
+date the thing **happened** and the date **we found it**, and the source's weight stamped on at
+capture. `leads` gained `confidence` (how much the evidence is worth), `timing_score` (the strongest
+trigger event) and a `why_now_summary` of one or two AI sentences that may use the supplied evidence
+and nothing else. `teams` gained `min_lead_confidence`, its own floor for "too thin to show me".
+
+**Every lead has at least one reason, structurally.** `LeadProvenanceObserver` hangs off the row
+rather than being called from each creating Action, so discovery, a CSV import, a hand-added company
+and PL10's sample report all record where the company came from — and so will the next path somebody
+writes. A converted signal is skipped because `ConvertSignalToLeadAction` now writes the **article**
+instead, with the outlet and the publication date, in the same transaction as the lead's timeline
+entry.
+
+**The arithmetic is deliberately boring, and four of its decisions are about lies the alternatives
+would tell.** Confidence is the **strongest** item plus a corroboration bonus for **distinct
+sources** — a sum would let forty web hits out-argue one Companies House filing, and an average
+would mean adding a weak reason to a strong lead lowered its confidence, so a team would be marked
+down for finding out more. Only a trigger event feeds the timing score, because a company's sector
+is as true next quarter as today. Reliability is **stored, never looked up again**, so re-weighting
+a source tomorrow does not restate what the feed already explained today. And **null is not zero**:
+a lead nothing has been judged on is never hidden, or a fresh discovery run would look like it found
+nothing.
+
+**Flagging a fact as wrong lowers the number immediately** — the whole calculation is arithmetic
+over rows the request has just written, so "within a queue cycle" was never good enough. Only
+`wrong` moves anything; "out of date" is what decay already measures, "not relevant" is about the
+team rather than the fact, and "useful" is what the post-launch outcome loop will learn from. A
+disputed item is dropped from the calculation rather than weighted zero, because left in it would
+still have counted towards corroboration — so disputing a fact would have _raised_ the confidence by
+agreeing it exists.
+
+**The summary never appears without the evidence it was written from.** The prompt (`lead.why_now`,
+temperature 0) is told it may use only the supplied items, each wrapped in `UntrustedContent`, and a
+test asserts the model is handed exactly those. But the real protection is the panel: the dated,
+attributed, linked facts are always beside Alima's sentence, because a reader cannot check a prompt
+and can check a headline with an outlet's name on it. Credit exhaustion, an unusable answer and an
+over-long input each cost the sentence and never the facts.
+
+On screen: a why-now line and a colourless confidence pill on each list row, a **Why now** panel
+at the top of the lead with the evidence timeline and a four-item flag menu, two new orderings
+(**Most urgent**, **Best evidence**), filters by evidence source and kind, a "N hidden — show them"
+line above the table, and the threshold on Team settings. The mobile app gets the line and the panel
+read-only: the evidence is useful in the field, and disputing a fact changes the figure for the whole
+team. No status colour anywhere — confidence is a statement about our data, not a verdict on the
+company.
+
+`evidence:backfill` gives pre-PL1 leads the evidence they would have been created with, including
+the events that were only ever **matched** to them (S10) and so were invisible on the lead.
+Idempotent, and resumable: a lead with reasons but no figure is still picked up.
+`evidence:source-quality` reports the wrong-flag rate per source and deliberately changes nothing.
+
+Behind `prelaunch.why-now`, the application's **first Pennant flag**. The calculation runs for every
+team while the flag is off; the _suppression_ is gated inside `LeadQueryBuilder`, so a team without
+the feature sees exactly the list it saw yesterday — a list that honoured the column without asking
+the flag is how a dark launch stops being dark. See **ADR 0028**.
+
 ### Added — 2026-11-08 — Pre-launch recon (PL0): the plan mapped onto the codebase
 
 `pre-launch.md` (PL0–PL12) is now readable against what actually exists. `docs/prelaunch/recon.md`

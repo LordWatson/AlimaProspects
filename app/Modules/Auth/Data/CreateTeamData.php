@@ -13,5 +13,7 @@ final class CreateTeamData extends Data
         public string $timezone = 'UTC',
         public string $locale = 'en',
         public string $market = 'uk',
+        // Null means the configured default (PL1) - see Team::$fillable.
+        public ?int $minLeadConfidence = null,
     ) {}
 }

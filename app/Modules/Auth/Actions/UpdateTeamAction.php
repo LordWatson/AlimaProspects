@@ -11,7 +11,7 @@ use App\Modules\Core\Services\AuditLogger;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Update a team's settings (name, timezone, locale, market).
+ * Update a team's settings (name, timezone, locale, market, minimum lead confidence).
  */
 final class UpdateTeamAction
 {
@@ -25,12 +25,16 @@ final class UpdateTeamAction
                 'timezone' => $data->timezone,
                 'locale' => $data->locale,
                 'market' => $data->market,
+                'min_lead_confidence' => $data->minLeadConfidence,
             ])->save();
 
             $this->audit->log('team.updated', $team, [
                 'name' => $team->name,
                 'locale' => $team->locale,
                 'market' => $team->market,
+                // Changing this changes which leads the whole team can see, so the trail records
+                // it: "half our leads vanished" is a question somebody will ask.
+                'min_lead_confidence' => $team->min_lead_confidence,
             ], $actor);
 
             return $team;

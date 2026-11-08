@@ -31,7 +31,7 @@ import type {
 } from '@shared/types';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { formatRelative } from '@/lib/format';
+import { formatDate, formatRelative } from '@/lib/format';
 import { notifyFailure, notifySuccess } from '@/lib/feedback';
 import GradeBadge from '@/components/GradeBadge.vue';
 import StateMessage from '@/components/StateMessage.vue';
@@ -55,6 +55,33 @@ const leadId = Number(route.params.id);
 
 const lead = ref<Lead | null>(null);
 const score = ref<LeadScore | null>(null);
+
+/**
+ * The reasons behind this lead (PL1), newest-dated first - the order the server already sends
+ * them in, so the phone does not re-decide it and disagree with the web panel.
+ */
+const whyNow = computed(() => lead.value?.evidence ?? []);
+
+/**
+ * The confidence in words. **Null is not zero**: a lead nothing has been judged on says so,
+ * rather than claiming a score of nought that nobody worked out.
+ */
+const confidenceLine = computed(() => {
+    const value = lead.value?.confidence;
+
+    if (value === null || value === undefined) {
+        return t('No reasons yet');
+    }
+
+    switch (lead.value?.confidence_band) {
+        case 'high':
+            return t('High confidence · :score of 100', { score: value });
+        case 'medium':
+            return t('Medium confidence · :score of 100', { score: value });
+        default:
+            return t('Low confidence · :score of 100', { score: value });
+    }
+});
 const activities = ref<LeadActivity[]>([]);
 const stages = ref<PipelineStage[]>([]);
 const decisions = ref<OutreachDecision[]>([]);
@@ -280,6 +307,73 @@ onIonViewWillEnter(() => {
                     <p class="alima-muted">
                         {{ t(lead.outreach_restriction.guidance) }}
                     </p>
+                </section>
+
+                <!-- Why now (PL1). Above Stage and below the compliance limit: it is the
+                     reason the member opened this lead, and the one thing worth reading before
+                     they decide what to do with it.
+
+                     Alima's sentence never appears without the evidence it was written from -
+                     the same rule the web panel keeps, and for the same reason: a reader cannot
+                     check a prompt and can check a dated headline with an outlet's name on it.
+
+                     The confidence is in **words**, not a pill and not a colour: it is a
+                     statement about our data, and a tinted badge on a phone reads as a verdict on
+                     the company.
+
+                     Flagging is deliberately **not** here. The verdict changes the lead's
+                     confidence for the whole team, and a four-item menu behind a tap on a row a
+                     thumb is already scrolling is how a member says "wrong" by accident. The
+                     evidence is readable from the field; disputing it is a desk decision. -->
+                <section v-if="whyNow.length > 0" class="alima-card">
+                    <div class="alima-section-title">
+                        <h2 class="alima-h2">{{ t('Why now') }}</h2>
+                    </div>
+                    <p class="alima-eyebrow">{{ confidenceLine }}</p>
+                    <!-- Labelled as Alima's reading, not presented as fact - the same rule the
+                         web panel keeps, and the evidence below it is always shown. -->
+                    <template v-if="lead.why_now_summary">
+                        <p class="alima-eyebrow">{{ t('Alima’s read') }}</p>
+                        <p class="lead__explanation" dir="auto">
+                            {{ lead.why_now_summary }}
+                        </p>
+                    </template>
+                    <ul class="lead__evidence">
+                        <li
+                            v-for="item in whyNow"
+                            :key="item.id"
+                            :class="{ 'lead__reason--out': item.is_disputed }"
+                        >
+                            <p class="lead__reason" dir="auto">
+                                {{ item.title }}
+                                <!-- In words, not only struck through: meaning carried by
+                                     styling alone is invisible to a screen reader. -->
+                                <span
+                                    v-if="item.is_disputed"
+                                    class="alima-sr-only"
+                                >
+                                    {{ t('Flagged wrong — no longer counted') }}
+                                </span>
+                            </p>
+                            <p class="alima-muted lead__reason-meta">
+                                <span dir="auto">{{ item.source_label }}</span>
+                                <span aria-hidden="true">·</span>
+                                <span>{{
+                                    formatDate(
+                                        item.observed_at ?? item.captured_at,
+                                    )
+                                }}</span>
+                                <a
+                                    v-if="item.source_url"
+                                    :href="item.source_url"
+                                    target="_blank"
+                                    rel="noopener nofollow"
+                                    class="lead__link"
+                                    >{{ t('Source') }}</a
+                                >
+                            </p>
+                        </li>
+                    </ul>
                 </section>
 
                 <!-- Stage. The ids have to come from the API: a phone cannot know a team's
@@ -551,6 +645,38 @@ onIonViewWillEnter(() => {
     font-size: 1.75rem;
     font-weight: 600;
     color: var(--alima-text-primary);
+}
+
+/* The reasons behind the lead (PL1). Plain text, no tint, no status colour: a reason is not a
+   state, and a disputed one is dimmed and struck rather than removed - the next member to open
+   the lead should see that somebody checked. */
+.lead__evidence {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.lead__reason {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--alima-text-primary);
+}
+
+.lead__reason-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.75rem;
+}
+
+/* Struck through and muted rather than faded: opacity took the text under 3:1, and the
+   visually hidden note above carries the meaning for anyone not looking at it. */
+.lead__reason--out .lead__reason {
+    text-decoration: line-through;
+    color: var(--alima-text-muted);
 }
 
 .lead__explanation {

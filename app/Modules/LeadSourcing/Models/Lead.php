@@ -11,6 +11,7 @@ use App\Modules\Enrichment\Enums\EnrichmentStatus;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Enums\LeadStatus;
+use App\Modules\LeadSourcing\Services\LeadConfidence;
 use App\Modules\LeadsWorkspace\Models\LeadActivity;
 use App\Modules\LeadsWorkspace\Models\LeadAssignment;
 use App\Modules\LeadsWorkspace\Models\LeadNote;
@@ -64,6 +65,15 @@ use Illuminate\Support\Str;
  * @property int|null $readiness how ready the lead is to be CONTACTED, 0-100 (Q4) - a record over
  *                               its own columns, never a second fit score; null means not computed
  * @property Carbon|null $readiness_at
+ * @property int|null $timing_score the strongest decayed trigger event, 0-100 (PL1); null for none
+ * @property int|null $confidence how much the lead's evidence is worth, 0-100 (PL1); null means
+ *                                nothing has been judged yet, which is NOT the same as zero
+ * @property Carbon|null $confidence_at
+ * @property bool $suppressed_low_confidence below the team's threshold, so hidden from the list by
+ *                                           default; never true while `confidence` is null
+ * @property string|null $why_now_summary one or two AI sentences over the evidence, and only it
+ * @property Carbon|null $why_now_generated_at
+ * @property string|null $why_now_evidence_hash the evidence set the summary was written from
  * @property array<string, mixed>|null $address
  * @property list<string>|null $sic_codes
  * @property string|null $source_url
@@ -151,6 +161,21 @@ class Lead extends Model
     public function contacts(): HasMany
     {
         return $this->hasMany(LeadContact::class);
+    }
+
+    /**
+     * The dated, sourced reasons this lead is worth contacting (PL1), strongest-dated first.
+     *
+     * Ordered on the relation so every reader — the detail panel, the summary prompt, the
+     * confidence calculation — sees the same timeline without each remembering to sort it. Note
+     * that `LeadConfidence` orders by what an item is worth *today* rather than by date, which is a
+     * different question and is asked where it matters.
+     *
+     * @return HasMany<LeadEvidence, $this>
+     */
+    public function evidence(): HasMany
+    {
+        return $this->hasMany(LeadEvidence::class)->newestFirst();
     }
 
     /**
@@ -300,6 +325,15 @@ class Lead extends Model
             'locations' => 'array',
             'readiness' => 'integer',
             'readiness_at' => 'datetime',
+            // None of the four is fillable: a lead's confidence is a record over its evidence, and
+            // only `RecalculateLeadConfidenceAction` and `GenerateWhyNowSummaryAction` may state
+            // one. Both write with `forceFill`, the way `anonymised_at` already does — a provider
+            // or an import that could assert its own confidence would be a source grading itself.
+            'timing_score' => 'integer',
+            'confidence' => 'integer',
+            'confidence_at' => 'datetime',
+            'suppressed_low_confidence' => 'boolean',
+            'why_now_generated_at' => 'datetime',
             'address' => 'array',
             'sic_codes' => 'array',
             'technologies' => 'array',

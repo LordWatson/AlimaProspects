@@ -33,6 +33,8 @@ import type {
 const props = defineProps<{
     filters: LeadFilterState;
     options: LeadFilterOptions;
+    /** Whether the team has the why-now feature (PL1); off hides its two groups entirely. */
+    whyNow: boolean;
     /** The team's own board, labels and people — all three are filters (Phase 10b). */
     stages: PipelineStage[];
     tags: LeadTag[];
@@ -46,10 +48,14 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 /** Toggle one value in a multi-select filter. */
-function toggle<K extends 'grades' | 'sources' | 'enrichment_statuses'>(
-    key: K,
-    value: string,
-): void {
+function toggle<
+    K extends
+        | 'grades'
+        | 'sources'
+        | 'enrichment_statuses'
+        | 'evidence_sources'
+        | 'evidence_kinds',
+>(key: K, value: string): void {
     const current = props.filters[key] as string[];
     const next = current.includes(value)
         ? current.filter((v) => v !== value)
@@ -59,7 +65,12 @@ function toggle<K extends 'grades' | 'sources' | 'enrichment_statuses'>(
 }
 
 function isOn(
-    key: 'grades' | 'sources' | 'enrichment_statuses',
+    key:
+        | 'grades'
+        | 'sources'
+        | 'enrichment_statuses'
+        | 'evidence_sources'
+        | 'evidence_kinds',
     value: string,
 ): boolean {
     return (props.filters[key] as string[]).includes(value);
@@ -192,6 +203,68 @@ const hasTeamFilters = computed(
                     :label="t('Nobody')"
                     data-test="filter-unassigned"
                     @toggle="toggleUnassigned"
+                />
+            </FilterGroup>
+        </div>
+
+        <!-- Why now (PL1). Hidden wholesale for a team without the feature, rather than shown
+             empty: a filter group that narrows by something the team cannot see is a filter group
+             that returns nothing for no visible reason.
+
+             "Evidence from" is a different question from "Source" above it, and the legend says
+             so: Source is where the *lead* came from, this is where a *reason* came from. An
+             imported company whose Companies House filing Alima later read is both. -->
+        <div
+            v-if="props.whyNow"
+            class="grid gap-4 border-t border-border pt-5 sm:grid-cols-3"
+        >
+            <FilterGroup
+                :legend="t('Evidence type')"
+                :hint="
+                    t(
+                        'A trigger event is the only kind that makes a lead urgent.',
+                    )
+                "
+            >
+                <FilterToggle
+                    v-for="option in props.options.evidence_kinds"
+                    :key="option.value"
+                    :pressed="isOn('evidence_kinds', option.value)"
+                    :label="t(option.label)"
+                    :data-test="`filter-evidence-kind-${option.value}`"
+                    @toggle="toggle('evidence_kinds', option.value)"
+                />
+            </FilterGroup>
+
+            <FilterGroup :legend="t('Evidence from')">
+                <FilterToggle
+                    v-for="option in props.options.evidence_sources"
+                    :key="option.value"
+                    :pressed="isOn('evidence_sources', option.value)"
+                    :label="t(option.label)"
+                    :data-test="`filter-evidence-source-${option.value}`"
+                    @toggle="toggle('evidence_sources', option.value)"
+                />
+            </FilterGroup>
+
+            <FilterGroup
+                :legend="t('Confidence')"
+                :hint="
+                    t(
+                        'Leads Alima knows too little about are hidden by default. Your threshold is on the Team settings screen.',
+                    )
+                "
+            >
+                <FilterToggle
+                    :pressed="props.filters.include_low_confidence"
+                    :label="t('Include low confidence')"
+                    data-test="filter-include-low-confidence"
+                    @toggle="
+                        emit('change', {
+                            include_low_confidence:
+                                !props.filters.include_low_confidence,
+                        })
+                    "
                 />
             </FilterGroup>
         </div>

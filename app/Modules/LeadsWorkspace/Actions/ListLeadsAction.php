@@ -44,10 +44,15 @@ final class ListLeadsAction
                 'pipelineStage',
                 'tags',
                 'assignments.user:id,name',
+                // The why-now line on each card (PL1). The whole relation rather than one row,
+                // because "the strongest reason" is decided by what an item is worth *today* and
+                // that cannot be expressed as an `orderBy` the database could `limit` for us. A
+                // lead's evidence is a handful of rows, and this is one query for the page.
+                'evidence',
             ])
             // Both counts are sub-queries on the one statement, so they cost the same whatever the
             // page size. `tasks` is constrained to the open ones, which is what the row shows.
-            ->withCount(['contacts', 'tasks' => fn ($tasks) => $tasks->open()])
+            ->withCount(['contacts', 'evidence', 'tasks' => fn ($tasks) => $tasks->open()])
             ->paginate($perPage)
             // Keeps the filters on every page link, so page 2 of a filtered list is still filtered
             // — and a shared URL reproduces exactly what the sender saw.

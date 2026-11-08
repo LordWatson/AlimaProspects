@@ -305,6 +305,160 @@ a pattern match costs nothing.
 | Dubai Pulse (L12, and UAE zones) | A permission request per dataset, answered within ~14 days                 |
 | Adzuna / Reed (L8, if ever)      | A written agreement. Until then the phase stays dropped                    |
 
+## Lead evidence and "why now" (PL1)
+
+> `pre-launch.md` phase **PL1**, ADR 0028. Behind the Pennant flag `prelaunch.why-now`.
+
+Every lead now carries **dated, sourced reasons** it is worth contacting, a **confidence** figure
+over them, a **timing score**, and one or two AI sentences that may use nothing but those reasons.
+
+### The four questions a lead answers
+
+This is the part most worth holding on to, because it is the reason none of these figures collapses
+into another:
+
+| Figure               | Question                      | Lives on                | Allowed to punish missing data?           |
+| -------------------- | ----------------------------- | ----------------------- | ----------------------------------------- |
+| `lead_scores.score`  | Should we want them?          | `lead_scores` (per ICP) | **No** — blind to it by design            |
+| `leads.readiness`    | Can we reach them?            | `leads` (Q4)            | **Yes** — it is a measure of what we hold |
+| `leads.timing_score` | Is now the moment?            | `leads` (PL1)           | n/a — null where there is no event        |
+| `leads.confidence`   | How much do we actually know? | `leads` (PL1)           | n/a — null where nothing was judged       |
+
+**There is no `fit_score` on `leads`,** and `pre-launch.md` asking for one is the plan being
+adapted rather than followed (`docs/prelaunch/recon.md` §3): fit is measured against an ICP, and a
+second copy on the lead would drift from the one the grades, the board and the exports read.
+
+### Data model
+
+- **`lead_evidence`** — one fact. `team_id`, `lead_id`, `kind` (`EvidenceKind`), `source` (the
+  producing source's storage key — **a string, not an enum**), `source_label`, `signal_id`
+  (`nullOnDelete`), `title`, `summary`, `source_url` (2048), `observed_at`, `captured_at`,
+  `reliability`, `payload`, `is_disputed`, `dedupe_hash`. Unique on
+  `(lead_id, source, dedupe_hash)`.
+- **`lead_evidence_feedback`** — one member's verdict. `verdict` (`EvidenceVerdict`), `note`,
+  unique on `(lead_evidence_id, user_id)`. Deliberately the same shape as `score_feedback`.
+- **`leads`** gained `timing_score`, `confidence`, `confidence_at`, `suppressed_low_confidence`,
+  `why_now_summary`, `why_now_generated_at`, `why_now_evidence_hash`. None is fillable: all are
+  written with `forceFill` by the two Actions allowed to state them.
+- **`teams`** gained `min_lead_confidence` — the team's own floor, **null meaning the config
+  default** rather than "no threshold".
+
+### Code map (PL1 additions)
+
+- **Enums:** `EvidenceKind` (`signal`, `firmographic`, `web_research`, `ai_inference`,
+  `register_record` — with `isTiming()` and `halfLifeDays()`); `EvidenceVerdict` (`wrong`,
+  `outdated`, `irrelevant`, `useful` — with `disputesTheFact()`). `LeadSource` gained
+  `evidenceKind()` and `provenanceTitle()`.
+- **Models:** `LeadEvidence` (`newestFirst()` scope, `currentWeight()`, `decay()`),
+  `LeadEvidenceFeedback`. `Lead::evidence()`.
+- **Data:** `EvidenceItem` (what a producer hands in, plus `provenanceOf(Lead)`),
+  `LeadConfidenceResult`.
+- **Services:** `LeadConfidence` — pure, no database, no AI; `thresholdFor()` and `band()` beside
+  the arithmetic.
+- **Actions:** `RecordLeadEvidenceAction` (the only writer; `handle`/`handleMany`),
+  `RecalculateLeadConfidenceAction`, `SubmitEvidenceFeedbackAction`,
+  `GenerateWhyNowSummaryAction`.
+- **Jobs:** `GenerateWhyNowSummaryJob` (`ShouldBeUnique` per lead, re-checks the hash).
+- **Observers:** `LeadProvenanceObserver`.
+- **Console:** `evidence:backfill`, `evidence:source-quality`.
+- **Policies:** `LeadEvidencePolicy` (`view` = any member, `flag` = any but Read-only; no create,
+  no delete).
+- **HTTP:** `LeadEvidenceResource`; `Web\EvidenceController@feedback`;
+  `Api\V1\EvidenceController@index|feedback` on `leads:read` / `leads:write`.
+- **Config:** `config/evidence.php` (reliability per source, half-life per kind, corroboration,
+  thresholds, bands, the why-now prompt and cap, the source-quality report);
+  `config/prelaunch.php` (the flags).
+- **Prompt:** `lead.why_now` v1 in the registry.
+
+### The arithmetic, in full
+
+```
+item_weight = reliability × 0.5 ^ (age_in_days ÷ half_life)      // floored at min_decay
+            = 0                                                   // if a member flagged it wrong
+confidence  = clamp(max(item_weight) + corroboration, 0, 100)
+timing      = max(item_weight) over trigger-event items only
+```
+
+Four decisions inside that, each a way the figure could have been made to lie:
+
+1. **`max`, not a sum or an average.** Forty web hits are not stronger than one Companies House
+   filing, and an average would mean _adding_ a weak reason lowered a strong lead's confidence — so
+   a team would be punished for finding out more.
+2. **Corroboration counts distinct sources, never rows.** Independent agreement is the thing worth
+   paying for; one source saying it twice is not.
+3. **Unknown is not zero** (ADR 0022). No evidence means `null`, and a null lead is **never
+   hidden** — otherwise a fresh discovery run would look like it found nothing.
+4. **Only a trigger event times.** A company's sector is as true next quarter as today; letting a
+   firmographic fact set the timing score would make every enriched lead look urgent.
+
+### Key flows
+
+1. **Any lead is created** → `LeadProvenanceObserver` records its own provenance through
+   `RecordLeadEvidenceAction` → confidence recomputed → the summary job queued if the evidence set
+   changed. Hung off the row rather than called from each Action, so "every lead has at least one
+   reason" is structural: discovery, import, a hand-added company and PL10's sample all get it, and
+   so will the next path somebody writes.
+2. **A signal is converted** → `ConvertSignalToLeadAction` writes the **article** as evidence, in
+   the same transaction as the lead's timeline entry, with the outlet's name and the
+   **publication** date. The observer skips `LeadSource::Signal` so there is no generic row beside
+   it.
+3. **A member flags a reason** → `SubmitEvidenceFeedbackAction`. Only `wrong` moves a number, and
+   it does so **immediately**: the whole calculation is arithmetic over rows the request has just
+   written.
+4. **The summary** → `GenerateWhyNowSummaryJob` → `GenerateWhyNowSummaryAction` → `AiClient` with
+   the strongest N items, each wrapped in `UntrustedContent`. Gated on
+   `leads.why_now_evidence_hash`, checked again inside the job.
+5. **Backfill** → `evidence:backfill` rebuilds evidence from rows that already exist (the lead's
+   provenance, and every signal with `lead_id` **or** `matched_lead_id` pointing at it). Idempotent
+   by construction, and resumable: a lead with evidence but no figure is still picked up.
+
+### What is deliberately _not_ here
+
+- **No status colour anywhere.** Confidence is a statement about our data, not a verdict on the
+  company, so the pill carries no hue and the strength bar is a neutral track (brand-tokens.md
+  §2a, and the same argument `LeadReadiness` already makes).
+- **`payload` never leaves the database.** It is the provider's raw output, kept for audit, and on
+  a signal-derived row it can name a person (`docs/compliance.md` §3.9).
+- **Nobody can create or delete a reason by hand.** A team that could delete an inconvenient fact
+  about a prospect would have a confidence figure measuring its own optimism. Retention removes
+  them; the policy has no `create` or `delete`.
+- **`evidence:source-quality` changes nothing.** It reports the wrong-flag rate per source and
+  logs a warning above a threshold. A source's weight is a position the business has taken, and a
+  handful of flags is a reason to look rather than a mandate to re-weight (ADR 0022).
+- **Flagging is not on mobile.** The evidence is readable from the field; disputing a fact changes
+  the figure for the whole team, and a four-item menu behind a tap on a scrolling row is how a
+  member says "wrong" by accident.
+
+### Traps
+
+- **A source key is data and an evidence kind is a type** (ADR 0018 §1). Nothing branches on which
+  provider said a thing — the weight is a config lookup and an unknown key is legal, scoring
+  `evidence.reliability.default`. `EvidenceReliabilityTest` asserts every shipped `LeadSource` and
+  `SignalSourceKind` has a weight, which is what turns "a new source silently scores 40 for ever"
+  into a failing suite.
+- **`reliability` is stored, never looked up again.** Re-weighting a source tomorrow must not
+  restate what the feed already explained today (ADR 0022's rule for `signals.score_breakdown`).
+- **`observed_at` is when the event happened; `captured_at` is when we read it.** Decay measures
+  the first. Measuring the second would make a slow crawl look like today's news.
+- **`EvidenceItem::$observedAt` is typed `?DateTimeInterface`, not `?Carbon`.** Model datetimes
+  here hydrate as `CarbonImmutable`, a _sibling_ of `Illuminate\Support\Carbon`, so a `Carbon`
+  parameter TypeErrors on `$lead->incorporated_on` at runtime and PHPStan sees nothing wrong.
+- **The feature splits across its flag in two places.** The _arithmetic_ runs for every team —
+  it is cheap and it is what makes the first enabled team cheap too. The _summary_ does not, because
+  it is an AI call against the team's own allowance and buying one for a team that cannot see the
+  panel is charging them for a feature they have not got; `RecalculateLeadConfidenceAction` asks
+  the flag before dispatching, and no team in context means no call.
+- **The suppression is gated on the flag inside `LeadQueryBuilder`**, not in each screen. The
+  column is filled in for every team while the feature is dark, so a list that honoured it without
+  asking the flag would quietly hide a third of a team's leads — which is how a dark launch stops
+  being dark.
+- **The provenance observer must not read a relation.** It runs inside `created`, where a lazy load
+  fails `preventLazyLoading`; the team comes from the ambient `TeamContext`, which memoises it by
+  id, so a two-hundred-lead run costs one query for the threshold.
+- **A disputed item is dropped, not weighted zero.** Left in, it would still count towards
+  corroboration — so flagging a fact as wrong would have _raised_ the lead's confidence by agreeing
+  it exists.
+
 ## Known limitations / TODO
 
 - **The AI source can be confidently wrong, and nothing downstream can tell.** It names companies from what the model knows, with no index to check against: a fabricated company is a fabricated prospect, and the failure looks exactly like a real lead. Four things bound it — the prompt's repeated instruction to name fewer rather than pad, `LeadSource::rank() === 0` (every other source corrects its fields; Enrichment treats the name as provisional), a stored `leads.raw.claim` naming the model and prompt version, and dropping a country or website that is not shaped like one. None of them **verifies** a company exists. Enrichment fetching the site is the de facto check, and a lead whose site cannot be fetched is the signal worth watching. A web-search-grounded variant (the model reading real results instead of recalling) is the obvious next step and is not built.
@@ -345,3 +499,4 @@ a pattern match costs nothing.
 | 2026-11-06 | 7c     | **The AI lead source.** A fourth provider behind the same `LeadSourceProvider` contract, and the first with no index behind it: `AiLeadSourceProvider` asks `lead_sourcing.ai_discovery` (reasoning tier) to **name the companies themselves**, with a trade, an approximate headcount band, a place, an ISO-2 country, a homepage and one line of why. Why it exists: the index-backed providers return a name and a website and nothing else, which left the ICP's Industry and Company size criteria `Unknown` — out of **both** sides of `DeterministicScorer`'s ratio — so a discovered lead was graded on its geography alone and could not reach an A or a B before enrichment. `SourcedLead` gained `industry` + `employeeRange` for that reason, and they flow through the existing merge rules untouched (a null never overwrites, a weaker source only fills gaps). Four deliberate decisions: it ranks **0**, below every index, because it is the only source that can be fluently wrong about a company that does not exist — so every other source corrects it on a merge and Enrichment treats its name as provisional; `costMicros()` returns **0**, not because the call is free but because `ai_requests` already carries the cost that `PlatformRollup` reads Claude spend from, and metering it twice would double-count one request in the platform margin; an AI failure **fails the run** rather than degrading like the query shaper does, with an exhausted AI allowance given its own `aiAllowanceExhausted` code because it is not the lead allowance; and the schema has **no person on it at all** (ADR 0025), so there is nothing to filter out afterwards. A country that is not two letters and a website that is not a host are dropped rather than stored, since `leads.country` is a two-character column and "United Kingdom" would have been kept as "UN". No migration, no frontend change beyond the shared type — the picker has always been built from the enum. | `app/Modules/LeadSourcing/{Services/AiLeadSourceProvider,Enums/LeadSource,Data/SourcedLead,Exceptions/LeadSourcingException,Services/DiscoveryPayloadBuilder,Providers/LeadSourcingServiceProvider}.php`, `database/seeders/AiPromptTemplateSeeder.php`, `config/lead-sourcing.php`, `resources/js/shared/types/lead-sourcing.ts`, `resources/js/components/leads/ActivityTimeline.vue`, `docs/{ai-prompts.md,api/openapi.json}`, `tests/Feature/LeadSourcing/AiLeadSourceProviderTest.php`                                                                                                                                       |
 | 2026-11-07 | —      | **Two things in service of enrichment.** (1) New `CompanyWebsiteResolver` contract + `SerperCompanyWebsiteResolver` (Serper, reusing the web-search credentials + `web_search` breaker; best-effort, never throws) — the seam Enrichment uses to find a homepage for a website-less lead, so a Companies House record can be enriched at all. Lives here because web search is this module's provider; bound in `LeadSourcingServiceProvider`, faked in tests by the base `TestCase` so no test reaches the live API. (2) `GooglePlacesProvider`'s field mask now requests the **phone** (international preferred), rating and business status; the phone flows through new `SourcedLead::$phone` → `leads.phone` (a company switchboard number — company data, stored at discovery) and becomes a contact at enrichment.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `app/Modules/LeadSourcing/{Contracts/CompanyWebsiteResolver,Services/SerperCompanyWebsiteResolver,Services/GooglePlacesProvider,Data/SourcedLead,Models/Lead,Providers/LeadSourcingServiceProvider,Testing/FakeCompanyWebsiteResolver}.php`, `database/migrations/2026_11_12_100001_*`, `tests/{Feature/LeadSourcing/{GooglePlacesProviderTest,SerperCompanyWebsiteResolverTest},TestCase}.php`                                                                                                                                                                                                                                   |
 | 2026-11-08 | 7c fix | **A garbage `employee_range` no longer fails the whole run.** A live AI run returned a company whose `employee_range` was a tail of broken JSON (`"51-200','locality':'London'}]}…I need to correct that output…"`) — valid as a string, so it cleared the `ai_discovery` schema (which caps no field's length), but ~70 chars into the **VARCHAR(64)** `leads.employee_range` column, so the insert threw `SQLSTATE[22001]` and failed the discovery job. Fixed in the two layers that own the two halves: `AiLeadSourceProvider` now shape-validates the band exactly as it already does a country code — a value that isn't a headcount ("11-50", "1,000+", "50") is dropped to null and the company kept, because a wrong headcount also mis-grades the lead in `DeterministicScorer`; and `SourcedLead` clamps `employee_range` to its real 64-char column (it was clamping every text field to 255), the storage backstop for any provider. The schema was **left unbounded on purpose**: a `maxLength` there would reject the whole batch after retries, losing every good company for one bad field. No migration.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `app/Modules/LeadSourcing/{Services/AiLeadSourceProvider,Data/SourcedLead}.php`, `tests/Feature/LeadSourcing/AiLeadSourceProviderTest.php`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 2026-11-13 | PL1    | **Lead evidence and "why now."** New `lead_evidence` + `lead_evidence_feedback`; `leads` gained `timing_score`, `confidence`, `confidence_at`, `suppressed_low_confidence` and the three `why_now_*` columns; `teams` gained `min_lead_confidence`. `EvidenceKind`/`EvidenceVerdict` enums, `LeadEvidence`(`Feedback`) models, `EvidenceItem`/`LeadConfidenceResult` DTOs, the pure `LeadConfidence` calculator, four Actions, `GenerateWhyNowSummaryJob`, `LeadProvenanceObserver`, `LeadEvidencePolicy`, `evidence:backfill`, `evidence:source-quality`, `config/evidence.php`, the `lead.why_now` prompt, and the `prelaunch.why-now` Pennant flag (the first use of Pennant in the app). `LeadSource` gained `evidenceKind()`/`provenanceTitle()`; `ConvertSignalToLeadAction` now writes the article as the lead's evidence in the same transaction as its timeline entry; the leads list gained `timing`/`confidence` orderings, evidence-source and evidence-kind filters, and a "N hidden" reveal. See **ADR 0028** and this doc's PL1 section.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

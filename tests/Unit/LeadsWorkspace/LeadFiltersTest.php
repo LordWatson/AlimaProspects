@@ -114,6 +114,12 @@ it('gives the form every key, so the UI never binds to a missing one', function 
         'tags' => [],
         'assignees' => [],
         'unassigned' => false,
+        // PL1. `include_low_confidence` is the one filter whose *default* hides rows, so it is
+        // expressed as 'include' rather than 'hide' — that way a bare list has a bare URL and the
+        // form binds to a false rather than to a missing key.
+        'evidence_sources' => [],
+        'evidence_kinds' => [],
+        'include_low_confidence' => false,
         'sort' => 'newest',
         'direction' => 'desc',
     ]);

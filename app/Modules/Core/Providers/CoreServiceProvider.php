@@ -7,6 +7,7 @@ namespace App\Modules\Core\Providers;
 use App\Modules\Core\Console\SecurityPostureCommand;
 use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Contracts\WebContentFetcher;
+use App\Modules\Core\Enums\PrelaunchFeature;
 use App\Modules\Core\Services\AllCapabilitiesEnabled;
 use App\Modules\Core\Services\HttpWebContentFetcher;
 use App\Modules\Core\Support\ApiDocs\DocumentsApiContract;
@@ -14,6 +15,7 @@ use App\Modules\Core\Support\AuditContext;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\ModuleServiceProvider;
 use Dedoc\Scramble\Scramble;
+use Laravel\Pennant\Feature;
 
 /**
  * Core module provider. Registers the tenancy {@see TeamContext} singleton, the shared SSRF-safe
@@ -59,12 +61,28 @@ final class CoreServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         $this->registerApiDocumentation();
+        $this->registerPrelaunchFlags();
 
         if ($this->app->runningInConsole()) {
             // The production posture check (Phase 20, ADR 0017). Core's, because what it asserts —
             // debug mode, the session cookie, the headers, the admin door, the error tracker — is
             // nobody's domain and everybody's problem.
             $this->commands([SecurityPostureCommand::class]);
+        }
+    }
+
+    /**
+     * Define the pre-launch feature flags (`pre-launch.md` Appendix A, ADR 0026 §4).
+     *
+     * Defined here rather than in each owning module's provider so the whole set is declared in
+     * one place and the resolver is written once — a flag whose definition is missing resolves to
+     * `false` through Pennant's own fallback, which would be a dark-launched feature switched off
+     * by an omission rather than by a decision.
+     */
+    private function registerPrelaunchFlags(): void
+    {
+        foreach (PrelaunchFeature::cases() as $feature) {
+            Feature::define($feature->value, static fn (): bool => $feature->default());
         }
     }
 

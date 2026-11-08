@@ -24,6 +24,14 @@ final class UpdateTeamRequest extends FormRequest
             'timezone' => ['required', 'string', 'timezone'],
             'locale' => ['required', Rule::in(['en', 'ar'])],
             'market' => ['required', Rule::in(['uk', 'uae'])],
+            // Bounded by the same range the slider offers (PL1): a value outside it would hide a
+            // whole team's leads, or none of them, with no way back from the screen.
+            'min_lead_confidence' => [
+                'nullable',
+                'integer',
+                'min:'.(int) config('evidence.min_threshold', 30),
+                'max:'.(int) config('evidence.max_threshold', 90),
+            ],
         ];
     }
 }

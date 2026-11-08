@@ -1,6 +1,10 @@
 // Leads Workspace (list, detail, timeline, saved views) shared types (Phase 10).
 
-import type { EnrichmentStatus, LeadSource } from './lead-sourcing';
+import type {
+    EnrichmentStatus,
+    EvidenceKind,
+    LeadSource,
+} from './lead-sourcing';
 import type { ScoreGrade } from './scoring';
 
 export type LeadActivityType =
@@ -38,7 +42,14 @@ export type LeadActivity = {
     occurred_at: string;
 };
 
-export type LeadSort = 'newest' | 'company' | 'fit' | 'readiness' | 'freshness';
+export type LeadSort =
+    | 'newest'
+    | 'company'
+    | 'fit'
+    | 'readiness'
+    | 'freshness'
+    | 'timing'
+    | 'confidence';
 export type LeadSortDirection = 'asc' | 'desc';
 
 /** The filter bar's bound state — every key always present, mirroring `LeadFilters::toFormState()`. */
@@ -52,6 +63,11 @@ export type LeadFilterState = {
     tags: number[];
     assignees: number[];
     unassigned: boolean;
+    /** --- Why now (PL1) --- */
+    evidence_sources: string[];
+    evidence_kinds: EvidenceKind[];
+    /** The one filter whose default is *on*: low-confidence leads are hidden until asked for. */
+    include_low_confidence: boolean;
     sort: LeadSort;
     direction: LeadSortDirection;
 };
@@ -130,6 +146,12 @@ export type LeadFilterOptions = {
     sources: LeadFilterOption[];
     enrichment_statuses: LeadFilterOption[];
     sorts: LeadFilterOption[];
+    // --- Why now (PL1) ---
+    evidence_kinds: LeadFilterOption[];
+    /** Built from `config/evidence.php`, not an enum: a source is data here (ADR 0018 §1). */
+    evidence_sources: LeadFilterOption[];
+    /** The server's own band thresholds, so the pill's wording matches what it used. */
+    confidence_bands: { high: number; medium: number };
 };
 
 /** A member's named set of leads-list filters. */

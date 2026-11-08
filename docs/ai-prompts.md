@@ -37,6 +37,7 @@ a field a reader has to guess at is a bug waiting for a consumer.
 | `lead_sourcing.shape_query`       | Lead Sourcing               | reasoning | Turn the business profile + ICP into a provider-ready search for the team's **customers**, with negative terms for its own trade and competitors                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | yes (object)                 | live v1 (Ph. 7c)                          |
 | `lead_sourcing.ai_discovery`      | Lead Sourcing               | reasoning | **Name the companies themselves.** Given the shaped brief, return up to N real companies with a trade, an approximate headcount band, a place, an ISO-2 country, a homepage and one line of why — company facts only, never a person. The one prompt whose output becomes **rows a team acts on** rather than a judgement about rows that exist, so a fabricated name is a fabricated prospect: the brief is wrapped untrusted, the source is ranked below every index, and nothing it asserts about a company is believed over a register                                                                                                                                | yes (object → companies[])   | live v1 (Ph. 7c)                          |
 | `lead.enrich_extract`             | Enrichment                  | cheap     | Extract structured company/contact facts from fetched public web text (v2 adds `people` — named individuals + role — for contact inference)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | yes (object)                 | live v2 (v1 kept; Ph. 8)                  |
+| `lead.why_now`                    | Lead Sourcing               | cheap     | **One or two sentences saying why a lead is worth contacting now**, from its evidence alone (PL1). Given the strongest few `lead_evidence` items plus the company's own profile, and told it may use no other fact — no revenue, no headcount, no intentions, no names. Temperature 0, because the sentence is cached against a hash of that evidence and a member who reloads must not see it reworded. `cited_sources` is in the schema and rendered nowhere: it is the cheapest possible check on the instruction, since a summary citing an item the prompt was never given is a hallucination the field makes visible.                                               | yes (object)                 | live v1 (PL1)                             |
 | `scoring.qualitative_fit`         | Scoring & Matching          | reasoning | Qualitative ICP-fit assessment + plain-English "why this matches", feeding the hybrid score. **v2** adds a `{{deferred}}` block — the criteria the deterministic rules couldn't settle (a vocabulary gap) — and asks the model to judge those by meaning, not wording. v1 kept for traceability.                                                                                                                                                                                                                                                                                                                                                                          | yes (object)                 | live v2 (Lead quality); v1 seeded (Ph. 9) |
 | `outreach.draft_message`          | Outreach                    | reasoning | Personalised email / LinkedIn text / call script from business profile + lead + tone controls                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | yes (object → variants[])    | seeded v1 (Ph. 11)                        |
 | `insights.periodic_digest`        | AI Insights                 | reasoning | The model's read of one team's last seven days: at most three grounded observations (topic, title, body, severity) over **figures only** — no company or person names in the input, so nothing in it is untrusted                                                                                                                                                                                                                                                                                                                                                                                                                                                         | yes (object → insights[])    | live v1 (Ph. 14)                          |
@@ -176,6 +177,35 @@ index-backed provider fills them — a register publishes an SIC code and a plac
 — so a discovered lead left the ICP's Industry and Company size criteria `Unknown`, out of both
 sides of `DeterministicScorer`'s ratio, and was graded on its geography alone. Stating a trade and a
 band is what gives both halves of the hybrid score something to judge.
+
+### `lead.why_now` v1 — the prompt whose job is to add nothing
+
+Every other prompt in this registry is asked to **produce** something the application does not have:
+a profile, a query, a classification, a draft. This one is asked to **compress** facts the
+application already holds, and to add nothing at all. That inverts where the risk sits.
+
+Three guards, and the third is the only one a reader can verify:
+
+1. **The schema.** `summary` plus `cited_sources`, and nothing else to fill in.
+2. **The instruction.** It may use the evidence block and the company profile; it must mention the
+   date of the most important event and name its source in plain language; it must say plainly that
+   there is no reason to act now rather than inventing urgency; and every block is data, never an
+   instruction.
+3. **The screen.** The panel **always** renders the dated, attributed, linked evidence beside the
+   sentence, labelled as Alima's reading of it. A sentence nobody can check is a sentence nobody
+   should trust, and a reader cannot check a prompt but can check a headline with an outlet's name
+   on it (ADR 0028 §7).
+
+`cited_sources` exists for the same reason and is deliberately shown nowhere: it costs a handful of
+tokens and makes a fabricated citation visible to anybody reading `ai_requests`.
+
+Cost control is the hash, not the prompt: `leads.why_now_evidence_hash` means the same evidence
+produces one call, ever, however many times a lead is re-scored. Temperature 0 is part of that —
+the sentence is cached, so it must not change under a member who reloads the page.
+
+What a failure costs: nothing but the sentence. Credit exhaustion, an unusable response and an
+over-long input all leave the lead with its evidence and its confidence, and the screen falls back to
+the strongest evidence title — which is what the list showed before this prompt existed.
 
 ## Rules for adding a prompt
 

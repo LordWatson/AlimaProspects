@@ -19,6 +19,7 @@ import ActivityTimeline from '@/components/leads/ActivityTimeline.vue';
 import LeadNotes from '@/components/leads/LeadNotes.vue';
 import LeadTasks from '@/components/leads/LeadTasks.vue';
 import LeadWorkPanel from '@/components/leads/LeadWorkPanel.vue';
+import WhyNowPanel from '@/components/leads/WhyNowPanel.vue';
 import { ListCell, ListHead, ListRow, ListTable } from '@/components/list';
 import MeterBar from '@/components/MeterBar.vue';
 import PageHero from '@/components/PageHero.vue';
@@ -98,7 +99,9 @@ const props = defineProps<{
      * drops that one entry rather than printing the same article twice.
      */
     events: LeadOrigin[];
-    can: { work: boolean };
+    /** Whether this team has the why-now feature (PL1). Off = the screen is as it was before. */
+    whyNow: boolean;
+    can: { work: boolean; flagEvidence: boolean };
 }>();
 
 const { t } = useI18n();
@@ -851,6 +854,17 @@ const hasRolePreference = computed(
 
             <!-- Main column -->
             <div class="space-y-6 lg:col-start-1 lg:row-start-1">
+                <!-- Why now (PL1), **first in the main column**: it is the reason the member
+                     opened this lead, and the facts about the company are what they read after
+                     deciding it is worth their morning. The panel always carries the evidence
+                     beside Alima's sentence - see its own note for why that is the feature's one
+                     safety property rather than a layout preference. -->
+                <WhyNowPanel
+                    v-if="whyNow"
+                    :lead="lead"
+                    :can-flag="can.flagEvidence"
+                />
+
                 <!-- Company facts -->
                 <section
                     class="space-y-4 rounded-2xl border border-border bg-card p-6"

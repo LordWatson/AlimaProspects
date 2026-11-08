@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\LeadsWorkspace\Services;
 
+use App\Modules\Core\Enums\PrelaunchFeature;
 use App\Modules\Core\Models\Team;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Actions\ListLeadsAction;
@@ -49,10 +50,33 @@ final class LeadQueryBuilder
     {
         $query = Lead::query()->where('leads.team_id', $team->getKey());
 
-        $this->applyFilters($query, $filters, $this->defaultStageId($team, $filters));
+        $this->applyFilters($query, $filters, $this->defaultStageId($team, $filters), $this->hidesWeakLeads($team, $filters));
         $this->applySort($query, $filters);
 
         return $query;
+    }
+
+    /**
+     * How many leads the **same filters** are hiding for being below the team's confidence
+     * threshold (PL1) — the N in "Hidden: N low-confidence leads".
+     *
+     * Asked here rather than computed by the screen so the count means exactly what the toggle
+     * would reveal: the same filters with `include_low_confidence` flipped, and nothing else. A
+     * count taken over the whole team would promise leads a filtered list would not show.
+     *
+     * Returns 0 without a query when the caller is already showing them — there is nothing hidden
+     * to count, and a list that is not hiding anything should not pay for the question.
+     */
+    public function suppressedCount(Team $team, LeadFilters $filters): int
+    {
+        if (! $this->hidesWeakLeads($team, $filters)) {
+            return 0;
+        }
+
+        return $this->filtered($team, $filters->revealingLowConfidence())
+            ->where('leads.suppressed_low_confidence', true)
+            ->toBase()
+            ->getCountForPagination();
     }
 
     /**
@@ -81,9 +105,24 @@ final class LeadQueryBuilder
     }
 
     /**
+     * Whether this list is hiding low-confidence leads at all (PL1).
+     *
+     * Two conditions, and the second is the one that matters: the caller has not asked to see them,
+     * **and** the team has the why-now feature. Decided here rather than in each screen so every
+     * consumer of a filtered list — the web index, `/api/v1`, a saved view, a bulk selection, the
+     * CSV export — agrees about which leads exist. A team whose flag is off must see exactly the
+     * list it saw yesterday, and a suppression column filled in by a dark-launched calculation
+     * quietly hiding a third of their leads is the way a dark launch stops being dark.
+     */
+    private function hidesWeakLeads(Team $team, LeadFilters $filters): bool
+    {
+        return ! $filters->includeLowConfidence && PrelaunchFeature::WhyNow->activeFor($team);
+    }
+
+    /**
      * @param  Builder<Lead>  $query
      */
-    private function applyFilters(Builder $query, LeadFilters $filters, ?int $defaultStageId): void
+    private function applyFilters(Builder $query, LeadFilters $filters, ?int $defaultStageId, bool $hideWeak): void
     {
         $query
             ->when($filters->search !== null, fn (Builder $q): Builder => $q->where(
@@ -127,7 +166,26 @@ final class LeadQueryBuilder
                 'assignments',
                 fn (Builder $assignment): Builder => $assignment->whereIn('user_id', $filters->assigneeIds),
             ))
-            ->when($filters->unassigned, fn (Builder $q): Builder => $q->whereDoesntHave('assignments'));
+            ->when($filters->unassigned, fn (Builder $q): Builder => $q->whereDoesntHave('assignments'))
+            // --- Why now (PL1) ---
+            // A lead "from Companies House" here means one with an item of *evidence* from
+            // Companies House, which is not the same as `leads.source` — an imported company whose
+            // filing we later read is both, and the member asking this question wants it.
+            ->when($filters->evidenceSources !== [], fn (Builder $q): Builder => $q->whereHas(
+                'evidence',
+                fn (Builder $evidence): Builder => $evidence->whereIn('lead_evidence.source', $filters->evidenceSources),
+            ))
+            ->when($filters->evidenceKinds !== [], fn (Builder $q): Builder => $q->whereHas(
+                'evidence',
+                fn (Builder $evidence): Builder => $evidence->whereIn('lead_evidence.kind', $filters->evidenceKinds),
+            ))
+            // The one filter that is on by default. A lead whose confidence has not been worked out
+            // yet is **never** suppressed (the column is false while `confidence` is null), so a
+            // fresh discovery run is never hidden behind "show the weak ones".
+            ->when(
+                $hideWeak,
+                fn (Builder $q): Builder => $q->where('leads.suppressed_low_confidence', false),
+            );
     }
 
     /**
@@ -219,6 +277,18 @@ final class LeadQueryBuilder
             // member is actually asking about — not when someone last added a note.
             LeadSort::Freshness => $query
                 ->orderByRaw('coalesce(leads.enriched_at, leads.collected_at, leads.created_at) '.$direction)
+                ->orderByDesc('leads.id'),
+            // The two PL1 orderings. Nulls last, stated explicitly for the same reason readiness
+            // states it: null is "not judged yet" rather than zero, and MySQL and SQLite disagree
+            // about where it sorts. A lead with no trigger event has no timing score at all, so
+            // sorting by urgency puts the whole un-evented tail at the bottom, which is right.
+            LeadSort::Timing => $query
+                ->orderByRaw('case when leads.timing_score is null then 1 else 0 end')
+                ->orderBy('leads.timing_score', $direction)
+                ->orderByDesc('leads.id'),
+            LeadSort::Confidence => $query
+                ->orderByRaw('case when leads.confidence is null then 1 else 0 end')
+                ->orderBy('leads.confidence', $direction)
                 ->orderByDesc('leads.id'),
         };
     }

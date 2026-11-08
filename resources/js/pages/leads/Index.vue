@@ -7,11 +7,13 @@ import {
     Ellipsis,
     Plus,
     Radar,
+    EyeOff,
     SearchX,
     Upload,
 } from '@lucide/vue';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import BulkActionBar from '@/components/leads/BulkActionBar.vue';
+import ConfidencePill from '@/components/leads/ConfidencePill.vue';
 import LeadFilterBar from '@/components/leads/LeadFilterBar.vue';
 import SavedViewBar from '@/components/leads/SavedViewBar.vue';
 import {
@@ -100,6 +102,13 @@ const props = defineProps<{
         export: boolean;
     };
     maxBulk: number;
+    // --- Why now (PL1) ---
+    /** Whether this team has the feature at all. Off = the list is exactly as it was before. */
+    whyNow: boolean;
+    /** How many leads these same filters are hiding for being below the team's threshold. */
+    hiddenCount: number;
+    /** The team's own threshold, so the toggle can say what "low" currently means. */
+    minConfidence: number;
 }>();
 
 const { t } = useI18n();
@@ -119,7 +128,10 @@ const isFiltering = computed(
         props.filters.stages.length > 0 ||
         props.filters.tags.length > 0 ||
         props.filters.assignees.length > 0 ||
-        props.filters.unassigned,
+        props.filters.unassigned ||
+        props.filters.evidence_sources.length > 0 ||
+        props.filters.evidence_kinds.length > 0 ||
+        props.filters.include_low_confidence,
 );
 
 // --- What is being filtered out ------------------------------------------------------------
@@ -204,6 +216,33 @@ const activeChips = computed<ActiveFilterChip[]>(() => {
         });
     }
 
+    // --- Why now (PL1) ---
+    for (const source of props.filters.evidence_sources) {
+        chips.push({
+            id: `evidence_sources:${source}`,
+            group: t('Evidence from'),
+            label: optionLabel(props.options.evidence_sources, source),
+        });
+    }
+
+    for (const kind of props.filters.evidence_kinds) {
+        chips.push({
+            id: `evidence_kinds:${kind}`,
+            group: t('Evidence type'),
+            label: optionLabel(props.options.evidence_kinds, kind),
+        });
+    }
+
+    // A chip, because revealing the weak leads changes what the list is answering - and because
+    // the way back has to sit in the same place as every other filter's.
+    if (props.filters.include_low_confidence) {
+        chips.push({
+            id: 'include_low_confidence:1',
+            group: t('Confidence'),
+            label: t('Low included'),
+        });
+    }
+
     return chips;
 });
 
@@ -245,6 +284,23 @@ function removeChip(chip: ActiveFilterChip): void {
             break;
         case 'country':
             apply({ country: '' });
+            break;
+        case 'evidence_sources':
+            apply({
+                evidence_sources: props.filters.evidence_sources.filter(
+                    (v) => v !== raw,
+                ),
+            });
+            break;
+        case 'evidence_kinds':
+            apply({
+                evidence_kinds: props.filters.evidence_kinds.filter(
+                    (v) => v !== raw,
+                ),
+            });
+            break;
+        case 'include_low_confidence':
+            apply({ include_low_confidence: false });
             break;
     }
 }
@@ -330,6 +386,16 @@ const exportUrl = computed(() => {
         params.append('assignees[]', String(person));
     if (props.filters.unassigned) params.set('unassigned', '1');
 
+    // The export is "give me what I'm looking at", so it carries the evidence filters and the
+    // reveal switch too - an export that silently included the leads the list was hiding would be
+    // a different answer from the one on screen.
+    for (const source of props.filters.evidence_sources)
+        params.append('evidence_sources[]', source);
+    for (const kind of props.filters.evidence_kinds)
+        params.append('evidence_kinds[]', kind);
+    if (props.filters.include_low_confidence)
+        params.set('include_low_confidence', '1');
+
     const query = params.toString();
 
     return query === '' ? '/leads/export' : `/leads/export?${query}`;
@@ -414,6 +480,15 @@ function rowSummary(lead: Lead): string {
     return [lead.stage?.name, lead.locality ?? lead.country]
         .filter((part): part is string => Boolean(part))
         .join(' · ');
+}
+
+/**
+ * The lead's why-now line: Alima's sentence if it has written one, else the strongest reason's own
+ * headline - because a card has to say something on the first page load, before the summary job
+ * has run. Null when there is nothing at all.
+ */
+function whyNowLine(lead: Lead): string | null {
+    return lead.why_now_summary ?? lead.top_evidence?.title ?? null;
 }
 
 function updatedAt(lead: Lead): string {
@@ -579,6 +654,7 @@ function updatedAt(lead: Lead): string {
                     <LeadFilterBar
                         :filters="filters"
                         :options="options"
+                        :why-now="whyNow"
                         :stages="stages"
                         :tags="tags"
                         :members="members"
@@ -586,6 +662,36 @@ function updatedAt(lead: Lead): string {
                     />
                 </template>
             </ListToolbar>
+
+            <!-- Hidden by the team's confidence threshold (PL1). A count and a way in, in
+                 words, above the table: a list that silently dropped a third of a team's leads
+                 would be a list nobody could trust, and "12 hidden" is the difference between a
+                 filter and a disappearance. -->
+            <p
+                v-if="whyNow && hiddenCount > 0"
+                class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+                data-test="hidden-low-confidence"
+            >
+                <EyeOff class="size-4 shrink-0" aria-hidden="true" />
+                <span>{{
+                    t(
+                        ':count hidden — we don’t know enough about them yet (under :threshold).',
+                        {
+                            count: number(hiddenCount),
+                            threshold: String(minConfidence),
+                        },
+                    )
+                }}</span>
+                <Button
+                    variant="link"
+                    size="sm"
+                    class="h-auto p-0"
+                    data-test="show-low-confidence"
+                    @click="apply({ include_low_confidence: true })"
+                >
+                    {{ t('Show them') }}
+                </Button>
+            </p>
 
             <!-- Always mounted: a live region inserted with text already in it is usually not
                  announced, so the first selection would have gone by in silence. It also says
@@ -735,6 +841,17 @@ function updatedAt(lead: Lead): string {
                                     dir="auto"
                                     >{{ lead.industry }}</span
                                 >
+                                <!-- Why now (PL1): Alima's sentence, or the strongest reason's
+                                     own headline before the sentence exists. Clamped to two
+                                     lines - a list row is a prompt to open the lead, not the
+                                     panel. -->
+                                <span
+                                    v-if="whyNow && whyNowLine(lead)"
+                                    class="mt-1 line-clamp-2 block max-w-prose text-xs leading-snug text-muted-foreground"
+                                    dir="auto"
+                                    :data-test="`why-now-${lead.id}`"
+                                    >{{ whyNowLine(lead) }}</span
+                                >
                                 <!-- On a phone, six of the nine columns are hidden; this is what
                                      they said, in one line. -->
                                 <span
@@ -766,6 +883,15 @@ function updatedAt(lead: Lead): string {
                                     class="text-xs text-muted-foreground"
                                     >{{ t('Not graded') }}</span
                                 >
+                                <!-- A different question from the grade above it, so it sits
+                                     under rather than beside: fit is about the company,
+                                     confidence is about our evidence. Colourless by design. -->
+                                <div v-if="whyNow" class="mt-1">
+                                    <ConfidencePill
+                                        :confidence="lead.confidence"
+                                        :band="lead.confidence_band"
+                                    />
+                                </div>
                             </ListCell>
                             <!-- No stage means the lead is still in the starting column, so the
                                  dash reads as "not moved yet" rather than "nowhere". -->

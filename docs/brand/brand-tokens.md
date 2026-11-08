@@ -882,3 +882,45 @@ The screens that are still **not** heroes, by decision rather than omission: the
 (`settings/*`), which has the settings layout's own `Heading` and sub-nav inside a 36rem form
 column; the auth split screen (§7d); the public pages (§7c); and the admin panel, whose
 `AdminPageHeader` is its own composition over the same component (§7e).
+
+### 7n. Added 2026-11-13 (the "why now" panel and the confidence pill, PL1)
+
+PL1 put a **confidence** figure on every lead — how much Alima's evidence about it is worth — and a
+panel of dated, sourced reasons behind it. Three things in it need recording, and one of them is a
+pattern the rest of the product will reach for.
+
+1. **A hue-less confidence badge, as a product-wide pattern.** `ConfidencePill` carries no colour at
+   all: an outline badge, the band in words ("High confidence"), the figure in tabular numerals.
+   The reasoning is §7h.13's, one level out — confidence is a statement about **our own data**, not
+   a verdict on the company, so a traffic light would read as "this company is poor" when what it
+   says is "we have not found much out yet". `status.*` would be wrong even in the right colour,
+   because nothing here reports that something is fine or broken. The same treatment is used for
+   each evidence item's strength bar: a `bg-muted` track with a `bg-foreground/60` fill, the
+   `MeterBar` `neutral` tone's argument again. **For approval as a named pattern**, so the next
+   magnitude-with-no-verdict reaches for it rather than inventing a fourth treatment.
+2. **`lime` on a trigger-event evidence kind, as taxonomy.** The only tint in the panel, and the
+   only one in the list row beside the Lilac tag chips. §1.2 allows an accent as a supporting
+   colour, and this is one accent per card plus the team's own labels. **For confirmation** that two
+   decorative accents in one list row is within the one-hero-accent rule, since the row is a table
+   cell rather than a layout.
+3. **Null is a band of its own, in words.** A lead nothing has been judged on renders "No reasons
+   yet" rather than a zero, because a zero reads as a judgement that was made. Same rule as
+   `leads.readiness` and `signals.heat` (§7h.13, ADR 0022).
+
+Settled while writing it, recorded so it is not re-litigated: the panel's own copy says what the
+figure **is not** — the hidden-leads line on the list now reads ":count hidden — we don't know
+enough about them yet", not "not worth your time yet", because the second passes a verdict on the
+company and that is the one thing this feature is built not to do.
+
+**Fixed in the brand review of the same phase**, listed because each is a rule worth not breaking
+again: 11px (`text-[0.6875rem]`) text in five places, now `text-xs` — the 12px floor in §3 is a
+floor, and the Phase 19a review had already corrected a 10.4px step for the same reason; `text-ink-60`
+used as body text, now `text-muted-foreground`, because `--color-ink-60` is a **fixed** hex that does
+not flip in dark mode and sits just under AA on cream; a disputed reason dimmed with `opacity-60`,
+which took it under 3:1 and said nothing to a screen reader, now struck through in
+`text-muted-foreground` with a visually hidden "Flagged wrong" note on mobile where no caption
+carried it; and `role="img"` on the pill, because an `aria-label` on a generic element whose children
+are all `aria-hidden` may be ignored outright — the pill could have announced nothing at all.
+
+**Still open:** the mobile app's `--alima-text-muted` has not been measured against its surfaces in
+dark mode the way §7.10's web tokens have.

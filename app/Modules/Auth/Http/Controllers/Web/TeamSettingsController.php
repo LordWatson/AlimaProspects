@@ -7,6 +7,7 @@ namespace App\Modules\Auth\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Modules\Auth\Models\TeamInvitation;
+use App\Modules\Core\Enums\PrelaunchFeature;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
 use Illuminate\Http\Request;
@@ -36,6 +37,16 @@ final class TeamSettingsController extends Controller
                 'timezone' => $team->timezone,
                 'locale' => $team->locale,
                 'market' => $team->market,
+                'min_lead_confidence' => $team->min_lead_confidence,
+            ],
+            // The why-now feature's own setting (PL1), and the bounds the slider must stay inside.
+            // Sent with the resolved default so the screen can say what "not set" currently means
+            // rather than showing an empty control.
+            'confidence' => [
+                'enabled' => PrelaunchFeature::WhyNow->activeFor($team),
+                'default' => (int) config('evidence.default_min_confidence', 50),
+                'min' => (int) config('evidence.min_threshold', 30),
+                'max' => (int) config('evidence.max_threshold', 90),
             ],
             'members' => $this->members($team, $user),
             'invitations' => $canManage ? $this->invitations($team) : [],

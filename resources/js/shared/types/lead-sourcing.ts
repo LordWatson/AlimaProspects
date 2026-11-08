@@ -40,6 +40,56 @@ export type EnrichmentStatus = 'pending' | 'enriching' | 'enriched' | 'failed';
 
 export type DiscoveryRunStatus = 'pending' | 'running' | 'completed' | 'failed';
 
+/** What sort of fact an item of evidence is (PL1); mirrors `EvidenceKind::cases()`. */
+export type EvidenceKind =
+    | 'signal'
+    | 'firmographic'
+    | 'web_research'
+    | 'ai_inference'
+    | 'register_record';
+
+/** A member's verdict on an item of evidence (PL1); mirrors `EvidenceVerdict::cases()`. */
+export type EvidenceVerdict = 'wrong' | 'outdated' | 'irrelevant' | 'useful';
+
+/** How much a lead's evidence is worth, banded for display (PL1). Null means not judged yet. */
+export type ConfidenceBand = 'high' | 'medium' | 'low';
+
+/**
+ * One dated, sourced reason a lead is worth contacting (PL1).
+ *
+ * `source` is a free string rather than a union: an evidence source is **data** here (ADR 0018
+ * §1), so a later phase adds one without this type having to know. `source_label` is what to show.
+ *
+ * The provider's raw payload is deliberately absent — it is kept server-side for audit and can
+ * name a person.
+ */
+export type LeadEvidence = {
+    id: number;
+    kind: EvidenceKind;
+    /** Translation key, not a finished string. */
+    kind_label: string;
+    source: string;
+    /** The outlet or register, as it should be shown. Never a translation key. */
+    source_label: string;
+    title: string;
+    summary: string | null;
+    source_url: string | null;
+    /** When the event happened. Null where nobody stated a date. */
+    observed_at: string | null;
+    /** When we found it. The gap between the two is the honest answer to "is this fresh?". */
+    captured_at: string;
+    /** The source's weight when it was captured, 0–100. */
+    reliability: number;
+    /** What it is worth **today** — reliability thinned by age, and 0 once disputed. */
+    weight: number;
+    is_disputed: boolean;
+    /** Only a trigger event gives a lead a timing score. */
+    is_timing: boolean;
+    signal_id: number | null;
+    /** The viewer's own verdict, when the server loaded it. */
+    my_verdict?: EvidenceVerdict | null;
+};
+
 /** A raw, company-level lead as discovered from a provider (pre-enrichment). */
 export type Lead = {
     id: number;
@@ -69,6 +119,25 @@ export type Lead = {
      * about the prospect, and not a second fit score. Null means not computed yet, never zero.
      */
     readiness: number | null;
+    /**
+     * --- Why now (PL1) ---
+     * How much the lead's evidence is worth, 0–100. **Null means nothing has been judged yet**,
+     * which is not the same as zero — a screen must say "no reasons yet", never "confidence 0".
+     */
+    confidence: number | null;
+    confidence_band: ConfidenceBand | null;
+    /** How much of a reason there is to act NOW. Null when the lead has no trigger event at all. */
+    timing_score: number | null;
+    /** One or two AI sentences over the evidence, and only it. Null until the job has run. */
+    why_now_summary: string | null;
+    why_now_generated_at: string | null;
+    /** Below the team's threshold, so hidden from the list unless it asked to see these. */
+    low_confidence: boolean;
+    /** The strongest reason, for a card with no summary yet. Present when evidence was loaded. */
+    top_evidence?: LeadEvidence | null;
+    evidence_count?: number;
+    /** The full timeline, detail screens only. */
+    evidence?: LeadEvidence[];
     sic_codes: string[];
     source_url: string | null;
     collected_at: string | null;

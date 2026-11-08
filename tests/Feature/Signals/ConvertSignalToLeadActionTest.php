@@ -10,6 +10,7 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Enrichment\Enums\EnrichmentStatus;
 use App\Modules\Enrichment\Jobs\EnrichLeadJob;
+use App\Modules\LeadSourcing\Enums\EvidenceKind;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Enums\LeadActivityType;
@@ -27,6 +28,7 @@ use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Support\SignalPresetCatalogue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 
@@ -1104,4 +1106,75 @@ it('does not let the dialog read the jurisdiction alone, where that would be the
     ));
 
     expect(OutreachRestriction::fromRaw($lead->raw))->toBe(OutreachRestriction::UaePriorConsent);
+});
+
+it('carries the article across as the lead’s evidence (PL1)', function (): void {
+    Queue::fake();
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+
+    $signal = signalFor($team, [
+        'headline' => 'Zephyr Logistics raises a Series A',
+        'summary' => 'The Manchester freight firm closed a round led by an institutional investor.',
+        'source_name' => 'Example Wire',
+        'source_url' => 'https://example.test/news/zephyr-series-a',
+        'published_at' => Carbon::parse('2026-10-12'),
+    ]);
+
+    $lead = convertSignal($team, $signal, $actor, new ConvertSignalData(
+        companyName: 'Zephyr Logistics Ltd',
+        personName: 'Jane Founder',
+    ));
+
+    $evidence = app(TeamContext::class)->run(
+        $team,
+        fn () => $lead->evidence()->get(),
+    );
+
+    // Exactly one reason: the article. Not a generic "converted from a signal" row beside it,
+    // which would be the same fact with a worse label and a weaker weight.
+    expect($evidence)->toHaveCount(1);
+
+    $article = $evidence->first();
+
+    expect($article->kind)->toBe(EvidenceKind::Signal)
+        // The signal's own source, not the string `signal`: a news story and a Companies House
+        // filing are weighted as the different things they are.
+        ->and($article->source)->toBe($signal->source_kind->value)
+        ->and($article->source_label)->toBe('Example Wire')
+        ->and($article->title)->toContain('Series A')
+        ->and($article->source_url)->toBe('https://example.test/news/zephyr-series-a')
+        // The **publication** date, not the run that found it: that is what the decay measures,
+        // and it is why a week-old story outranks a six-month-old one on the same company.
+        ->and($article->observed_at->toDateString())->toBe('2026-10-12')
+        ->and($article->signal_id)->toBe((int) $signal->getKey())
+        // The signal's own prose stays on the signal, which has a retention window. An evidence
+        // payload carries ids and keys only.
+        ->and($article->payload)->toHaveKeys(['signal_id', 'event_key'])
+        ->and(json_encode($article->payload))->not->toContain('Manchester');
+
+    // And the lead can now say how urgent it is, which a company-level lead never could.
+    expect($lead->fresh()->timing_score)->not->toBeNull()
+        ->and($lead->fresh()->confidence)->not->toBeNull();
+});
+
+it('writes the lead’s evidence in the same transaction as its timeline entry', function (): void {
+    Queue::fake();
+
+    $actor = createUserWithTeam();
+    $team = $actor->currentTeam()->firstOrFail();
+    $signal = signalFor($team);
+
+    $lead = convertSignal($team, $signal, $actor);
+
+    // A lead whose history claims an event its evidence panel cannot show would be a lead that
+    // explains itself two different ways, so the two writes share a transaction.
+    $entries = LeadActivity::query()
+        ->where('lead_id', $lead->getKey())
+        ->where('type', LeadActivityType::SignalConverted)
+        ->count();
+
+    expect($entries)->toBe(1)
+        ->and(app(TeamContext::class)->run($team, fn (): int => $lead->evidence()->count()))->toBe(1);
 });

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\LeadsWorkspace\Data;
 
 use App\Modules\Enrichment\Enums\EnrichmentStatus;
+use App\Modules\LeadSourcing\Enums\EvidenceKind;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadsWorkspace\Actions\ListLeadsAction;
 use App\Modules\LeadsWorkspace\Enums\LeadSort;
@@ -37,6 +38,8 @@ final class LeadFilters extends Data
      * @param  list<int>  $stageIds
      * @param  list<int>  $tagIds
      * @param  list<int>  $assigneeIds
+     * @param  list<string>  $evidenceSources
+     * @param  list<EvidenceKind>  $evidenceKinds
      */
     public function __construct(
         public readonly ?string $search = null,
@@ -48,6 +51,16 @@ final class LeadFilters extends Data
         public readonly array $tagIds = [],
         public readonly array $assigneeIds = [],
         public readonly bool $unassigned = false,
+        // --- Why now (PL1) ---
+        // Evidence source keys are **strings, not an enum**: a source is data here (ADR 0018 §1),
+        // and a filter that only accepted today's enum cases would silently drop a saved view
+        // naming a source a later phase added.
+        public readonly array $evidenceSources = [],
+        public readonly array $evidenceKinds = [],
+        // The one filter whose default is *on*: a lead below the team's confidence threshold is
+        // hidden until somebody asks for it. Expressed as "include" rather than "hide" so the
+        // default state is an absent key and a bare list still has a bare URL.
+        public readonly bool $includeLowConfidence = false,
         public readonly LeadSort $sort = LeadSort::Newest,
         public readonly ?LeadSortDirection $direction = null,
     ) {}
@@ -73,8 +86,38 @@ final class LeadFilters extends Data
             assigneeIds: self::ids($input['assignees'] ?? null),
             // "Nobody is working these" is a filter in its own right, not an empty assignee list.
             unassigned: filter_var($input['unassigned'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            evidenceSources: self::strings($input['evidence_sources'] ?? null, 32),
+            evidenceKinds: self::enums($input['evidence_kinds'] ?? null, EvidenceKind::class),
+            includeLowConfidence: filter_var($input['include_low_confidence'] ?? false, FILTER_VALIDATE_BOOLEAN),
             sort: $sort,
             direction: LeadSortDirection::tryFrom((string) ($input['direction'] ?? '')),
+        );
+    }
+
+    /**
+     * The same filters, but showing the low-confidence leads too (PL1).
+     *
+     * Written out rather than cloned through `toArray()`: that transforms enums to their backing
+     * values on the way out, so a round trip would quietly reset every enum filter — and a count
+     * taken over the wrong filters is worse than no count.
+     */
+    public function revealingLowConfidence(): self
+    {
+        return new self(
+            search: $this->search,
+            grades: $this->grades,
+            sources: $this->sources,
+            enrichmentStatuses: $this->enrichmentStatuses,
+            country: $this->country,
+            stageIds: $this->stageIds,
+            tagIds: $this->tagIds,
+            assigneeIds: $this->assigneeIds,
+            unassigned: $this->unassigned,
+            evidenceSources: $this->evidenceSources,
+            evidenceKinds: $this->evidenceKinds,
+            includeLowConfidence: true,
+            sort: $this->sort,
+            direction: $this->direction,
         );
     }
 
@@ -99,7 +142,12 @@ final class LeadFilters extends Data
             || $this->stageIds !== []
             || $this->tagIds !== []
             || $this->assigneeIds !== []
-            || $this->unassigned;
+            || $this->unassigned
+            || $this->evidenceSources !== []
+            || $this->evidenceKinds !== []
+            // Revealing the hidden leads **is** narrowing the question the list is answering, even
+            // though it widens the result — an export taken with it on is a different export.
+            || $this->includeLowConfidence;
     }
 
     /**
@@ -120,6 +168,9 @@ final class LeadFilters extends Data
             'tags' => $this->tagIds,
             'assignees' => $this->assigneeIds,
             'unassigned' => $this->unassigned ? '1' : null,
+            'evidence_sources' => $this->evidenceSources,
+            'evidence_kinds' => self::plucked($this->evidenceKinds),
+            'include_low_confidence' => $this->includeLowConfidence ? '1' : null,
             'sort' => $this->sort === LeadSort::Newest ? null : $this->sort->value,
             'direction' => $this->direction?->value,
         ], static fn (mixed $value): bool => $value !== null && $value !== []);
@@ -143,6 +194,9 @@ final class LeadFilters extends Data
             'tags' => $this->tagIds,
             'assignees' => $this->assigneeIds,
             'unassigned' => $this->unassigned,
+            'evidence_sources' => $this->evidenceSources,
+            'evidence_kinds' => self::plucked($this->evidenceKinds),
+            'include_low_confidence' => $this->includeLowConfidence,
             'sort' => $this->sort->value,
             'direction' => $this->resolvedDirection()->value,
         ];
@@ -176,6 +230,36 @@ final class LeadFilters extends Data
         }
 
         return $ids;
+    }
+
+    /**
+     * Narrow a list of raw values to a de-duplicated list of trimmed, length-capped strings,
+     * dropping anything that isn't one.
+     *
+     * Used for the filters whose vocabulary is **data** rather than an enum — an evidence source
+     * key, which a later phase may add to without redeploying this class. Whether a key exists is
+     * the query's business: one that matches nothing narrows the list to nothing, which is the
+     * right answer for a stale bookmark.
+     *
+     * @return list<string>
+     */
+    private static function strings(mixed $value, int $max): array
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return [];
+        }
+
+        $strings = [];
+
+        foreach ((array) $value as $candidate) {
+            $string = self::string($candidate, $max);
+
+            if ($string !== null && ! in_array($string, $strings, strict: true)) {
+                $strings[] = $string;
+            }
+        }
+
+        return $strings;
     }
 
     /**

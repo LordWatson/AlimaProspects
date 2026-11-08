@@ -61,6 +61,12 @@ function cannedResponses(): array
                 ],
             ],
         ],
+        // PL1. The one prompt whose job is to add nothing: given a lead's strongest evidence,
+        // it compresses it into a sentence and may use no other fact.
+        'lead.why_now' => [
+            'summary' => 'Raised a Series A on 12 October, reported by Example Wire.',
+            'cited_sources' => ['Example Wire'],
+        ],
         'lead.enrich_extract' => [
             'company_name' => 'Acme', 'website' => 'https://acme.test', 'industry' => 'Retail',
             'employee_range' => '11-50', 'locations' => ['London'], 'technologies' => ['Shopify'],
@@ -138,13 +144,18 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
     // than prose, and the one whose job is an inversion — the brief describes the seller as much as
     // the buyer, and returning the seller's own trade is the failure two other prompts here already
     // learned about.
-    expect(AiPromptTemplate::query()->count())->toBe(17)
+    // `lead.why_now` (PL1) is the twelfth key, and the only one asked to **compress** facts the
+    // application already holds rather than to produce something it does not have — which is why
+    // its schema carries `cited_sources` that nothing renders: a summary citing an item the prompt
+    // was never given is a hallucination the field makes visible.
+    expect(AiPromptTemplate::query()->count())->toBe(18)
         ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.compose_profile',
             'icp.refine_suggestions',
             'insights.periodic_digest',
             'lead.enrich_extract',
+            'lead.why_now',
             'lead_sourcing.ai_discovery',
             'lead_sourcing.shape_query',
             'outreach.draft_message',
@@ -184,5 +195,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(17);
+    expect(AiPromptTemplate::query()->count())->toBe(18);
 });

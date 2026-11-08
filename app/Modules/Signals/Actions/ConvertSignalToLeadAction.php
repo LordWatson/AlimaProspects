@@ -13,7 +13,10 @@ use App\Modules\Enrichment\Enums\EnrichmentStatus;
 use App\Modules\Enrichment\Jobs\EnrichLeadJob;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\Enrichment\Services\LeadDeduplicator;
+use App\Modules\LeadSourcing\Actions\RecordLeadEvidenceAction;
+use App\Modules\LeadSourcing\Data\EvidenceItem;
 use App\Modules\LeadSourcing\Data\SourcedLead;
+use App\Modules\LeadSourcing\Enums\EvidenceKind;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Actions\CreateLeadNoteAction;
@@ -69,6 +72,7 @@ final class ConvertSignalToLeadAction
         private readonly LeadDeduplicator $deduplicator,
         private readonly EnsureDefaultPipelineStagesAction $ensureStages,
         private readonly RecordLeadActivityAction $record,
+        private readonly RecordLeadEvidenceAction $recordEvidence,
         private readonly CreateLeadNoteAction $createNote,
         private readonly AuditLogger $audit,
         private readonly SignalClusterer $clusterer,
@@ -204,6 +208,13 @@ final class ConvertSignalToLeadAction
             actor: $actor,
         );
 
+        // The article becomes the lead's evidence (PL1), in the **same transaction** as the
+        // timeline entry above it — a lead whose history claims an event its evidence panel cannot
+        // show would be a lead that explains itself two different ways. Recording it here rather
+        // than letting the lead's provenance observer write a generic row is what keeps the
+        // outlet's name, the publication date and the headline on the reason.
+        $this->recordEvidence->handle($survivor, $this->evidenceFor($locked));
+
         if ($data->note !== null) {
             $this->createNote->handle($survivor, $actor, $data->note);
         }
@@ -315,6 +326,39 @@ final class ConvertSignalToLeadAction
         }
 
         return $payload;
+    }
+
+    /**
+     * The article, as the lead's evidence (PL1): *this is the event, this is who reported it, this
+     * is when it happened*.
+     *
+     * Four details are deliberate. The **kind** is always a trigger event, which is what makes the
+     * lead's timing score non-null and puts it in front of a company that merely fits. The
+     * **source** is the signal's own `source_kind` rather than `signal`, so a news story and a
+     * Companies House filing are weighted as the different things they are. `observed_at` is the
+     * article's **publication date** — not the run that found it — because that is what the decay
+     * has to measure, and it is why a week-old story outranks a six-month-old one on the same
+     * company. And the payload carries only ids and keys: the signal's own prose stays on the
+     * signal, which has a retention window; an evidence row does not.
+     */
+    private function evidenceFor(Signal $signal): EvidenceItem
+    {
+        return new EvidenceItem(
+            kind: EvidenceKind::Signal,
+            source: $signal->source_kind->value,
+            title: Str::limit($signal->headline, 200),
+            summary: Str::limit($signal->summary, 500),
+            sourceLabel: $signal->source_name,
+            sourceUrl: $signal->source_url,
+            observedAt: $signal->published_at,
+            payload: [
+                'signal_id' => (int) $signal->getKey(),
+                'event_key' => $signal->event_key,
+                'relevance' => $signal->relevance,
+                'heat' => $signal->heat,
+            ],
+            signalId: (int) $signal->getKey(),
+        );
     }
 
     /**

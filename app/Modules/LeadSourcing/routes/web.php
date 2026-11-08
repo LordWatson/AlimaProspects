@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\LeadSourcing\Http\Controllers\Web\DiscoveryController;
+use App\Modules\LeadSourcing\Http\Controllers\Web\EvidenceController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
@@ -11,4 +12,10 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('discovery/{run}', [DiscoveryController::class, 'show'])
         ->whereNumber('run')
         ->name('lead-sourcing.show');
+
+    // Flagging a reason from the lead detail screen (PL1).
+    Route::post('leads/{lead}/evidence/{evidence}/feedback', [EvidenceController::class, 'feedback'])
+        ->whereNumber('lead')
+        ->whereNumber('evidence')
+        ->name('leads.evidence.feedback');
 });

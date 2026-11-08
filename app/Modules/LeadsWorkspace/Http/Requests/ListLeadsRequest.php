@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\LeadsWorkspace\Http\Requests;
 
 use App\Modules\Enrichment\Enums\EnrichmentStatus;
+use App\Modules\LeadSourcing\Enums\EvidenceKind;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadsWorkspace\Data\LeadFilters;
 use App\Modules\LeadsWorkspace\Enums\LeadSort;
@@ -56,6 +57,16 @@ final class ListLeadsRequest extends FormRequest
             'assignees' => ['nullable', 'array', 'max:20'],
             'assignees.*' => ['integer', 'distinct', 'min:1'],
             'unassigned' => ['nullable', 'boolean'],
+
+            // The PL1 filters. Evidence **sources** are free strings rather than an `enum` rule:
+            // a source key is data (ADR 0018 Section 1) and a later phase adds one without
+            // touching this file. An unknown key narrows the list to nothing, which is the right
+            // answer for a stale bookmark.
+            'evidence_sources' => ['nullable', 'array', 'max:20'],
+            'evidence_sources.*' => ['string', 'distinct', 'max:32'],
+            'evidence_kinds' => ['nullable', 'array', 'max:'.count(EvidenceKind::cases())],
+            'evidence_kinds.*' => ['string', 'distinct', Rule::enum(EvidenceKind::class)],
+            'include_low_confidence' => ['nullable', 'boolean'],
 
             'sort' => ['nullable', Rule::enum(LeadSort::class)],
             'direction' => ['nullable', Rule::enum(LeadSortDirection::class)],
