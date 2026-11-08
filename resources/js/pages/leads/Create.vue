@@ -9,6 +9,7 @@ import {
     FormSection,
     UnsavedChangesDialog,
 } from '@/components/forms';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -195,39 +196,28 @@ function submit(): void {
     <Head :title="t('Add a lead')" />
 
     <div class="flex flex-col gap-6 py-2">
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <PageHero
+            index="06"
+            :eyebrow="t('Add a lead')"
+            :title="t('Met someone|good.')"
+            :description="
+                t(
+                    'Give Alima the company name and it will go and find the rest. Everything else here is optional — fill in what you know while you still remember it.',
+                )
+            "
+            size="compact"
         >
-            <div class="space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-                >
-                    {{ t('Add a lead') }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                >
-                    {{ t('Met someone good')
-                    }}<span class="text-orange">.</span>
-                </h1>
-                <p class="max-w-2xl text-base text-muted-foreground">
-                    {{
-                        t(
-                            'Give Alima the company name and it will go and find the rest. Everything else here is optional — fill in what you know while you still remember it.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <Button variant="outline" as-child>
-                <Link href="/leads">
-                    <!-- Mirrored under RTL: the arrow means "back", which follows the
-                         way the language reads. -->
-                    <ArrowLeft class="size-4 rtl:rotate-180" />
-                    {{ t('All leads') }}
-                </Link>
-            </Button>
-        </header>
+            <template #actions>
+                <Button variant="hero" as-child>
+                    <Link href="/leads">
+                        <!-- Mirrored under RTL: the arrow means "back", which follows the
+                             way the language reads. -->
+                        <ArrowLeft class="size-4 rtl:rotate-180" />
+                        {{ t('All leads') }}
+                    </Link>
+                </Button>
+            </template>
+        </PageHero>
 
         <form class="space-y-6" @submit.prevent="submit">
             <FormErrorSummary

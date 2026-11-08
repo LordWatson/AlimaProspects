@@ -250,7 +250,8 @@ Website: {{website}}
                     ."Their own business, so you can tell it apart from its customers: {{business_profile}}\n\n"
                     ."The criterion types you may use, with the shape each value takes:\n{{criterion_types}}\n\n"
                     ."Who they described wanting to reach:\n{{brief}}\n\n"
-                    .'Draft one ideal customer profile for this, or refuse with a reason.',
+                    .'Draft one ideal customer profile for this, or refuse with a reason. When is_viable is true the '
+                    .'profile object must be filled in completely — a viable answer with no profile in it is not an answer.',
                 'max_tokens' => 1536,
                 // Not zero: drafting wants a little variety in wording. Low enough that the same
                 // brief produces a recognisably similar profile twice.
@@ -287,7 +288,14 @@ Website: {{website}}
                             'required' => ['name', 'criteria'],
                         ],
                     ],
-                    'required' => ['is_viable'],
+                    // **`profile` is required, and that is the whole lesson.** With only `is_viable`
+                    // required, the first live call came back as literally `{"is_viable": true}` —
+                    // valid against the schema, valid against the provider's structured output, and
+                    // useless. `SchemaConverter` passes `required` straight through to the model, so
+                    // an optional field is one a model may decline to write; a field the answer is
+                    // worthless without is not optional. It stays nullable because a refusal has no
+                    // profile to give, and `DraftIcp::fromAi()` never reads it in that branch.
+                    'required' => ['is_viable', 'profile'],
                 ],
             ],
             [

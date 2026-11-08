@@ -13,6 +13,7 @@ import {
 import { computed } from 'vue';
 import { ListCell, ListHead, ListRow, ListTable } from '@/components/list';
 import MeterBar from '@/components/MeterBar.vue';
+import PageHero from '@/components/PageHero.vue';
 import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import ScoreDial from '@/components/scoring/ScoreDial.vue';
 import { Badge } from '@/components/ui/badge';
@@ -129,35 +130,26 @@ function sendFeedback(rating: 'good' | 'bad'): void {
     <Head :title="t('Lead score')" />
 
     <div class="flex flex-col gap-6 py-2">
-        <!-- Header -->
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <!-- Header. The company name is the Lime tail — data, not copy, so it goes through
+             `accent` rather than a `|` in the statement (`PageHero`). -->
+        <PageHero
+            index="06"
+            :eyebrow="t('Lead score')"
+            :title="t('The grade for')"
+            :accent="lead.company_name"
+            :description="
+                activeIcp
+                    ? t('Graded against your “:icp” profile', {
+                          icp: activeIcp.name,
+                      })
+                    : null
+            "
+            size="compact"
         >
-            <div class="max-w-2xl space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-                >
-                    {{ t('Lead score') }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                    dir="auto"
-                >
-                    {{ lead.company_name }}<span class="text-orange">.</span>
-                </h1>
-                <p v-if="activeIcp" class="text-base text-muted-foreground">
-                    {{
-                        t('Graded against your “:icp” profile', {
-                            icp: activeIcp.name,
-                        })
-                    }}
-                </p>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2">
+            <template #actions>
                 <Button
                     v-if="can.rescore && activeIcp"
-                    variant="outline"
+                    variant="lime"
                     data-test="rescore"
                     @click="rescore"
                 >
@@ -165,20 +157,20 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                     {{ score ? t('Grade again') : t('Grade this lead') }}
                 </Button>
                 <!-- Where somebody who has just read a grade actually wants to go. -->
-                <Button variant="outline" as-child>
+                <Button variant="hero" as-child>
                     <Link :href="`/leads/${lead.id}`">
                         <Building2 class="size-4" />
                         {{ t('Open the lead') }}
                     </Link>
                 </Button>
-                <Button variant="ghost" as-child>
+                <Button variant="hero" as-child>
                     <Link href="/discovery">
                         <ArrowLeft class="size-4 rtl:rotate-180" />
                         {{ t('Back to discovery') }}
                     </Link>
                 </Button>
-            </div>
-        </header>
+            </template>
+        </PageHero>
 
         <!-- No active ICP: nothing to grade against -->
         <EmptyState

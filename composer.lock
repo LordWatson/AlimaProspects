@@ -14470,5 +14470,5 @@
         "ext-pcntl": "8.5.10",
         "ext-posix": "8.5.10"
     },
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }

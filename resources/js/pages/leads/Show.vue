@@ -21,6 +21,7 @@ import LeadTasks from '@/components/leads/LeadTasks.vue';
 import LeadWorkPanel from '@/components/leads/LeadWorkPanel.vue';
 import { ListCell, ListHead, ListRow, ListTable } from '@/components/list';
 import MeterBar from '@/components/MeterBar.vue';
+import PageHero from '@/components/PageHero.vue';
 import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import ScoreDial from '@/components/scoring/ScoreDial.vue';
 import { Badge } from '@/components/ui/badge';
@@ -310,11 +311,41 @@ const hasRolePreference = computed(
 
     <div class="flex flex-col gap-6 py-2">
         <!--
-          Who this is, and the five things a member opens the screen to find out. The composition
-          echoes `PageHero` — a tracked mono eyebrow with a right-hand meta, a hairline rule, the
-          name — but on the cream card surface rather than Ink, because this is a record rather than
-          a destination, and because every hero in the product carries the panda and a screen should
-          not carry two (brand-tokens.md §5).
+          The screen opens with the product's `PageHero`, like every other destination. The company
+          name is its Lime tail — data, not copy, so it goes through `accent` rather than a `|` in
+          the statement, and carries no brand full stop: a name that already ends in one would read
+          "Acme Ltd.." and under RTL the dot would land on the wrong end.
+        -->
+        <PageHero
+            index="06"
+            :eyebrow="t('Lead')"
+            :title="t('Everything on')"
+            :accent="lead.company_name"
+            size="compact"
+        >
+            <template #actions>
+                <!-- The primary action on this screen, and the one the whole pipeline exists
+                     to reach. Offered to anyone who may work the lead; the Outreach screen
+                     itself decides which channels are open (Phase 11). -->
+                <Button v-if="can.work" variant="lime" as-child>
+                    <Link :href="`/leads/${lead.id}/outreach`">
+                        <!-- Mirrored, not rotated: a rotated paper plane points backwards. -->
+                        <Send class="size-4 rtl:-scale-x-100" />
+                        {{ t('Reach out') }}
+                    </Link>
+                </Button>
+                <Button variant="hero" as-child>
+                    <Link href="/leads">
+                        <ArrowLeft class="size-4 rtl:rotate-180" />
+                        {{ t('All leads') }}
+                    </Link>
+                </Button>
+            </template>
+        </PageHero>
+
+        <!--
+          Where this came from, and the five things a member opens the screen to find out — on the
+          cream card surface, because this is the record rather than the destination.
         -->
         <header
             class="space-y-5 rounded-2xl border border-border bg-card p-6"
@@ -335,59 +366,21 @@ const hasRolePreference = computed(
                 </span>
             </div>
 
-            <div class="h-px w-full bg-border" aria-hidden="true" />
-
-            <div
-                class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
-            >
-                <div class="min-w-0 space-y-2">
-                    <h1
-                        class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                        dir="auto"
-                    >
-                        <!-- No brand full stop here: this is a data value, not a statement — a name
-                             that already ends in one would read "Acme Ltd..", and under RTL the dot
-                             would land on the wrong end. -->
-                        {{ lead.company_name }}
-                    </h1>
-                    <!-- `dir="ltr"` goes on the link, not the paragraph: a full-width
-                         `ltr` block left-aligns the URL under a right-aligned Arabic name. -->
-                    <p v-if="website" class="text-base text-muted-foreground">
-                        <a
-                            :href="website"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="inline-flex items-center gap-1 rounded text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                            dir="ltr"
-                        >
-                            {{ lead.website }}
-                            <ExternalLink class="size-3.5" />
-                            <span class="sr-only">{{
-                                t('(opens in a new tab)')
-                            }}</span>
-                        </a>
-                    </p>
-                </div>
-
-                <div class="flex flex-wrap gap-2">
-                    <!-- The primary action on this screen, and the one the whole pipeline exists
-                         to reach. Offered to anyone who may work the lead; the Outreach screen
-                         itself decides which channels are open (Phase 11). -->
-                    <Button v-if="can.work" as-child>
-                        <Link :href="`/leads/${lead.id}/outreach`">
-                            <!-- Mirrored, not rotated: a rotated paper plane points backwards. -->
-                            <Send class="size-4 rtl:-scale-x-100" />
-                            {{ t('Reach out') }}
-                        </Link>
-                    </Button>
-                    <Button variant="outline" as-child>
-                        <Link href="/leads">
-                            <ArrowLeft class="size-4 rtl:rotate-180" />
-                            {{ t('All leads') }}
-                        </Link>
-                    </Button>
-                </div>
-            </div>
+            <!-- `dir="ltr"` goes on the link, not the paragraph: a full-width
+                 `ltr` block left-aligns the URL under a right-aligned Arabic name. -->
+            <p v-if="website" class="text-base text-muted-foreground">
+                <a
+                    :href="website"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex items-center gap-1 rounded text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    dir="ltr"
+                >
+                    {{ lead.website }}
+                    <ExternalLink class="size-3.5" />
+                    <span class="sr-only">{{ t('(opens in a new tab)') }}</span>
+                </a>
+            </p>
 
             <!--
               The rail. Read-only on purpose: the stage, the owner and the labels are *changed* in

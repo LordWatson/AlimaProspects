@@ -186,8 +186,8 @@ CTAs: _Let's grow · Let's talk · Start a project · See the work_. Headlines l
   `signals/Watches.vue` at 07), while a **sub-page reached from a record** uses a plain header —
   `leads/Create.vue` and `leads/Import.vue` set that precedent in Phase 10, and
   `outreach/Show.vue`, `outreach/Suppressions.vue` and `notifications/Index.vue` follow it.
-  Settings screens have the settings layout's own `Heading` instead. **Needs confirming**, and the
-  answer belongs here rather than being decided per screen.
+  Settings screens have the settings layout's own `Heading` instead. **Answered on 2026-11-08 the
+  other way — see §7m:** every screen opens with the hero, sub-pages included.
     - _Phase 15 followed that reading:_ `compliance/Index.vue` is the sidebar destination and carries
       the hero; `compliance/Lia.vue` and `compliance/Dsar.vue` are reached from it and use plain
       headers. The compliance hero carries **no index number**, because the nav item sits in the
@@ -547,7 +547,9 @@ bars and figures. Each is a measurement of a specific piece of type, not a new s
 
 The lead detail screen was rebuilt on the same pass. Four decisions sit outside the book.
 
-1. **A record opens with a header card, not a hero.** `leads/Show.vue` uses the hero's own
+1. **A record opens with a header card, not a hero.** _Superseded on 2026-11-08 by §7m: the record
+   screens now open with a compact `PageHero` too, and the cream card below it keeps the provenance
+   line and the rail. The rest of this item still describes the card._ `leads/Show.vue` uses the hero's own
    composition — a tracked mono eyebrow with a right-hand meta, a hairline rule, then the name —
    on the **cream card surface** rather than the Ink panel. The reason is §5's own scope: the hero
    belongs to the numbered destinations in the sidebar, and a record reached _from_ one has no
@@ -838,3 +840,45 @@ mechanical fix, and are listed in `docs/modules/signals.md` under the audit sect
   touched.
 - **The 24px remove button** on the accounts list meets WCAG 2.5.8 exactly; §7h.2 asks for a 40px
   hit area via an invisible `before` pseudo-element when it is next touched.
+
+### 7m. Added 2026-11-08 (the hero on every screen)
+
+**Decided by the brand owner, and it closes §7a's open question.** §5's "every main screen opens
+with the hero" is read as **every screen**, not only the numbered sidebar destinations. The eleven
+screens that were still using a plain header now carry a `PageHero size="compact"`:
+`leads/Create`, `leads/Import`, `leads/Show`, `icp/Edit`, `lead-sourcing/Show`, `scoring/Show`,
+`outreach/Show`, `outreach/Suppressions`, `notifications/Index`, `compliance/Lia` and
+`compliance/Dsar`.
+
+Four rules fall out of it, and they are what keeps the new heroes consistent with the old ones:
+
+1. **A sub-page borrows its parent's number.** `leads/Create` and `leads/Import` carry `06`,
+   `scoring/Show` and `leads/Show` carry `06`, `lead-sourcing/Show` carries `05`, `icp/Edit` `04`,
+   the two outreach sub-pages `08`. A screen whose nav item has no number — notifications, and the
+   two compliance sub-pages, which hang off the Settings chapter — carries **no index**, exactly as
+   `compliance/Index` and `billing/Index` already do.
+2. **A company name is the Lime tail through `accent`, never through a `|`.** It is data, not copy,
+   so it is not translated and takes no Orange full stop (`scoring/Show`, `outreach/Show`,
+   `leads/Show`). `accent` wins over a `|` in the statement, so those titles carry none.
+3. **The hero's actions are `variant="lime"` for the one primary and `variant="hero"` for the
+   rest.** The `outline` buttons the plain headers used are a cream chip on an Ink panel.
+4. **A record still gets its cream card — underneath.** `leads/Show` keeps the provenance line
+   (source + "checked when") and the rail in the card below the hero; the name, the website and the
+   two actions moved up into the hero, so nothing is stated twice. The card's own hairline rule
+   went with the name it used to separate.
+
+5. **`PageHero` itself gained two fixes the plain headers already had**: the `accent` span carries
+   `dir="auto"` (it is data — a company name in the other script than the UI sets its own
+   direction, which the old `<h1>`s did for themselves), and the statement is `break-words`, so a
+   long unbroken name cannot overflow the card at `text-5xl`.
+
+**Still open, and pre-existing:** a value interpolated into a hero `description` is not
+bidi-isolated — `scoring/Show`'s “Graded against your “:icp” profile” is the live example. It
+behaved the same way in the plain header, and fixing it means isolating at the `t()` call rather
+than putting `dir="auto"` on the paragraph, which would flip a whole Arabic sentence that happens
+to open with a Latin name.
+
+The screens that are still **not** heroes, by decision rather than omission: the settings pane
+(`settings/*`), which has the settings layout's own `Heading` and sub-nav inside a 36rem form
+column; the auth split screen (§7d); the public pages (§7c); and the admin panel, whose
+`AdminPageHeader` is its own composition over the same component (§7e).

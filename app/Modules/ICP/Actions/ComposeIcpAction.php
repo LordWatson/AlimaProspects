@@ -101,14 +101,21 @@ final class ComposeIcpAction
             throw IcpException::composerUnavailable();
         }
 
-        $draft = DraftIcp::fromAi($response->data);
+        // Initialised here because it is passed by reference: an undefined variable would arrive as
+        // null and fail the parameter's own type.
+        $dropped = 0;
+
+        $draft = DraftIcp::fromAi($response->data, $dropped);
 
         // Counts and costs only, never the brief or the draft's prose (CLAUDE.md §2, ADR 0017).
+        // `dropped` is the one worth watching: a row the save path would not take is repaired away
+        // silently, so a prompt that started losing half its criteria would otherwise look fine.
         Log::info('Drafted an ideal customer profile from a description.', [
             'team_id' => $team->getKey(),
             'user_id' => $actor->getKey(),
             'viable' => $draft->viable,
             'criteria' => $draft->profile === null ? 0 : count($draft->profile->criteria),
+            'dropped_criteria' => $dropped,
             'cost_micros' => $response->costMicros,
             'prompt_version' => $response->promptVersion,
         ]);

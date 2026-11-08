@@ -13,6 +13,7 @@ import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import ChannelPicker from '@/components/outreach/ChannelPicker.vue';
 import LogAttemptDialog from '@/components/outreach/LogAttemptDialog.vue';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -277,22 +278,17 @@ const outcomeBadge = (attempt: ContactAttempt): string =>
     <Head :title="t('Reach :company', { company: lead.company_name })" />
 
     <div class="flex flex-col gap-6 py-2">
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                >
-                    {{ t('Outreach') }}
-                </p>
-                <h1
-                    class="mt-1 truncate text-2xl font-semibold text-foreground"
-                >
-                    {{ lead.company_name }}
-                </h1>
-            </div>
-
-            <div class="flex flex-wrap gap-2">
-                <Button variant="outline" as-child>
+        <!-- The company name is the Lime tail — data, not copy, so it goes through `accent`
+             rather than a `|` in the statement (`PageHero`). -->
+        <PageHero
+            index="08"
+            :eyebrow="t('Outreach')"
+            :title="t('Reaching out to')"
+            :accent="lead.company_name"
+            size="compact"
+        >
+            <template #actions>
+                <Button variant="hero" as-child>
                     <Link :href="`/leads/${lead.id}`">
                         <ArrowLeft class="size-4 rtl:rotate-180" />
                         {{ t('Back to the lead') }}
@@ -300,14 +296,14 @@ const outcomeBadge = (attempt: ContactAttempt): string =>
                 </Button>
                 <Button
                     v-if="can.work"
-                    variant="outline"
+                    variant="hero"
                     data-test="open-log"
                     @click="logging = true"
                 >
                     {{ t('Log an approach') }}
                 </Button>
-            </div>
-        </header>
+            </template>
+        </PageHero>
 
         <!-- The lead's own restriction, as a standing note rather than only as a refusal. -->
         <div

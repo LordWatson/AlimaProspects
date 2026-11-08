@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\AiPlatform\Contracts\AiTransport;
+use App\Modules\AiPlatform\Models\AiPromptTemplate;
+use App\Modules\AiPlatform\Services\JsonSchemaValidator;
 use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\ICP\Models\Icp;
 use Database\Seeders\AiPromptTemplateSeeder;
@@ -110,6 +112,61 @@ it('refuses a draft the save path would reject rather than passing it on', funct
 
     expect(session('inertia.flash_data.draft.viable'))->toBeFalse()
         ->and(Icp::query()->count())->toBe(0);
+});
+
+it('keeps the criteria it can use and drops only the row the save path would reject', function (): void {
+    $this->seed(AiPromptTemplateSeeder::class);
+
+    // One unusable row among four. Refusing the lot was the first version's behaviour and it threw
+    // away three good criteria to tell the member their clear description was not understood.
+    fakeComposerTransport()->queueStructured([
+        'is_viable' => true,
+        'reason' => null,
+        'summary' => 'Small food producers.',
+        'profile' => [
+            'name' => 'UK craft food startups',
+            'description' => 'Young food producers.',
+            'criteria' => [
+                ['type' => 'industry', 'value' => 'Craft food producers', 'weight' => 80],
+                ['type' => 'industry', 'value' => '', 'weight' => 60],
+                ['type' => 'geography', 'value' => 'United Kingdom', 'weight' => 50],
+                ['type' => 'exclusion', 'value' => 'Design agencies'],
+            ],
+        ],
+    ]);
+
+    $user = createUserWithTeam();
+
+    $this->actingAs($user)
+        ->post(route('icp.compose'), ['brief' => 'We are a design agency after startup food brands.'])
+        ->assertRedirect(route('icp.create'));
+
+    expect(session('inertia.flash_data.draft.viable'))->toBeTrue()
+        ->and(session('inertia.flash_data.draft.profile.criteria'))->toHaveCount(3)
+        ->and(array_column(session('inertia.flash_data.draft.profile.criteria'), 'value'))
+        ->toBe(['Craft food producers', 'United Kingdom', 'Design agencies']);
+});
+
+/*
+ * The hole the first live call fell straight through: the model answered `{"is_viable": true}` and
+ * nothing else. It was valid — `profile` was nullable and not required — and useless, and the
+ * member was told their perfectly clear description could not be turned into a profile.
+ * `SchemaConverter` passes `required` to the model, so an optional field is one a model may decline
+ * to write. This pins it at the schema, which is where it has to hold: by the time our own code
+ * sees an empty answer, the call has already been paid for.
+ */
+it('requires a profile in the prompt schema, so an empty viable answer cannot validate', function (): void {
+    $this->seed(AiPromptTemplateSeeder::class);
+
+    $schema = (array) AiPromptTemplate::query()
+        ->where('key', 'icp.compose_profile')
+        ->orderByDesc('version')
+        ->firstOrFail()
+        ->schema;
+
+    $errors = app(JsonSchemaValidator::class)->validate(['is_viable' => true], $schema);
+
+    expect($errors)->not->toBeEmpty();
 });
 
 it('rejects a brief too short to draft from', function (): void {

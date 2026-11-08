@@ -36,10 +36,7 @@
             "Bash(php artisan queue:work:*)",
             "Bash(php artisan queue:listen:*)"
         ],
-        "ask": [
-            "Bash(git push:*)",
-            "Bash(php artisan migrate:rollback:*)"
-        ],
+        "ask": ["Bash(git push:*)", "Bash(php artisan migrate:rollback:*)"],
         "deny": [
             "Read(./.env)",
             "Read(./.env.testing)",

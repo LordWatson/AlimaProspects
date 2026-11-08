@@ -19,6 +19,7 @@ import {
     UnsavedChangesDialog,
 } from '@/components/forms';
 import MeterBar from '@/components/MeterBar.vue';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -349,29 +350,19 @@ function submit(): void {
         class="mx-auto flex w-full max-w-3xl flex-col gap-6 py-2"
         @submit.prevent="submit"
     >
-        <header class="space-y-2">
-            <p
-                class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-            >
-                {{ t('Ideal customer profile') }}
-            </p>
-            <h1
-                class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-            >
-                {{
-                    isEditing
-                        ? t('Refine your profile')
-                        : t('Build your profile')
-                }}<span class="text-orange">.</span>
-            </h1>
-            <p class="text-base text-muted-foreground">
-                {{
-                    t(
-                        'Add the signals that describe a great-fit business, and weight each one by how much it matters. Alima scores every prospect against your active profile.',
-                    )
-                }}
-            </p>
-        </header>
+        <PageHero
+            index="04"
+            :eyebrow="t('Ideal customer profile')"
+            :title="
+                isEditing ? t('Refine your|profile.') : t('Build your|profile.')
+            "
+            :description="
+                t(
+                    'Add the signals that describe a great-fit business, and weight each one by how much it matters. Alima scores every prospect against your active profile.',
+                )
+            "
+            size="compact"
+        />
 
         <FormErrorSummary
             :errors="form.errors"

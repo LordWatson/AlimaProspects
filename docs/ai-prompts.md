@@ -88,6 +88,21 @@ list of design studios. So:
    an ideal customer profile, and criteria drafted for it would grade the whole account against
    nonsense.
 
+**A field the answer is worthless without is not optional.** The first live call came back as
+literally `{"is_viable": true}` — valid against the schema (`profile` was nullable and not in
+`required`), valid against the provider's structured output, and useless; the member was told their
+perfectly clear description could not be turned into a profile. `SchemaConverter` passes `required`
+straight through to the model, so **an optional field is one a model may decline to write**.
+`profile` is now required and still nullable, which says the right thing: always state it, `null`
+only when refusing. Pinned by a test that feeds the empty answer to `JsonSchemaValidator`, because by
+the time our own code sees an empty response the call has already been paid for.
+
+**And a bad row is dropped, not fatal.** `fromAi()` validates each criterion on its own and keeps the
+ones that pass, refusing only when nothing usable survives — the rules are unchanged, the response to
+breaking one is. A draft is a suggestion on a form the member is about to edit, so the worst a
+questionable row can do is get deleted, while refusing throws away nine good criteria and a
+reasoning-tier call. The count of dropped rows is logged, since silent repair is otherwise invisible.
+
 **And the constraint that cannot live in the schema lives in the code**, exactly as below:
 `DraftIcp::fromAi()` re-validates against `IcpData::rules()` — the rules the editor's own save posts
 through — so a draft the save path would reject becomes a refusal the member can act on rather than

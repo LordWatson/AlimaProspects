@@ -176,9 +176,11 @@ const statValue = computed(() => {
         >
             <div>
                 <!-- Tight Latin leading (0.95–1.1, brand-tokens.md §3); Tajawal's taller
-                     ascenders and descenders need the room back under RTL. -->
+                     ascenders and descenders need the room back under RTL. The accent carries
+                     `dir="auto"` because it is data: a company name in the other script than the
+                     UI sets its own direction, as the plain headers these heroes replaced did. -->
                 <h1
-                    class="leading-[0.98] font-bold tracking-tight rtl:leading-tight"
+                    class="leading-[0.98] font-bold tracking-tight break-words rtl:leading-tight"
                     :class="
                         isCompact
                             ? 'text-3xl sm:text-4xl lg:text-5xl'
@@ -188,9 +190,12 @@ const statValue = computed(() => {
                     {{ statement.head
                     }}<template v-if="statement.head && statement.accent"
                         ><br /></template
-                    ><span v-if="statement.accent" class="text-lime">{{
-                        statement.accent
-                    }}</span>
+                    ><span
+                        v-if="statement.accent"
+                        class="text-lime"
+                        dir="auto"
+                        >{{ statement.accent }}</span
+                    >
                 </h1>
 
                 <!-- The one rounded Signal Orange rule per layout (decorative). -->

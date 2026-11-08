@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Bell, CheckCheck, ChevronRight, Settings2 } from '@lucide/vue';
 import { computed } from 'vue';
+import PageHero from '@/components/PageHero.vue';
 import Pagination from '@/components/Pagination.vue';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -118,42 +119,34 @@ function markAllRead(): void {
     <Head :title="t('Notifications')" />
 
     <div class="flex flex-col gap-6 py-2">
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                >
-                    {{ t('Notifications') }}
-                </p>
-                <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                    {{ t('What Alima has told you') }}
-                </h1>
-                <p
-                    v-if="unreadCount > 0"
-                    class="mt-1 text-sm text-muted-foreground"
-                >
-                    {{ t(':count unread', { count: number(unreadCount) }) }}
-                </p>
-            </div>
-
-            <div class="flex flex-wrap gap-2">
+        <PageHero
+            :eyebrow="t('Notifications')"
+            :title="t('What Alima|has told you.')"
+            :description="
+                unreadCount > 0
+                    ? t(':count unread', { count: number(unreadCount) })
+                    : null
+            "
+            size="compact"
+        >
+            <template #actions>
                 <Button
                     v-if="unreadCount > 0"
-                    variant="outline"
+                    variant="lime"
                     data-test="mark-all-read"
                     @click="markAllRead"
                 >
                     <CheckCheck class="size-4" />
                     {{ t('Mark all read') }}
                 </Button>
-                <Button variant="outline" as-child>
+                <Button variant="hero" as-child>
                     <Link href="/settings/notifications">
                         <Settings2 class="size-4" />
                         {{ t('Notification settings') }}
                     </Link>
                 </Button>
-            </div>
-        </header>
+            </template>
+        </PageHero>
 
         <div
             v-if="notifications.data.length"

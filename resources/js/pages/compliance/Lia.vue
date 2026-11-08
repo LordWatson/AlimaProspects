@@ -7,6 +7,7 @@ import {
     FormErrorSummary,
     UnsavedChangesDialog,
 } from '@/components/forms';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -55,9 +56,8 @@ import type { LiaForm, LiaRecord, Market } from '@/types';
  *    will be asked"), and they were being shown five disabled textareas with no explanation. They
  *    now get the text as prose and a line saying who can change it.
  *
- * A **plain header, not a `PageHero`**: this is a sub-page reached from the compliance centre, and
- * brand-tokens.md §7a reads the hero as a sidebar destination's opening card, with sub-pages
- * following `outreach/Suppressions.vue` instead.
+ * It opens with the `PageHero` every screen in the product opens with — compact, as a sub-page
+ * reached from the compliance centre.
  *
  * Brand: cream page, one card. Status tokens only — Signal Orange is decorative and never
  * a warning (brand-tokens.md §2.1). Textareas are `dir="auto"` so an Arabic assessment sets itself
@@ -228,32 +228,25 @@ const answers = computed(() =>
     <Head :title="t('Lawful basis')" />
 
     <div class="flex flex-col gap-6 py-2">
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div class="max-w-2xl">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                >
-                    {{ t('Compliance') }}
-                </p>
-                <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                    {{ t('Lawful basis') }}
-                </h1>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    {{
-                        t(
-                            'A legitimate-interest assessment is the record that justifies sourcing business contact data. Alima will not run a lead search until one is signed off for your market.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <Button variant="outline" as-child>
-                <Link href="/compliance">
-                    <ArrowLeft class="size-4 rtl:rotate-180" />
-                    {{ t('Compliance') }}
-                </Link>
-            </Button>
-        </header>
+        <PageHero
+            :eyebrow="t('Lawful basis')"
+            :title="t('The reason you|may hold this.')"
+            :description="
+                t(
+                    'A legitimate-interest assessment is the record that justifies sourcing business contact data. Alima will not run a lead search until one is signed off for your market.',
+                )
+            "
+            size="compact"
+        >
+            <template #actions>
+                <Button variant="hero" as-child>
+                    <Link href="/compliance">
+                        <ArrowLeft class="size-4 rtl:rotate-180" />
+                        {{ t('Compliance') }}
+                    </Link>
+                </Button>
+            </template>
+        </PageHero>
 
         <FormErrorSummary
             :errors="form.errors"

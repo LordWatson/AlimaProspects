@@ -3,6 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, FileUp, Upload } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import PageHero from '@/components/PageHero.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useFormat } from '@/composables/useFormat';
@@ -182,39 +183,28 @@ function example(header: string): string {
     <Head :title="t('Import leads')" />
 
     <div class="flex max-w-3xl flex-col gap-8 py-2">
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <PageHero
+            index="06"
+            :eyebrow="t('Import leads')"
+            :title="t('Bring your|own list.')"
+            :description="
+                t(
+                    'Upload a CSV and tell us which column is which. Companies you already have get filled in rather than duplicated.',
+                )
+            "
+            size="compact"
         >
-            <div class="space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-                >
-                    {{ t('Import leads') }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                >
-                    {{ t('Bring your own list')
-                    }}<span class="text-orange">.</span>
-                </h1>
-                <p class="text-base text-muted-foreground">
-                    {{
-                        t(
-                            'Upload a CSV and tell us which column is which. Companies you already have get filled in rather than duplicated.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <Button variant="outline" as-child>
-                <Link href="/leads">
-                    <!-- Mirrored under RTL: the arrow means "back", which follows the
-                         way the language reads. -->
-                    <ArrowLeft class="size-4 rtl:rotate-180" />
-                    {{ t('All leads') }}
-                </Link>
-            </Button>
-        </header>
+            <template #actions>
+                <Button variant="hero" as-child>
+                    <Link href="/leads">
+                        <!-- Mirrored under RTL: the arrow means "back", which follows the
+                             way the language reads. -->
+                        <ArrowLeft class="size-4 rtl:rotate-180" />
+                        {{ t('All leads') }}
+                    </Link>
+                </Button>
+            </template>
+        </PageHero>
 
         <form class="space-y-6" @submit.prevent="submit">
             <!-- The file -->

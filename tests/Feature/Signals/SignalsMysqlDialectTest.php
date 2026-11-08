@@ -50,9 +50,11 @@ use Illuminate\Support\Facades\DB;
 beforeEach(function (): void {
     $database = env('SIGNALS_MYSQL_TEST_DATABASE');
 
-    if (! is_string($database) || $database === '') {
+    // Must end in `_test`: this calls `migrate:fresh`, and a name that is merely non-empty can
+    // be the dev database (alima_prospects), which is how the suite would drop real data.
+    if (! is_string($database) || ! str_ends_with($database, '_test')) {
         $this->markTestSkipped(
-            'Set SIGNALS_MYSQL_TEST_DATABASE to a throwaway MySQL schema to run the dialect checks.'
+            'Set SIGNALS_MYSQL_TEST_DATABASE to a throwaway MySQL schema named *_test to run the dialect checks.'
         );
     }
 

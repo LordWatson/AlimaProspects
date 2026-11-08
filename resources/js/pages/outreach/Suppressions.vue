@@ -4,6 +4,7 @@ import { FileText, Lock, Plus, ShieldOff, Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { FormField } from '@/components/forms';
 import { ListCell, ListHead, ListRow, ListTable } from '@/components/list';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -89,32 +90,26 @@ function lift(entry: OutreachSuppression): void {
     <Head :title="t('Do not contact')" />
 
     <div class="flex flex-col gap-6 py-2">
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div class="max-w-2xl">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                >
-                    {{ t('Outreach') }}
-                </p>
-                <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                    {{ t('Do not contact') }}
-                </h1>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    {{
-                        t(
-                            'Nothing is ever sent to anyone on this list. Alima checks it when you draft and again the moment before it sends.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <Button variant="outline" as-child>
-                <Link href="/outreach/templates">
-                    <FileText class="size-4" />
-                    {{ t('Briefs') }}
-                </Link>
-            </Button>
-        </header>
+        <PageHero
+            index="08"
+            :eyebrow="t('Outreach')"
+            :title="t('Do not|contact.')"
+            :description="
+                t(
+                    'Nothing is ever sent to anyone on this list. Alima checks it when you draft and again the moment before it sends.',
+                )
+            "
+            size="compact"
+        >
+            <template #actions>
+                <Button variant="hero" as-child>
+                    <Link href="/outreach/templates">
+                        <FileText class="size-4" />
+                        {{ t('Briefs') }}
+                    </Link>
+                </Button>
+            </template>
+        </PageHero>
 
         <!-- Add an entry -->
         <section

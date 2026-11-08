@@ -58,16 +58,32 @@ final class DraftIcp extends Data
     }
 
     /**
-     * Map the validated AI output to a draft, re-validating it against the save path's own rules.
+     * Map the AI output to a draft, re-validating it against the save path's own rules.
      *
-     * Returns a refusal rather than throwing when the draft cannot be a profile: the member asked a
-     * reasonable question and got an unusable answer, which is a thing to tell them about and not a
-     * 500. The failure is logged by the Action (counts only, never the prose).
+     * **A bad row is dropped; it does not sink the draft.** The first version validated the whole
+     * profile and refused it whole, which meant one criterion the save path would not take — an
+     * empty value, a weight of nothing — threw away eight good ones and told the member their
+     * perfectly clear description could not be understood. Nobody can act on that, and it is the
+     * wrong trade twice over: a draft is a *suggestion on a form the member is about to edit*, so
+     * the worst a questionable row can do is be deleted, while refusing costs a reasoning-tier call
+     * and leaves them where they started.
+     *
+     * So each criterion is validated **on its own** and the ones that pass are kept. Strictness is
+     * unchanged in the direction that matters: nothing reaches the editor that `SaveIcpRequest`
+     * would reject, because the rules are the same rules. What changed is the response to a
+     * violation — repair, not refusal.
+     *
+     * A refusal is kept for the two cases where there is genuinely nothing to show: no name, or no
+     * criterion survived. `$dropped` is handed back so the Action can log the count (never the
+     * prose) — a model quietly losing half its rows is a prompt problem, and the only way to notice
+     * it is to count.
      *
      * @param  array<string, mixed>  $output
      */
-    public static function fromAi(array $output): self
+    public static function fromAi(array $output, int &$dropped = 0): self
     {
+        $dropped = 0;
+
         if (($output['is_viable'] ?? false) !== true) {
             return self::refused(
                 is_string($output['reason'] ?? null) && $output['reason'] !== ''
@@ -79,9 +95,36 @@ final class DraftIcp extends Data
         /** @var array<string, mixed> $profile */
         $profile = is_array($output['profile'] ?? null) ? $output['profile'] : [];
 
-        $validator = Validator::make($profile, IcpData::rules());
+        /** @var list<mixed> $rows */
+        $rows = is_array($profile['criteria'] ?? null) ? array_values($profile['criteria']) : [];
 
-        if ($validator->fails()) {
+        $criteria = [];
+
+        foreach ($rows as $row) {
+            // One row, the row's own rules. `criteria.*` keys unwrapped to a single row, so the one
+            // definition in `IcpData::rules()` stays the only one.
+            $validator = Validator::make(is_array($row) ? $row : [], [
+                'type' => IcpData::rules()['criteria.*.type'],
+                'value' => IcpData::rules()['criteria.*.value'],
+                'weight' => IcpData::rules()['criteria.*.weight'],
+            ]);
+
+            if ($validator->fails()) {
+                $dropped++;
+
+                continue;
+            }
+
+            $criteria[] = $validator->validated();
+        }
+
+        $shell = Validator::make([
+            'name' => $profile['name'] ?? null,
+            'description' => $profile['description'] ?? null,
+            'criteria' => $criteria,
+        ], IcpData::rules());
+
+        if ($shell->fails() || $criteria === []) {
             return self::refused('Alima drafted something it could not turn into a profile. Try describing your customers in one or two sentences.');
         }
 

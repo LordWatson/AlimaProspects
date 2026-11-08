@@ -9,6 +9,7 @@ import {
     ListRowLink,
     ListTable,
 } from '@/components/list';
+import PageHero from '@/components/PageHero.vue';
 import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -113,24 +114,27 @@ onBeforeUnmount(() => {
     <Head :title="t('Discovery run')" />
 
     <div class="flex flex-col gap-8 py-2">
-        <!-- Header -->
-        <header
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <!-- Header. What was searched for is the run's own data, so it sits in the hero's slot
+             rather than its description: those lines keep `dir="auto"` and their <bdi> isolation. -->
+        <PageHero
+            index="05"
+            :eyebrow="t(run.source_label)"
+            :title="t('Discovery|run.')"
+            size="compact"
         >
-            <div class="max-w-2xl space-y-2">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
-                >
-                    {{ t(run.source_label) }}
-                </p>
-                <h1
-                    class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl rtl:font-bold"
-                >
-                    {{ t('Discovery run') }}<span class="text-orange">.</span>
-                </h1>
+            <template #actions>
+                <Button variant="hero" as-child>
+                    <Link href="/discovery">
+                        <ArrowLeft class="size-4 rtl:rotate-180" />
+                        {{ t('All runs') }}
+                    </Link>
+                </Button>
+            </template>
+
+            <div class="mt-7 max-w-xl space-y-2">
                 <p
                     v-if="run.params?.customer_description"
-                    class="text-base text-foreground"
+                    class="text-base text-cream"
                     dir="auto"
                 >
                     {{ run.params.customer_description }}
@@ -142,7 +146,7 @@ onBeforeUnmount(() => {
                 -->
                 <p
                     v-if="run.params?.terms"
-                    class="text-base text-muted-foreground"
+                    class="text-base text-cream/70"
                     dir="auto"
                 >
                     {{ t('Searching for') }}
@@ -153,21 +157,14 @@ onBeforeUnmount(() => {
                 </p>
                 <p
                     v-if="excludeTerms.length"
-                    class="text-sm text-muted-foreground"
+                    class="text-sm text-cream/70"
                     dir="auto"
                 >
                     {{ t('Leaving out:') }}
                     <bdi>{{ excludeTermsList }}</bdi>
                 </p>
             </div>
-
-            <Button variant="outline" as-child>
-                <Link href="/discovery">
-                    <ArrowLeft class="size-4" />
-                    {{ t('All runs') }}
-                </Link>
-            </Button>
-        </header>
+        </PageHero>
 
         <!-- Running -->
         <section

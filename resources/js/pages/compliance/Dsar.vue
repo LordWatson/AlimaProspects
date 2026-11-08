@@ -8,6 +8,7 @@ import {
     ShieldCheck,
 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
+import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,9 +30,8 @@ import type { SubjectDataReport, SubjectRecord } from '@/types';
 /*
  * Data-subject requests (Phase 15, docs/compliance.md §3.5) — locate, then erase.
  *
- * A **plain header, not a `PageHero`**: this is a sub-page reached from the compliance centre, and
- * brand-tokens.md §7a reads the hero as a sidebar destination's opening card, with sub-pages
- * following `outreach/Suppressions.vue` instead.
+ * It opens with the `PageHero` every screen in the product opens with — compact, as a sub-page
+ * reached from the compliance centre.
  *
  * The screen's job is to stop a well-meant erasure being a mistake, so it says four things a
  * plainer table would not:
@@ -163,32 +163,25 @@ function labelsFor(record: SubjectRecord): string {
     <Head :title="t('Data requests')" />
 
     <div class="flex flex-col gap-6 py-2">
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div class="max-w-2xl">
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                >
-                    {{ t('Compliance') }}
-                </p>
-                <h1 class="mt-1 text-2xl font-semibold text-foreground">
-                    {{ t('Data requests') }}
-                </h1>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    {{
-                        t(
-                            'Search for an address, a phone number or a name to see everything your team holds about one person. Searching and erasing are both recorded.',
-                        )
-                    }}
-                </p>
-            </div>
-
-            <Button variant="outline" as-child>
-                <Link href="/compliance">
-                    <ArrowLeft class="size-4 rtl:rotate-180" />
-                    {{ t('Compliance') }}
-                </Link>
-            </Button>
-        </header>
+        <PageHero
+            :eyebrow="t('Data requests')"
+            :title="t('Someone asked|about their data.')"
+            :description="
+                t(
+                    'Search for an address, a phone number or a name to see everything your team holds about one person. Searching and erasing are both recorded.',
+                )
+            "
+            size="compact"
+        >
+            <template #actions>
+                <Button variant="hero" as-child>
+                    <Link href="/compliance">
+                        <ArrowLeft class="size-4 rtl:rotate-180" />
+                        {{ t('Compliance') }}
+                    </Link>
+                </Button>
+            </template>
+        </PageHero>
 
         <!-- Search ------------------------------------------------------------>
         <section class="rounded-2xl border border-border bg-card p-6">

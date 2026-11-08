@@ -5,6 +5,37 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-08 — Pre-launch recon (PL0): the plan mapped onto the codebase
+
+`pre-launch.md` (PL0–PL12) is now readable against what actually exists. `docs/prelaunch/recon.md`
+inventories the lead and its neighbours, the signal→lead conversion, scoring, AI, billing,
+compliance, export, the frontend and mobile, queues and the test setup, and carries a **gap table**
+plus **binding per-phase adapt notes**. The headline finding is that roughly a third of the plan is
+already built under other names — `outreach_suppressions` is its `suppression_entries`,
+`lead_contacts` is its `contacts`, `lead_scores.score` is its `fit_score`, and the streamed CSV
+export, circuit breaker, SSRF guard, AI cost ledger and usage meter all exist — so PL5 and PL6 are
+extensions rather than new modules. **ADR 0026** records the scope, the phase order and the four
+places the plan loses to this repository (one `default` queue until PL12 has depth numbers; ADRs in
+`docs/decisions/`; plan limits in `config/billing.php`; no second suppression or contact table),
+plus three rules the later phases inherit: monetary amounts are **micros**, a Pennant flag and a
+`Capability` answer different questions and a flag is deleted once its feature is live, and
+enforcement stays in the guards. **ADR 0027** amends ADR 0008 to admit paid enrichment while
+leaving the vendor slate `DECISION PENDING` — a vendor is viable only with written confirmation that
+embedding its data in a SaaS product is permitted — and fixes the architecture that does not depend
+on it. `docs/prelaunch/progress.md` tracks the phases, the nine planned flags and the ten open items
+only Alex can close. No application code changed.
+
+### Changed — 2026-11-08 — The hero card now opens every screen
+
+The eleven screens still using a plain header carry the Ink `PageHero` (compact) instead:
+`leads/Create`, `leads/Import`, `leads/Show`, `icp/Edit`, `lead-sourcing/Show`, `scoring/Show`,
+`outreach/Show`, `outreach/Suppressions`, `notifications/Index`, `compliance/Lia` and
+`compliance/Dsar`. This answers the open brand question in `docs/brand/brand-tokens.md` §7a — the
+hero belongs to every screen, not only the numbered sidebar destinations — and the four rules that
+follow from it (which number a sub-page borrows, a company name as the Lime `accent`, the hero
+button variants, and a record keeping its cream card underneath) are recorded there as §7m. The
+settings pane, the auth screens, the public pages and the admin panel keep their own headers.
+
 ### Fixed — 2026-11-08 — Enrichment stored malformed field values
 
 A real lead came back with `employee_range` = `11-50','locality':'London'}]}<br>Skip<br>` — the
@@ -98,7 +129,13 @@ returning the seller's own trade is the failure this codebase has already had tw
 team's own `BusinessProfile`, told never to return their trade as an industry signal, and told to put
 it in an **exclusion**, where a competitor belongs. `IcpData::rules()` was extracted so the draft is
 re-validated against exactly the rules the editor's save posts through, because a prompt describes a
-constraint and does not enforce one; `is_viable: false` with the model's own reason is a first-class
+constraint and does not enforce one — though a _bad row is now dropped rather than sinking the draft_,
+because refusing a whole profile over one unusable criterion throws away nine good ones and tells the
+member their clear description was not understood. Two things the first live call taught, both fixed
+here: **`profile` must be `required` in the schema** (it came back as literally `{"is_viable": true}` —
+schema-valid, provider-valid and useless, because `SchemaConverter` passes `required` to the model and
+an optional field is one a model may decline to write), and the drop count is logged, since silent
+repair is otherwise invisible. `is_viable: false` with the model's own reason is a first-class
 answer, and it fills nothing in. No plan capability — the hand-written editor is the same screen, so
 gating the shortcut would only make the cheaper plans worse than they were the day before it existed;
 the ceilings are the AI credit allowance and a per-member `throttle:10,60`.
