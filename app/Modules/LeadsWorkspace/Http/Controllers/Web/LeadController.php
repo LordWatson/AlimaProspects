@@ -105,6 +105,7 @@ final class LeadController extends Controller
             // nothing for a question that has no answer.
             'hiddenCount' => $whyNow ? $leadQuery->suppressedCount($team, $filters) : 0,
             'minConfidence' => $confidence->thresholdFor($team),
+            'enrichment' => PrelaunchFeature::Enrichment->activeFor($team),
         ]);
     }
 
@@ -177,6 +178,7 @@ final class LeadController extends Controller
             'lead' => LeadResource::make($model)->resolve($request),
             // --- Why now (PL1) ---
             'whyNow' => PrelaunchFeature::WhyNow->activeFor($team),
+            'enrichment' => PrelaunchFeature::Enrichment->activeFor($team),
             // The badge and the summary panel; the full breakdown stays on the score screen.
             'score' => $score === null ? null : LeadScoreResource::make($score)->resolve($request),
             'activities' => LeadActivityResource::collection($model->activities)->resolve($request),

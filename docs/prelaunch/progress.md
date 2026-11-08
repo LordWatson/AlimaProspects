@@ -8,7 +8,7 @@ starting any phase; read ADR 0026 for the four places the plan loses to this rep
 | PL0   | Recon, alignment and vendor decisions           | **Done**    | 2026-11-08 | `docs/prelaunch/recon.md` (inventory, gap table, binding adapt notes), ADR 0026 (scope + 4 conflicts), ADR 0027 (vendors, `DECISION PENDING`). No app code.                                                                                                                                                                                                           |
 | PL1   | Lead evidence and "why now"                     | **Done**    | 2026-11-13 | `lead_evidence` + feedback, the `LeadConfidence` calculator, signal→evidence carry-over, `evidence:backfill`, the `lead.why_now` prompt, web + mobile UI. ADR 0028.                                                                                                                                                                                                   |
 | PL2   | Contact model and enrichment provider contracts | **Done**    | 2026-11-14 | Four capability contracts + registry + DTOs + four fakes; `lead_contacts` extended with identity, provenance, reveals and its own state; masking by who-was-paid; `ContactIdentity` shared with the suppression list. **One** experimental adapter (ZeroBounce verifier, disabled) — no finder adapter, because no finder's response shape was confirmable. ADR 0029. |
-| PL3   | Waterfall enrichment orchestration              | Not started | —          |                                                                                                                                                                                                                                                                                                                                                                       |
+| PL3   | Waterfall enrichment orchestration              | **Done**    | 2026-11-15 | Runs + append-only attempts, the stop-when-good-enough waterfall, rate limiter + breaker skips, reserve/commit around the spend, reveal (web + mobile), bulk Find, admin per-vendor cost-per-hit. ADR 0030.                                                                                                                                                           |
 | PL4   | Usage ledger, plan gating and top-ups           | Not started | —          |                                                                                                                                                                                                                                                                                                                                                                       |
 | PL5   | Compliance core                                 | Not started | —          | Extends `outreach_suppressions`; does not add a table.                                                                                                                                                                                                                                                                                                                |
 | PL6   | CSV export                                      | Not started | —          | Extends `LeadCsvExporter`.                                                                                                                                                                                                                                                                                                                                            |
@@ -24,17 +24,17 @@ starting any phase; read ADR 0026 for the four places the plan loses to this rep
 Nine Pennant flags are planned (plan Appendix A). **Each is removed once its feature is live**
 (ADR 0026 §4). None exists yet.
 
-| Flag                         | Phase | State                                             |
-| ---------------------------- | ----- | ------------------------------------------------- |
-| `prelaunch.why-now`          | PL1   | **defined, off by default** (`PRELAUNCH_WHY_NOW`) |
-| `prelaunch.enrichment`       | PL3   | not created                                       |
-| `prelaunch.export`           | PL6   | not created                                       |
-| `prelaunch.webhooks`         | PL7   | not created                                       |
-| `prelaunch.pipedrive`        | PL8   | not created                                       |
-| `prelaunch.hubspot`          | PL9   | not created                                       |
-| `prelaunch.sample-report`    | PL10  | not created                                       |
-| `prelaunch.trust`            | PL11  | not created                                       |
-| `prelaunch.article14-notify` | PL11  | not created                                       |
+| Flag                         | Phase | State                                                |
+| ---------------------------- | ----- | ---------------------------------------------------- |
+| `prelaunch.why-now`          | PL1   | **defined, off by default** (`PRELAUNCH_WHY_NOW`)    |
+| `prelaunch.enrichment`       | PL3   | **defined, off by default** (`PRELAUNCH_ENRICHMENT`) |
+| `prelaunch.export`           | PL6   | not created                                          |
+| `prelaunch.webhooks`         | PL7   | not created                                          |
+| `prelaunch.pipedrive`        | PL8   | not created                                          |
+| `prelaunch.hubspot`          | PL9   | not created                                          |
+| `prelaunch.sample-report`    | PL10  | not created                                          |
+| `prelaunch.trust`            | PL11  | not created                                          |
+| `prelaunch.article14-notify` | PL11  | not created                                          |
 
 ## Open items for Alex
 

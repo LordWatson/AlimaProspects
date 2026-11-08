@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { useForm } from '@inertiajs/vue3';
-import { X } from '@lucide/vue';
+import { router, useForm } from '@inertiajs/vue3';
+import { UserSearch, X } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,14 +23,40 @@ const props = defineProps<{
     stages: PipelineStage[];
     members: TeamMemberOption[];
     maxBulk: number;
+    /** Whether this team has contact enrichment (PL3). Off = no Find button here. */
+    enrichment?: boolean;
 }>();
 
 const emit = defineEmits<{ clear: []; applied: [] }>();
+
+/**
+ * Ask for the selection to be enriched (PL3).
+ *
+ * Its own request rather than part of `apply()`, because it is not a bulk *edit*: nothing about the
+ * leads changes, several runs are queued, and the results arrive per lead over Reverb. Folding it
+ * into the same endpoint would have meant one response describing two unrelated kinds of work.
+ */
+function enrich(): void {
+    enriching.value = true;
+
+    router.post(
+        '/leads/enrich',
+        { scope: 'people', leads: props.selected },
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                enriching.value = false;
+                emit('clear');
+            },
+        },
+    );
+}
 
 const { t } = useI18n();
 const { number } = useFormat();
 
 const action = ref<BulkLeadAction>('add_tags');
+const enriching = ref(false);
 const tagText = ref('');
 const userId = ref<number | null>(null);
 const stageId = ref<number | null>(null);
@@ -205,6 +231,28 @@ function apply(): void {
                 @click="apply"
             >
                 {{ t('Apply') }}
+            </Button>
+
+            <!-- Enriching a selection is its own button rather than another entry in the action
+                 select (PL3). It is the only bulk action that **spends money**, and burying it
+                 among "add tags" and "move stage" would make it the one somebody picks by
+                 accident. The label says so, and it says "up to" because the runs refuse the
+                 leads with nothing to find — so the figure is a ceiling, not a price. -->
+            <Button
+                v-if="props.enrichment"
+                type="button"
+                variant="outline"
+                size="sm"
+                :disabled="!props.selected.length || overLimit || enriching"
+                data-test="bulk-enrich"
+                @click="enrich"
+            >
+                <UserSearch class="size-4" />
+                {{
+                    t('Find contacts (up to :count credits)', {
+                        count: number(props.selected.length),
+                    })
+                }}
             </Button>
             <Button
                 type="button"

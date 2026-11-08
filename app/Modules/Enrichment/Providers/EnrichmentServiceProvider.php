@@ -5,16 +5,31 @@ declare(strict_types=1);
 namespace App\Modules\Enrichment\Providers;
 
 use App\Modules\Core\Support\CircuitBreaker;
+use App\Modules\Enrichment\Contracts\ContactApprovalGate;
+use App\Modules\Enrichment\Contracts\CreditReserver;
 use App\Modules\Enrichment\Contracts\DnsResolver;
 use App\Modules\Enrichment\Listeners\EnrichDiscoveredLeads;
+use App\Modules\Enrichment\Models\LeadContact;
+use App\Modules\Enrichment\Policies\LeadContactPolicy;
+use App\Modules\Enrichment\Services\AllowAllContactApproval;
+use App\Modules\Enrichment\Services\AttemptRecorder;
 use App\Modules\Enrichment\Services\EnrichmentProviderRegistry;
+use App\Modules\Enrichment\Services\EnrichmentWaterfall;
+use App\Modules\Enrichment\Services\PhoneNormaliser;
+use App\Modules\Enrichment\Services\ProviderRateLimiter;
 use App\Modules\Enrichment\Services\SystemDnsResolver;
+use App\Modules\Enrichment\Services\UnmeteredCreditReserver;
 use App\Modules\Enrichment\Services\ZeroBounceEmailVerifier;
+use App\Modules\ICP\Actions\FindActiveIcpAction;
 use App\Modules\LeadSourcing\Events\DiscoveryRunCompleted;
 use App\Modules\ModuleServiceProvider;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
+use libphonenumber\PhoneNumberUtil;
 
 /**
  * Enrichment & Data Quality module provider (Phase 8). Binds the {@see DnsResolver} seam used by the
@@ -36,6 +51,28 @@ final class EnrichmentServiceProvider extends ModuleServiceProvider
     public function register(): void
     {
         $this->app->bind(DnsResolver::class, SystemDnsResolver::class);
+
+        // The two PL3 seams, with the defaults that let this module work on its own. Billing binds
+        // the real reserver in PL4 (the fifth seam of ADR 0012's kind) and Compliance binds the
+        // real approval gate in PL5 — which is why neither module's name appears here.
+        $this->app->bind(CreditReserver::class, UnmeteredCreditReserver::class);
+        $this->app->bind(ContactApprovalGate::class, AllowAllContactApproval::class);
+
+        // libphonenumber's util is a heavy singleton holding the metadata tables; resolving it per
+        // call would parse them per call.
+        $this->app->singleton(PhoneNumberUtil::class, static fn (): PhoneNumberUtil => PhoneNumberUtil::getInstance());
+
+        // The waterfall takes the **enrichment** breaker, for the same reason the adapters do:
+        // `CircuitBreaker::class` is Lead Sourcing's, and a vendor outage is not a registry outage.
+        $this->app->bind(EnrichmentWaterfall::class, fn ($app): EnrichmentWaterfall => new EnrichmentWaterfall(
+            $app->make(EnrichmentProviderRegistry::class),
+            $app->make(ProviderRateLimiter::class),
+            $app->make('enrichment.breaker'),
+            $app->make(AttemptRecorder::class),
+            $app->make(PhoneNormaliser::class),
+            $app->make(ContactApprovalGate::class),
+            $app->make(FindActiveIcpAction::class),
+        ));
 
         // Vendor HTTP's own breaker, keyed apart from every other module's.
         $this->app->singleton('enrichment.breaker', fn ($app): CircuitBreaker => new CircuitBreaker(
@@ -63,10 +100,24 @@ final class EnrichmentServiceProvider extends ModuleServiceProvider
         });
     }
 
+    /**
+     * @var array<class-string, class-string>
+     */
+    protected array $policies = [
+        LeadContact::class => LeadContactPolicy::class,
+    ];
+
     public function boot(): void
     {
         parent::boot();
 
         Event::listen(DiscoveryRunCompleted::class, EnrichDiscoveredLeads::class);
+
+        // A reveal and an enrichment request both spend the team's allowance, so cap how fast one
+        // member can ask. The allowance bounds a month; this bounds a loop — a script, a stuck
+        // button, an impatient click — and the two are different problems.
+        RateLimiter::for('enrichment', fn (Request $request): Limit => Limit::perMinute(
+            max(1, (int) config('enrichment.rate_limit_per_member', 30)),
+        )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
     }
 }

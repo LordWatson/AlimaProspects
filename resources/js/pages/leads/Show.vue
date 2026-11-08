@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
     ArrowLeft,
     ExternalLink,
@@ -11,14 +11,16 @@ import {
     Send,
     ShieldAlert,
     Sparkles,
+    UserSearch,
 } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import CopyButton from '@/components/CopyButton.vue';
 import LeadNoticeRow from '@/components/leads/LeadNoticeRow.vue';
 import ActivityTimeline from '@/components/leads/ActivityTimeline.vue';
 import LeadNotes from '@/components/leads/LeadNotes.vue';
 import LeadTasks from '@/components/leads/LeadTasks.vue';
 import LeadWorkPanel from '@/components/leads/LeadWorkPanel.vue';
+import RevealableValue from '@/components/leads/RevealableValue.vue';
 import WhyNowPanel from '@/components/leads/WhyNowPanel.vue';
 import { ListCell, ListHead, ListRow, ListTable } from '@/components/list';
 import MeterBar from '@/components/MeterBar.vue';
@@ -101,6 +103,8 @@ const props = defineProps<{
     events: LeadOrigin[];
     /** Whether this team has the why-now feature (PL1). Off = the screen is as it was before. */
     whyNow: boolean;
+    /** Whether this team has contact enrichment (PL3). Off = no Find buttons, no reveals. */
+    enrichment: boolean;
     can: { work: boolean; flagEvidence: boolean };
 }>();
 
@@ -307,6 +311,69 @@ const hasRolePreference = computed(
         contacts.value.some((contact) => contact.is_role_based) &&
         contacts.value.some((contact) => !contact.is_role_based),
 );
+
+// --- Contact enrichment (PL3) ----------------------------------------------
+// The request returns immediately and the waterfall runs on a worker, so the screen has to show
+// that something is happening and then pick the result up. Both halves matter: without the first,
+// a member clicks Find again; without the second, they reload the page to see what was found.
+const page = usePage();
+const enriching = ref(false);
+
+function enrich(scope: 'people' | 'email' | 'phone' | 'verify'): void {
+    enriching.value = true;
+
+    router.post(
+        `/leads/${props.lead.id}/enrich`,
+        { scope },
+        {
+            preserveScroll: true,
+            // Not cleared on success: the run is queued, not finished, and the broadcast below is
+            // what says it is done. Clearing here would hide the spinner while the work ran.
+            onError: () => {
+                enriching.value = false;
+            },
+        },
+    );
+}
+
+type EnrichmentUpdate = {
+    lead_id: number;
+    state: string;
+    in_flight: boolean;
+};
+
+let channelName: string | null = null;
+
+function onEnrichmentUpdate(payload: EnrichmentUpdate): void {
+    if (payload.lead_id !== props.lead.id) return;
+
+    enriching.value = payload.in_flight;
+
+    if (!payload.in_flight) {
+        // Re-read rather than patch from the payload: the broadcast carries counts only, because
+        // it fans out to every member of the team with a screen open and a revealed address in it
+        // would be a paid reveal given away (see the event's own note).
+        router.reload({ only: ['lead'] });
+    }
+}
+
+onMounted(() => {
+    const teamId = page.props.auth?.currentTeam?.id;
+
+    if (!props.enrichment || teamId == null || !window.Echo) return;
+
+    channelName = `teams.${teamId}`;
+    window.Echo.private(channelName).listen(
+        '.lead-enrichment.updated',
+        onEnrichmentUpdate,
+    );
+});
+
+onBeforeUnmount(() => {
+    if (channelName && window.Echo) {
+        window.Echo.leave(channelName);
+    }
+});
 </script>
 
 <template>
@@ -948,13 +1015,56 @@ const hasRolePreference = computed(
                         >
                             {{ t('Contacts') }}
                         </h2>
-                        <p
-                            v-if="hasRolePreference"
-                            class="text-xs text-muted-foreground"
-                        >
-                            {{ t('Role addresses first — prefer those.') }}
-                        </p>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <p
+                                v-if="hasRolePreference"
+                                class="text-xs text-muted-foreground"
+                            >
+                                {{ t('Role addresses first — prefer those.') }}
+                            </p>
+
+                            <!-- Contact enrichment (PL3). Two buttons because they are two
+                                 different spends: finding *who* to talk to, and finding *how* to
+                                 reach the people already here. A single "Enrich" would hide which
+                                 one a member was paying for. -->
+                            <template v-if="enrichment && can.work">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    :disabled="enriching"
+                                    data-test="find-people"
+                                    @click="enrich('people')"
+                                >
+                                    <UserSearch class="size-3.5" />
+                                    {{ t('Find decision-makers') }}
+                                </Button>
+                                <Button
+                                    v-if="contacts.length"
+                                    variant="outline"
+                                    size="sm"
+                                    :disabled="enriching"
+                                    data-test="find-details"
+                                    @click="enrich('email')"
+                                >
+                                    <Mail class="size-3.5" />
+                                    {{ t('Find their details') }}
+                                </Button>
+                            </template>
+                        </div>
                     </div>
+
+                    <!-- Live, over the team's Reverb channel. A member who clicked Find has to
+                         see that something is happening, or they click it again. -->
+                    <p
+                        v-if="enriching"
+                        class="flex items-center gap-2 text-xs text-muted-foreground"
+                        role="status"
+                        aria-live="polite"
+                        data-test="enrichment-running"
+                    >
+                        <Spinner class="size-3" />
+                        {{ t('Alima is looking…') }}
+                    </p>
 
                     <ListTable
                         v-if="contacts.length"
@@ -999,44 +1109,30 @@ const hasRolePreference = computed(
                                     >
                                 </ListCell>
                                 <ListCell muted class="space-y-1">
-                                    <span
-                                        v-if="contact.email"
-                                        class="flex items-center gap-1"
-                                    >
-                                        <a
-                                            :href="`mailto:${contact.email}`"
-                                            class="inline-flex min-w-0 items-center gap-1.5 rounded text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                                            dir="ltr"
-                                        >
-                                            <Mail class="size-3.5 shrink-0" />
-                                            <span class="truncate">{{
-                                                contact.email
-                                            }}</span>
-                                        </a>
-                                        <CopyButton
-                                            :value="contact.email"
-                                            :label="t('email address')"
-                                        />
-                                    </span>
-                                    <span
-                                        v-if="contact.phone"
-                                        class="flex items-center gap-1"
-                                    >
-                                        <a
-                                            :href="`tel:${contact.phone}`"
-                                            class="inline-flex min-w-0 items-center gap-1.5 rounded text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-                                            dir="ltr"
-                                        >
-                                            <Phone class="size-3.5 shrink-0" />
-                                            <span class="truncate">{{
-                                                contact.phone
-                                            }}</span>
-                                        </a>
-                                        <CopyButton
-                                            :value="contact.phone"
-                                            :label="t('phone number')"
-                                        />
-                                    </span>
+                                    <RevealableValue
+                                        :value="contact.email"
+                                        kind="email"
+                                        :masked="
+                                            contact.requires_email_reveal ===
+                                            true
+                                        "
+                                        :reveal-url="`/leads/${lead.id}/contacts/${contact.id}/reveal-email`"
+                                        :can-reveal="can.work"
+                                    />
+                                    <RevealableValue
+                                        :value="contact.phone"
+                                        kind="phone"
+                                        :masked="
+                                            contact.requires_phone_reveal ===
+                                            true
+                                        "
+                                        :reveal-url="`/leads/${lead.id}/contacts/${contact.id}/reveal-phone`"
+                                        :can-reveal="can.work"
+                                        :messaging="
+                                            contact.phone_accepts_messaging ===
+                                            true
+                                        "
+                                    />
                                     <span
                                         v-if="!contact.email && !contact.phone"
                                         >—</span

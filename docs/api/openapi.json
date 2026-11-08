@@ -617,6 +617,313 @@
                 }
             }
         },
+        "/leads/{lead}/enrich": {
+            "post": {
+                "operationId": "v1.enrichment.store",
+                "summary": "Ask for a lead to be enriched. **202**: the waterfall is asynchronous, and the client learns\nthe result from the `teams.{id}` broadcast or by re-reading the lead",
+                "tags": [
+                    "Enrichment"
+                ],
+                "parameters": [
+                    {
+                        "name": "lead",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RequestEnrichmentRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "type": "string"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "data": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "status": {
+                                                            "type": "string",
+                                                            "const": "unavailable"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "status"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "data"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/{lead}/contacts/{contact}/reveal-email": {
+            "post": {
+                "operationId": "v1.enrichment.reveal-email",
+                "tags": [
+                    "Enrichment"
+                ],
+                "parameters": [
+                    {
+                        "name": "lead",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "contact",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`LeadContactResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/LeadContactResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/{lead}/contacts/{contact}/reveal-phone": {
+            "post": {
+                "operationId": "v1.enrichment.reveal-phone",
+                "tags": [
+                    "Enrichment"
+                ],
+                "parameters": [
+                    {
+                        "name": "lead",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "contact",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`LeadContactResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/LeadContactResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The member may not do this, or the token is not scoped for it (`insufficient_token_ability`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or one that has expired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such record, or none this team can see.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed. `error.details` is keyed by input name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited. `Retry-After` says how long to wait.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/leads/{lead}/evidence": {
             "get": {
                 "operationId": "v1.lead-sourcing.evidence.index",
@@ -10401,6 +10708,17 @@
                 ],
                 "title": "DraftMessageRequest"
             },
+            "EnrichmentScope": {
+                "type": "string",
+                "description": "What a member asked a run to do (PL3). Four scopes rather than one \"enrich this lead\", because they cost different amounts and answer different questions, and a member deciding to spend should be deciding about one of them. A people-find is the expensive one that opens the others up; a verify is the cheap one that makes an address worth trusting.  {@see self::People} is also the only scope that can run on a lead with no contacts at all, which is why {@see EnrichmentWaterfall} treats it first and separately: the other three need somebody to work on.\n| |\n|---|\n| `people` <br/> Find the decision-makers. The only scope that creates contacts. |\n| `email` <br/> Find an address for the contacts we hold. |\n| `phone` <br/> Find a number for the contacts we hold. |\n| `verify` <br/> Check the addresses we already hold. The cheap one. |",
+                "enum": [
+                    "people",
+                    "email",
+                    "phone",
+                    "verify"
+                ],
+                "title": "EnrichmentScope"
+            },
             "EnrichmentStatus": {
                 "type": "string",
                 "description": "Where a {@see Lead} is in the enrichment pipeline (Phase 8). A lead is {@see self::Pending} when Lead Sourcing creates it, {@see self::Enriching} while the job works it, and settles {@see self::Enriched} or {@see self::Failed}. Kept separate from {@see LeadStatus} so sourcing/scoring stage and data-quality state are tracked independently. Values are stable storage keys; {@see self::label()} is the display name. No magic strings.\n",
@@ -10810,6 +11128,274 @@
                     "device_name"
                 ],
                 "title": "IssueApiTokenRequest"
+            },
+            "LeadContactResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "first_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "last_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "title": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "department": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "seniority": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "linkedin_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "email": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "Masked where a vendor was paid and nobody has revealed it yet. One field, so there\nis nothing to walk around."
+                    },
+                    "phone": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "requires_email_reveal": {
+                        "type": "boolean"
+                    },
+                    "requires_phone_reveal": {
+                        "type": "boolean"
+                    },
+                    "revealed_email_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "revealed_phone_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "email_verification_status": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "unknown",
+                            "invalid_syntax",
+                            "disposable_domain",
+                            "no_mx_record",
+                            "unverifiable",
+                            "risky",
+                            "undeliverable",
+                            "mx_found",
+                            "accept_all",
+                            "verified",
+                            null
+                        ]
+                    },
+                    "email_verification_label": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "Unknown",
+                            "Invalid syntax",
+                            "Disposable domain",
+                            "No mail server",
+                            "Mail server found",
+                            "Could not be checked",
+                            "Risky \u2014 do not mail",
+                            "No such mailbox",
+                            "Accepts all mail",
+                            "Verified",
+                            null
+                        ]
+                    },
+                    "email_confidence": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "email_verified_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "email_source": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "The provider key, so a screen can say where a verdict came from and an operator can\ntell a vendor's answer from our own MX check. Not a secret: it is our supplier, not\na credential."
+                    },
+                    "has_phone": {
+                        "type": "boolean",
+                        "description": "Whether a number exists at all, for a client that must decide between \"Reveal\" and\n\"Find a number\" without being told the number."
+                    },
+                    "phone_type": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "mobile",
+                            "direct",
+                            "switchboard",
+                            "unknown",
+                            null
+                        ]
+                    },
+                    "phone_type_label": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "Mobile",
+                            "Direct line",
+                            "Switchboard",
+                            "Phone",
+                            null
+                        ]
+                    },
+                    "phone_accepts_messaging": {
+                        "type": "boolean",
+                        "description": "Only a mobile can take a WhatsApp deep link; a landline would open a chat that can\nnever be delivered."
+                    },
+                    "phone_source": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "is_role_based": {
+                        "type": "boolean"
+                    },
+                    "is_personal": {
+                        "type": "boolean"
+                    },
+                    "is_inferred": {
+                        "type": "boolean"
+                    },
+                    "enrichment_state": {
+                        "type": "string",
+                        "enum": [
+                            "idle",
+                            "queued",
+                            "running",
+                            "done",
+                            "failed"
+                        ]
+                    },
+                    "enrichment_state_label": {
+                        "type": "string",
+                        "enum": [
+                            "Not looked for",
+                            "Queued",
+                            "Looking",
+                            "Looked",
+                            "Could not look"
+                        ]
+                    },
+                    "enrichment_in_flight": {
+                        "type": "boolean"
+                    },
+                    "enriched_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "source": {
+                        "type": "string"
+                    },
+                    "source_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "collected_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "first_name",
+                    "last_name",
+                    "title",
+                    "department",
+                    "seniority",
+                    "linkedin_url",
+                    "email",
+                    "phone",
+                    "requires_email_reveal",
+                    "requires_phone_reveal",
+                    "revealed_email_at",
+                    "revealed_phone_at",
+                    "email_verification_status",
+                    "email_verification_label",
+                    "email_confidence",
+                    "email_verified_at",
+                    "email_source",
+                    "has_phone",
+                    "phone_type",
+                    "phone_type_label",
+                    "phone_accepts_messaging",
+                    "phone_source",
+                    "is_role_based",
+                    "is_personal",
+                    "is_inferred",
+                    "enrichment_state",
+                    "enrichment_state_label",
+                    "enrichment_in_flight",
+                    "enriched_at",
+                    "source",
+                    "source_url",
+                    "collected_at"
+                ],
+                "title": "LeadContactResource"
             },
             "LeadDetailResource": {
                 "type": "object",
@@ -12709,6 +13295,28 @@
                     "custom"
                 ],
                 "title": "ReportRange"
+            },
+            "RequestEnrichmentRequest": {
+                "type": "object",
+                "description": "Validates a request to enrich a lead (PL3). Authorisation is the controller's, via the policy.\n\n`leads` is only present on the bulk form. It is capped here **and** in the Action: this request\nnever sees a bulk call that arrives through `/api/v1`, and the cap is the thing that bounds what\none click can spend.",
+                "properties": {
+                    "scope": {
+                        "$ref": "#/components/schemas/EnrichmentScope"
+                    },
+                    "leads": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "maxItems": 50,
+                        "uniqueItems": true
+                    }
+                },
+                "required": [
+                    "scope"
+                ],
+                "title": "RequestEnrichmentRequest"
             },
             "SaveIcpRequest": {
                 "type": "object",

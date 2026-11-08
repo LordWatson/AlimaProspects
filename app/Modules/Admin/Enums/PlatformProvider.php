@@ -62,6 +62,14 @@ enum PlatformProvider: string
 
     case Stripe = 'stripe';
 
+    /**
+     * The reference email verifier (PL2/PL3). Listed before it is ever enabled, on purpose: ADR
+     * 0023's rule is that a source without a row here has a breaker nobody can see, and the point
+     * of a health screen is to answer "why is nothing being found" — for which "the vendor is not
+     * configured" is the commonest answer.
+     */
+    case ZeroBounce = 'zerobounce';
+
     public function label(): string
     {
         return match ($this) {
@@ -74,6 +82,7 @@ enum PlatformProvider: string
             self::Claude => 'Claude',
             self::Resend => 'Resend',
             self::Stripe => 'Stripe',
+            self::ZeroBounce => 'ZeroBounce (email verification)',
         };
     }
 
@@ -90,6 +99,7 @@ enum PlatformProvider: string
             self::Claude => 'Scoring, drafting, insights and the background check stop. Discovery still finds companies; they arrive unscored.',
             self::Resend => 'Outreach sends and notification emails fail. Nothing is silently marked sent — a failed send is recorded as failed.',
             self::Stripe => 'Checkout, the portal, plan changes and metered overage stop. Nobody loses their plan: entitlement is resolved from the grant or the subscription row, not from Stripe being reachable.',
+            self::ZeroBounce => 'Email addresses are found but arrive unverified — the free-tier MX check still runs, so nothing is lost beyond the stronger verdict. No vendor is enabled yet, so today this row reports a provider nobody is calling.',
         };
     }
 
@@ -103,6 +113,10 @@ enum PlatformProvider: string
             self::CompaniesHouse, self::GooglePlaces, self::WebSearch => 'lead_sourcing:cb',
             self::SerperNews, self::SignalsWebSearch => 'signals:cb',
             self::Push => 'notifications:cb',
+            // Enrichment's own, deliberately not Lead Sourcing's: a verifier being down and
+            // Companies House being down are not the same event, and a shared prefix would make a
+            // reset here clear the wrong entry (ADR 0029 §8).
+            self::ZeroBounce => 'enrichment:cb',
             // No breaker. The AI transport retries and fails the call; mail fails the send and the
             // message is recorded as failed; Cashier surfaces Stripe's own errors. Adding breakers
             // to these is a Phase 20 hardening question, not something to pretend about here.
@@ -153,6 +167,11 @@ enum PlatformProvider: string
     {
         return match ($this) {
             self::Resend, self::Stripe, self::Push, self::SignalsWebSearch => false,
+            // Enrichment's spend is on `enrichment_attempts`, per call, and the provider panel
+            // reads it from there (PL3) rather than from `platform_daily_metrics` — so this row
+            // carries health and a live hit rate, and says nothing through the rollup. Same shape
+            // as `SignalsWebSearch`, same reason: the figure exists, in the ledger that owns it.
+            self::ZeroBounce => false,
             default => true,
         };
     }

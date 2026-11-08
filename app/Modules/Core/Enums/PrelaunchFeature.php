@@ -27,6 +27,9 @@ enum PrelaunchFeature: string
     /** PL1 — dated, sourced evidence behind every lead, with a confidence and a why-now line. */
     case WhyNow = 'prelaunch.why-now';
 
+    /** PL3 — the vendor waterfall, the Contacts panel and the reveal. */
+    case Enrichment = 'prelaunch.enrichment';
+
     /**
      * Whether this flag is on for the given team.
      *

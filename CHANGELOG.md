@@ -5,6 +5,61 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-15 — PL3: the waterfall, and the one judgement it makes
+
+PL2 gave the module contracts and no orchestration. This is the thing that uses them: ask vendors in
+order, record every call, and **stop at the first good-enough answer**. Everything expensive about
+enrichment is in that last clause, and it is the only judgement this phase makes — the vendors,
+their order and their prices are all config.
+
+**`enrichment_attempts` is append-only and it is the money.** Every paid call lands there with its
+cost whether it found anything or not, because the questions that matter commercially are all about
+the misses: which vendor is being paid to say "no", what a hit really costs once the failures are
+counted, whether a team's reveals are worth their plan. Nothing updates a row, and everything
+downstream reads the attempts rather than the run's summary — if the two disagree, the attempts are
+right.
+
+**Three kinds of nothing, kept apart.** A miss is a vendor doing its job and not knowing; an error
+is a vendor letting us down; a skip is a call we never made, and it says why — breaker open, rate
+limited, or a question with nothing to go on. Folding them together would make an outage look like
+a vendor that is bad at its job, and would quietly fold the days it was down into the hit rate a
+renewal conversation turns on.
+
+**`accept_all` is not good enough by default.** A catch-all domain cannot _disprove_ an address,
+which reads as a pass and is not one, so the verify waterfall keeps going — a team that stopped
+there would be paying for confidence it had not bought. A team that would rather stop early can set
+it.
+
+**The reservation brackets the spending, in the job and not the request.** Taken at request time it
+would be held for as long as the queue is deep and released by nobody if the worker died; released
+in a `finally` for the same reason. The commit reads what the **attempts** say was spent, because a
+run whose worker died between its last call and its summary still owes for the calls it made. And
+`$tries = 1`: a retry would re-pay for a waterfall that has already run.
+
+**A refusal is not a failure.** A plan ceiling, a flag that is off and a lead with nothing to
+enrich are recorded as refusals carrying a code — otherwise every team at its allowance would raise
+the platform's failure rate on the provider panel. Two refusals leave no run at all: a capability
+refusal says the feature is not theirs, which is a sales fact rather than a cost event, while a
+spent allowance is a cost event a team must be able to see.
+
+**Phone numbers go through libphonenumber**, because a national number is not a country code glued
+to the digits — `020 7946 0000` is `+442079460000` and the leading zero disappears. Getting that
+wrong produces a valid number belonging to **somebody else**, so a number it cannot read with
+confidence keeps its raw form and gets no tap-to-call. (Found while testing: `07700 900xxx` is
+Ofcom's reserved-for-drama range and is correctly rejected as invalid — which is exactly the number
+documentation tells you to use.)
+
+On screen, behind `prelaunch.enrichment`: **Find decision-makers** and **Find their details** on the
+lead, a live spinner over the team's Reverb channel, masked values with a **Show (1 credit)** button
+where a vendor was paid, tap-to-call, tap-to-email and a WhatsApp link for a mobile only, a bulk
+**Find contacts** on the leads list, and per-vendor hit rate plus **cost per hit** on the admin
+provider panel — per hit rather than per call, because a finder that misses two times in three costs
+three times its sticker price for every address it does find.
+
+Two bugs fixed in the same phase that made them reachable: the mobile draft screen would have
+offered a **masked** address as a recipient, and an autowired vendor adapter shared Lead Sourcing's
+circuit breaker. See **ADR 0030**.
+
 ### Added — 2026-11-14 — PL2: the shape a paid data vendor fits into
 
 The module that reads contacts off a company's public pages can now be _told_ things by a vendor

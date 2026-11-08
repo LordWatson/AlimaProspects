@@ -204,14 +204,101 @@ function stateOf(provider: AdminProviderHealth): {
                                 </dd>
                             </div>
 
-                            <div v-if="provider.mean_latency_ms !== null">
+                            <!--
+                              A paid enrichment vendor's own figures (PL3). Shown only where they
+                              exist, and deliberately *per hit* rather than per call: a finder that
+                              misses two times in three costs three times its sticker price for
+                              every address it does find, which is the number a renewal
+                              conversation turns on.
+                            -->
+                            <template v-if="provider.vendor">
+                                <div>
+                                    <dt
+                                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
+                                    >
+                                        Hit rate
+                                    </dt>
+                                    <dd class="text-foreground tabular-nums">
+                                        {{
+                                            provider.vendor.hit_rate === null
+                                                ? '—'
+                                                : percent(
+                                                      provider.vendor.hit_rate,
+                                                      1,
+                                                  )
+                                        }}
+                                        <span class="text-muted-foreground">
+                                            ({{ number(provider.vendor.hits) }}
+                                            of
+                                            {{ number(provider.vendor.called) }}
+                                            called)
+                                        </span>
+                                    </dd>
+                                </div>
+
+                                <div>
+                                    <dt
+                                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
+                                    >
+                                        Cost per hit
+                                    </dt>
+                                    <dd class="text-foreground tabular-nums">
+                                        {{
+                                            provider.vendor
+                                                .cost_per_hit_micros === null
+                                                ? '—'
+                                                : currency(
+                                                      Math.round(
+                                                          provider.vendor
+                                                              .cost_per_hit_micros /
+                                                              10_000,
+                                                      ),
+                                                      props.context.currency,
+                                                  )
+                                        }}
+                                    </dd>
+                                </div>
+
+                                <div>
+                                    <dt
+                                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
+                                    >
+                                        Errors
+                                    </dt>
+                                    <dd class="text-foreground tabular-nums">
+                                        {{
+                                            provider.vendor.error_rate === null
+                                                ? '—'
+                                                : percent(
+                                                      provider.vendor
+                                                          .error_rate,
+                                                      1,
+                                                  )
+                                        }}
+                                    </dd>
+                                </div>
+                            </template>
+
+                            <div
+                                v-if="
+                                    provider.vendor?.mean_latency_ms != null ||
+                                    provider.mean_latency_ms !== null
+                                "
+                            >
                                 <dt
                                     class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase"
                                 >
                                     Mean latency
                                 </dt>
                                 <dd class="text-foreground tabular-nums">
-                                    {{ number(provider.mean_latency_ms) }}ms
+                                    {{
+                                        number(
+                                            provider.mean_latency_ms ??
+                                                provider.vendor
+                                                    ?.mean_latency_ms ??
+                                                0,
+                                        )
+                                    }}ms
                                 </dd>
                             </div>
                         </dl>

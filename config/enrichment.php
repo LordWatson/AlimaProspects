@@ -221,4 +221,26 @@ return [
 
     'reenrich_after_days' => (int) env('ENRICHMENT_REENRICH_AFTER_DAYS', 30),
 
+    /*
+    |--------------------------------------------------------------------------
+    | The waterfall's own limits (PL3)
+    |--------------------------------------------------------------------------
+    |
+    | `max_people_per_run` is the single most important figure here: a people-finder bills for what
+    | it returns, so "who works at Acme" with no limit is a bill for forty records to reach the two
+    | a member would have called. PL4 narrows it per plan.
+    |
+    | `max_bulk_leads` bounds what one click can spend. A bulk request over more than this is
+    | **refused**, not truncated: a member who selected four hundred leads and got eighty enriched
+    | would have no way of knowing which eighty.
+    |
+    */
+
+    'max_people_per_run' => (int) env('ENRICHMENT_MAX_PEOPLE_PER_RUN', 3),
+    'max_bulk_leads' => (int) env('ENRICHMENT_MAX_BULK_LEADS', 50),
+
+    // How many enrichment or reveal requests one **member** may make a minute. The team's
+    // allowance bounds a month's spend; this bounds a loop, which is a different problem.
+    'rate_limit_per_member' => (int) env('ENRICHMENT_RATE_LIMIT_PER_MEMBER', 30),
+
 ];

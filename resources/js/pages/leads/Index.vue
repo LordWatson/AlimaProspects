@@ -109,6 +109,8 @@ const props = defineProps<{
     hiddenCount: number;
     /** The team's own threshold, so the toggle can say what "low" currently means. */
     minConfidence: number;
+    /** Whether this team has contact enrichment (PL3). Off = no bulk Find button. */
+    enrichment: boolean;
 }>();
 
 const { t } = useI18n();
@@ -707,6 +709,7 @@ function updatedAt(lead: Lead): string {
                 :stages="stages"
                 :members="members"
                 :max-bulk="maxBulk"
+                :enrichment="enrichment"
                 @clear="clearSelection"
                 @applied="onBulkApplied"
             />

@@ -24,6 +24,7 @@ import {
 import type { ApiResource } from '@shared/api';
 import type {
     LeadActivity,
+    LeadContact,
     LeadScore,
     Lead,
     OutreachDecision,
@@ -34,6 +35,7 @@ import { t } from '@/lib/i18n';
 import { formatDate, formatRelative } from '@/lib/format';
 import { notifyFailure, notifySuccess } from '@/lib/feedback';
 import GradeBadge from '@/components/GradeBadge.vue';
+import LeadContacts from '@/components/LeadContacts.vue';
 import StateMessage from '@/components/StateMessage.vue';
 
 /*
@@ -61,6 +63,26 @@ const score = ref<LeadScore | null>(null);
  * them in, so the phone does not re-decide it and disagree with the web panel.
  */
 const whyNow = computed(() => lead.value?.evidence ?? []);
+
+/** The lead's contacts, as the API sent them — already masked where a reveal is owed. */
+const contacts = computed(() => lead.value?.contacts ?? []);
+
+/**
+ * A revealed contact, handed back by the Contacts component.
+ *
+ * Merged in place rather than re-reading the lead: the response is the contact, and a phone
+ * connection should not pay for the whole lead to show one address.
+ */
+function onRevealed(contact: LeadContact): void {
+    if (lead.value === null) return;
+
+    lead.value = {
+        ...lead.value,
+        contacts: (lead.value.contacts ?? []).map((existing) =>
+            existing.id === contact.id ? contact : existing,
+        ),
+    };
+}
 
 /**
  * The confidence in words. **Null is not zero**: a lead nothing has been judged on says so,
@@ -375,6 +397,15 @@ onIonViewWillEnter(() => {
                         </li>
                     </ul>
                 </section>
+
+                <!-- Contacts (PL3). Its own component: this view was already at the
+                     300-line limit the mobile lint enforces, and the reveal logic is the same
+                     shape the web split out as `RevealableValue`. -->
+                <LeadContacts
+                    :lead-id="lead.id"
+                    :contacts="contacts"
+                    @revealed="onRevealed"
+                />
 
                 <!-- Stage. The ids have to come from the API: a phone cannot know a team's
                      columns. -->

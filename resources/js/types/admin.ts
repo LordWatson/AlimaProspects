@@ -420,6 +420,33 @@ export type AdminProviderHealth = {
     failure_rate: number | null;
     cost_minor: number | null;
     mean_latency_ms: number | null;
+    /**
+     * Per-call figures for a paid enrichment vendor (PL3), read off `enrichment_attempts` rather
+     * than the rollup. **Null for every other provider** — not an empty object, which a screen
+     * would render as a row of zeroes for a vendor that has no such figures at all.
+     */
+    vendor: AdminVendorStats | null;
+};
+
+/**
+ * One enrichment vendor's recent performance.
+ *
+ * `cost_per_hit_micros` is the figure that matters and the one a per-call price hides: a finder
+ * that misses two times in three costs three times its sticker price per address. Null rather than
+ * zero when nothing was found, because zero reads as free.
+ */
+export type AdminVendorStats = {
+    attempts: number;
+    hits: number;
+    misses: number;
+    errors: number;
+    /** Attempts we actually made — skips excluded, because we never asked. */
+    called: number;
+    hit_rate: number | null;
+    error_rate: number | null;
+    cost_micros: number;
+    cost_per_hit_micros: number | null;
+    mean_latency_ms: number | null;
 };
 
 export type AdminAuditEntry = {

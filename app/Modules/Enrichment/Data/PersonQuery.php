@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Enrichment\Data;
 
 use App\Modules\Enrichment\Models\LeadContact;
+use App\Modules\LeadSourcing\Models\Lead;
 use Spatie\LaravelData\Data;
 
 /**
@@ -33,10 +34,14 @@ final class PersonQuery extends Data
     /**
      * Build the query from a contact we already hold, which is the ordinary case: the lead gave us
      * the company and a name, and the vendor is being asked for the part we are missing.
+     *
+     * `$lead` is passed rather than read off the contact. Every caller already has it, and reading
+     * `$contact->lead` here would be a lazy load inside a loop over a lead's contacts — forty
+     * queries for one company, and a `preventLazyLoading` failure in any test that noticed.
      */
-    public static function forContact(LeadContact $contact): self
+    public static function forContact(LeadContact $contact, ?Lead $lead = null): self
     {
-        $lead = $contact->lead;
+        $lead ??= $contact->relationLoaded('lead') ? $contact->lead : null;
 
         return new self(
             firstName: $contact->first_name,

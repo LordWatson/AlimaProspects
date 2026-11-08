@@ -74,9 +74,19 @@ const tones: { value: OutreachTone; label: string }[] = [
     { value: 'consultative', label: 'Consultative' },
 ];
 
-/** A contact with no email cannot receive an email, whatever the guard says about the channel. */
+/**
+ * A contact with no email cannot receive an email, whatever the guard says about the channel.
+ *
+ * **A masked address counts as no address** (PL3): the server sends `j***@acme.com` until somebody
+ * pays to reveal it, and offering that as a recipient would draft a message to a stub. The reveal
+ * lives on the lead screen, which is where the member can see what it costs.
+ */
 const emailable = computed(() =>
-    contacts.value.filter((contact) => (contact.email ?? '') !== ''),
+    contacts.value.filter(
+        (contact) =>
+            (contact.email ?? '') !== '' &&
+            contact.requires_email_reveal !== true,
+    ),
 );
 
 const dirty = computed(

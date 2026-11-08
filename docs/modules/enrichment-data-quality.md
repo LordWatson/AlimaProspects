@@ -394,6 +394,196 @@ either.
   unregistered provider is ignored at runtime and reported by
   `EnrichmentProviderRegistry::unknownIn()`, which a test asserts is empty for the shipped config.
 
+## The waterfall (PL3)
+
+> `pre-launch.md` phase **PL3**, ADR 0030. Behind the Pennant flag `prelaunch.enrichment`.
+
+The orchestration PL2's contracts were for: ask vendors in order, record every call, stop at the
+first **good-enough** answer. With no vendor enabled (ADR 0027 §2) three of the four waterfalls are
+empty and this runs against the fakes — which is deliberate, because the fakes are the providers
+PL4 will meter.
+
+### Data model
+
+| Table                 | What one row is                                                               |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `enrichment_runs`     | What a member asked for: `scope`, `state`, `summary`, `error_code`, who asked |
+| `enrichment_attempts` | **One call to one vendor.** Append-only, with its cost. The money table       |
+
+`summary` is a convenience snapshot. **If it and the attempts disagree, the attempts are right** —
+they are written as each call returns (ADR 0012's rule for a derived figure).
+
+### Three kinds of nothing
+
+`AttemptOutcome` keeps a **miss** (the vendor looked and did not know), an **error** (it let us
+down) and a **skip** (we never called) apart. Only `Hit` and `Miss` count towards a hit rate; only a
+call actually made can have cost anything, and the recorder forces a skip's cost to zero whatever a
+caller passes. Folding them together would make an outage look like a vendor that is bad at its job.
+
+### When it stops
+
+```
+breaker open?            → skip, cost 0
+rate limited?            → skip, cost 0, try the next provider (never sleep)
+query unanswerable?      → skip, cost 0, never call
+provider throws?         → error, try the next provider
+provider misses?         → miss, charged, try the next provider
+provider hits?           → stop — unless the verdict is not good enough
+```
+
+The last line is the whole phase. `enrichment.stop_on.email_verify` defaults to `verified` and
+**not** `accept_all`: a catch-all domain cannot _disprove_ an address, which reads as a pass and is
+not one.
+
+### Code map (PL3 additions)
+
+- **Enums:** `EnrichmentScope` (people/email/phone/verify), `EnrichmentRunState` (with
+  **`Refused`**, which is not a failure), `AttemptOutcome`.
+- **Models:** `EnrichmentRun` (`spentMicros()` reads the attempts), `EnrichmentAttempt`.
+- **Services:** `EnrichmentWaterfall` (the judgement), `AttemptRecorder` (never fails a run),
+  `ProviderRateLimiter`, `PhoneNormaliser`, `UnmeteredCreditReserver`, `AllowAllContactApproval`.
+- **Contracts:** `CreditReserver` (PL4's seam, the fifth of ADR 0012's kind),
+  `ContactApprovalGate` (PL5's, the sixth).
+- **Actions:** `RequestLeadEnrichmentAction`, `RequestBulkEnrichmentAction`,
+  `RevealContactValueAction`.
+- **Jobs:** `RunEnrichmentWaterfallJob` — where the reservation brackets the spending.
+- **Events:** `LeadEnrichmentUpdated` on `teams.{id}` — **counts only**.
+- **HTTP:** web + `/api/v1` controllers for request, bulk and the two reveals, all behind
+  `throttle:enrichment`; `LeadContactPolicy` (`view`, `reveal`, `enrich`).
+- **Admin:** `Admin\Services\Platform\EnrichmentProviderStats` + a `ZeroBounce`
+  `PlatformProvider` case, so the breaker is visible and the hit rate is per **hit** rather than
+  per call.
+- **Config:** `max_people_per_run`, `max_bulk_leads`, `rate_limit_per_member`.
+
+### Key flows
+
+1. **A member clicks Find** → `RequestLeadEnrichmentAction` checks the flag, the capability, an
+   in-flight run and whether there is anything to do → a queued run, or a **refused** one carrying
+   its code → `RunEnrichmentWaterfallJob` from `afterCommit`.
+2. **The job** reserves the allowance, runs the waterfall, commits what the attempts say was spent,
+   releases the rest, broadcasts on the way in and the way out.
+3. **A member clicks Show** → `RevealContactValueAction`: idempotent, gated by the approval seam
+   _before_ the charge, stamped and reserved in one transaction, audited.
+4. **Bulk** → one decision per lead through the same Action, capped, **refused** rather than
+   truncated.
+
+### Traps
+
+- **`enrichment_attempts` has no retention sweep.** Nothing in this module prunes it, and it is the
+  one table that grows per vendor call. ADR 0030 flags it for PL12.
+- **A reservation lives in the job, not the request.** Taken at request time it would be held for
+  the depth of the queue and released by nobody if the worker died. Released in a `finally`.
+- **The commit reads the attempts, never the summary.** A worker that died between its last call
+  and its summary still owes for the calls it made.
+- **`AttemptRecorder` swallows its own failures.** A deliberate inversion: the row is written after
+  the money left, so throwing would lose the record of a charge _and_ the member's result. PL3
+  proved the risk by passing a non-fillable `created_at` — every write threw, the swallow hid it,
+  and the table silently stayed empty.
+- **A capability refusal leaves no run; a spent allowance does.** The first says the feature is not
+  theirs (a sales fact), the second is a cost event a team must be able to see. S16's asymmetry.
+- **`07700 900xxx` is Ofcom's reserved-for-drama range** and libphonenumber calls it invalid — so a
+  test fixture using one exercises the refusal path, not the normalisation. It cost an hour here.
+- **The broadcast carries counts.** It reaches every member with a screen open; a revealed address
+  in it would be a paid reveal given away.
+- **A masked address is not a recipient.** The mobile draft screen filters on
+  `requires_email_reveal`, or it would offer `j***@acme.com` as somebody to write to.
+- **`$tries = 1` on the job.** A retry re-pays for a waterfall that already ran.
+
+## The waterfall (PL3)
+
+> `pre-launch.md` phase **PL3**, ADR 0030. Behind the Pennant flag `prelaunch.enrichment`.
+
+The orchestration PL2's contracts were for: ask vendors in order, record every call, stop at the
+first **good-enough** answer. With no vendor enabled (ADR 0027 §2) three of the four waterfalls are
+empty and this runs against the fakes — which is deliberate, because the fakes are the providers
+PL4 will meter.
+
+### Data model
+
+| Table                 | What one row is                                                               |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `enrichment_runs`     | What a member asked for: `scope`, `state`, `summary`, `error_code`, who asked |
+| `enrichment_attempts` | **One call to one vendor.** Append-only, with its cost. The money table       |
+
+`summary` is a convenience snapshot. **If it and the attempts disagree, the attempts are right** —
+they are written as each call returns (ADR 0012's rule for a derived figure).
+
+### Three kinds of nothing
+
+`AttemptOutcome` keeps a **miss** (the vendor looked and did not know), an **error** (it let us
+down) and a **skip** (we never called) apart. Only `Hit` and `Miss` count towards a hit rate; only a
+call actually made can have cost anything, and the recorder forces a skip's cost to zero whatever a
+caller passes. Folding them together would make an outage look like a vendor that is bad at its job.
+
+### When it stops
+
+```
+breaker open?            → skip, cost 0
+rate limited?            → skip, cost 0, try the next provider (never sleep)
+query unanswerable?      → skip, cost 0, never call
+provider throws?         → error, try the next provider
+provider misses?         → miss, charged, try the next provider
+provider hits?           → stop — unless the verdict is not good enough
+```
+
+The last line is the whole phase. `enrichment.stop_on.email_verify` defaults to `verified` and
+**not** `accept_all`: a catch-all domain cannot _disprove_ an address, which reads as a pass and is
+not one.
+
+### Code map (PL3 additions)
+
+- **Enums:** `EnrichmentScope` (people/email/phone/verify), `EnrichmentRunState` (with
+  **`Refused`**, which is not a failure), `AttemptOutcome`.
+- **Models:** `EnrichmentRun` (`spentMicros()` reads the attempts), `EnrichmentAttempt`.
+- **Services:** `EnrichmentWaterfall` (the judgement), `AttemptRecorder` (never fails a run),
+  `ProviderRateLimiter`, `PhoneNormaliser`, `UnmeteredCreditReserver`, `AllowAllContactApproval`.
+- **Contracts:** `CreditReserver` (PL4's seam, the fifth of ADR 0012's kind),
+  `ContactApprovalGate` (PL5's, the sixth).
+- **Actions:** `RequestLeadEnrichmentAction`, `RequestBulkEnrichmentAction`,
+  `RevealContactValueAction`.
+- **Jobs:** `RunEnrichmentWaterfallJob` — where the reservation brackets the spending.
+- **Events:** `LeadEnrichmentUpdated` on `teams.{id}` — **counts only**.
+- **HTTP:** web + `/api/v1` controllers for request, bulk and the two reveals, all behind
+  `throttle:enrichment`; `LeadContactPolicy` (`view`, `reveal`, `enrich`).
+- **Admin:** `Admin\Services\Platform\EnrichmentProviderStats` + a `ZeroBounce`
+  `PlatformProvider` case, so the breaker is visible and the hit rate is per **hit** rather than
+  per call.
+- **Config:** `max_people_per_run`, `max_bulk_leads`, `rate_limit_per_member`.
+
+### Key flows
+
+1. **A member clicks Find** → `RequestLeadEnrichmentAction` checks the flag, the capability, an
+   in-flight run and whether there is anything to do → a queued run, or a **refused** one carrying
+   its code → `RunEnrichmentWaterfallJob` from `afterCommit`.
+2. **The job** reserves the allowance, runs the waterfall, commits what the attempts say was spent,
+   releases the rest, broadcasts on the way in and the way out.
+3. **A member clicks Show** → `RevealContactValueAction`: idempotent, gated by the approval seam
+   _before_ the charge, stamped and reserved in one transaction, audited.
+4. **Bulk** → one decision per lead through the same Action, capped, **refused** rather than
+   truncated.
+
+### Traps
+
+- **`enrichment_attempts` has no retention sweep.** Nothing in this module prunes it, and it is the
+  one table that grows per vendor call. ADR 0030 flags it for PL12.
+- **A reservation lives in the job, not the request.** Taken at request time it would be held for
+  the depth of the queue and released by nobody if the worker died. Released in a `finally`.
+- **The commit reads the attempts, never the summary.** A worker that died between its last call
+  and its summary still owes for the calls it made.
+- **`AttemptRecorder` swallows its own failures.** A deliberate inversion: the row is written after
+  the money left, so throwing would lose the record of a charge _and_ the member's result. PL3
+  proved the risk by passing a non-fillable `created_at` — every write threw, the swallow hid it,
+  and the table silently stayed empty.
+- **A capability refusal leaves no run; a spent allowance does.** The first says the feature is not
+  theirs (a sales fact), the second is a cost event a team must be able to see. S16's asymmetry.
+- **`07700 900xxx` is Ofcom's reserved-for-drama range** and libphonenumber calls it invalid — so a
+  test fixture using one exercises the refusal path, not the normalisation. It cost an hour here.
+- **The broadcast carries counts.** It reaches every member with a screen open; a revealed address
+  in it would be a paid reveal given away.
+- **A masked address is not a recipient.** The mobile draft screen filters on
+  `requires_email_reveal`, or it would offer `j***@acme.com` as somebody to write to.
+- **`$tries = 1` on the job.** A retry re-pays for a waterfall that already ran.
+
 ## Known limitations / TODO
 
 - **Readiness is a measure of our data, and a member could still read it as a verdict.** The list
@@ -438,3 +628,5 @@ either.
 | 2026-11-07 | —     | **Much more of a lead actually gets enriched.** Four additions, all config-gated: (1) **website resolution** — a website-less lead (every Companies House record, many Places ones) now resolves a homepage via Lead Sourcing's new `CompanyWebsiteResolver` (Serper), confirmed against the page by name-token overlap before it is trusted (a miss is discarded, never pinned); (2) **multi-page gather** — `WebsiteTextGatherer` reads the homepage **and** the contact/about pages in one extract, so an email off the homepage is found; (3) the **Places phone** — Google Places' field mask now requests the switchboard number, stored on `leads.phone` at discovery and used as a contact; (4) **inferred contacts** — when a page names people (`lead.enrich_extract` **v2** adds `people`) but states no routable email, `EmailPatternInferrer` guesses one address per person from the domain, keeps the routable ones, and stores them `is_inferred` with a capped confidence that earns no readiness.                                                                                                                                                                                                                                                                                                                                                                                                                                            | `app/Modules/Enrichment/{Actions/EnrichLeadAction,Services/WebsiteTextGatherer,Services/EmailPatternInferrer,Services/LeadReadiness,Data/{ExtractedFacts,InferredContact,SourcedValue},Models/LeadContact}.php`, `app/Modules/LeadSourcing/{Contracts/CompanyWebsiteResolver,Services/SerperCompanyWebsiteResolver,Services/GooglePlacesProvider,Data/SourcedLead,Models/Lead,Providers/LeadSourcingServiceProvider,Testing/FakeCompanyWebsiteResolver}.php`, `database/{seeders/AiPromptTemplateSeeder,factories/LeadContactFactory}.php`, `database/migrations/2026_11_12_10000{1,2}_*`, `config/enrichment.php`, `tests/{Feature/Enrichment/*,Feature/LeadSourcing/*,TestCase}.php` |
 | 2026-11-08 | —     | **Malformed extracted values sanitised.** A lead came back with `employee_range` = `11-50','locality':'London'}]}<br>Skip<br>` — the model leaking its own JSON structure and page markup into a loosely-typed string field, stored verbatim and shown as garbage (and the scorer reads it as a numeric band). `ExtractedFacts::text()` now strips HTML and decodes entities on every extracted field, and a new `employeeRange()` normaliser reduces a junk-bearing size band to its leading figure (`11-50`) or drops it. A one-off cleanup re-runs stored values through the normaliser.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `app/Modules/Enrichment/Data/ExtractedFacts.php`, `tests/Feature/Enrichment/ExtractedFactsTest.php`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | 2026-11-14 | PL2   | **Paid enrichment, contracted but not connected.** Four capability contracts (`PersonFinder`, `EmailFinder`, `EmailVerificationProvider`, `PhoneFinder`) over a shared `EnrichmentProvider`, with `ProviderCapability`, `EnrichmentProviderRegistry` (config-ordered, enabled-only, refuses a mis-registered provider at registration), the query/result DTOs (`PersonQuery`, `CompanyQuery`, `PersonCriteria`, `EnrichmentResult`, `PeopleResult`, `FoundPerson`, `CostProfile` in **micros**), `EnrichmentProviderException` with three named causes, four `Fake*` providers, and **one experimental adapter** (`ZeroBounceEmailVerifier`, disabled, `Http::fake()` fixtures only — no finder adapter ships, because no finder's response shape could be confirmed from a vendor's own docs). `lead_contacts` gained the person's parts, per-value identity/provenance, the reveal stamps and its own `enrichment_state`; `LeadContactResource` now **masks what a vendor was paid for** and nothing else (ADR 0029). `EmailVerificationStatus` gained the five vendor outcomes plus `isRoutable()`, which fixed four `=== MxFound` comparisons that would have scored a verified address below a routable one. New `Core\Support\ContactIdentity` is now the one definition of an identity, and `SuppressionType` delegates to it — so a vendor-found address and a suppression entry cannot hash differently. See **ADR 0029** and this doc's PL2 section. |
+| 2026-11-15 | PL3   | **The waterfall.** `enrichment_runs` + append-only `enrichment_attempts` (the money table); `EnrichmentScope`, `EnrichmentRunState` (with `Refused`, which is **not** a failure) and `AttemptOutcome` (three kinds of nothing, kept apart so an outage does not look like a bad vendor); `EnrichmentWaterfall` — the one piece of judgement, stopping at the first _good-enough_ answer rather than the first answer; `AttemptRecorder`, `ProviderRateLimiter` (skip, never sleep), `PhoneNormaliser` (libphonenumber, refusing rather than guessing); `CreditReserver` and `ContactApprovalGate` as PL4's and PL5's seams with permissive defaults; `RequestLeadEnrichmentAction`, `RequestBulkEnrichmentAction` (capped and **refused** rather than truncated), `RevealContactValueAction` (idempotent, gated before the charge, audited); `RunEnrichmentWaterfallJob` bracketing the spend and committing from the **attempts**; `LeadEnrichmentUpdated` carrying counts only; web + API routes behind `throttle:enrichment`; `LeadContactPolicy`; a Contacts panel with Reveal on web and mobile, a bulk Find on the leads list, and per-vendor hit rate and **cost per hit** on the admin provider panel. Added `giggsey/libphonenumber-for-php-lite`. See **ADR 0030**.                                                                                                                                                                                  |
+| 2026-11-15 | PL3   | **The waterfall.** `enrichment_runs` + append-only `enrichment_attempts` (the money table); `EnrichmentScope`, `EnrichmentRunState` (with `Refused`, which is **not** a failure) and `AttemptOutcome` (three kinds of nothing, kept apart so an outage does not look like a bad vendor); `EnrichmentWaterfall` — the one piece of judgement, stopping at the first _good-enough_ answer rather than the first answer; `AttemptRecorder`, `ProviderRateLimiter` (skip, never sleep), `PhoneNormaliser` (libphonenumber, refusing rather than guessing); `CreditReserver` and `ContactApprovalGate` as PL4's and PL5's seams with permissive defaults; `RequestLeadEnrichmentAction`, `RequestBulkEnrichmentAction` (capped and **refused** rather than truncated), `RevealContactValueAction` (idempotent, gated before the charge, audited); `RunEnrichmentWaterfallJob` bracketing the spend and committing from the **attempts**; `LeadEnrichmentUpdated` carrying counts only; web + API routes behind `throttle:enrichment`; `LeadContactPolicy`; a Contacts panel with Reveal on web and mobile, a bulk Find on the leads list, and per-vendor hit rate and **cost per hit** on the admin provider panel. Added `giggsey/libphonenumber-for-php-lite`. See **ADR 0030**.                                                                                                                                                                                  |

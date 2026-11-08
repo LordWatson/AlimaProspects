@@ -28,6 +28,7 @@ return [
 
     'flags' => [
         PrelaunchFeature::WhyNow->value => (bool) env('PRELAUNCH_WHY_NOW', false),
+        PrelaunchFeature::Enrichment->value => (bool) env('PRELAUNCH_ENRICHMENT', false),
     ],
 
 ];

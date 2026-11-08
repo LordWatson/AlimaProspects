@@ -45,6 +45,7 @@ final class ProviderHealth
         private readonly Cache $cache,
         private readonly PlatformMetricStore $store,
         private readonly PlatformMoney $money,
+        private readonly EnrichmentProviderStats $enrichment,
     ) {}
 
     /**
@@ -59,6 +60,11 @@ final class ProviderHealth
         $failures = $this->store->byDimension(PlatformMetric::ProviderFailures, $range);
         $cost = $this->store->byDimension(PlatformMetric::ProviderCostMicros, $range);
         $meanLatency = $this->meanAiLatency($range);
+
+        // The enrichment vendors' figures come from `enrichment_attempts` rather than from the
+        // rollup (see `EnrichmentProviderStats` for why), so they are fetched once and attached by
+        // provider key below.
+        $vendorStats = $this->enrichment->since($days);
 
         $rows = [];
 
@@ -87,6 +93,10 @@ final class ProviderHealth
                     ? $this->money->convert([$this->currencyFor($provider) => $cost[$dimension] ?? 0])->minor_units
                     : null,
                 'mean_latency_ms' => $provider === PlatformProvider::Claude ? $meanLatency : null,
+                // Present only for a provider whose spend is on `enrichment_attempts` (PL3).
+                // Null everywhere else — not an empty object, which a screen would render as a
+                // row of zeroes for a vendor that has no such figures at all.
+                'vendor' => $vendorStats[$provider->value] ?? null,
             ];
         }
 
