@@ -37,8 +37,14 @@ class AppServiceProvider extends ServiceProvider
         // Catch N+1s, silent attribute discards and missing attributes outside production.
         Model::shouldBeStrict(! app()->isProduction());
 
+        // Block migrate:fresh / migrate:refresh / migrate:reset / db:wipe EVERYWHERE except the
+        // testing environment. Testing must stay allowed because RefreshDatabase runs migrate:fresh
+        // on the in-memory SQLite (phpunit.xml). On local dev this guards the real MySQL data: a
+        // destructive migrate command is never the right way to apply a schema change here — write a
+        // new migration and run `php artisan migrate`. Only lift this (temporarily, deliberately)
+        // when a full local rebuild is actually intended.
         DB::prohibitDestructiveCommands(
-            app()->isProduction(),
+            ! app()->environment('testing'),
         );
 
         Password::defaults(fn (): ?Password => app()->isProduction()

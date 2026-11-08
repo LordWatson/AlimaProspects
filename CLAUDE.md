@@ -9,6 +9,7 @@ AlimaProspects is a multi-tenant SaaS that helps businesses find, qualify and co
 ## 0. Golden rules
 
 - **Never commit secrets.** Never weaken tenancy scoping, transactions, or tests to make something pass.
+- **Never run `migrate:fresh`, `migrate:refresh`, `migrate:reset` or `db:wipe` against the dev DB.** The local dev database is **MySQL `alima_prospects`** and holds real records. Apply schema changes with `php artisan migrate` only (a rework gets a new corrective migration). These commands are now blocked outside the `testing` env by `DB::prohibitDestructiveCommands()` in `AppServiceProvider`; only lift that guard when the user explicitly asks for a full local rebuild, and warn first that it destroys all data. (Tests are unaffected — they use an in-memory SQLite.)
 - If a requirement is unclear or conflicts with these rules, **stop and ask**.
 - A phase is **not complete** until: `composer test` green, `composer analyse` clean (Larastan ≥ level 6; repo is at **7**), frontend `npm run check` + `npm run types:check` + `npm run build` pass, and **docs are updated**.
 - **The brand is law (see §2a).** Any UI — web or mobile — must obey the Alima brand defined in the two source PDFs. Do not invent colours, type, spacing, logo treatment or tone.
