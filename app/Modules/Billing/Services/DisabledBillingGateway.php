@@ -33,6 +33,17 @@ final class DisabledBillingGateway implements BillingGateway
         throw BillingException::stripeDisabled();
     }
 
+    public function topUpUrl(
+        Team $team,
+        string $stripePrice,
+        int $quantity,
+        array $metadata,
+        string $successUrl,
+        string $cancelUrl,
+    ): string {
+        throw BillingException::stripeDisabled();
+    }
+
     public function portalUrl(Team $team, string $returnUrl): string
     {
         throw BillingException::stripeDisabled();

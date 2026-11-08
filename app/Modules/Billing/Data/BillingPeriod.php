@@ -46,6 +46,18 @@ final readonly class BillingPeriod
     /**
      * The period before this one — what an invoice is settled against once a month closes.
      */
+    /**
+     * This period as `YYYY-MM` — the key `usage_ledger` rows are stamped with (PL4).
+     *
+     * From `start`, which is already UTC (ADR 0012), so the key cannot shift with a team's
+     * timezone. A string because every read against it is an equality or a range over whole
+     * months, and a date column would invite a timezone back into the comparison.
+     */
+    public function key(): string
+    {
+        return $this->start->format('Y-m');
+    }
+
     public function previous(): self
     {
         return self::containing($this->start->subDay());

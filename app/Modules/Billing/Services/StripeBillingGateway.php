@@ -58,6 +58,29 @@ final class StripeBillingGateway implements BillingGateway
         });
     }
 
+    public function topUpUrl(
+        Team $team,
+        string $stripePrice,
+        int $quantity,
+        array $metadata,
+        string $successUrl,
+        string $cancelUrl,
+    ): string {
+        return $this->attempt($team, 'topup', function () use ($team, $stripePrice, $quantity, $metadata, $successUrl, $cancelUrl): string {
+            // `checkout()` on the billable rather than `newSubscription()`: a one-off price is a
+            // payment, and Cashier's subscription builder would try to create a recurring item.
+            $checkout = $team->checkout([$stripePrice => 1], [
+                'success_url' => $successUrl,
+                'cancel_url' => $cancelUrl,
+                // On the **session**, so it arrives on `checkout.session.completed` whatever else
+                // Stripe does with the payment intent behind it.
+                'metadata' => $metadata,
+            ]);
+
+            return (string) $checkout->asStripeCheckoutSession()->url;
+        });
+    }
+
     public function portalUrl(Team $team, string $returnUrl): string
     {
         return $this->attempt(

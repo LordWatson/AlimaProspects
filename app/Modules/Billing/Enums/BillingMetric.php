@@ -10,6 +10,19 @@ use App\Modules\Core\Enums\Capability;
  * The things Alima meters. Each one has an authoritative ledger elsewhere in the app — this enum is
  * what lets Billing talk about all of them without caring which table they come from.
  *
+ * **PL4 adds six, and they differ from the first three in one way that matters.** Leads, AI credits
+ * and signal searches are *recorded by the work itself*: a discovery run writes
+ * `discovery_runs.leads_created` because that is what it did. A contact reveal records nothing but
+ * the fact that somebody clicked, so those six read `usage_ledger` — a table that exists precisely
+ * because they had no table. The shape is identical (append-only, read by aggregate, never
+ * incremented); only the source differs, which is the whole point of this enum.
+ *
+ * **An absent allowance means zero for the six, and unlimited for the three.** That asymmetry is
+ * deliberate and is the `StubSignalQuotaSource` argument again: leads and credits are things the
+ * product does, so a plan that does not mention them is a plan with no ceiling. A reveal costs us
+ * money per unit, so a plan that does not mention it includes **none** — and a plan config that
+ * forgot one must fail closed rather than hand out an unmetered vendor bill.
+ *
  * **Units matter here more than anywhere else in the codebase.** A meter row, a plan allowance and
  * everything this enum returns are in the metric's own unit: whole leads for `Leads`, whole credits
  * for `AiCredits`. The AI ledger stores cost in *micro-units*, so credits cross that boundary
@@ -40,12 +53,54 @@ enum BillingMetric: string
      */
     case SignalQueries = 'signal_queries';
 
+    // --- PL4: the contact-data meters. Read `usage_ledger`; see the class note. -------------
+
+    /** A paid people-find: "who are the decision-makers at this company" (PL3). */
+    case PeopleSearch = 'people_search';
+
+    /** A member spending to see an address a vendor was paid for. */
+    case EmailReveal = 'email_reveal';
+
+    /** The same for a number. Priced apart from an address because a mobile costs us far more. */
+    case PhoneReveal = 'phone_reveal';
+
+    /** A paid verification of one address. The cheap one, and the one run most often. */
+    case EmailVerification = 'email_verification';
+
+    /** Rows taken out as CSV (PL6). Metered because an export is the whole list leaving. */
+    case ExportRows = 'export_rows';
+
+    /** Records pushed to a CRM (PL7). */
+    case CrmSync = 'crm_sync';
+
     public function label(): string
     {
         return match ($this) {
             self::Leads => 'Companies found',
             self::AiCredits => 'AI credits',
             self::SignalQueries => 'Signal searches',
+            self::PeopleSearch => 'Decision-maker searches',
+            self::EmailReveal => 'Email reveals',
+            self::PhoneReveal => 'Phone reveals',
+            self::EmailVerification => 'Email checks',
+            self::ExportRows => 'Exported rows',
+            self::CrmSync => 'CRM syncs',
+        };
+    }
+
+    /**
+     * Whether this metric's consumption is recorded in `usage_ledger` rather than by the work
+     * itself (PL4).
+     *
+     * The one place the two kinds of metric are told apart, so nothing else has to know: a reader
+     * asks the enum which table to aggregate, exactly as it already asks for the allowance key.
+     */
+    public function isLedgered(): bool
+    {
+        return match ($this) {
+            self::Leads, self::AiCredits, self::SignalQueries => false,
+            self::PeopleSearch, self::EmailReveal, self::PhoneReveal,
+            self::EmailVerification, self::ExportRows, self::CrmSync => true,
         };
     }
 
@@ -58,6 +113,12 @@ enum BillingMetric: string
             self::Leads => 'New searches stop until the allowance resets or the plan changes.',
             self::AiCredits => 'Scoring, drafting and insights stop until the allowance resets or the plan changes.',
             self::SignalQueries => 'Watches stop looking for trigger events until the allowance resets or the plan changes.',
+            self::PeopleSearch => 'Alima stops looking for new decision-makers until the allowance resets, you top up, or the plan changes.',
+            self::EmailReveal => 'Addresses Alima found stay hidden until the allowance resets, you top up, or the plan changes.',
+            self::PhoneReveal => 'Numbers Alima found stay hidden until the allowance resets, you top up, or the plan changes.',
+            self::EmailVerification => 'Addresses stop being checked until the allowance resets or the plan changes.',
+            self::ExportRows => 'Exports stop until the allowance resets or the plan changes.',
+            self::CrmSync => 'Pushing records to your CRM stops until the allowance resets or the plan changes.',
         };
     }
 
@@ -79,6 +140,14 @@ enum BillingMetric: string
         return match ($this) {
             self::Leads, self::AiCredits => null,
             self::SignalQueries => Capability::Signals,
+            // The four contact meters all belong to the one capability a plan withholds.
+            self::PeopleSearch, self::EmailReveal, self::PhoneReveal,
+            self::EmailVerification => Capability::Enrichment,
+            self::ExportRows => Capability::CsvExport,
+            // No capability of its own: PL7 decides whether CRM sync is a plan boundary, and
+            // inventing one here would put a `Capability` case in the enum that nothing enforces,
+            // which is the one rule that enum has.
+            self::CrmSync => null,
         };
     }
 
@@ -95,6 +164,12 @@ enum BillingMetric: string
             self::Leads => 'Your search allowance',
             self::AiCredits => 'AI credit',
             self::SignalQueries => 'Your signal allowance',
+            self::PeopleSearch => 'Your decision-maker searches',
+            self::EmailReveal => 'Your email reveals',
+            self::PhoneReveal => 'Your phone reveals',
+            self::EmailVerification => 'Your email checks',
+            self::ExportRows => 'Your export allowance',
+            self::CrmSync => 'Your CRM sync allowance',
         };
     }
 
@@ -111,6 +186,15 @@ enum BillingMetric: string
             self::Leads => 'leads',
             self::AiCredits => 'credits',
             self::SignalQueries => 'signals.monthly_source_queries',
+            // Nested under the plan's own `contacts` block, for the reason the signals one is:
+            // the six figures belong together, and one split out beside `leads` and `credits`
+            // would be the one that drifts when the others are tuned.
+            self::PeopleSearch => 'contacts.people_search',
+            self::EmailReveal => 'contacts.email_reveal',
+            self::PhoneReveal => 'contacts.phone_reveal',
+            self::EmailVerification => 'contacts.email_verification',
+            self::ExportRows => 'contacts.export_rows',
+            self::CrmSync => 'contacts.crm_sync',
         };
     }
 
@@ -134,6 +218,28 @@ enum BillingMetric: string
             self::Leads => ':price per company',
             self::AiCredits => ':price per :count AI credits',
             self::SignalQueries => ':price per :count signal searches',
+            self::PeopleSearch => ':price per decision-maker search',
+            self::EmailReveal => ':price per email reveal',
+            self::PhoneReveal => ':price per phone reveal',
+            self::EmailVerification => ':price per :count email checks',
+            self::ExportRows => ':price per :count exported rows',
+            self::CrmSync => ':price per :count CRM syncs',
+        };
+    }
+
+    /**
+     * Whether a team can **buy more** of this metric when it runs out (PL4).
+     *
+     * Only the three that cost us money per unit and that a member hits mid-task. A top-up for
+     * leads or signal searches would be selling a standing instruction to spend, which is a plan
+     * change rather than a purchase — and a top-up for export rows would be charging for the
+     * team's own data on its way out, which is not a product.
+     */
+    public function isToppable(): bool
+    {
+        return match ($this) {
+            self::EmailReveal, self::PhoneReveal, self::PeopleSearch => true,
+            default => false,
         };
     }
 

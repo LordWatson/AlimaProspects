@@ -39,6 +39,29 @@ interface BillingGateway
      *
      * @throws BillingException
      */
+    /**
+     * A one-off Checkout session for a top-up (PL4): a quantity of one metric, bought outright.
+     *
+     * A **payment**, not a subscription change: a top-up is extra allowance for the period a team
+     * is already in, and modelling it as a plan swap would mean a customer who needed fifty more
+     * reveals this month paying a different rate for everything else next month too.
+     *
+     * `$metadata` is carried through to the Stripe session and comes back on the webhook. It is
+     * how the grant knows which team bought what — the alternative is a local row written before
+     * payment, which is a row that says a team bought something they may have abandoned at the
+     * card form.
+     *
+     * @param  array<string, string>  $metadata
+     */
+    public function topUpUrl(
+        Team $team,
+        string $stripePrice,
+        int $quantity,
+        array $metadata,
+        string $successUrl,
+        string $cancelUrl,
+    ): string;
+
     public function portalUrl(Team $team, string $returnUrl): string;
 
     /**
