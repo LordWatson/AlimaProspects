@@ -119,4 +119,106 @@ return [
     'max_inferred_contacts' => (int) env('ENRICHMENT_MAX_INFERRED_CONTACTS', 3),
     'inferred_email_confidence' => (int) env('ENRICHMENT_INFERRED_EMAIL_CONFIDENCE', 25),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Paid enrichment providers (PL2, ADR 0027)
+    |--------------------------------------------------------------------------
+    |
+    | One entry per vendor, keyed by the provider's own `key()`. A vendor with `enabled => false`
+    | or no API key removes itself from every waterfall (`EnrichmentProvider::isEnabled()`), so
+    | switching one off is a `.env` change rather than a deploy — and an unconfigured vendor is
+    | *absent* from the waterfall rather than an exception inside it.
+    |
+    | **`cost_micros` is a contract term, not a guess.** PL4's margin guard and the "about 2
+    | credits" a member is shown before a reveal both read it, which is why it lives here and is
+    | declared per provider rather than averaged somewhere. Micros of the billing currency
+    | (ADR 0026 §3) — never pence, never millicredits.
+    |
+    | **Everything here is off until ADR 0027 §2 is completed.** No vendor may be enabled without
+    | written confirmation that embedding its data in a product our customers use is permitted; the
+    | one adapter that ships is marked experimental and has never made a live call.
+    |
+    */
+
+    // The breaker for **vendor** HTTP, keyed apart from Lead Sourcing's: a verifier being down and
+    // Companies House being down are not the same event, and a shared breaker would make one close
+    // the other's door (ADR 0023's per-source rule).
+    'circuit_breaker' => [
+        'threshold' => (int) env('ENRICHMENT_BREAKER_THRESHOLD', 5),
+        'cooldown' => (int) env('ENRICHMENT_BREAKER_COOLDOWN', 60),
+    ],
+
+    'providers' => [
+
+        // The reference verifier. **Experimental**: written from ZeroBounce's published v2 docs,
+        // tested against our own `Http::fake()` fixtures, and never validated against the live
+        // API. It exists so PL3's waterfall is built against a real response shape rather than
+        // against four fakes — see the adapter's own note.
+        'zerobounce' => [
+            'enabled' => (bool) env('ENRICHMENT_ZEROBOUNCE_ENABLED', false),
+            'api_key' => env('ENRICHMENT_ZEROBOUNCE_KEY'),
+            'endpoint' => env('ENRICHMENT_ZEROBOUNCE_ENDPOINT', 'https://api.zerobounce.net/v2/validate'),
+            'timeout' => (int) env('ENRICHMENT_ZEROBOUNCE_TIMEOUT', 10),
+            // A verifier bills per lookup, hit or miss. Left at zero until a contract says
+            // otherwise: a made-up price would be worse than none, because PL4 would believe it.
+            'cost_micros' => (int) env('ENRICHMENT_ZEROBOUNCE_COST_MICROS', 0),
+            // Requests per minute we allow ourselves. ZeroBounce's own documented ceiling is
+            // vastly higher (80,000 per 10 seconds); this is our brake, not theirs, and the reason
+            // it exists is that hitting a vendor's limit is a ban rather than a queue.
+            'rate_limit' => (int) env('ENRICHMENT_ZEROBOUNCE_RATE_LIMIT', 600),
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Waterfalls
+    |--------------------------------------------------------------------------
+    |
+    | The order to try providers in, per capability. **Order is a commercial decision** — cheapest
+    | or highest hit-rate first, depending on the capability — so it lives here rather than in the
+    | order somebody happened to register classes in.
+    |
+    | A key naming a provider nobody registered is ignored at runtime and reported by
+    | `EnrichmentProviderRegistry::unknownIn()`, which a test asserts is empty: one typo must not
+    | take a whole capability down, and it must not sit there unnoticed either.
+    |
+    | Three of the four are empty because PL2 ships no adapter for them. That is ADR 0027's
+    | discipline applied to our own code: an email **finder**'s response fields could not be
+    | confirmed from any vendor's own documentation, and a reference adapter built on a guessed
+    | shape is worse than none because it looks finished.
+    |
+    */
+
+    'waterfall' => [
+        'people_find' => [],
+        'email_find' => [],
+        'email_verify' => array_values(array_filter(explode(',', (string) env('ENRICHMENT_WATERFALL_EMAIL_VERIFY', 'zerobounce')))),
+        'phone_find' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | When to stop, and when to go again
+    |--------------------------------------------------------------------------
+    |
+    | `stop_on` is the outcome good enough to stop paying the next provider in a waterfall. For an
+    | email that is a verdict at or above the named status; for a phone it is simply finding one.
+    |
+    | **`accept_all` is deliberately not the default stop.** A catch-all domain cannot disprove an
+    | address, which reads as a pass and is not one — a team that stopped there would be paying for
+    | confidence it had not bought. Teams that would rather stop early can set it.
+    |
+    | `reenrich_after_days` is how long a contact's answers are trusted before it is worth paying
+    | again. Thirty days is the plan's figure and it is also roughly how long a person stays in a
+    | job's worth of certainty.
+    |
+    */
+
+    'stop_on' => [
+        'email_verify' => (string) env('ENRICHMENT_STOP_ON_EMAIL', 'verified'),
+    ],
+
+    'reenrich_after_days' => (int) env('ENRICHMENT_REENRICH_AFTER_DAYS', 30),
+
 ];

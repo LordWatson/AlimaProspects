@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Enrichment\Services;
 
-use App\Modules\Enrichment\Enums\EmailVerificationStatus;
 use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\LeadSourcing\Models\Lead;
 
@@ -56,7 +55,10 @@ final class LeadReadiness
             // Somebody to write to, then the two things that decide whether writing would work.
             'contact' => $reachable->isNotEmpty(),
             'routable_email' => $reachable->contains(
-                fn (LeadContact $contact): bool => $contact->email_verification_status === EmailVerificationStatus::MxFound,
+                // `isRoutable()`, not `=== MxFound`: since PL2 a verifier can return something
+                // *better* than routable, and the literal would have scored a verified address
+                // lower than a merely routable one.
+                fn (LeadContact $contact): bool => $contact->email_verification_status?->isRoutable() === true,
             ),
             // `info@` is a letterbox; a named mailbox is a person who can answer.
             'named_contact' => $reachable->contains(

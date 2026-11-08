@@ -163,7 +163,10 @@ final class LeadDeduplicator
         }
 
         return array_values($lead->contacts()
-            ->where('email_verification_status', EmailVerificationStatus::MxFound->value)
+            // Every outcome that means "mail has somewhere to arrive", not just the best one the
+            // free check can reach (PL2) — a vendor-verified address is the strongest evidence
+            // that two leads are the same company, and the literal would have skipped it.
+            ->whereIn('email_verification_status', EmailVerificationStatus::routableValues())
             ->whereNotNull('email')
             ->pluck('email')
             ->map(static fn (string $e): string => Str::lower($e))

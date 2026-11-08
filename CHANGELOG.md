@@ -5,6 +5,66 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-14 — PL2: the shape a paid data vendor fits into
+
+The module that reads contacts off a company's public pages can now be _told_ things by a vendor
+instead. No vendor is connected — ADR 0027 §2 is still open — so this is the shape, built so PL3's
+waterfall can be written against something real.
+
+**Four narrow capabilities, four contracts, one registry.** `PersonFinder`, `EmailFinder`,
+`EmailVerificationProvider` and `PhoneFinder` over a shared `EnrichmentProvider`, resolved in the
+order `config/enrichment.php` names — the third instance of the pattern ADR 0008 set and ADR 0023
+repeated: a class per vendor, and never a branch in the orchestrator. Narrow because vendors sell
+all four as one call, and buying it that way means paying for three answers to get the one that was
+wanted. A provider claiming a capability whose contract it does not implement is refused **at
+registration**, not inside a queued job after the vendor has been paid.
+
+**A miss is an answer; a failure is an exception.** Nothing found is an `EnrichmentResult` with a
+null value — the ordinary outcome, and the reason a waterfall exists. A provider that actually
+failed throws, with three named causes because they are three different decisions: a
+misconfiguration fails identically for ever, an outage is worth the next provider, and an
+unreadable response means our mapping is wrong and every result stored from that vendor is suspect.
+
+**Only one real adapter ships, and the missing one is the finding.** ADR 0027 asked for a reference
+finder _and_ verifier. ZeroBounce's request and response could be pinned from the vendor's own
+published docs; no email finder's response fields could, so **no finder adapter ships at all**. A
+reference adapter built on a guessed shape is worse than none: it looks finished, PL3 gets written
+against it, and the first live call proves the mapping wrong with a bill attached. The verifier is
+disabled by default, tested against `Http::fake()` fixtures only, and has never made a live call.
+
+**Masking follows who was paid, not whether a value exists.** The obvious implementation — mask
+every address — would have hidden the contacts the free-tier extraction has been finding since
+Phase 8 and that Outreach has been sending to since Phase 11, a regression shipped inside a
+feature, and charged a member to see something printed on the prospect's own contact page. So
+`requiresEmailReveal()` asks whether a vendor was paid. A **switchboard** number is never masked
+even from a vendor: it is the company's published number, and charging to reveal it is a toll. The
+resource sends one already-masked field per value — a `masked_email` beside a plain `email` is a
+mask any client can step over.
+
+**One definition of an identity, and the suppression list now shares it.**
+`Core\Support\ContactIdentity` holds the normalisation, hashing and masking, and
+`Outreach\Enums\SuppressionType` delegates to it with no change in behaviour. Two tables hash an
+identity now, and if they normalised differently the failure would not be a missed index — it would
+be an email sent to somebody who opted out, with nothing to show it had happened.
+
+**`EmailVerificationStatus` grew, which fixed a bug nobody had hit yet.** It gained the five
+outcomes a paid verifier can reach (`verified`, `accept_all`, `risky`, `undeliverable`,
+`unverifiable`) as cases on the same enum rather than a second vocabulary beside it. Four places
+compared `=== MxFound`, correct only while that was the best value that existed: the moment a vendor
+could return something better, `LeadReadiness` would have marked a lead **down** for having better
+data and `LeadDeduplicator` would have skipped the strongest evidence two leads are one company.
+All four now ask `isRoutable()`.
+
+Also found the hard way, by a test that passed vacuously: `CircuitBreaker::class` is _Lead
+Sourcing's_ singleton, so an autowired vendor adapter shared a breaker with Companies House.
+Enrichment binds its own, and each adapter explicitly against it.
+
+`lead_contacts` gains the person's parts, per-value identity and provenance, the reveal stamps and
+its own `enrichment_state` (per contact — a lead can be fully enriched while one of its four
+contacts is still having its mobile looked for). Nothing changes for an existing contact; with no
+vendor configured, nothing is masked, because there is nothing yet that masking applies to.
+See **ADR 0029**.
+
 ### Added — 2026-11-13 — PL1: every lead now says why it is worth a call, and when
 
 A lead was a company record with a grade on it, which answered _should we want them_ and left the

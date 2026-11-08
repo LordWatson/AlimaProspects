@@ -431,7 +431,7 @@ final class EnrichLeadAction
         }
 
         foreach ($verifications as $verification) {
-            if ($verification->status === EmailVerificationStatus::MxFound) {
+            if ($verification->status->isRoutable()) {
                 return false; // we already have somewhere routable to write
             }
         }
@@ -461,7 +461,7 @@ final class EnrichLeadAction
 
             // An inferred address is only worth keeping if the domain accepts mail — otherwise it is
             // a guess at a mailbox on a domain that can't receive one.
-            if ($verification->status !== EmailVerificationStatus::MxFound) {
+            if (! $verification->status->isRoutable()) {
                 continue;
             }
 
