@@ -25,6 +25,11 @@ import { useI18n } from '@/composables/useI18n';
  *   member resents the second time.
  * - **The messaging link is a mobile's only.** A `wa.me` link on a landline opens a chat that can
  *   never be delivered, which is worse than no link: it looks like it worked.
+ * - **`dialable: false` removes the action, not the value** (PL5). A TPS-registered number is still
+ *   shown and still copyable, because the register restricts an unsolicited marketing call rather
+ *   than possession — and a member with a lawful reason to ring is not the person this protects
+ *   against. What goes is the one-tap button, which is the thing that turns a rule into an
+ *   accident.
  */
 const props = withDefaults(
     defineProps<{
@@ -39,8 +44,15 @@ const props = withDefaults(
         canReveal: boolean;
         /** Only for a mobile: offer a WhatsApp link once revealed. */
         messaging?: boolean;
+        /**
+         * Whether this value may be offered as a one-tap action (PL5). False for a number on
+         * TPS/CTPS: the value is still shown and still copyable — the register restricts
+         * unsolicited marketing calls, not possession — but the product does not hand somebody a
+         * button that places one.
+         */
+        dialable?: boolean;
     }>(),
-    { messaging: false },
+    { messaging: false, dialable: true },
 );
 
 const { t } = useI18n();
@@ -96,6 +108,27 @@ function reveal(): void {
                 <!-- Says that it costs, without inventing the figure: PL4 owns the allowance. -->
                 {{ t('Show (1 credit)') }}
             </Button>
+        </template>
+
+        <!-- Revealed but not actionable: the value, and a way to copy it. No `tel:`, no deep link. -->
+        <template v-else-if="!dialable">
+            <span
+                class="inline-flex min-w-0 items-center gap-1.5 text-foreground"
+                dir="ltr"
+            >
+                <component
+                    :is="icon"
+                    class="size-3.5 shrink-0"
+                    aria-hidden="true"
+                />
+                <span class="truncate">{{ value }}</span>
+            </span>
+            <CopyButton
+                :value="value"
+                :label="
+                    kind === 'email' ? t('email address') : t('phone number')
+                "
+            />
         </template>
 
         <!-- Revealed, or never masked: a real value, usable. -->

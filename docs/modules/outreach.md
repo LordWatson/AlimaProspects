@@ -23,10 +23,10 @@ Multi-step sequences, per-tenant sending domains, Gmail/Outlook OAuth sending, o
 ## Code map
 
 - **Backend:** `app/Modules/Outreach/`
-    - **Actions:** `DraftMessageAction`, `SendOutreachEmailAction`, `LogContactAttemptAction` (+ `updateOutcome`), `SaveOutreachTemplateAction`, `DeleteOutreachTemplateAction`, `SuppressIdentityAction`.
+    - **Actions:** `DraftMessageAction`, `SendOutreachEmailAction`, `LogContactAttemptAction` (+ `updateOutcome`), `SaveOutreachTemplateAction`, `DeleteOutreachTemplateAction`, `SuppressIdentityAction`, `ImportSuppressionsAction` (PL5 — the bulk load; splits on separators rather than parsing a CSV, because a member says what the values _are_ and every cell is then read as one. `LeadCsvImporter` stays Leads Workspace's, where its `company_name` requirement makes sense).
     - **Services:** `OutreachGuard`, `SuppressionList`, `SenderIdentityResolver`, `OutreachPayloadBuilder`, `PlaybookOutreachDrafter` (S14 — see below).
     - **Models:** `OutreachTemplate`, `OutreachMessage`, `ContactAttempt`, `OutreachSuppression`.
-    - **Enums:** `OutreachChannel`, `OutreachTone`, `OutreachMessageStatus`, `ContactOutcome`, `OutreachBlockReason`, `SuppressionScope`, `SuppressionType`, `SuppressionReason`.
+    - **Enums:** `OutreachChannel`, `OutreachTone`, `OutreachMessageStatus`, `ContactOutcome`, `OutreachBlockReason`, `SuppressionScope`, `SuppressionType` (four cases since PL5 — `company_number` joined, because what a customer arrives with is a column of companies and a list that can only name addresses cannot say "never approach this company again"; the **number** rather than the name, since `CompanyNameKey` matches loosely on purpose and a loose match on a suppression list suppresses the wrong business), `SuppressionReason`.
     - **Data:** `DraftMessageData`, `MessageDraft`, `DraftResult`, `OutreachDecision`, `SenderIdentity`, `LogAttemptData`, `OutreachTemplateData`.
     - **Mail:** `OutreachMessageMail` + `resources/views/emails/outreach/message{,-text}.blade.php`.
     - **Policies:** `OutreachTemplatePolicy`, `OutreachMessagePolicy`, `OutreachSuppressionPolicy`.

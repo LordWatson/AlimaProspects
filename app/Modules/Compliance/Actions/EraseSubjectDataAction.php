@@ -77,6 +77,10 @@ final class EraseSubjectDataAction
     ) {}
 
     /**
+     * @param  User|null  $actor  The member who decided. **Null only for the public request flow**
+     *                            (PL5), where nobody at Alima decided anything — the data subject
+     *                            did, and a system-attributed audit entry is the honest record of
+     *                            an obligation rather than a choice.
      * @param  list<int>|null  $confirmedIds  The record ids the member actually saw and ticked.
      *                                        **Required for a name match** (see the class docblock);
      *                                        ignored for an address or a number, where the identity
@@ -84,7 +88,7 @@ final class EraseSubjectDataAction
      *                                        same person's.
      * @return array{report: SubjectDataReport, erased: array<string, int>, retained: int, suppressed: bool}
      */
-    public function handle(Team $team, string $query, User $actor, ?array $confirmedIds = null): array
+    public function handle(Team $team, string $query, ?User $actor = null, ?array $confirmedIds = null): array
     {
         $report = $this->locator->locate($team, $query);
 
@@ -214,7 +218,7 @@ final class EraseSubjectDataAction
      * discovery run. Returns false when there is nothing suppressible — a name-only request, which
      * the list cannot key on.
      */
-    private function suppressIdentity(Team $team, SubjectDataReport $report, User $actor): bool
+    private function suppressIdentity(Team $team, SubjectDataReport $report, ?User $actor): bool
     {
         $type = match ($report->matchedOn) {
             'email' => SuppressionType::Email,

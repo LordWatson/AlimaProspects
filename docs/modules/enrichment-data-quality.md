@@ -441,9 +441,15 @@ not one.
   **`Refused`**, which is not a failure), `AttemptOutcome`.
 - **Models:** `EnrichmentRun` (`spentMicros()` reads the attempts), `EnrichmentAttempt`.
 - **Services:** `EnrichmentWaterfall` (the judgement), `AttemptRecorder` (never fails a run),
-  `ProviderRateLimiter`, `PhoneNormaliser`, `UnmeteredCreditReserver`, `AllowAllContactApproval`.
+  `ProviderRateLimiter`, `PhoneNormaliser`, `UnmeteredCreditReserver`, `AllowAllContactApproval`,
+  `NoContactScreening`.
 - **Contracts:** `CreditReserver` (PL4's seam, the fifth of ADR 0012's kind),
-  `ContactApprovalGate` (PL5's, the sixth).
+  `ContactApprovalGate` and `ContactNumberScreener` (PL5's two — and they are **two** on purpose:
+  the gate answers _may we hold and show this_ before any money moves, and the screener records _a
+  fact about the number_ after. A TPS registration stops an unsolicited marketing call rather than
+  possession, so a screening folded into the gate would have to refuse, and refusing would enforce a
+  rule that does not exist. Both are bound by Compliance in PL5; both defaults are the status quo,
+  and `NoContactScreening`'s "do nothing" leaves a number `unchecked`, which is not `clear`).
 - **Actions:** `RequestLeadEnrichmentAction`, `RequestBulkEnrichmentAction`,
   `RevealContactValueAction`.
 - **Jobs:** `RunEnrichmentWaterfallJob` — where the reservation brackets the spending.
@@ -536,9 +542,15 @@ not one.
   **`Refused`**, which is not a failure), `AttemptOutcome`.
 - **Models:** `EnrichmentRun` (`spentMicros()` reads the attempts), `EnrichmentAttempt`.
 - **Services:** `EnrichmentWaterfall` (the judgement), `AttemptRecorder` (never fails a run),
-  `ProviderRateLimiter`, `PhoneNormaliser`, `UnmeteredCreditReserver`, `AllowAllContactApproval`.
+  `ProviderRateLimiter`, `PhoneNormaliser`, `UnmeteredCreditReserver`, `AllowAllContactApproval`,
+  `NoContactScreening`.
 - **Contracts:** `CreditReserver` (PL4's seam, the fifth of ADR 0012's kind),
-  `ContactApprovalGate` (PL5's, the sixth).
+  `ContactApprovalGate` and `ContactNumberScreener` (PL5's two — and they are **two** on purpose:
+  the gate answers _may we hold and show this_ before any money moves, and the screener records _a
+  fact about the number_ after. A TPS registration stops an unsolicited marketing call rather than
+  possession, so a screening folded into the gate would have to refuse, and refusing would enforce a
+  rule that does not exist. Both are bound by Compliance in PL5; both defaults are the status quo,
+  and `NoContactScreening`'s "do nothing" leaves a number `unchecked`, which is not `clear`).
 - **Actions:** `RequestLeadEnrichmentAction`, `RequestBulkEnrichmentAction`,
   `RevealContactValueAction`.
 - **Jobs:** `RunEnrichmentWaterfallJob` — where the reservation brackets the spending.

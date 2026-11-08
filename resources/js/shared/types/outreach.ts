@@ -18,7 +18,11 @@ export type ContactOutcome =
     | 'bounced'
     | 'opted_out';
 
-export type SuppressionType = 'email' | 'domain' | 'phone';
+/**
+ * What a do-not-contact entry identifies. `company_number` arrived with PL5, for the case a list of
+ * addresses cannot express: "never approach this company again".
+ */
+export type SuppressionType = 'email' | 'domain' | 'phone' | 'company_number';
 
 export type SuppressionScope = 'global' | 'team';
 

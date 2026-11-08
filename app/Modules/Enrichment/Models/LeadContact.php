@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Enrichment\Models;
 
 use App\Modules\Core\Concerns\BelongsToTeam;
+use App\Modules\Core\Enums\TpsStatus;
 use App\Modules\Core\Support\ContactIdentity;
 use App\Modules\Enrichment\Enums\ContactEnrichmentState;
 use App\Modules\Enrichment\Enums\EmailVerificationStatus;
@@ -58,6 +59,8 @@ use Illuminate\Support\Carbon;
  * @property PhoneType|null $phone_type
  * @property string|null $phone_source
  * @property Carbon|null $phone_found_at
+ * @property TpsStatus $tps_status do-not-call verdict; `unchecked` is not `clear`
+ * @property Carbon|null $tps_checked_at
  * @property Carbon|null $revealed_email_at when a member spent on seeing it; null means masked
  * @property Carbon|null $revealed_phone_at
  * @property ContactEnrichmentState $enrichment_state per contact, not per lead
@@ -86,6 +89,11 @@ class LeadContact extends Model
      */
     protected $attributes = [
         'enrichment_state' => ContactEnrichmentState::Idle->value,
+        // Mirrors the column default, so a model built in memory — an API resource over an
+        // unsaved instance, a factory `make()` — reads `unchecked` rather than null. The whole
+        // point of the column is that unknown is not clear, and a null would make callers write
+        // `?->` and reach for a fallback of their own choosing.
+        'tps_status' => TpsStatus::Unchecked->value,
     ];
 
     /**
@@ -279,6 +287,10 @@ class LeadContact extends Model
             'email_verified_at' => 'datetime',
             'phone_type' => PhoneType::class,
             'phone_found_at' => 'datetime',
+            // Neither is fillable: a screening verdict is a register's statement, not something a
+            // request or an import may assert. `TpsScreener` writes them with `forceFill`.
+            'tps_status' => TpsStatus::class,
+            'tps_checked_at' => 'datetime',
             'enrichment_state' => ContactEnrichmentState::class,
             'enriched_at' => 'datetime',
             'is_role_based' => 'boolean',

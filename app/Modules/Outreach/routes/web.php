@@ -65,6 +65,12 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         ->name('outreach.suppressions.index');
     Route::post('outreach/do-not-contact', [SuppressionController::class, 'store'])
         ->name('outreach.suppressions.store');
+    // Rate-limited where adding one by hand is not: one request writes up to `max_import` rows
+    // and an audit entry each.
+    Route::post('outreach/do-not-contact/import', [SuppressionController::class, 'import'])
+        ->middleware('throttle:outreach-suppression-import')
+        ->name('outreach.suppressions.import');
+
     Route::delete('outreach/do-not-contact/{entry}', [SuppressionController::class, 'destroy'])
         ->whereNumber('entry')
         ->name('outreach.suppressions.destroy');

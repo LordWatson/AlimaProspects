@@ -106,6 +106,24 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Do-not-contact list
+    |--------------------------------------------------------------------------
+    |
+    | The bulk load a team arrives with (PL5). The cap is on values read per
+    | request rather than on list size: the list itself only ever grows, and a
+    | team with twenty thousand former clients loads them over several uploads
+    | and is **told** when one stopped early. Silently truncating would leave
+    | companies contactable with nobody aware of it.
+    |
+    */
+
+    'suppressions' => [
+        'max_import' => (int) env('OUTREACH_SUPPRESSION_MAX_IMPORT', 2000),
+        'import_rate_limit' => (int) env('OUTREACH_SUPPRESSION_IMPORT_RATE_LIMIT', 10),
+    ],
+
     'draft_rate_limit' => (int) env('OUTREACH_DRAFT_RATE_LIMIT', 30),
 
     'send_rate_limit' => (int) env('OUTREACH_SEND_RATE_LIMIT', 60),

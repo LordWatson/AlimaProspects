@@ -53,6 +53,14 @@ final class OutreachServiceProvider extends ModuleServiceProvider
         RateLimiter::for('outreach-send', fn (Request $request): Limit => Limit::perMinute(
             max(1, (int) config('outreach.send_rate_limit', 60)),
         )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        // The bulk suppression load (PL5). Per **hour**, because one request writes up to
+        // `max_import` rows and an audit entry for each: a member loading their client list does
+        // it once, and the limit is there so a retried upload is not a way to write a million
+        // rows. Per member, so a shared office does not throttle itself.
+        RateLimiter::for('outreach-suppression-import', fn (Request $request): Limit => Limit::perHour(
+            max(1, (int) config('outreach.suppressions.import_rate_limit', 10)),
+        )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
     }
 
     public function register(): void

@@ -7,15 +7,23 @@ namespace App\Modules\Compliance\Providers;
 use App\Models\User;
 use App\Modules\Compliance\Console\NotifyAssessmentReviewsCommand;
 use App\Modules\Compliance\Console\PurgeExpiredDataCommand;
+use App\Modules\Compliance\Contracts\TpsScreeningProvider;
 use App\Modules\Compliance\Models\LiaRecord;
 use App\Modules\Compliance\Models\RetentionPolicy;
 use App\Modules\Compliance\Policies\LiaRecordPolicy;
 use App\Modules\Compliance\Policies\RetentionPolicyPolicy;
 use App\Modules\Compliance\Services\LegitimateInterestGate;
 use App\Modules\Compliance\Services\MarketConsentGate;
+use App\Modules\Compliance\Services\PecrSubscriberResolver;
+use App\Modules\Compliance\Services\SuppressionApprovalGate;
+use App\Modules\Compliance\Services\TpsScreener;
+use App\Modules\Compliance\Services\UnlicensedTpsScreening;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
+use App\Modules\Enrichment\Contracts\ContactApprovalGate;
+use App\Modules\Enrichment\Contracts\ContactNumberScreener;
 use App\Modules\LeadSourcing\Contracts\LeadInterestGate;
+use App\Modules\LeadSourcing\Contracts\SubscriberTypeResolver;
 use App\Modules\ModuleServiceProvider;
 use App\Modules\Outreach\Contracts\LeadRestrictionResolver;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -70,6 +78,15 @@ final class ComplianceServiceProvider extends ModuleServiceProvider
         RateLimiter::for('compliance-unsubscribe', fn (Request $request): Limit => Limit::perMinute(
             max(1, (int) config('outreach.unsubscribe.rate_limit', 20)),
         )->by((string) $request->ip()));
+
+        // The public privacy-request form (PL5). Keyed by IP, because there is no account; per
+        // **hour**, because one person makes one request and a form that emails an address somebody
+        // else typed is a way to send mail from us. Tight enough to stop that, loose enough that a
+        // shared office or a corporate NAT can still reach it — which matters more here than
+        // anywhere, since the alternative is somebody unable to opt out.
+        RateLimiter::for('compliance-subject-request', fn (Request $request): Limit => Limit::perHour(
+            max(1, (int) config('compliance.subject_requests.rate_limit', 10)),
+        )->by((string) $request->ip()));
     }
 
     public function register(): void
@@ -84,6 +101,29 @@ final class ComplianceServiceProvider extends ModuleServiceProvider
         // carries no flag, and before this a team could cold email a prospect UAE PDPL requires
         // prior consent to approach (ADR 0007).
         $this->app->bind(LeadRestrictionResolver::class, MarketConsentGate::class);
+
+        // PL5: the two Enrichment seams, over that module's permissive defaults. Both are
+        // **bindings rather than changes to an Action**, which is why the seams were built in PL3 —
+        // Enrichment knows nothing about suppression lists or do-not-call registers, and should
+        // not.
+        //
+        // The approval gate reads `SuppressionList` rather than keeping its own copy:
+        // `outreach_suppressions` stays the one do-not-contact table, and a second list here would
+        // be a second answer — an address suppressed for sending and still revealed for a fee.
+        $this->app->bind(ContactApprovalGate::class, SuppressionApprovalGate::class);
+        $this->app->bind(ContactNumberScreener::class, TpsScreener::class);
+
+        // No licensed TPS/CTPS adapter ships: the registers are licensed datasets and automated
+        // screening inside a product needs a licence that permits it (`docs/prelaunch/progress.md`,
+        // open items). The default answers "I cannot say", never "clear" — bind a licensed adapter
+        // here and the cache, the 28-day re-screen, the badge and the dial-link rule all start
+        // working with no other change.
+        $this->app->bind(TpsScreeningProvider::class, UnlicensedTpsScreening::class);
+
+        // PECR's corporate/individual distinction, over Lead Sourcing's null default. The seam
+        // exists because a sourcing provider's job is to find a company; whether that company is a
+        // body corporate is a legal question about the regime it sits in.
+        $this->app->bind(SubscriberTypeResolver::class, PecrSubscriberResolver::class);
     }
 
     /**

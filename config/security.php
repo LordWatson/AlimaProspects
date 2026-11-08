@@ -134,6 +134,14 @@ return [
         'extra_img_src' => env('SECURITY_CSP_EXTRA_IMG_SRC'),
 
         /*
+        | Hosts allowed to be framed. **Empty keeps `frame-src 'none'`**, which is the shipped
+        | answer; the two cannot be combined, because `'none'` wins over any host beside it. Set it
+        | to `https://challenges.cloudflare.com` when Turnstile keys are configured (PL5), since a
+        | captcha is an iframe.
+        */
+        'extra_frame_src' => env('SECURITY_CSP_EXTRA_FRAME_SRC'),
+
+        /*
         | The realtime socket the **browser** opens, for `connect-src`.
         |
         | `VITE_REVERB_*` and not `REVERB_*`, and the difference is the whole reason this entry

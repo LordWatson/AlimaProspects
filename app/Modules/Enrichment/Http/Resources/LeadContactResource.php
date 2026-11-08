@@ -16,6 +16,11 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * `masked_email` beside a plain `email` is a mask any client can walk around, and the first one
  * that does is the one that gives away what PL4 charges for.
  *
+ * `tps_status` and `allows_dial_link` are the PL5 pair. A client offers a `tel:` link when
+ * `allows_dial_link` is true and shows the label either way — it must not compare the status to a
+ * single case, because `unchecked`, `clear` and `not_applicable` all permit a call and only one of
+ * them means the number was screened.
+ *
  * `requires_email_reveal` is what the Reveal button binds to. It is **not** "do we hold an
  * address": an address we read off the company's own contact page needs no reveal (ADR 0029), so a
  * client that wanted to know whether a contact is reachable at all reads
@@ -67,6 +72,15 @@ final class LeadContactResource extends JsonResource
             // never be delivered.
             'phone_accepts_messaging' => $this->phone_type?->acceptsMessaging() ?? false,
             'phone_source' => $this->phone_source,
+
+            // The do-not-call verdict (PL5). `unchecked` is **not** `clear`, and the label says so
+            // — the distinction is the whole value of the column. `allows_dial_link` is what a
+            // client binds to rather than comparing the status itself: a literal compare against
+            // one case is a bug waiting for the enum to grow (ADR 0029's own lesson).
+            'tps_status' => $this->tps_status->value,
+            'tps_status_label' => $this->tps_status->label(),
+            'tps_checked_at' => $this->tps_checked_at?->toIso8601String(),
+            'allows_dial_link' => $this->tps_status->allowsDialLink(),
 
             'is_role_based' => $this->is_role_based,
             'is_personal' => $this->is_personal,

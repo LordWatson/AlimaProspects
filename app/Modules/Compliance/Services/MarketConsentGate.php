@@ -82,13 +82,8 @@ final class MarketConsentGate implements LeadRestrictionResolver
      */
     private function marketOfCountry(?string $country): ?Market
     {
-        $code = mb_strtoupper(trim((string) $country));
-
-        return match ($code) {
-            'GB', 'UK' => Market::Uk,
-            'AE' => Market::Uae,
-            default => null,
-        };
+        // One mapping, in Core, because PL5's PECR classifier keys on the same question.
+        return Market::forCountry($country);
     }
 
     /**

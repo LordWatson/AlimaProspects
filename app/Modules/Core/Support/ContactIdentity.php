@@ -95,6 +95,30 @@ final class ContactIdentity
     }
 
     /**
+     * A company registration number reduced to its comparable form, or null when it is not one.
+     *
+     * Upper-cased with every separator dropped, so `SC 123456`, `sc-123456` and `SC123456` are one
+     * company. Not validated against a register's own format on purpose: the UAE has no single
+     * national one, and refusing an unfamiliar shape would mean refusing a team's own
+     * do-not-contact entry (PL5).
+     *
+     * **At least one digit is required**, which is the one shape rule worth keeping. Every register
+     * numbers its companies; a value of pure letters is a word, and the word it is in practice is
+     * the header of the CSV column somebody just pasted — `company_number` would otherwise be
+     * stored as the registration number `COMPANYNUMBER` and sit on the list for ever.
+     */
+    public static function companyNumber(string $value): ?string
+    {
+        $value = Str::upper((string) preg_replace('/[^A-Za-z0-9]+/', '', $value));
+
+        if (preg_match('/\d/', $value) !== 1) {
+            return null;
+        }
+
+        return Str::length($value) >= 4 && Str::length($value) <= 20 ? $value : null;
+    }
+
+    /**
      * The deterministic lookup key for an already-normalised value. SHA-256, unsalted.
      */
     public static function hash(string $normalised): string

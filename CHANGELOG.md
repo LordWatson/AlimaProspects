@@ -5,6 +5,72 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-17 — PL5: the compliance core
+
+Two of this codebase's seams have shipped since PL3 with a permissive default and a comment saying
+PL5 would fill them in. This is that. A person on the do-not-contact list is no longer stored as a
+contact and nobody is charged to reveal an address they may not use — and both of those are bindings
+rather than changes to an Action, which is why the seams were built where they were.
+
+**The second seam is the interesting one, because it would have been wrong to make it the first.**
+`ContactApprovalGate` answers _may we hold and show this_ before any money moves. TPS/CTPS screening
+is not that question: a registration stops an unsolicited marketing **call**, not possession, so a
+screener folded into the gate would have to refuse, and refusing would enforce a rule that does not
+exist. `ContactNumberScreener` therefore returns nothing, stamps a verdict on the contact, and the
+product withdraws the one-tap call button and shows a badge. The member's decision stays theirs. It
+also runs _after_ the charge and swallows its own failures — they have already paid, and a slow
+register must not cost them the credit.
+
+**There is no licensed TPS adapter, and every number reads `unchecked`.** The registers are licensed
+datasets and automated screening inside a product needs a licence that permits it; that is an open
+item, not code. What matters is that `unchecked` is **not** `clear`: a provider that is unavailable,
+fails, or answers something the code does not recognise cannot produce a pass, a stale verdict stands
+rather than being dropped when nobody can replace it, and a number we cannot place at all is left
+alone rather than declared outside the registers. The temptation in an unlicensed build is to default
+to clear so nothing looks broken; that would put a green light on every number in the product.
+`tps_checks` is a platform cache of hashes — the register charges per lookup and its answer is a fact
+about the number, so keying it per tenant would bill two customers twice for the same answer.
+
+**PECR's corporate/individual distinction is derived and never stored**, and only one path reaches
+"corporate": a UK lead with a registration number _and_ a company type naming a body corporate.
+Everything else is `unknown`, which warns exactly as `individual` does. The temptation is to read "no
+company number" as "sole trader" — that is not the same claim, and most of what a maps provider
+returns has no number. It warns rather than blocking, because whether to email a sole trader is the
+customer's call as controller, and it answers **null** for a non-UK prospect rather than `unknown`:
+PECR is a UK instrument, and a subscriber type on a Dubai lead would read as "marketing email is
+allowed", which is the opposite of the truth there.
+
+**And the product grew a public door.** `/privacy/request` takes a request from somebody with no
+account — stop, tell me, delete it, correct it — and **nothing happens until they click a link in
+their own inbox**, because an unverified form is a way to erase a competitor's prospects by typing
+their address into it. On verification the platform-scope suppression is written _first_, before
+anything is deleted: the person erased and re-contactable is the one outcome worse than doing
+nothing. Only an erasure purges, and the purge walks every tenant by calling the existing per-team
+erasure rather than reimplementing it — a second implementation would be a second answer to what
+erasure means. No response says whether we hold the person. The operator queue can **close** a
+request and has no route that suppresses or purges, because an operator who could choose not to
+suppress would be a compliance hole with a permission on it.
+
+Also: `SuppressionType::CompanyNumber`, and a bulk load that splits on separators rather than parsing
+a CSV — a member says what the values _are_ and every cell is then read as one, so a one-column
+export and a pasted spreadsheet column both work with no mapping screen. The cap is on values read
+per request and a request that hits it **says so**; an import that silently added 1,412 of 5,000
+would leave a team believing a list is covered when most of it is not.
+
+Review changed four things worth naming, because each was a hole rather than a tidy-up. The
+suppression and the purge act on the **email only**: the click authenticates a mailbox, so acting on
+a phone number anybody could have typed into the form would let somebody have a stranger's — or a
+competitor's switchboard — blocked across every tenant, which is a denial rather than a leak and
+the half nobody tests for. A repeat submission now **rewrites nothing** and sits behind a
+per-address mail cooldown. The purge is queued **after the commit and re-queued when `verified_at`
+is set with no `purged_at`**, because a queue that was down at the moment of verification left the
+row verified, the person told it was done, and every later click returning early — an erasure lost
+for good. And `purged_at` is stamped only after a pass with **no failed teams**, the job throwing
+otherwise, since it is what the queue reads as "done" and reporting success with a failure counted
+beside it both misled an operator and took the job out of reach of its own retries.
+
+See **ADR 0032**, `docs/compliance.md` §3.15–§3.17 and `docs/modules/compliance-privacy.md`.
+
 ### Added — 2026-11-08 — PL4: one ledger for the things that cost money per unit
 
 PL3 built a waterfall that can spend real money per lead, behind a reserve/commit seam whose default

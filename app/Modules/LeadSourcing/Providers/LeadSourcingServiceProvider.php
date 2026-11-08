@@ -11,6 +11,7 @@ use App\Modules\LeadSourcing\Console\EvidenceSourceQualityCommand;
 use App\Modules\LeadSourcing\Contracts\CompanyWebsiteResolver;
 use App\Modules\LeadSourcing\Contracts\LeadInterestGate;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
+use App\Modules\LeadSourcing\Contracts\SubscriberTypeResolver;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadSourcing\Models\LeadEvidence;
@@ -24,6 +25,7 @@ use App\Modules\LeadSourcing\Services\CompaniesHouseProvider;
 use App\Modules\LeadSourcing\Services\DiscoveryLimitGuard;
 use App\Modules\LeadSourcing\Services\GooglePlacesProvider;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
+use App\Modules\LeadSourcing\Services\NoSubscriberType;
 use App\Modules\LeadSourcing\Services\SerperCompanyWebsiteResolver;
 use App\Modules\LeadSourcing\Services\StubLeadQuotaSource;
 use App\Modules\LeadSourcing\Services\WebSearchProvider;
@@ -49,6 +51,10 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
         // over them, which is why neither name appears anywhere in this module.
         $this->app->bind(LeadQuotaSource::class, StubLeadQuotaSource::class);
         $this->app->bind(LeadInterestGate::class, AllowAllLeadInterestGate::class);
+
+        // PL5's seam: what kind of subscriber a prospect is for direct-marketing purposes. Null by
+        // default, because this module must not know what PECR is — Compliance binds the answer.
+        $this->app->bind(SubscriberTypeResolver::class, NoSubscriberType::class);
 
         // Enrichment (Phase 8) resolves a homepage for a website-less lead through this seam — the
         // default goes to Serper (ADR 0010); tests bind a fake. It lives here, not in Enrichment,

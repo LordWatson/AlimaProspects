@@ -7,6 +7,8 @@ namespace App\Modules\Compliance\Console;
 use App\Modules\Compliance\Actions\PurgeExpiredDataAction;
 use App\Modules\Compliance\Enums\RetentionAction;
 use App\Modules\Compliance\Jobs\PurgeExpiredDataJob;
+use App\Modules\Compliance\Models\DataSubjectRequest;
+use App\Modules\Compliance\Models\TpsCheck;
 use App\Modules\Compliance\Services\DataRetention;
 use App\Modules\Core\Models\Team;
 use Illuminate\Console\Command;
@@ -48,6 +50,11 @@ final class PurgeExpiredDataCommand extends Command
 
         $teams = $this->teams();
 
+        // The two platform tables, swept here rather than in the per-team Action because neither
+        // belongs to a team (PL5). Done before the per-team work so it happens even on a run that
+        // only queues jobs — and skipped on a dry run, like everything else.
+        $platform = $dryRun ? ['requests' => 0, 'tps_checks' => 0] : $this->sweepPlatformTables();
+
         if ($teams === []) {
             $this->info('No teams to sweep.');
 
@@ -82,6 +89,8 @@ final class PurgeExpiredDataCommand extends Command
             'anonymised' => $anonymised,
             'skipped_teams' => $skipped,
             'dry_run' => $dryRun,
+            'subject_requests_pruned' => $platform['requests'],
+            'tps_checks_pruned' => $platform['tps_checks'],
             'default_uncontacted_days' => $this->retention->defaultUncontactedDays(),
             'default_contacted_days' => $this->retention->defaultContactedDays(),
         ]);
@@ -97,6 +106,52 @@ final class PurgeExpiredDataCommand extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The platform tables PL5 added, neither of which has a `team_id`.
+     *
+     * - **`data_subject_requests`** holds an email address in the clear, which is justified only
+     *   for as long as the accountability record is needed. Closed requests past
+     *   `subject_requests.retain_days` go; an **open** one is never swept however old it is,
+     *   because an unanswered statutory request is live work rather than stale data. An
+     *   **unverified** one is swept once its link has expired — it is neither a record nor live
+     *   work, just an address somebody typed into a public form, and leaving those for ever is
+     *   exactly what the clear-text column cannot be justified by.
+     * - **`tps_checks`** rolls from `checked_at` — a verdict nobody has asked about in a year is
+     *   dropped, and the next screening re-fetches it. A stale verdict is still what the register
+     *   last said, which is why the window is far longer than the 28-day re-check.
+     *
+     * The eligibility query is re-applied at the `DELETE` rather than collecting ids and deleting
+     * by id, which is the bug `signals:prune` has already had.
+     *
+     * @return array{requests: int, tps_checks: int}
+     */
+    private function sweepPlatformTables(): array
+    {
+        $requestDays = max(1, (int) config('compliance.subject_requests.retain_days', 730));
+        $checkDays = max(1, (int) config('compliance.tps.retain_days', 365));
+
+        // Twice the link's own lifetime, so a request is never swept while the link in somebody's
+        // inbox could still work.
+        $linkDays = max(1, (int) config('compliance.subject_requests.link_days', 14)) * 2;
+
+        $requests = (int) DataSubjectRequest::query()
+            ->where(function ($query) use ($requestDays): void {
+                $query->whereNotNull('completed_at')
+                    ->where('completed_at', '<', now()->subDays($requestDays));
+            })
+            ->orWhere(function ($query) use ($linkDays): void {
+                $query->whereNull('verified_at')
+                    ->where('created_at', '<', now()->subDays($linkDays));
+            })
+            ->delete();
+
+        $checks = (int) TpsCheck::query()
+            ->where('checked_at', '<', now()->subDays($checkDays))
+            ->delete();
+
+        return ['requests' => $requests, 'tps_checks' => $checks];
     }
 
     /**

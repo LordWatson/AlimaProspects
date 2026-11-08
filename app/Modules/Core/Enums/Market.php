@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Core\Enums;
 
+use App\Modules\Compliance\Services\MarketConsentGate;
 use App\Modules\Core\Models\Team;
 
 /**
@@ -50,6 +51,27 @@ enum Market: string
         return match ($this) {
             self::Uk => null,
             self::Uae => OutreachRestriction::UaePriorConsent,
+        };
+    }
+
+    /**
+     * The market a prospect in this country falls under, or null when the country is absent or is
+     * not one Alima has taken a legal position on.
+     *
+     * Null is the honest answer rather than a quiet "no rules apply": Alima trades in two markets
+     * (ADR 0007), and a third country means somebody is working outside the assessed scope. Callers
+     * decide what to do with that — {@see MarketConsentGate}
+     * falls through to the team's own market, the PECR classifier declines to classify at all.
+     *
+     * Shared because two unrelated rules key on the same mapping and a second copy of it is how
+     * "GB" comes to mean the UK in one place and nothing in another.
+     */
+    public static function forCountry(?string $country): ?self
+    {
+        return match (mb_strtoupper(trim((string) $country))) {
+            'GB', 'UK' => self::Uk,
+            'AE' => self::Uae,
+            default => null,
         };
     }
 

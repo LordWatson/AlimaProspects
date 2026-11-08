@@ -116,6 +116,70 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Public data-subject requests (PL5)
+    |--------------------------------------------------------------------------
+    |
+    | The form at `/privacy/request`, for people who are not users (section
+    | 3.15). Three windows and a throttle, and each number is a legal setting
+    | rather than a technical one:
+    |
+    | - `response_days` is the statutory month, stamped at **verification**
+    |   rather than at submission, because the month runs from a request we can
+    |   act on.
+    | - `link_days` is how long the verification link lives. Long enough for
+    |   somebody who checks that mailbox weekly; short enough that a link in an
+    |   archived inbox cannot be replayed in a year's time.
+    | - `retain_days` is how long a closed request is kept. It holds an address
+    |   in the clear, so it is kept for as long as the accountability record is
+    |   needed and no longer.
+    |
+    */
+
+    'subject_requests' => [
+        'response_days' => (int) env('COMPLIANCE_SUBJECT_RESPONSE_DAYS', 30),
+        'link_days' => (int) env('COMPLIANCE_SUBJECT_LINK_DAYS', 14),
+        'retain_days' => (int) env('COMPLIANCE_SUBJECT_RETAIN_DAYS', 730),
+
+        // Submissions per IP per hour. There is no account to key on.
+        'rate_limit' => (int) env('COMPLIANCE_SUBJECT_RATE_LIMIT', 10),
+
+        // Seconds before the same address can be sent another confirmation link.
+        // The throttle above stops one visitor flooding us; this stops a
+        // rotating-IP caller using the form to post a stranger an email from us
+        // every few seconds. Short enough that somebody who really did not get
+        // the first one can try again within a coffee break.
+        'resend_cooldown' => (int) env('COMPLIANCE_SUBJECT_RESEND_COOLDOWN', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | TPS/CTPS screening (PL5)
+    |--------------------------------------------------------------------------
+    |
+    | UK do-not-call screening (section 3.14). `recheck_days` matches the
+    | register's own publication cadence: a verdict older than this is
+    | re-screened, never aged out, because an expired row with nothing to
+    | replace it reads as "never checked" and would turn a provider outage into
+    | a product-wide loss of every verdict.
+    |
+    | There is no provider key here because no licensed adapter ships. The
+    | registers are licensed datasets and automated screening in a product needs
+    | a licence that permits it; bind a `TpsScreeningProvider` and everything
+    | around it already works.
+    |
+    */
+
+    'tps' => [
+        'recheck_days' => (int) env('COMPLIANCE_TPS_RECHECK_DAYS', 28),
+
+        // How long an unused cached verdict is kept before the nightly sweep
+        // drops it. Longer than the re-check window on purpose: a stale verdict
+        // is still what the register last said, and better than nothing.
+        'retain_days' => (int) env('COMPLIANCE_TPS_RETAIN_DAYS', 365),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Team data export
     |--------------------------------------------------------------------------
     |

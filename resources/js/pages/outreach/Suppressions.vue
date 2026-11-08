@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { FileText, Lock, Plus, ShieldOff, Trash2 } from '@lucide/vue';
+import { FileText, Lock, Plus, ShieldOff, Trash2, Upload } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { FormField } from '@/components/forms';
 import { ListCell, ListHead, ListRow, ListTable } from '@/components/list';
@@ -10,11 +10,13 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import type {
     OutreachSuppression,
     SuppressIdentityForm,
+    SuppressionType,
     SuppressionTypeOption,
 } from '@/types';
 
@@ -67,6 +69,7 @@ const confirmingLift = ref<number | null>(null);
 const valuePlaceholder = computed(() => {
     if (form.type === 'domain') return t('acme.com');
     if (form.type === 'phone') return t('+44 20 7946 0000');
+    if (form.type === 'company_number') return t('01234567');
 
     return t('name@acme.com');
 });
@@ -76,6 +79,43 @@ function submit(): void {
         preserveScroll: true,
         onSuccess: () => form.reset(),
     });
+}
+
+/*
+ * The bulk load (PL5). A second form rather than a mode on the first, because the two are answering
+ * different questions — "block this one company" and "here is everything we already serve" — and a
+ * single form that did both would need a toggle nobody reads.
+ *
+ * It asks for the **type** and then takes every value in the file. There is no column mapping,
+ * because a mapping screen is a second page between a member and a list they already have: a
+ * one-column export works, and so does a pasted spreadsheet column.
+ */
+const importForm = useForm<{
+    type: SuppressionType;
+    values: string;
+    file: File | null;
+    note: string;
+}>({
+    type: 'email',
+    values: '',
+    file: null,
+    note: '',
+});
+
+function importValues(): void {
+    // `forceFormData`, because the file is optional and Inertia would otherwise send JSON on the
+    // paste-only path and multipart on the other — two shapes for one endpoint.
+    importForm.post('/outreach/do-not-contact/import', {
+        preserveScroll: true,
+        forceFormData: true,
+        onSuccess: () => importForm.reset(),
+    });
+}
+
+function pickFile(event: Event): void {
+    const input = event.target as HTMLInputElement;
+
+    importForm.file = input.files?.[0] ?? null;
 }
 
 function lift(entry: OutreachSuppression): void {
@@ -199,6 +239,124 @@ function lift(entry: OutreachSuppression): void {
                 >
                     <Plus class="size-4" />
                     {{ t('Add') }}
+                </Button>
+            </form>
+        </section>
+
+        <!-- Bulk load (PL5) -->
+        <section
+            v-if="can.manage"
+            class="space-y-4 rounded-2xl border border-border bg-card p-6"
+        >
+            <h2
+                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+            >
+                {{ t('Load a list') }}
+            </h2>
+            <p class="text-sm text-muted-foreground">
+                {{
+                    t(
+                        'Paste a column from your CRM, or upload a CSV. Say what the values are and we will read every cell. We store them scrambled so they cannot be read back — never the values themselves.',
+                    )
+                }}
+            </p>
+
+            <form class="space-y-4" @submit.prevent="importValues">
+                <div class="grid gap-5 sm:grid-cols-2">
+                    <FormField
+                        id="dnc-import-type"
+                        :label="t('What the list contains')"
+                        :error="importForm.errors.type"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <NativeSelect
+                                :id="id"
+                                v-model="importForm.type"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                            >
+                                <option
+                                    v-for="type in props.options.types"
+                                    :key="type.value"
+                                    :value="type.value"
+                                >
+                                    {{ t(type.label) }}
+                                </option>
+                            </NativeSelect>
+                        </template>
+                    </FormField>
+
+                    <FormField
+                        id="dnc-import-note"
+                        :label="t('Why')"
+                        optional
+                        :error="importForm.errors.note"
+                    >
+                        <template #default="{ id, describedBy, invalid }">
+                            <Input
+                                :id="id"
+                                v-model="importForm.note"
+                                dir="auto"
+                                :aria-describedby="describedBy"
+                                :aria-invalid="invalid"
+                                :placeholder="t('e.g. existing clients')"
+                            />
+                        </template>
+                    </FormField>
+                </div>
+
+                <FormField
+                    id="dnc-import-values"
+                    :label="t('Paste the values')"
+                    optional
+                    :error="importForm.errors.values"
+                    :hint="
+                        t(
+                            'One per line, or separated by commas. Use this or the file below — whichever is easier.',
+                        )
+                    "
+                >
+                    <template #default="{ id, describedBy, invalid }">
+                        <Textarea
+                            :id="id"
+                            v-model="importForm.values"
+                            rows="4"
+                            dir="ltr"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="invalid"
+                            data-test="dnc-import-values"
+                        />
+                    </template>
+                </FormField>
+
+                <FormField
+                    id="dnc-import-file"
+                    :label="t('Or upload a CSV')"
+                    optional
+                    :error="importForm.errors.file"
+                >
+                    <template #default="{ id, describedBy, invalid }">
+                        <input
+                            :id="id"
+                            type="file"
+                            accept=".csv,.txt,text/csv,text/plain"
+                            class="block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground file:me-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="invalid"
+                            data-test="dnc-import-file"
+                            @change="pickFile"
+                        />
+                    </template>
+                </FormField>
+
+                <Button
+                    type="submit"
+                    variant="outline"
+                    :disabled="importForm.processing"
+                    data-test="dnc-import"
+                >
+                    <Upload class="size-4" aria-hidden="true" />
+                    {{ t('Load the list') }}
                 </Button>
             </form>
         </section>

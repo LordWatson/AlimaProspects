@@ -7,6 +7,7 @@ namespace App\Modules\LeadSourcing\Http\Resources;
 use App\Modules\Core\Enums\OutreachRestriction;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Enrichment\Http\Resources\LeadContactResource;
+use App\Modules\LeadSourcing\Contracts\SubscriberTypeResolver;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadSourcing\Models\LeadEvidence;
 use App\Modules\LeadSourcing\Services\LeadConfidence;
@@ -83,6 +84,10 @@ final class LeadResource extends JsonResource
             // (Phase 11) and the mobile app both have to honour it, and a flag the client has to
             // ask for separately is a flag that gets missed.
             'outreach_restriction' => $this->outreachRestriction(),
+            // What kind of subscriber this is for direct-marketing purposes, where a regime draws
+            // that distinction (PL5). Null for a prospect no such rule covers, which is a
+            // different thing from "we cannot tell" — the latter is a value and warns.
+            'subscriber_type' => app(SubscriberTypeResolver::class)->subscriberTypeFor($this->resource),
             // Resolved to a plain list rather than handed over as a resource collection: a nested
             // collection keeps its own `data` wrapper, which would leave the client reading
             // `lead.contacts.data` on one screen and `lead.contacts` on the next.

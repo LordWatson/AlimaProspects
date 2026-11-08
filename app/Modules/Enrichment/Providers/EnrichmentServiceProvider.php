@@ -6,6 +6,7 @@ namespace App\Modules\Enrichment\Providers;
 
 use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\Enrichment\Contracts\ContactApprovalGate;
+use App\Modules\Enrichment\Contracts\ContactNumberScreener;
 use App\Modules\Enrichment\Contracts\CreditReserver;
 use App\Modules\Enrichment\Contracts\DnsResolver;
 use App\Modules\Enrichment\Listeners\EnrichDiscoveredLeads;
@@ -15,6 +16,7 @@ use App\Modules\Enrichment\Services\AllowAllContactApproval;
 use App\Modules\Enrichment\Services\AttemptRecorder;
 use App\Modules\Enrichment\Services\EnrichmentProviderRegistry;
 use App\Modules\Enrichment\Services\EnrichmentWaterfall;
+use App\Modules\Enrichment\Services\NoContactScreening;
 use App\Modules\Enrichment\Services\PhoneNormaliser;
 use App\Modules\Enrichment\Services\ProviderRateLimiter;
 use App\Modules\Enrichment\Services\SystemDnsResolver;
@@ -52,11 +54,13 @@ final class EnrichmentServiceProvider extends ModuleServiceProvider
     {
         $this->app->bind(DnsResolver::class, SystemDnsResolver::class);
 
-        // The two PL3 seams, with the defaults that let this module work on its own. Billing binds
+        // The three seams, with the defaults that let this module work on its own. Billing binds
         // the real reserver in PL4 (the fifth seam of ADR 0012's kind) and Compliance binds the
-        // real approval gate in PL5 — which is why neither module's name appears here.
+        // real approval gate and the real number screener in PL5 — which is why neither module's
+        // name appears here.
         $this->app->bind(CreditReserver::class, UnmeteredCreditReserver::class);
         $this->app->bind(ContactApprovalGate::class, AllowAllContactApproval::class);
+        $this->app->bind(ContactNumberScreener::class, NoContactScreening::class);
 
         // libphonenumber's util is a heavy singleton holding the metadata tables; resolving it per
         // call would parse them per call.

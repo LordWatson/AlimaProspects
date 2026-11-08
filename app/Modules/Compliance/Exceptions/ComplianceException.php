@@ -65,6 +65,56 @@ final class ComplianceException extends DomainException
     }
 
     /**
+     * An operator tried to close a request that is not open — unverified, or already closed.
+     *
+     * Refused rather than tolerated, because completing an unverified request would make the
+     * verification step optional through a different door (PL5).
+     */
+    public static function subjectRequestNotOpen(): self
+    {
+        $e = new self('That request is not open. Only a verified request that has not been closed can be completed or rejected.');
+        $e->errorCode = 'compliance.subject_request_not_open';
+
+        return $e;
+    }
+
+    /**
+     * A caller asked to move a request to a status that is not an outcome. A programming error
+     * rather than a member's mistake, and named so it cannot be reached by accident.
+     */
+    public static function subjectRequestNotClosable(): self
+    {
+        $e = new self('A request can only be completed or rejected.');
+        $e->errorCode = 'compliance.subject_request_not_closable';
+
+        return $e;
+    }
+
+    /**
+     * A refusal with no reason. The one outcome a regulator will ask about, so it is the one that
+     * cannot be recorded as a bare status.
+     */
+    public static function subjectRequestRejectionNeedsReason(): self
+    {
+        $e = new self('Say why the request is being refused — a rejection without a reason is not an accountability record.');
+        $e->errorCode = 'compliance.subject_request_rejection_needs_reason';
+
+        return $e;
+    }
+
+    /**
+     * The public request form could not satisfy its challenge. Deliberately vague: a precise
+     * message is a precise instruction for the next attempt.
+     */
+    public static function subjectRequestChallengeFailed(): self
+    {
+        $e = new self('We could not verify that form submission. Please try again.');
+        $e->errorCode = 'compliance.subject_request_challenge_failed';
+
+        return $e;
+    }
+
+    /**
      * There was nothing identifiable to suppress — a sent message with no recorded recipient. It
      * should not happen (a send records what it sent to), and it must not look like success.
      */

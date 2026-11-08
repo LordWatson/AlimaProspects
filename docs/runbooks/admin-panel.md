@@ -551,3 +551,67 @@ at all. Those are the figures that say which packs to invest in. A preset nobody
 preset to retire from the library, and nothing else in the product can tell you so.
 
 ---
+
+---
+
+## 21. A privacy request from somebody who is not a customer (PL5)
+
+**`/admin/subject-requests`**, and `platform.write`.
+
+This is the queue for requests made through **`/privacy/request`** — the public form, by people with
+no account, who wrote to Alima rather than to one of our customers. It is not §19's list and it is
+not a tenant's own DSAR tooling.
+
+### What has already happened before you see it
+
+A request appears here **only once the person has clicked the link in their own inbox**, and by then:
+
+- their **email address is on the global suppression list** (§19's list, `global` scope, reason
+  `opt_out`) — for an access request too, because somebody asking what we hold should not be
+  marketed to while they wait;
+- the **one-month clock has started**, from the click rather than the submission;
+- and for an **erasure**, every tenant has been swept and the row says how many were touched.
+
+You cannot change any of that from here, and there is no route that does. Those parts follow
+mechanically from the person's own instruction, and an operator who could decide not to suppress
+would be a hole with a permission on it.
+
+### What is actually yours to do
+
+Three things, and only three:
+
+1. **Answer an access or rectification request.** Nothing automatic can do it. The tenant's own
+   DSAR tooling (`/compliance/requests`, in their workspace) is what finds what one team holds; to
+   answer across tenants you will need to ask each team, or impersonate (§8) with the usual audit
+   trail. ⚖️ Whether we answer on a tenant's behalf at all is a question for counsel, not for the
+   queue.
+2. **Act on a phone number, if the request carries one.** It is shown and it is deliberately **not**
+   suppressed or erased automatically: the click proved control of a mailbox and nothing else, so a
+   number anybody could have typed into a public form must not be blocked across every tenant on the
+   strength of it. If you are satisfied it is theirs, add it in §19.
+3. **Close it** — completed, or rejected with a reason. A rejection without one is refused, because
+   it is the outcome a regulator will ask about.
+
+### Reading the screen
+
+- **Open first, tightest deadline first.** The red count at the top is requests past the month.
+- **The erasure column shows counts, never values.** `swept 4 team(s)` is all there is, by design.
+- A **`failed`** figure beside it means some tenants were not swept. The job retries on its own and
+  will not mark the request purged until a pass comes back clean, so a figure that persists across a
+  few minutes is a real problem: check `/admin/operations` (§15) for the failed job, then the
+  `compliance` log channel by `request_id`.
+- **Unverified submissions are not listed at all.** If somebody says they submitted the form and you
+  cannot find them, they have not clicked their link. Tell them to check spam; the link lives for
+  `COMPLIANCE_SUBJECT_LINK_DAYS` (14 by default) and the same address can only be mailed again after
+  `COMPLIANCE_SUBJECT_RESEND_COOLDOWN` (five minutes). Abandoned submissions are swept once twice
+  the link's lifetime has passed.
+
+### If the form itself is being abused
+
+The throttle is per IP and the mail has a per-address cooldown, so the usual answer is "nothing to
+do". If a campaign gets past both, the lever is a **Turnstile key**: with `TURNSTILE_SITE_KEY` and
+`TURNSTILE_SECRET` set the form renders a challenge, and without them it does not — unset means **no
+challenge**, deliberately, because an unreachable opt-out form is a worse outcome than a spammable
+one. Setting them also needs `SECURITY_CSP_EXTRA_SCRIPT_SRC` and `SECURITY_CSP_EXTRA_FRAME_SRC` to
+name `challenges.cloudflare.com`, or the widget is blocked by our own policy and the form stops
+working.

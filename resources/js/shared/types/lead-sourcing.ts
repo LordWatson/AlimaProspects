@@ -91,6 +91,23 @@ export type LeadEvidence = {
 };
 
 /** A raw, company-level lead as discovered from a provider (pre-enrichment). */
+/**
+ * A prospect's subscriber type under a direct-marketing regime, as the server flattens it (PL5).
+ *
+ * `value` is `corporate`, `individual` or `unknown` today. It is deliberately a plain string: the
+ * vocabulary belongs to a regime rather than to the product, and a client that switched on it would
+ * have to be redeployed every time a market was added.
+ */
+export type SubscriberType = {
+    value: string;
+    /** Translation key, not a finished string. */
+    label: string;
+    /** Translation key. */
+    guidance: string;
+    /** Whether unsolicited marketing to this subscriber needs their prior consent. */
+    needs_consent: boolean;
+};
+
 export type Lead = {
     id: number;
     source: LeadSource;
@@ -143,6 +160,15 @@ export type Lead = {
     collected_at: string | null;
     enriched_at: string | null;
     outreach_restriction: OutreachRestriction | null;
+    /**
+     * What kind of subscriber this prospect is for direct-marketing purposes (PL5).
+     *
+     * **Null means no regime here draws the distinction** — a UAE lead, a lead with no country —
+     * which is a different thing from the `unknown` value, and that one warns. Flat strings rather
+     * than an enum because nothing on the client branches on the value: the server sends the label
+     * and the guidance, and `needs_consent` is what a screen reads.
+     */
+    subscriber_type: SubscriberType | null;
     has_personal_data: boolean;
     /** The grade against the active ICP, when the lead's `activeScore` was loaded (Phase 9). */
     score?: LeadScoreSummary | null;

@@ -6,6 +6,7 @@ use App\Modules\Compliance\Http\Controllers\Web\ComplianceController;
 use App\Modules\Compliance\Http\Controllers\Web\DsarController;
 use App\Modules\Compliance\Http\Controllers\Web\LiaController;
 use App\Modules\Compliance\Http\Controllers\Web\PrivacyNoticeController;
+use App\Modules\Compliance\Http\Controllers\Web\SubjectRequestController;
 use App\Modules\Compliance\Http\Controllers\Web\TeamExportController;
 use App\Modules\Compliance\Http\Controllers\Web\UnsubscribeController;
 use Illuminate\Support\Facades\Route;
@@ -17,10 +18,10 @@ use Illuminate\Support\Facades\Route;
  *
  * - **The team's own screens** sit behind `auth`+`verified` under `compliance/`: the centre, the
  *   legitimate-interest assessment, the data export and the data-subject tooling.
- * - **Two public pages** that must work for people who are not users at all — the hosted privacy
- *   notice every outreach footer links to, and the one-click unsubscribe endpoint. A privacy notice
- *   behind a login is not a privacy notice, and an opt-out a recipient cannot reach is an opt-out
- *   honoured by nobody (docs/compliance.md §3.3, §3.7).
+ * - **The public pages** that must work for people who are not users at all — the hosted privacy
+ *   notice every outreach footer links to, the one-click unsubscribe endpoint, and (PL5) the
+ *   privacy-request form. A privacy notice behind a login is not a privacy notice, and an opt-out a
+ *   recipient cannot reach is an opt-out honoured by nobody (docs/compliance.md §3.3, §3.7, §3.17).
  *
  * `export` is rate-limited because it reads every table the team owns — the heaviest thing a member
  * can ask for. The unsubscribe routes are **signed**; the POST is additionally exempt from CSRF
@@ -54,6 +55,27 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
  * Public — no auth, no team context.
  */
 Route::get('privacy', [PrivacyNoticeController::class, 'show'])->name('privacy-notice');
+
+/*
+ * The public privacy-request form (PL5). The other door into the DSAR machinery: `compliance/requests`
+ * above is a *member* answering a request made to their business, and this is a member of the public
+ * writing to Alima with no account at all.
+ *
+ * `sent` is declared before the form's POST sibling and the id on `verify` is constrained to digits,
+ * so none of the three can collide. The POST is throttled per IP — there is no account to key on —
+ * and the verification link is signed and temporary, which is the only authentication there can be.
+ */
+Route::get('privacy/request', [SubjectRequestController::class, 'create'])->name('privacy.request');
+Route::get('privacy/request/sent', [SubjectRequestController::class, 'sent'])->name('privacy.request.sent');
+
+Route::post('privacy/request', [SubjectRequestController::class, 'store'])
+    ->middleware('throttle:compliance-subject-request')
+    ->name('privacy.request.store');
+
+Route::get('privacy/request/{request}/verify', [SubjectRequestController::class, 'verify'])
+    ->whereNumber('request')
+    ->middleware(['signed', 'throttle:compliance-subject-request'])
+    ->name('privacy.request.verify');
 
 // `done` is declared first and the id is constrained to digits, so the two cannot collide.
 Route::get('unsubscribe/done', [UnsubscribeController::class, 'done'])->name('unsubscribe.done');

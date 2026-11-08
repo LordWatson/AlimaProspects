@@ -35,4 +35,24 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Cloudflare Turnstile
+    |--------------------------------------------------------------------------
+    |
+    | The challenge on the handful of public forms that face the open internet
+    | with no account behind them: PL5's privacy-request form, and PL10's free
+    | sample report. **Unset is the shipped state**, and unset means no
+    | challenge — the rate limiters are separate and always on, and an
+    | unreachable opt-out form is a worse compliance outcome than a spammable
+    | one (`Core\Support\Security\Turnstile`).
+    |
+    */
+
+    'turnstile' => [
+        'site_key' => env('TURNSTILE_SITE_KEY'),
+        'secret' => env('TURNSTILE_SECRET'),
+        'timeout' => (int) env('TURNSTILE_TIMEOUT', 5),
+    ],
+
 ];

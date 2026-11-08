@@ -19,6 +19,7 @@ use App\Modules\Admin\Http\Controllers\Web\SecurityController;
 use App\Modules\Admin\Http\Controllers\Web\SettingsController;
 use App\Modules\Admin\Http\Controllers\Web\SignalLibraryController;
 use App\Modules\Admin\Http\Controllers\Web\SignalRunController;
+use App\Modules\Admin\Http\Controllers\Web\SubjectRequestController;
 use App\Modules\Admin\Http\Controllers\Web\TeamBillingController;
 use App\Modules\Admin\Http\Controllers\Web\TeamOperationsController;
 use App\Modules\Admin\Http\Controllers\Web\UserOperationsController;
@@ -291,6 +292,30 @@ Route::middleware([
         Route::get('compliance', [ComplianceActivityController::class, 'index'])
             ->middleware('admin.can:'.AdminAbility::ReadAudit->value)
             ->name('compliance.index');
+
+        /*
+         * The **public** data-subject request queue (PL5) — requests from people who are not users
+         * and wrote to Alima rather than to a tenant.
+         *
+         * In the panel because the request is addressed to the platform: showing one customer a
+         * request naming somebody another customer also holds would be a disclosure between
+         * tenants. `platform.write` rather than `tenant.*`, because closing a statutory request is
+         * an act on our own record.
+         *
+         * Two routes, and the missing ones are the decision: there is **no** route here that
+         * suppresses or purges. Both happen at verification, because the parts that follow
+         * mechanically from the person's own instruction must not wait for somebody to be at a
+         * desk — and an operator who could choose not to suppress is a compliance hole with a
+         * permission on it.
+         */
+        Route::get('subject-requests', [SubjectRequestController::class, 'index'])
+            ->middleware('admin.can:'.AdminAbility::ManagePlatformData->value)
+            ->name('subject-requests.index');
+
+        Route::patch('subject-requests/{subjectRequest}', [SubjectRequestController::class, 'update'])
+            ->whereNumber('subjectRequest')
+            ->middleware('admin.can:'.AdminAbility::ManagePlatformData->value)
+            ->name('subject-requests.update');
 
         /*
          * Outreach oversight and the **global** do-not-contact list (Phase 19c).

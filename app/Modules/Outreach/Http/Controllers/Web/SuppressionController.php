@@ -6,10 +6,12 @@ namespace App\Modules\Outreach\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\Outreach\Actions\ImportSuppressionsAction;
 use App\Modules\Outreach\Actions\SuppressIdentityAction;
 use App\Modules\Outreach\Enums\SuppressionScope;
 use App\Modules\Outreach\Enums\SuppressionType;
 use App\Modules\Outreach\Http\Controllers\Concerns\ResolvesOutreach;
+use App\Modules\Outreach\Http\Requests\ImportSuppressionsRequest;
 use App\Modules\Outreach\Http\Requests\SuppressIdentityRequest;
 use App\Modules\Outreach\Http\Resources\OutreachSuppressionResource;
 use App\Modules\Outreach\Models\OutreachSuppression;
@@ -75,6 +77,39 @@ final class SuppressionController extends Controller
         ));
 
         return back()->with('toast', ['type' => 'success', 'message' => __('Added to your do-not-contact list.')]);
+    }
+
+    /**
+     * The bulk load (PL5). Same authorisation and same scope as adding one by hand — it is the same
+     * act, repeated — so there is no second permission to get wrong.
+     */
+    public function import(ImportSuppressionsRequest $request, ImportSuppressionsAction $import): RedirectResponse
+    {
+        $user = $this->user($request);
+        $team = $this->team($request);
+
+        $this->authorize('create', $this->transient(
+            OutreachSuppression::class,
+            $team,
+            ['scope' => SuppressionScope::Team->value],
+        ));
+
+        $result = $this->teamContext->run($team, fn (): array => $import->handle(
+            $team,
+            $user,
+            $request->type(),
+            $request->values(),
+            $request->note(),
+        ));
+
+        // The counts are the message. An import that quietly added 1,412 of 5,000 and said
+        // "imported" would leave a team believing a list is covered when most of it is not.
+        return back()->with('toast', [
+            'type' => $result['added'] > 0 ? 'success' : 'info',
+            'message' => $result['truncated']
+                ? __(':added added, :duplicate already there, :skipped unusable. The file was longer than one import reads — upload the rest.', $result)
+                : __(':added added, :duplicate already there, :skipped unusable.', $result),
+        ]);
     }
 
     public function destroy(Request $request, int $entry, SuppressIdentityAction $suppress): RedirectResponse

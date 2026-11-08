@@ -130,6 +130,13 @@ export function useAdminNav(): UseAdminNav {
                         keywords: 'dsar erasure retention lawful basis',
                     },
                     {
+                        label: 'Privacy requests',
+                        href: url('/subject-requests'),
+                        icon: ShieldCheck,
+                        keywords:
+                            'dsar opt out erasure access public request subject',
+                    },
+                    {
                         label: 'Audit trail',
                         href: url('/audit'),
                         icon: ScrollText,

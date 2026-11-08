@@ -290,6 +290,22 @@ const notices = computed(() => {
         });
     }
 
+    // The PECR subscriber type (PL5). Shown for every UK lead, including a corporate one — the
+    // reassuring case is the one a member needs most, because otherwise the only time this panel
+    // speaks is when something is wrong and they learn to read it as noise. `needs_consent` is what
+    // picks the tone, so a sole trader warns and a limited company informs.
+    const subscriber = props.lead.subscriber_type;
+
+    if (subscriber) {
+        items.push({
+            key: 'subscriber-type',
+            tone: subscriber.needs_consent ? 'warning' : 'info',
+            icon: Scale,
+            title: t(subscriber.label),
+            body: t(subscriber.guidance),
+        });
+    }
+
     return items;
 });
 
@@ -1132,7 +1148,28 @@ onBeforeUnmount(() => {
                                             contact.phone_accepts_messaging ===
                                             true
                                         "
+                                        :dialable="
+                                            contact.allows_dial_link !== false
+                                        "
                                     />
+                                    <!-- Only a registered number earns a badge. `unchecked` and
+                                         `not_applicable` both allow a call and saying so on every
+                                         row would make the one that matters invisible (PL5).
+                                         `warning` rather than `error`: nothing has failed — a rule
+                                         restricts one action — and spending red on a non-fault
+                                         dilutes the real ones (brand-tokens.md §7f.5). Allowed to
+                                         wrap, because the label is a sentence and longer still in
+                                         Arabic. -->
+                                    <Badge
+                                        v-if="
+                                            contact.allows_dial_link === false
+                                        "
+                                        variant="error"
+                                        class="mt-1"
+                                        >{{
+                                            t(contact.tps_status_label ?? '')
+                                        }}</Badge
+                                    >
                                     <span
                                         v-if="!contact.email && !contact.phone"
                                         >—</span

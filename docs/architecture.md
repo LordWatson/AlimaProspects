@@ -69,6 +69,8 @@ flowchart TD
   AIp --> Out
   Comp[Compliance & Privacy] -->|LeadRestrictionResolver| Out
   Comp -->|LeadInterestGate| LS
+  Comp -->|SubscriberTypeResolver| LS
+  Comp -->|ContactApprovalGate + ContactNumberScreener| Enr
   Comp -->|retention + DSAR| LW
   Sig -->|SignalsPersonalDataExporter| Comp
   LW --> Rep[Reporting & Analytics]
@@ -120,7 +122,7 @@ flowchart TD
 | 13  | AI Insights                   | MVP (built, Phase 14)       | `modules/ai-insights.md`                 |
 | 14  | Notifications                 | MVP (built, Phase 12)       | `modules/notifications.md`               |
 | 15  | Billing & Plans               | MVP (built, Phase 16)       | `modules/billing-plans.md`               |
-| 16  | Compliance & Privacy          | MVP (built, Phase 15)       | `modules/compliance-privacy.md`          |
+| 16  | Compliance & Privacy          | MVP (built, Phase 15 + PL5) | `modules/compliance-privacy.md`          |
 | 17  | Admin (internal ops)          | MVP (built, Phases 19a–19c) | `modules/admin.md`                       |
 | 18  | Integrations                  | Post-MVP                    | `modules/integrations.md`                |
 | 19  | Mobile App                    | Built (Phase 18)            | `modules/mobile-app.md`                  |
@@ -337,7 +339,7 @@ flowchart TD
   "unknown" failing toward the restriction rather than away from it, and "most restrictive" asked of
   `OutreachRestriction::allowsDirectMarketing()` rather than hard-coded. Any later source that
   infers a person from a published place is held to the same rule.
-- **Compliance:** suppression/opt-out/retention/DSAR enforced by the system (Compliance & Privacy + `docs/compliance.md`). **Built in Phase 15**, and it reaches other modules through three seams rather than by them knowing about it: `LeadSourcingContractsLeadInterestGate` (no recorded lawful basis, no discovery), `OutreachContractsLeadRestrictionResolver` (how a prospect may be approached, from their jurisdiction as well as any flag on the lead), and `SignalsServicesSignalsPersonalDataExporter` (which Signals answers a data-subject request with). The do-not-contact table stays in Outreach — see that module's doc for why.
+- **Compliance:** suppression/opt-out/retention/DSAR enforced by the system (Compliance & Privacy + `docs/compliance.md`). **Built in Phase 15 and completed in PL5** (ADR 0032, which added the public request door, TPS/CTPS screening and the PECR subscriber type), and it reaches other modules through **six** seams rather than by them knowing about it — the three Phase 15 built: `LeadSourcingContractsLeadInterestGate` (no recorded lawful basis, no discovery), `OutreachContractsLeadRestrictionResolver` (how a prospect may be approached, from their jurisdiction as well as any flag on the lead), and `SignalsServicesSignalsPersonalDataExporter` (which Signals answers a data-subject request with). And the three PL5 added: `EnrichmentContractsContactApprovalGate` (may we hold and reveal this person's details at all), `EnrichmentContractsContactNumberScreener` (what a do-not-call register says about a number — a _second_ seam rather than part of the gate, because a screening records a fact and never refuses) and `LeadSourcingContractsSubscriberTypeResolver` (which kind of subscriber a prospect is, where a regime draws that distinction). The do-not-contact table stays in Outreach — see that module's doc for why.
 - **Observability (Phase 20, ADR 0017):** structured logs with `team_id`/`user_id`/`request_id`;
   channels `ai`, `lead_sourcing`, `outreach`, `notifications`, `insights`, `signals`, `compliance`,
   `billing`. `compliance` is kept for 90 days, the longest of any channel: "did you honour the

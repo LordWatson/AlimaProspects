@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Enrichment\Contracts\ContactApprovalGate;
+use App\Modules\Enrichment\Contracts\ContactNumberScreener;
 use App\Modules\Enrichment\Contracts\CreditReserver;
 use App\Modules\Enrichment\Enums\EnrichmentScope;
 use App\Modules\Enrichment\Exceptions\EnrichmentException;
@@ -33,6 +34,9 @@ use Throwable;
  *   until then this is the status quo.
  * - **The reveal is audited.** It is a member spending team money to see a person's contact
  *   details — both halves of that are things somebody will later ask about.
+ * - **A revealed number is screened, and the screening cannot fail the reveal.** PL5 binds a
+ *   TPS/CTPS screener behind {@see ContactNumberScreener}; it records a verdict on the contact and
+ *   never refuses, because the register restricts marketing calls rather than possession.
  *
  * A reveal is a **separate act from finding**: the finding already happened and was already paid
  * for at the vendor. What is metered here is the team's allowance, which is why this consults
@@ -43,6 +47,7 @@ final class RevealContactValueAction
     public function __construct(
         private readonly CreditReserver $reserver,
         private readonly ContactApprovalGate $approval,
+        private readonly ContactNumberScreener $screener,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -113,6 +118,13 @@ final class RevealContactValueAction
             'lead_id' => (int) $contact->lead_id,
             'contact_id' => (int) $contact->getKey(),
         ], $actor);
+
+        // Screened **after** the charge, not before it. A TPS registration does not stop a team
+        // holding a number — it stops an unsolicited marketing call — so it is a fact to record
+        // and warn about rather than a reason to refuse (PL5). The screener swallows its own
+        // failures for the same reason: the member has already paid, and a slow register must not
+        // cost them the credit.
+        $this->screener->screen($team, $contact);
 
         return $number;
     }

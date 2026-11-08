@@ -23,12 +23,24 @@ enum SuppressionType: string
     /** One phone number, digits only. */
     case Phone = 'phone';
 
+    /**
+     * One registered company, by its registration number (PL5).
+     *
+     * Added because a do-not-contact list that can only name addresses cannot say "never approach
+     * this company again" — which is what a team importing their own client list actually means,
+     * and what an opt-out from a company's data-protection officer actually asks for. The number
+     * rather than the name, because `CompanyNameKey` deliberately matches loosely and a loose match
+     * on a suppression list suppresses the wrong business.
+     */
+    case CompanyNumber = 'company_number';
+
     public function label(): string
     {
         return match ($this) {
             self::Email => 'Email address',
             self::Domain => 'Domain',
             self::Phone => 'Phone number',
+            self::CompanyNumber => 'Company number',
         };
     }
 
@@ -40,6 +52,7 @@ enum SuppressionType: string
      *   a whole address works.
      * - Phone: digits only, so "+44 20 7946 0000" and "00442079460000" are the same number — a
      *   leading `00` international prefix is dropped, matching E.164's `+`.
+     * - Company number: upper-cased with separators dropped, so `sc 123456` is `SC123456`.
      */
     public function normalise(string $value): ?string
     {
@@ -53,6 +66,7 @@ enum SuppressionType: string
             self::Email => $this->normaliseEmail($value),
             self::Domain => $this->normaliseDomain($value),
             self::Phone => $this->normalisePhone($value),
+            self::CompanyNumber => ContactIdentity::companyNumber($value),
         };
     }
 
@@ -68,6 +82,9 @@ enum SuppressionType: string
             self::Domain => $normalised,
             // The last four digits, the way a card is shown.
             self::Phone => ContactIdentity::maskPhone($normalised),
+            // A registration number is on a public register. Nothing to hide, and a masked one
+            // would be unrecognisable — they differ only in their digits.
+            self::CompanyNumber => $normalised,
         };
     }
 

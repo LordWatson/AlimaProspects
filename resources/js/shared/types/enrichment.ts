@@ -24,6 +24,15 @@ export type EmailVerificationStatus =
     | 'accept_all'
     | 'verified';
 
+/**
+ * What is known about a number's UK do-not-call registration (PL5).
+ *
+ * `unchecked` means nobody asked a register, which is neither a pass nor a block;
+ * `not_applicable` means the number is outside TPS/CTPS altogether — a UAE number is not clear of
+ * a UK register, it is simply not covered by one.
+ */
+export type TpsStatus = 'unchecked' | 'clear' | 'registered' | 'not_applicable';
+
 /** What sort of number a phone contact is (PL2). A switchboard is a company's, a mobile a person's. */
 export type PhoneType = 'mobile' | 'direct' | 'switchboard' | 'unknown';
 
@@ -83,6 +92,19 @@ export type LeadContact = {
     /** Only a mobile can take a WhatsApp link; a landline would open an undeliverable chat. */
     phone_accepts_messaging: boolean;
     phone_source: string | null;
+
+    /**
+     * The do-not-call verdict (PL5). **`unchecked` is not `clear`** — three of the four values
+     * permit a call and only two of them mean the number was ever screened, so read
+     * `allows_dial_link` to decide and show `tps_status_label` to explain. Comparing the status to
+     * one case is the bug the enum is shaped to prevent.
+     */
+    tps_status: TpsStatus;
+    /** Translation key, not a finished string. */
+    tps_status_label: string;
+    tps_checked_at: string | null;
+    /** False only for a registered number: show the value, offer no one-tap call. */
+    allows_dial_link: boolean;
 
     is_role_based: boolean;
     /** Flagged for compliance: a named person rather than a business role. */

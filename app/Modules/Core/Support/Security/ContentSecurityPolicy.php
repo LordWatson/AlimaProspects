@@ -105,7 +105,12 @@ final readonly class ContentSecurityPolicy
 
             // No frames, no plugins, no `<base>` rewriting, and a form may only post back to us —
             // the four directives that turn a stored-HTML bug from an exfiltration into a nuisance.
-            'frame-src' => ["'none'"],
+            //
+            // `frame-src` takes an extra list because a captcha is an iframe: PL5's privacy-request
+            // form renders Cloudflare Turnstile when a key is configured. Empty by default, which
+            // keeps `'none'` the shipped answer — and a host added here is the documented way in,
+            // rather than loosening the directive (ADR 0017).
+            'frame-src' => $this->frameSources(),
             'frame-ancestors' => ["'none'"],
             'object-src' => ["'none'"],
             'base-uri' => ["'self'"],
@@ -128,6 +133,21 @@ final readonly class ContentSecurityPolicy
         }
 
         return $directives;
+    }
+
+    /**
+     * `frame-src`: nothing, unless a host has been named.
+     *
+     * `'none'` and a host list cannot be combined — `'none'` wins and silently blocks everything —
+     * so the two are mutually exclusive by construction here rather than by a reader remembering.
+     *
+     * @return list<string>
+     */
+    public function frameSources(): array
+    {
+        $extra = $this->list('security.csp.extra_frame_src');
+
+        return $extra === [] ? ["'none'"] : array_values(array_unique(["'self'", ...$extra]));
     }
 
     /**
