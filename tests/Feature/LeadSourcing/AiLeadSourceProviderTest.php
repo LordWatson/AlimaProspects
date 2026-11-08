@@ -123,6 +123,10 @@ it('drops what it cannot trust instead of storing a plausible-looking value', fu
             ['company_name' => 'Acme Hotels', 'industry' => 'Hotel', 'country' => 'United Kingdom'],
             // A sentence where a domain belongs.
             ['company_name' => 'Beta Rooms', 'industry' => 'Hotel', 'website' => 'their site is down'],
+            // Broken JSON bled into the headcount field — the exact live failure. It is a valid
+            // string, so schema validation passes it, but it is not a count and (at 70+ chars) would
+            // overflow the 64-char column and fail the run. Dropped to null; the company is kept.
+            ['company_name' => 'Gamma Rooms', 'industry' => 'Hotel', 'employee_range' => "51-200','locality':'London'}]}\n```\nI need to correct that output."],
             // No name at all — nothing to be a lead.
             ['company_name' => '   ', 'industry' => 'Hotel'],
         ],
@@ -130,9 +134,22 @@ it('drops what it cannot trust instead of storing a plausible-looking value', fu
 
     $leads = discoverWithAi($team, aiQuery());
 
-    expect($leads)->toHaveCount(2)
+    expect($leads)->toHaveCount(3)
         ->and($leads[0]->country)->toBeNull()
-        ->and($leads[1]->website)->toBeNull();
+        ->and($leads[1]->website)->toBeNull()
+        ->and($leads[2]->companyName)->toBe('Gamma Rooms')
+        ->and($leads[2]->employeeRange)->toBeNull();
+});
+
+it('keeps a real headcount band but never one wider than its column', function (): void {
+    // The provider nulls a band that isn't a count; the DTO is the storage backstop for anything a
+    // provider still lets through — `leads.employee_range` is VARCHAR(64), not the 255 other text
+    // columns are, and overflowing it is what failed the live run.
+    $kept = new SourcedLead(source: LeadSource::Ai, companyName: 'Acme', employeeRange: '1,000-5,000');
+    $clamped = new SourcedLead(source: LeadSource::Ai, companyName: 'Acme', employeeRange: str_repeat('9', 300));
+
+    expect($kept->toLeadAttributes()['employee_range'])->toBe('1,000-5,000')
+        ->and(mb_strlen((string) $clamped->toLeadAttributes()['employee_range']))->toBe(64);
 });
 
 it('collapses the same company named twice in one answer', function (): void {

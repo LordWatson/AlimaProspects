@@ -15,6 +15,7 @@ use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\Scoring\Services\DeterministicScorer;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -186,7 +187,7 @@ final class AiLeadSourceProvider implements LeadSourceProvider
             companyName: $name,
             website: $this->website($company['website'] ?? null),
             industry: $this->text($company['industry'] ?? null),
-            employeeRange: $this->text($company['employee_range'] ?? null),
+            employeeRange: $this->employeeRange($company['employee_range'] ?? null),
             locality: $this->text($company['locality'] ?? null),
             region: $this->text($company['region'] ?? null),
             country: $this->country($company['country'] ?? null),
@@ -238,6 +239,28 @@ final class AiLeadSourceProvider implements LeadSourceProvider
 
         return $country !== null && preg_match('/^[a-z]{2}$/i', $country) === 1
             ? Str::upper($country)
+            : null;
+    }
+
+    /**
+     * A plausible headcount band ("11-50", "200-500", "1,000+", "50"), or null.
+     *
+     * Dropped rather than stored, for the same reason {@see country()} drops a country name: the
+     * schema types this field as a free string with no bound, so the model can put anything here —
+     * and once did, when a run of broken JSON ("51-200','locality':'London'}]}…") bled into the
+     * string value, cleared schema validation, and overflowed the 64-char column it is stored in.
+     * {@see SourcedLead} clamps every text field to its column as the storage backstop; this is the
+     * data-quality half: a band that isn't a count is the model talking, not counting, and a wrong
+     * headcount mis-grades the lead ({@see DeterministicScorer} reads
+     * it for the Company-size criterion), so "not stated" is the honest value. The company is kept.
+     */
+    private function employeeRange(mixed $value): ?string
+    {
+        $range = $this->text($value);
+
+        return $range !== null
+            && preg_match('/^\d[\d,]*(\s*[-–]\s*\d[\d,]*|\+)?\s*(employees?|staff|people|fte)?$/i', $range) === 1
+            ? $range
             : null;
     }
 

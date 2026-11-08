@@ -31,6 +31,14 @@ final class SourcedLead extends Data
     private const int MAX_URL = 2048;
 
     /**
+     * `leads.employee_range` is a narrow VARCHAR(64), not the 255 the other text columns are — it
+     * holds a headcount band ("11-50"), never a sentence. A provider that lets a longer value
+     * through (the AI source once did, when broken JSON bled into the field) would overflow the
+     * column and fail the whole discovery run, so the clamp here is keyed to the real column width.
+     */
+    private const int MAX_EMPLOYEE_RANGE = 64;
+
+    /**
      * @param  array<array-key, mixed>  $address
      * @param  list<string>  $sicCodes
      * @param  array<array-key, mixed>  $raw
@@ -140,7 +148,7 @@ final class SourcedLead extends Data
             // scheme is dropped), and the value is length-clamped to the column.
             'website' => $this->safeUrl($this->website),
             'industry' => $this->text($this->industry),
-            'employee_range' => $this->text($this->employeeRange),
+            'employee_range' => $this->text($this->employeeRange, self::MAX_EMPLOYEE_RANGE),
             'locality' => $this->text($this->locality),
             'region' => $this->text($this->region),
             'postal_code' => $this->text($this->postalCode),
@@ -155,11 +163,11 @@ final class SourcedLead extends Data
         ];
     }
 
-    private function text(?string $value): ?string
+    private function text(?string $value, int $limit = self::MAX_TEXT): ?string
     {
         $trimmed = trim((string) $value);
 
-        return $trimmed === '' ? null : Str::limit($trimmed, self::MAX_TEXT, '');
+        return $trimmed === '' ? null : Str::limit($trimmed, $limit, '');
     }
 
     /**
