@@ -47,7 +47,9 @@ const today = computed(() =>
 </script>
 
 <template>
-    <div class="flex min-h-svh gap-0 bg-ink text-cream lg:gap-3 lg:p-3">
+    <div
+        class="flex min-h-svh gap-0 bg-ink text-cream lg:fixed lg:inset-0 lg:gap-3 lg:overflow-hidden lg:p-3"
+    >
         <!-- Desktop rail -->
         <aside
             class="hidden w-[17rem] shrink-0 overflow-hidden rounded-3xl lg:block"

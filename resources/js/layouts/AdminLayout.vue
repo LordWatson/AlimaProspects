@@ -59,7 +59,9 @@ const hasTeam = computed(() => page.props.auth.currentTeam !== null);
 </script>
 
 <template>
-    <div class="min-h-svh bg-ink text-cream lg:flex lg:gap-3 lg:p-3">
+    <div
+        class="min-h-svh bg-ink text-cream lg:fixed lg:inset-0 lg:flex lg:gap-3 lg:overflow-hidden lg:p-3"
+    >
         <aside
             class="hidden w-[17rem] shrink-0 overflow-hidden rounded-3xl lg:block"
         >
