@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Reporting\Services;
 
+use App\Models\User;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Models\Lead;
@@ -13,12 +14,15 @@ use App\Modules\Reporting\Actions\BuildHeadlineKpisAction;
 use App\Modules\Reporting\Actions\BuildIcpPerformanceAction;
 use App\Modules\Reporting\Actions\BuildLeadFunnelAction;
 use App\Modules\Reporting\Actions\BuildLeadTrendAction;
+use App\Modules\Reporting\Actions\BuildMyWorkAction;
 use App\Modules\Reporting\Actions\BuildOutreachPerformanceAction;
 use App\Modules\Reporting\Actions\BuildPipelineBreakdownAction;
+use App\Modules\Reporting\Actions\BuildReachabilityMixAction;
 use App\Modules\Reporting\Actions\BuildSignalBreakdownAction;
 use App\Modules\Reporting\Actions\BuildSignalPerformanceAction;
 use App\Modules\Reporting\Actions\BuildSourceBreakdownAction;
 use App\Modules\Reporting\Actions\BuildTeamActivityAction;
+use App\Modules\Reporting\Contracts\UsageSummarySource;
 use App\Modules\Reporting\Data\DashboardReport;
 use App\Modules\Reporting\Data\FunnelStep;
 use App\Modules\Reporting\Data\ReportFilters;
@@ -56,10 +60,25 @@ final readonly class DashboardReportBuilder
         private BuildOutreachPerformanceAction $outreach,
         private BuildTeamActivityAction $activity,
         private BuildAiUsageAction $aiUsage,
+        private BuildReachabilityMixAction $reachability,
+        private BuildMyWorkAction $myWork,
+        private UsageSummarySource $usage,
         private TeamContext $teamContext,
     ) {}
 
-    public function forTeam(Team $team, ?ReportFilters $filters = null): DashboardReport
+    /**
+     * @param  User|null  $member  Who is looking. Null for a caller with a team but no person
+     *                             behind it — the CSV export, the AI-insights snapshot — which
+     *                             gets the team's figures and no queue of anybody's.
+     *
+     * A null member also skips the two **screen-only** panels (reachability and the allowances),
+     * because no caller without a person behind it renders a dashboard: the export reads the
+     * tables and the snapshot reads the headline figures, and running a nine-metric allowance
+     * summary for a nightly job that discards it is a recurring cost per team for nothing. The
+     * fields stay non-nullable and come back empty, which is exactly what the screen draws when
+     * there is nothing to show.
+     */
+    public function forTeam(Team $team, ?ReportFilters $filters = null, ?User $member = null): DashboardReport
     {
         $filters ??= new ReportFilters;
         $range = $filters->resolve((string) $team->timezone);
@@ -76,6 +95,11 @@ final readonly class DashboardReportBuilder
             stages: $this->stages->handle($team, $range),
             sources: $this->sources->handle($team, $range),
             signal_types: $this->signals->handle($team, $range),
+            reachability: $member === null ? [] : $this->reachability->handle($team, $range),
+            my_work: $member === null ? null : $this->myWork->handle($team, $member, $range),
+            // Asked of the seam, never of a plan: with no Billing installed the module's own
+            // `NoUsageSummary` answers an empty list and the screen draws no panel.
+            allowances: $member === null ? [] : $this->usage->allowancesFor($team),
             tables: $this->tables($team, $range),
             filters: $filters,
             range_from: $range->fromDate(),

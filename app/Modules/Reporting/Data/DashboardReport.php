@@ -32,6 +32,8 @@ final class DashboardReport extends Data
      * @param  list<BreakdownSlice>  $stages  Pipeline stages in board order.
      * @param  list<BreakdownSlice>  $sources  Lead sources, busiest first.
      * @param  list<BreakdownSlice>  $signal_types  Signal event types, busiest first.
+     * @param  list<BreakdownSlice>  $reachability  Readiness bands; always all four, zeros included.
+     * @param  list<AllowanceLine>  $allowances  This month's allowances; empty when nothing meters.
      * @param  list<ReportTable>  $tables  The tabular reports, in tab order.
      */
     public function __construct(
@@ -42,6 +44,23 @@ final class DashboardReport extends Data
         public readonly array $stages,
         public readonly array $sources,
         public readonly array $signal_types,
+        public readonly array $reachability,
+        /**
+         * What is waiting on the member who asked, or **null** when nobody did — a CSV export and
+         * a scheduled build have a team but no person, and inventing one would put somebody else's
+         * queue in a file.
+         */
+        public readonly ?MyWork $my_work,
+        /**
+         * This period's allowances, from whatever fills Reporting's usage seam. Empty on an
+         * installation that meters nothing, and the panel is then not drawn at all.
+         *
+         * **Not window-scoped**, unlike everything above it: an allowance runs on the calendar
+         * month in UTC (ADR 0012) and no filter on this screen can move it. The panel says so,
+         * because a figure sitting under a date filter that does not apply to it is a figure
+         * somebody will misread.
+         */
+        public readonly array $allowances,
         public readonly array $tables,
         public readonly ReportFilters $filters,
         /** The window's first day as an ISO date in the team's timezone; null for all time. */

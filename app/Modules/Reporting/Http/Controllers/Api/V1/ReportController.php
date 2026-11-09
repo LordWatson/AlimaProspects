@@ -35,7 +35,12 @@ final class ReportController extends Controller
 
         $this->authorize('viewReports', $team);
 
-        return DashboardReportResource::make($builder->forTeam($team, $request->filters()));
+        /** @var User $member */
+        $member = $request->user();
+
+        return DashboardReportResource::make(
+            $builder->forTeam($team, $request->filters(), $member),
+        );
     }
 
     private function team(Request $request): Team

@@ -6,7 +6,9 @@ namespace App\Modules\Reporting\Providers;
 
 use App\Modules\Auth\Policies\TeamPolicy;
 use App\Modules\ModuleServiceProvider;
+use App\Modules\Reporting\Contracts\UsageSummarySource;
 use App\Modules\Reporting\Services\DashboardReportBuilder;
+use App\Modules\Reporting\Services\NoUsageSummary;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -20,6 +22,15 @@ use Illuminate\Support\Facades\RateLimiter;
  */
 final class ReportingServiceProvider extends ModuleServiceProvider
 {
+    public function register(): void
+    {
+        // The module's own answer to "what is this team allowed": nothing to show. Billing is
+        // registered last and binds a plan-backed source over it (ADR 0012), so the dashboard's
+        // allowance panel exists because Billing is installed rather than because Reporting learnt
+        // what a plan is.
+        $this->app->bind(UsageSummarySource::class, NoUsageSummary::class);
+    }
+
     public function boot(): void
     {
         parent::boot();

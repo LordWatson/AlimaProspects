@@ -10,7 +10,9 @@ import {
     StatTile,
     TrendChart,
 } from '@/components/charts';
+import UsageBar from '@/components/billing/UsageBar.vue';
 import PageHero from '@/components/PageHero.vue';
+import MyWorkPanel from '@/components/reporting/MyWorkPanel.vue';
 import ReportExportMenu from '@/components/reporting/ReportExportMenu.vue';
 import ReportRangeFilter from '@/components/reporting/ReportRangeFilter.vue';
 import { Button } from '@/components/ui/button';
@@ -54,6 +56,11 @@ const waiting = computed(
 const firstName = computed(
     () => (page.props.auth.user?.name ?? '').split(' ')[0] || t('there'),
 );
+
+// Who the personal panel's links filter the leads list by. Read from the session rather than sent
+// back down inside `my_work`: the member is already on the page, and a second copy of their id is
+// a second thing that could be stale.
+const memberId = computed(() => page.props.auth.user?.id ?? null);
 
 // The performance section's open tab. Local state on purpose: which table a member is reading is
 // not worth a server round trip, and `preserveState` on the filter keeps the choice across a
@@ -194,6 +201,21 @@ const flow = [
             />
         </section>
 
+        <!--
+          What is waiting on this member.
+
+          Outside the `has_data` branch below on purpose: a queue is not a period, and a member
+          with three overdue tasks must still be told so when they happen to have filtered to a
+          quiet week. But it is gated on `has_ever_sourced`, which is the other question — a team
+          on its first afternoon has nothing assigned to anybody, and four zeroes above the "how
+          Alima works" explainer is the empty report that flag exists to prevent.
+        -->
+        <MyWorkPanel
+            v-if="report.my_work && report.has_ever_sourced"
+            :work="report.my_work"
+            :member-id="memberId"
+        />
+
         <!-- The funnel -->
         <section :aria-label="t('Prospecting funnel')">
             <FunnelChart :steps="report.funnel" />
@@ -208,9 +230,62 @@ const flow = [
                         :granularity="report.trend_granularity"
                     />
                 </section>
-                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
-                    <GradeMixBar :slices="report.grades" />
-                </section>
+                <!--
+                  Fit above, reachability below — stacked rather than side by side because they
+                  are two answers about the same cohort and reading them in that order is the
+                  point: "should we want them" and then "can we actually reach them". A team whose
+                  A-grades are all in the bottom band has a data problem, not a targeting one, and
+                  no other pair of charts on this screen says so.
+                -->
+                <div class="flex flex-col gap-5">
+                    <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                        <GradeMixBar :slices="report.grades" />
+                    </section>
+
+                    <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p
+                                    class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
+                                >
+                                    {{ t('Reachability') }}
+                                </p>
+                                <h3
+                                    class="mt-2 text-xl font-semibold tracking-tight rtl:font-bold"
+                                >
+                                    {{ t('Can you reach them?') }}
+                                </h3>
+                            </div>
+                            <Button variant="ghost" size="sm" as-child>
+                                <Link href="/leads">{{ t('Leads') }}</Link>
+                            </Button>
+                        </div>
+                        <!--
+                          A neutral tone, deliberately: a low band is a gap in Alima's data, not a
+                          verdict about the company, and a status colour here would turn "we have
+                          not enriched this yet" into "this prospect is poor" (the rule
+                          `LeadReadiness` and `ConfidencePill` both state).
+
+                          `muted-foreground` rather than a fixed grey: it is **themed**, so the bar
+                          clears 3:1 on the dark canvas as well as on cream, which a palette hex
+                          with no dark-mode value does not.
+                        -->
+                        <div class="mt-6">
+                            <BarListChart
+                                :slices="report.reachability"
+                                tone="bg-muted-foreground"
+                                show-share
+                            />
+                            <p class="mt-4 text-sm text-muted-foreground">
+                                {{
+                                    t(
+                                        'What Alima holds on each prospect — a website, a named contact, an address that will deliver. It says nothing about how good a fit they are.',
+                                    )
+                                }}
+                            </p>
+                        </div>
+                    </section>
+                </div>
             </div>
 
             <!-- Breakdowns -->
@@ -473,6 +548,66 @@ const flow = [
                         </Link>
                     </Button>
                 </div>
+            </div>
+        </section>
+
+        <!--
+          This month's allowances.
+
+          Last on the page and outside every branch above it, for three reasons. It is the only
+          block here the date filter does not scope — an allowance runs on the calendar month in
+          UTC (ADR 0012) — so it says so in its own subtitle rather than sitting silently under a
+          control that does not reach it. It matters just as much to a team whose selected window
+          is empty, because "nothing happened this week" and "we ran out on Tuesday" are easy to
+          confuse and only one of them is fixable. And it renders nothing at all when nothing
+          meters, which is what an installation with no billing module should show.
+        -->
+        <section
+            v-if="report.allowances.length"
+            class="rounded-3xl bg-card p-6 shadow-sm sm:p-8"
+            :aria-label="t('This month\'s allowances')"
+            data-test="dashboard-allowances"
+        >
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <p
+                        class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
+                    >
+                        {{ t('Your plan') }}
+                    </p>
+                    <h3
+                        class="mt-2 text-xl font-semibold tracking-tight rtl:font-bold"
+                    >
+                        {{ t('What is left this month') }}
+                    </h3>
+                    <p class="mt-2 text-sm text-muted-foreground">
+                        {{
+                            t(
+                                'This calendar month, whatever period is selected above.',
+                            )
+                        }}
+                    </p>
+                </div>
+                <Button variant="ghost" size="sm" as-child>
+                    <Link href="/billing">
+                        {{ t('Plan & billing') }}
+                        <ArrowRight class="size-4 rtl:rotate-180" />
+                    </Link>
+                </Button>
+            </div>
+
+            <!--
+              The billing screen's own bar, not a second one: where a plan stops — allowance or
+              ceiling, depending on whether it meters — is a rule that must not be drawn two
+              different ways in two places. No top-up buttons here; buying is a decision that
+              belongs on the screen with the prices.
+            -->
+            <div class="mt-6 grid gap-6 sm:grid-cols-2">
+                <UsageBar
+                    v-for="allowance in report.allowances"
+                    :key="allowance.metric"
+                    :usage="allowance"
+                />
             </div>
         </section>
     </div>

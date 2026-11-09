@@ -5,6 +5,8 @@
 // the numbers come from the server, the words are resolved client-side through `useI18n` so the
 // dashboard reads in Arabic too (ADR 0007).
 
+import type { MetricUsage } from './billing';
+
 export type KpiFormat = 'count' | 'money';
 
 /** One headline tile. `value` is a plain integer — money arrives in minor units. */
@@ -67,6 +69,43 @@ export type BreakdownSlice = {
     value: number;
     /** Translation key, not a finished string. */
     hint: string | null;
+};
+
+/**
+ * One task on the dashboard's personal panel.
+ *
+ * `title` and `company` are **data** — the member's own words and the prospect's own name — and
+ * are printed exactly as stored rather than passed through `t()`.
+ */
+export type MyTask = {
+    id: number;
+    lead_id: number;
+    title: string;
+    company: string;
+    /** ISO-8601 UTC, rendered in the team's timezone; null for a task with no date. */
+    due_at: string | null;
+    overdue: boolean;
+};
+
+/**
+ * What is waiting on the member looking at the screen, and what they got through in the window.
+ *
+ * The queues (`open_leads`, `tasks_*`, `signals_waiting`) **ignore the date filter**: a task that
+ * went overdue last month is still overdue today. The activity figures (`actions`,
+ * `companies_worked`, `approaches`) are window-scoped like everything else. The panel says which
+ * is which on screen, so neither has to be guessed.
+ */
+export type MyWork = {
+    /** The member's own name. Data, not a translation key. */
+    member: string;
+    open_leads: number;
+    tasks_overdue: number;
+    tasks_due_today: number;
+    signals_waiting: number;
+    actions: number;
+    companies_worked: number;
+    approaches: number;
+    tasks: MyTask[];
 };
 
 /** The windows the date filter offers, plus the date pair a member can type. */
@@ -170,6 +209,25 @@ export type DashboardReport = {
     sources: BreakdownSlice[];
     /** Signal event types, busiest first; empty types omitted. */
     signal_types: BreakdownSlice[];
+    /**
+     * `leads.readiness` in bands — of the prospects found in this window, how many we can actually
+     * reach. Always all four bands, zeros included, and "not assessed yet" is one of them rather
+     * than a zero. Never drawn in a status colour: a low band is a gap in Alima's data, not a
+     * verdict about the company.
+     */
+    reachability: BreakdownSlice[];
+    /** What is waiting on the member who asked; null for a caller with no person behind it. */
+    my_work: MyWork | null;
+    /**
+     * This month's allowances, from whatever fills Reporting's usage seam — empty on an
+     * installation that meters nothing, and the panel is then not drawn.
+     *
+     * Deliberately the **same wire shape** as the billing screen's own lines, so
+     * `components/billing/UsageBar.vue` renders both and the two screens cannot come to disagree
+     * about where a plan stops. Unlike every other figure here it is **not window-scoped**: an
+     * allowance runs on the calendar month in UTC and no filter on this screen moves it.
+     */
+    allowances: MetricUsage[];
     /** The tabular reports, in tab order. */
     tables: ReportTable[];
     filters: { range: ReportRange; from: string | null; to: string | null };

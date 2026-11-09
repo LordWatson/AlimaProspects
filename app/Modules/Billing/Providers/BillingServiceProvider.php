@@ -15,6 +15,7 @@ use App\Modules\Billing\Http\Middleware\RefuseStripeWhenDisabled;
 use App\Modules\Billing\Listeners\GrantTopUpFromStripe;
 use App\Modules\Billing\Listeners\SyncSubscriptionFromStripe;
 use App\Modules\Billing\Services\ConfiguredStripeSwitch;
+use App\Modules\Billing\Services\DashboardUsageSummary;
 use App\Modules\Billing\Services\DisabledBillingGateway;
 use App\Modules\Billing\Services\PlanCapabilityGate;
 use App\Modules\Billing\Services\PlanCreditReserver;
@@ -35,6 +36,7 @@ use App\Modules\Integrations\Contracts\CrmRowAllowance;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
 use App\Modules\LeadsWorkspace\Contracts\ExportRowAllowance;
 use App\Modules\ModuleServiceProvider;
+use App\Modules\Reporting\Contracts\UsageSummarySource;
 use App\Modules\Signals\Contracts\SignalQuotaSource;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
@@ -106,6 +108,14 @@ final class BillingServiceProvider extends ModuleServiceProvider
         // still come from `config/billing.php` through `PlanResolver`, which stays bound either
         // way, so the floor is the plan's own number rather than nothing.
         $this->app->bind(CreditReserver::class, PlanCreditReserver::class);
+
+        // **The eighth seam: the dashboard's allowance panel.** Also outside the flag, for a
+        // different reason from the fifth — it *enforces nothing*. `billing.enforce_plans` decides
+        // what is refused, and a read-only panel refuses nothing, so the flag has no opinion about
+        // it. Leaving it inside would also hide the one screen a team can watch their AI credits
+        // and signal searches on, and those two cost guards keep biting with plans off. It shows
+        // the same live figures as the billing screen, which renders them whatever the flag says.
+        $this->app->bind(UsageSummarySource::class, DashboardUsageSummary::class);
 
         // **Plan enforcement, all of it, behind one check** (`billing.enforce_plans`).
         //

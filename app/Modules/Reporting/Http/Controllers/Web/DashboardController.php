@@ -31,8 +31,13 @@ final class DashboardController extends Controller
 
         $filters = $request->filters();
 
+        /** @var User $member */
+        $member = $request->user();
+
         return Inertia::render('Dashboard', [
-            'report' => $builder->forTeam($team, $filters),
+            // The member is passed, not inferred: the personal panel is about whoever is looking,
+            // and the builder has no business reaching for the session to find out who that is.
+            'report' => $builder->forTeam($team, $filters, $member),
             'filters' => $filters->toFormState((string) $team->timezone),
             'options' => ReportFilterOptions::all(),
         ]);
