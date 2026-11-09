@@ -5,6 +5,65 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-09 — The dashboard knows who is looking
+
+The dashboard was built in Phase 13 and has been accurate ever since. It was also, from end to end,
+about the **team** — and eighteen phases of new things to measure later, three of the questions a
+person actually opens it with had no answer on it at all.
+
+**What is waiting on me.** On a ten-person team "48 signals waiting" tells a member nothing about
+whether any of them are theirs, and there was no way to find your own four companies in a list of
+four hundred. The personal panel answers it: your open companies, your overdue tasks, what is due
+today, trigger events at companies you own, and the next five tasks by date — each count a link to
+the list it came from, because a figure on a dashboard that is not a way in is just a number.
+
+**Two scopes on one card, said out loud.** The queues ignore the date filter and the activity line
+does not. A task that went overdue last month is still overdue today, and a filter that hid it
+would be a date control quietly deciding what somebody has to do; the panel prints which figures
+the period moves rather than leaving a reader to assume one rule covers both.
+
+**Can you reach them?** Fit answers *should we want them* and is deliberately blind to missing data,
+which is why an A-grade lead can sit on the list with no website and no contact. `leads.readiness`
+has answered the other question since the lead-quality work, and had never reached a chart. Now it
+sits directly under the fit mix in four bands, so a team whose A-grades are all in the bottom band
+can see that it has a data problem rather than a targeting one. "Not assessed yet" is its own band
+and not a zero, and the bar is drawn in a neutral tone with no status colour anywhere near it — a
+low band is a gap in Alima's data, never a verdict about the company.
+
+**What is left this month.** Allowance burn lived only on the billing screen, which is the wrong
+place to find out that discovery stopped at three o'clock. It is now the last block on the
+dashboard, outside every branch above it: an allowance runs on the calendar month in UTC, so it
+says so rather than sitting silently under a filter that does not reach it, and it matters most to
+the team whose selected window is empty — "nothing happened this week" and "we ran out on Tuesday"
+are easy to confuse and only one of them is fixable.
+
+**It reaches the plan through a seam, not an import.** `Reporting\Contracts\UsageSummarySource` is
+the eighth of the seams Billing fills in (ADR 0012) and the first that is purely a read: it gates
+nothing, so there is no permissive-versus-restrictive argument to have, and it is bound **outside**
+`billing.enforce_plans`, because that flag decides what is refused. Reporting's own default answers
+an empty list and the panel then draws nothing, which is the honest rendering of an installation
+that meters nothing. The line DTO is deliberately the billing screen's own wire shape, so the
+dashboard reuses `UsageBar` rather than growing a second bar that could come to disagree with it
+about where a plan stops — minus the top-up buttons, because buying belongs on the screen with the
+prices.
+
+`my_work` is nullable, and that is the whole guard on the one way this could go wrong: a CSV export
+and the AI Insights snapshot have a team but no person behind them, and inventing one would have put
+somebody else's queue in a downloaded file. A null member also skips the two screen-only panels,
+because no caller without a person behind it renders a dashboard — running a nine-metric allowance
+summary for a nightly job that discards it is a recurring cost per team for nothing.
+
+Four things the module and brand reviews changed before it shipped. The cross-tenant case here is
+one user in **two teams**, not two users — every per-member filter still matches, so only the
+`team_id` on each query stops the other team's work appearing, and nothing pinned that until a test
+did. The three task counts no longer link anywhere: the leads list has no task filter, so pointing
+them all at the same unfiltered list gave a screen-reader user three differently-named links to one
+place. The window-scoped figures became three label-and-number pairs rather than one sentence
+interpolating three counts, which Arabic's six plural forms cannot inflect. And the top readiness
+band is "Plenty to go on" rather than "ready to approach", because whether a prospect may be
+approached is `OutreachGuard`'s answer and a UAE signal carries a prior-consent restriction no
+amount of contact data satisfies.
+
 ### Added — 2026-11-09 — PL7: leaving is a contract
 
 Everything Alima has built so far ends on a screen. PL6 let a team take their list out as a file,

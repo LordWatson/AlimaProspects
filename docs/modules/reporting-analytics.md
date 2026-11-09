@@ -35,6 +35,43 @@ performance, team activity, AI and data usage). Every one of them can be exporte
       `BuildSourceBreakdownAction`, `BuildSignalBreakdownAction`, `BuildIcpPerformanceAction`,
       `BuildOutreachPerformanceAction`, `BuildTeamActivityAction`, `BuildAiUsageAction`,
       `BuildSignalPerformanceAction`; plus `ExportReportAction` (audit + streamed download).
+    - `Actions/BuildMyWorkAction` — the dashboard's one **personal** block: what is waiting on the
+      member looking at it. Ownership is `lead_assignments` (the relation the leads list filters by
+      and the one Signals addresses an account notification to), not whoever ran the discovery.
+      Two scopes on one card and the screen says which is which: the four **queues** ignore the
+      date filter entirely, because a task that went overdue last month is still overdue today,
+      while the three **activity** figures are window-scoped like everything else. The panel is
+      gated on `has_ever_sourced` rather than `has_data`, which is the other question those two
+      flags keep apart: a queue survives a quiet week, but a team on its first afternoon has
+      nothing assigned to anybody, and four zeroes above the "how Alima works" explainer is the
+      empty report that flag exists to prevent. "Still in play"
+      is the absence of a closing stage rather than the presence of an open one — a lead nobody has
+      moved has no stage at all, so asking for stages whose outcome is null would drop most of
+      them. Signals are counted over `matched_lead_id` (the lead an event is *about*) and through
+      `Signal::representatives()`, so the figure and the queue a member opens are the same number.
+    - `Actions/BuildReachabilityMixAction` — `leads.readiness` in four bands, the companion to the
+      fit mix beside it. Fit answers *should we want them* and is deliberately blind to missing
+      data; readiness answers *can we reach them*. A team whose A-grades are all in the bottom band
+      has a data problem rather than a targeting one, and no other pair of charts says so. **Never
+      a verdict about the prospect:** the labels name what Alima holds, the bar is drawn in a
+      neutral **themed** tone (`bg-muted-foreground`, not a fixed grey, so it clears 3:1 on the dark
+      canvas as well), and `null` is its own band rather than a zero — "not assessed" and "nothing
+      to reach them by" are different states, and collapsing them would make a team that has not run
+      enrichment look like a team whose prospects cannot be contacted. The top band is "Plenty to go
+      on" rather than "ready to approach" on purpose: whether a prospect **may** be approached is
+      `Outreach\Services\OutreachGuard`'s answer, and a UAE signal carries a prior-consent
+      restriction that no amount of contact data satisfies, so a band about how much we hold must
+      not read as a go-ahead to send.
+    - `Contracts/UsageSummarySource` + `Services/NoUsageSummary` — the **eighth ADR 0012 seam**,
+      and the first that is purely a read: it gates nothing and refuses nothing, so there is no
+      permissive-versus-restrictive argument to have. The module's own default answers an empty
+      list and the dashboard then draws no allowance panel, which is the honest rendering of an
+      installation that meters nothing; `Billing\Services\DashboardUsageSummary` binds the real one
+      **outside `billing.enforce_plans`**, because that flag decides what is refused. Which lines
+      are worth showing is Billing's judgement (unlimited and untouched-at-zero are left out), and
+      the DTO is deliberately the same wire shape as Billing's own `UsageResource` so the dashboard
+      reuses `components/billing/UsageBar.vue` rather than growing a second bar that could disagree
+      with the billing screen's about where a plan stops.
     - `Actions/BuildSignalPerformanceAction` (Signals S12) answers **which trigger events are worth
       paying for**: two ranked tables, one per signal type and one per outlet, each carrying
       signals → kept → became leads → picked up and worked, with a conversion rate. It counts
@@ -48,8 +85,12 @@ performance, team activity, AI and data usage). Every one of them can be exporte
       anything). Only the second may turn on the first-run explainer — a team with a thousand leads
       that filters to a quiet week has an empty window, not an empty account.
     - `Data/` — `DashboardReport`, `Kpi`, `FunnelStep`, `TrendPoint`, `BreakdownSlice`,
-      `ReportFilters`, `ReportTable`, `ReportColumn`, `ReportRow`
+      `ReportFilters`, `ReportTable`, `ReportColumn`, `ReportRow`, `MyWork`, `MyTask`,
+      `AllowanceLine`
       (snake_case properties: these shapes are read straight off the Inertia page props).
+      `DashboardReport::$my_work` is **nullable** on purpose: a CSV export and the AI Insights
+      snapshot builder have a team but no person behind them, and inventing one would put somebody
+      else's queue in a downloaded file.
     - `Enums/` — `KpiFormat` (`count` | `money`), `ColumnFormat` (`text` | `count` | `money` |
       `percent` | `date`), `ReportRange` (the filter's presets + `custom`), `ReportKey` (the twelve
       reports), `TrendGranularity` (`day` | `week` | `month`).
@@ -67,8 +108,19 @@ performance, team activity, AI and data usage). Every one of them can be exporte
   (`StatTile`, `SparkLine`, `FunnelChart`, `TrendChart`, `GradeMixBar`, `BarListChart`,
   `ReportTableView`) and the filter/export controls in `resources/js/components/reporting/`
   (`ReportRangeFilter`, `ReportExportMenu`), all shown with sample data on the Design System page.
+  `components/reporting/MyWorkPanel.vue` draws the personal block. A count is a link **only when it
+  has a destination of its own**: the leads list has no task filter, so pointing all three task
+  counts at the same unfiltered list would give a screen-reader user three differently-named links
+  to one place and promise a sighted one a filter that does not exist — the task list beside them is
+  the way in instead. Only the overdue count carries a status tone, with a worded badge beside it so
+  it is never colour alone, and the focus ring is `ring-inset` because the tiles sit in an
+  `overflow-hidden` grid that would clip an outset one. The window-scoped figures are three
+  **label-and-number** pairs rather than one assembled sentence: Arabic has six plural forms, so a
+  sentence interpolating three counts cannot be inflected for any of them. The allowance panel
+  reuses `components/billing/UsageBar.vue` **without** its top-up buttons: buying belongs on the
+  screen with the prices.
 - **Shared:** `resources/js/types/reporting.ts`.
-- **Tests:** `tests/Feature/Reporting/{DashboardTest,PerformanceReportsTest,ReportExportTest,SignalPerformanceReportTest}.php`,
+- **Tests:** `tests/Feature/Reporting/{DashboardTest,DashboardPersonalPanelTest,PerformanceReportsTest,ReportExportTest,SignalPerformanceReportTest}.php`,
   `tests/Unit/Reporting/{DateRangeTest,ReportFiltersTest,TrendBucketsTest}.php` plus
   `tests/Feature/Reporting/ReportWindowTest.php`, which is the one that runs against a **non-UTC
   team** — see the UTC note under Key flows; without it the whole suite is green while every Dubai
@@ -261,6 +313,7 @@ person asked to read them would make the role useless. A non-member is a 404 bef
 
 | Date       | Phase      | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Files                                                                                                                                                                                                                            |
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-09 | —          | **The dashboard gained a person, a reachability chart and an allowance panel.** `BuildMyWorkAction` adds the one personal block on a screen that was entirely about the team: the member's own open companies, overdue and due-today tasks, signals about companies they own, the next five tasks by date, and a line of what they got through in the window. Queues are deliberately **not** window-scoped and activity figures are, and the card says which is which — a filter must not decide what somebody has to do. `BuildReachabilityMixAction` bands `leads.readiness` beside the fit mix, so "should we want them" and "can we reach them" are read together; `null` is its own band and the bar carries no status colour, because a low band is a gap in our data rather than a verdict about the company. And `Contracts/UsageSummarySource` is the **eighth ADR 0012 seam** — the first that is purely a read, so it is bound outside `billing.enforce_plans` — letting the dashboard show what is left of the month's allowances through the billing screen's own `UsageBar`, with the panel rendering nothing at all when nothing meters. | `app/Modules/Reporting/Actions/{BuildMyWorkAction,BuildReachabilityMixAction}.php`, `app/Modules/Reporting/{Contracts/UsageSummarySource,Services/NoUsageSummary,Data/MyWork,Data/MyTask,Data/AllowanceLine}.php`, `app/Modules/Billing/Services/DashboardUsageSummary.php`, `resources/js/components/reporting/MyWorkPanel.vue`, `resources/js/pages/Dashboard.vue`, `tests/Feature/Reporting/DashboardPersonalPanelTest.php` |
 | 2026-11-03 | S12        | **Signal performance** — a twelfth report (`ReportKey::SignalPerformance`), `BuildSignalPerformanceAction`: signals → kept → became leads → picked up and worked, per signal type and per outlet, ranked, exportable like every other table. Counts **cluster representatives** so it agrees with the feed, cohorts on `signals.created_at` with the rule written down above, and bounds the window in UTC through `DateRange::constrain()`. "Picked up and worked" is a converted lead off the default pipeline stage, because stages are team-defined and a named one is not comparable across accounts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `app/Modules/Reporting/Actions/BuildSignalPerformanceAction.php`, `app/Modules/Reporting/{Enums/ReportKey,Services/DashboardReportBuilder,Services/ReportTables}.php`, `tests/Feature/Reporting/SignalPerformanceReportTest.php` |
 | 2026-10-30 | 13         | Phase complete, then hardened against the module and brand reviews: the window is bound in **UTC** (an unconverted team-timezone instant shifted every figure four hours for a Dubai team), numeric CSV cells are no longer formula-neutralised (a negative delta was being written as text), the weekly bucket ceiling allows for a mid-week start, a future-dated window falls back to all time, the joins pin `leads`/`icps` to the team, an empty **window** no longer shows the first-run explainer (`has_ever_sourced`), the trend's geometry mirrors properly under RTL, and the report switcher dropped a half-built ARIA tab pattern. Date-range filter (`ReportRange`/`ReportFilters`/`DateRange`, one window scoping the whole screen, cohort rule documented); adaptive trend granularity (`TrendBuckets` + `TrendGranularity` replace `WeeklyBuckets`); the funnel's contacted/replied halves wired to `contact_attempts` (+ `ContactOutcome::isResponse()`, `Lead::contactAttempts()`); four new tabular reports (ICP performance, outreach performance, team activity, AI usage); `ReportTable`/`ReportTables`/`ReportCsvExporter` + `GET reports/export` with audit and a per-member rate limiter; `CsvCell` extracted to Core and shared with the leads exporter; `ReportTableView` + filter/export controls. | `app/Modules/Reporting/**`, `app/Modules/Core/Support/CsvCell.php`, `config/reporting.php`, `resources/js/components/{charts,reporting}/**`, `resources/js/pages/Dashboard.vue`                                                  |
 | 2026-10-30 | 13 (part)  | Module created. Dashboard read-model (KPIs, funnel, 12-week trend, fit mix, pipeline/source/signal breakdowns) behind `DashboardReportBuilder` + 7 Actions; `dashboard` route moved out of `routes/web.php`; `TeamPolicy::viewReports`; hand-built chart components; `WeeklyBuckets` timezone-aware conditional aggregation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `app/Modules/Reporting/**`, `resources/js/components/charts/**`, `resources/js/pages/Dashboard.vue`                                                                                                                              |
