@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Admin\Services\AnnouncementBoard;
 use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Enums\Capability;
+use App\Modules\Core\Enums\PrelaunchFeature;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\Locale;
 use Illuminate\Http\Request;
@@ -78,6 +79,12 @@ class HandleInertiaRequests extends Middleware
             // indexed row, and a partial reload that does not re-render the shell has no use for
             // them.
             'capabilities' => fn (): array => $this->capabilities($user),
+            // **Which pre-launch features are finished enough to be seen** (ADR 0026 §4). The
+            // shell needs it for the reason it needs `capabilities`: a rail item pointing at a
+            // screen whose routes answer 404 reads as a broken product rather than an unfinished
+            // one. Kept separate from the capability map on purpose — a flag asks whether the code
+            // is done and a capability asks whether the team pays for it.
+            'prelaunch' => fn (): array => $this->prelaunch($user),
             // Platform announcements for this reader (Phase 19b). Lazy, like the rest: one indexed
             // read over a handful of rows, skipped entirely on a partial reload and short-circuited
             // by the operator's `announcements.enabled` kill switch before the query happens.
@@ -161,6 +168,34 @@ class HandleInertiaRequests extends Middleware
         }
 
         return $capabilities;
+    }
+
+    /**
+     * The pre-launch flags that are on for this team.
+     *
+     * A **list** rather than `capabilities`' map, because the safe reading of silence is the
+     * opposite one: an unlisted capability is available, an unlisted flag is off. No team means
+     * no flag — Pennant resolves these per team, and an operator has none.
+     *
+     * @return list<string>
+     */
+    private function prelaunch(?User $user): array
+    {
+        $team = $user instanceof User ? $this->resolveTeam($user) : null;
+
+        if (! $team instanceof Team) {
+            return [];
+        }
+
+        $active = [];
+
+        foreach (PrelaunchFeature::cases() as $feature) {
+            if ($feature->activeFor($team)) {
+                $active[] = $feature->value;
+            }
+        }
+
+        return $active;
     }
 
     private function resolveTeam(User $user): ?Team

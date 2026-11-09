@@ -47,7 +47,20 @@ class AppServiceProvider extends ServiceProvider
         // phpunit.xml pins sqlite/:memory:, but a variable already exported in the shell beats it
         // (see the note there on why `force="true"` is not the answer), so refuse to run on
         // anything else instead of trusting the environment. See CLAUDE.md section 0.
-        if (app()->runningUnitTests()) {
+        if ($this->runningTests()) {
+            // **A cached configuration is itself the danger**, not merely a cause of one. It
+            // replaces every pin in phpunit.xml wholesale — the connection, the session driver,
+            // the queue, and APP_ENV, which is what `runningUnitTests()` reads. That is how this
+            // very guard came to be skipped while RefreshDatabase dropped the dev database.
+            if (app()->configurationIsCached()) {
+                throw new RuntimeException(
+                    'Tests must not run on a cached configuration. bootstrap/cache/config.php '
+                    .'overrides every pin in phpunit.xml, including APP_ENV, so the SQLite check '
+                    .'below cannot be trusted and RefreshDatabase would drop the dev database. '
+                    .'Run `php artisan config:clear`, or `composer test`, which clears it first.'
+                );
+            }
+
             $default = (string) config('database.default');
             $driver = config("database.connections.{$default}.driver");
 
@@ -70,5 +83,20 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    /**
+     * Whether this process is a test run — asked of PHPUnit, never of `APP_ENV`.
+     *
+     * `runningUnitTests()` reads the container's env, which comes from config, so a stale
+     * `bootstrap/cache/config.php` reporting `local` switched the database guard off in the one
+     * situation it exists for. PHPUnit's own bootstrap constant and its base class cannot be
+     * cached away, so they are asked too and the framework's answer is kept as one of three.
+     */
+    private function runningTests(): bool
+    {
+        return app()->runningUnitTests()
+            || defined('PHPUNIT_COMPOSER_INSTALL')
+            || class_exists('PHPUnit\Framework\TestCase', false);
     }
 }

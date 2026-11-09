@@ -61,6 +61,12 @@ type Item = {
      * stops us advertising it.
      */
     capability?: AppCapability;
+    /**
+     * A pre-launch flag this destination waits on (ADR 0026 §4). Dropped while the flag is off,
+     * because those routes answer **404** rather than refusing politely — a nav item that 404s
+     * reads as a broken product rather than an unfinished one.
+     */
+    flag?: 'prelaunch.webhooks';
 };
 
 /**
@@ -78,10 +84,20 @@ const capabilities = computed<Record<string, boolean>>(
     () => (page.props.capabilities ?? {}) as Record<string, boolean>,
 );
 
+/** The pre-launch flags on for this team. Absent reads as **none on**, unlike `capabilities`. */
+const prelaunch = computed<string[]>(
+    () => (page.props.prelaunch ?? []) as string[],
+);
+
 function isAvailable(item: Item): boolean {
-    return item.capability === undefined
-        ? true
-        : capabilities.value[item.capability] !== false;
+    if (
+        item.capability !== undefined &&
+        capabilities.value[item.capability] === false
+    ) {
+        return false;
+    }
+
+    return item.flag === undefined || prelaunch.value.includes(item.flag);
 }
 
 const allChapters = computed<Chapter[]>(() => [
@@ -211,6 +227,7 @@ const allChapters = computed<Chapter[]>(() => [
                 // log is a table, and the pane is a 36rem column built for forms.
                 title: t('Integrations'),
                 icon: Plug,
+                flag: 'prelaunch.webhooks',
                 href: '/integrations',
                 match: 'startsWith',
             },

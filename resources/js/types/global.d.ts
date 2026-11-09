@@ -45,6 +45,12 @@ declare module '@inertiajs/core' {
              * the nav.
              */
             capabilities: Partial<Record<AppCapability, boolean>>;
+            /**
+             * The pre-launch flags that are on for this team (ADR 0026 §4). A **list**, unlike
+             * `capabilities`: an unlisted flag is off, which is the safe direction for a feature
+             * that may not be finished.
+             */
+            prelaunch: string[];
             /** Live platform announcements for this reader (Phase 19b). */
             announcements: AnnouncementBannerData[];
             /**

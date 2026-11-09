@@ -44,7 +44,10 @@ Read **ADR 0034** before changing anything here.
   `integrations.deliveries.redeliver`, `integrations.crm.*`. **No `api.php`, deliberately**: see
   _Permissions_.
 - **Frontend:** `resources/js/pages/integrations/Index.vue`, types in
-  `resources/js/shared/types/integrations.ts`, sidebar entry in `AppSidebar.vue`.
+  `resources/js/shared/types/integrations.ts`, sidebar entry in `AppSidebar.vue` — **gated on
+  `prelaunch.webhooks`**, which the shell reads from the `prelaunch` shared prop
+  (`HandleInertiaRequests`). Every route here answers 404 while the flag is off, so an ungated
+  rail item was a link to a 404 on every team not yet switched on.
 - **Tests:** `tests/Feature/Integrations/{WebhookTest,CrmSyncTest,OAuthStateTest}.php`, with
   `tests/Support/FakeCrmConnector.php`.
 - **Config / env:** `config/integrations.php` (`webhooks.timeout`, `webhooks.connect_timeout`,

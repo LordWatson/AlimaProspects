@@ -113,7 +113,11 @@ because the only screen that would show it is one nobody opens once an integrati
 `integrations:prune-deliveries` nightly, which never sweeps a pending row whatever its age, since a
 twelve-hour backoff means one can legitimately sit pending most of a day; no `/api/v1` routes, so a
 credential cannot decide where a team's whole lead flow is sent; and the whole screen behind
-`prelaunch.webhooks`. ADR 0034 and `docs/modules/integrations.md` carry the reasoning. 52 tests.
+`prelaunch.webhooks` — **including the rail item**, which shipped ungated and so offered every
+team not yet switched on a link that answered 404. The shell learned which pre-launch flags are
+on from a shared prop for that, a **list** rather than the capability map beside it, because an
+unlisted flag reads as off and an unlisted capability reads as available. ADR 0034 and
+`docs/modules/integrations.md` carry the reasoning. 53 tests.
 
 ### Added — 2026-11-08 — PL6: leads leave in a file
 

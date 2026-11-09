@@ -77,6 +77,22 @@ it('hides the integrations screen entirely while the flag is off', function (): 
     ])->assertNotFound();
 });
 
+it('keeps the integrations link out of the rail until the flag is on', function (): void {
+    [$user, $team] = Fixtures::team();
+
+    // The shell decides what the rail advertises from this prop, and every integrations route
+    // answers 404 while the flag is off — so an ungated nav item was a link to a 404 on every
+    // team that has not been switched on (found in use).
+    $this->actingAs($user)->get(route('dashboard'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('prelaunch', []));
+
+    Feature::for($team)->activate(PrelaunchFeature::Webhooks->value);
+
+    $this->actingAs($user)->get(route('dashboard'))
+        ->assertInertia(fn ($page) => $page->where('prelaunch', [PrelaunchFeature::Webhooks->value]));
+});
+
 it('queues nothing for a team whose flag is off, even with an endpoint on the row', function (): void {
     [, $team] = Fixtures::team();
     endpointFor($team);

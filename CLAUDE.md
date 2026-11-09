@@ -10,6 +10,21 @@ AlimaProspects is a multi-tenant SaaS that helps businesses find, qualify and co
 
 - **Never commit secrets.** Never weaken tenancy scoping, transactions, or tests to make something pass.
 - **Claude must never run `migrate:fresh`, `migrate:refresh`, `migrate:reset` or `db:wipe`.** The local dev database is **MySQL `alima_prospects`** and holds real records; these commands drop every table. Apply schema changes with `php artisan migrate` only (a rework gets a new corrective migration). For Claude this is enforced in `.claude/settings.json` — `deny` permission rules plus a `PreToolUse` hook (`.claude/hooks/block-destructive-migrations.cjs`) — so Claude cannot run them even when asked; the correct response to such a request is to tell the user to run it themselves. **The user runs these freely in their own terminal** (the app-level `DB::prohibitDestructiveCommands()` guard is production-only, by design, so local rebuilds are not hindered). Tests are unaffected — they use an in-memory SQLite, and that is now **enforced at runtime**: `AppServiceProvider::configureDefaults()` throws if a test process boots on any driver but SQLite, because `RefreshDatabase` runs its own `migrate:fresh` that no permission rule or hook can see, and phpunit.xml's pins lose to a variable exported in the shell. For the same reason the one test that does drop MySQL tables (`SignalsMysqlDialectTest`) only runs against a schema whose name ends in `_test`.
+- **Claude runs the suite with `composer test` and nothing else.** A bare `php artisan test`,
+  `vendor/bin/pest` or `vendor/bin/phpunit` is refused by
+  `.claude/hooks/block-destructive-migrations.cjs`, and for a reason rather than a preference:
+  on 2026-11-09 a bare runner dropped every table in `alima_prospects` **twice**. A
+  `bootstrap/cache/config.php` left behind by an earlier `optimize` overrides every pin in
+  `phpunit.xml` — **including `APP_ENV`**, which is the value `AppServiceProvider`'s own SQLite
+  check keys off — so the guard switched itself off and `RefreshDatabase` ran its destructive
+  rebuild against MySQL. Three things now stand in the way, and the first is the one that
+  matters: **`tests/bootstrap.php`** deletes a cached config and pins
+  `DB_CONNECTION`/`DB_DATABASE`/`APP_ENV` into all three of `putenv`/`$_ENV`/`$_SERVER` *before
+  the framework exists*, which is the only place a cache and an exported variable can be
+  settled rather than detected; the in-app check then asks **PHPUnit** whether this is a test
+  run instead of asking `APP_ENV`, and refuses outright on a cached config; and the hook
+  refuses the bare runners. One cost worth knowing: the hook matches the *string*, so writing
+  about these commands in a shell command (a `grep`, an `echo`) is refused too.
 - If a requirement is unclear or conflicts with these rules, **stop and ask**.
 - A phase is **not complete** until: `composer test` green, `composer analyse` clean (Larastan ≥ level 6; repo is at **7**), frontend `npm run check` + `npm run types:check` + `npm run build` pass, and **docs are updated**.
 - **The brand is law (see §2a).** Any UI — web or mobile — must obey the Alima brand defined in the two source PDFs. Do not invent colours, type, spacing, logo treatment or tone.
