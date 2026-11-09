@@ -89,16 +89,7 @@ function toggleAssignee(userId: number): void {
 </script>
 
 <template>
-    <section
-        class="space-y-5 rounded-2xl border border-border bg-card p-6"
-        data-test="work-panel"
-    >
-        <h2
-            class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-        >
-            {{ t('Your workflow') }}
-        </h2>
-
+    <Panel :title="t('Your workflow')" data-test="work-panel">
         <!-- Stage -->
         <div class="grid gap-2">
             <Label for="lead-stage">{{ t('Stage') }}</Label>
@@ -246,5 +237,5 @@ function toggleAssignee(userId: number): void {
                 </Button>
             </form>
         </div>
-    </section>
+    </Panel>
 </template>

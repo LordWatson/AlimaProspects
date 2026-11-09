@@ -19,11 +19,11 @@ AlimaProspects is a multi-tenant SaaS that helps businesses find, qualify and co
   check keys off — so the guard switched itself off and `RefreshDatabase` ran its destructive
   rebuild against MySQL. Three things now stand in the way, and the first is the one that
   matters: **`tests/bootstrap.php`** deletes a cached config and pins
-  `DB_CONNECTION`/`DB_DATABASE`/`APP_ENV` into all three of `putenv`/`$_ENV`/`$_SERVER` *before
-  the framework exists*, which is the only place a cache and an exported variable can be
+  `DB_CONNECTION`/`DB_DATABASE`/`APP_ENV` into all three of `putenv`/`$_ENV`/`$_SERVER` _before
+  the framework exists_, which is the only place a cache and an exported variable can be
   settled rather than detected; the in-app check then asks **PHPUnit** whether this is a test
   run instead of asking `APP_ENV`, and refuses outright on a cached config; and the hook
-  refuses the bare runners. One cost worth knowing: the hook matches the *string*, so writing
+  refuses the bare runners. One cost worth knowing: the hook matches the _string_, so writing
   about these commands in a shell command (a `grep`, an `echo`) is refused too.
 - If a requirement is unclear or conflicts with these rules, **stop and ask**.
 - A phase is **not complete** until: `composer test` green, `composer analyse` clean (Larastan ≥ level 6; repo is at **7**), frontend `npm run check` + `npm run types:check` + `npm run build` pass, and **docs are updated**.
@@ -167,9 +167,11 @@ Use these instead of ad-hoc work; they encode this repo's rules.
 
 - **Skill `new-module`** — scaffold a domain module per ADR 0002 (dirs, provider, routes, doc).
 - **Skill `quality-gates`** — run Pint/Larastan/Pest + `vue-tsc`/build with the correct **Herd binaries** (avoids the Laragon PATH trap).
+- **Skill `ui-design`** — design/build any screen to the brand (§2a) with the existing UI kit, all four states, a11y and RTL. Run before frontend work; pair with the `brand-reviewer` + `ux-reviewer` agents after.
 - **Skill `phase-complete`** — the definition-of-done checklist for an `mvp.md` phase.
 - **Agent `laravel-module-reviewer`** — reviews backend changes against these rules (tenancy, transactions, layering, types, jobs, API, tests). Run after implementing a phase.
 - **Agent `brand-reviewer`** — reviews UI against the brand (§2a). Run after any frontend change.
+- **Agent `ux-reviewer`** — reviews UI for UX quality: the four states, form feedback, hierarchy, destructive actions, keyboard paths, 375px, copy. Run alongside `brand-reviewer` — brand owns the look, this owns the behaviour.
 
 Also available (built-in): **`dataviz`** (charts for the Reporting phase), **`code-review`** / **`security-review`** (run at Phase 20; its findings and what was accepted are in ADR 0017 and `docs/runbooks/observability.md`), **`claude-api`** (AI Platform phase), **`run`** (launch the app).
 

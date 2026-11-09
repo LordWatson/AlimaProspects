@@ -3,7 +3,9 @@ import { useForm } from '@inertiajs/vue3';
 import { MessageSquarePlus, Trash2 } from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Label } from '@/components/ui/label';
+import { Panel } from '@/components/ui/panel';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import type { LeadNote } from '@/types';
@@ -37,16 +39,16 @@ function remove(note: LeadNote): void {
 </script>
 
 <template>
-    <section class="space-y-4" data-test="notes">
-        <h2
-            class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-        >
-            {{ t('Notes') }}
-        </h2>
-
+    <!--
+      The only panel on the record whose add affordance is not a header button: a note composer is
+      this panel's primary content, not a secondary action, and a box already open is the whole
+      reason anybody writes the note down while they remember it. The header still owns every
+      *action*, which is the rule - there just is not one here.
+    -->
+    <Panel :title="t('Notes')" :count="props.notes.length" data-test="notes">
         <form
             v-if="props.canWrite"
-            class="space-y-2 rounded-2xl border border-border bg-card p-4"
+            class="space-y-2 rounded-2xl border border-border bg-background p-4"
             @submit.prevent="save"
         >
             <Label for="note-body" class="sr-only">{{ t('Add a note') }}</Label>
@@ -74,23 +76,22 @@ function remove(note: LeadNote): void {
             </div>
         </form>
 
-        <p
+        <EmptyState
             v-if="!props.notes.length"
-            class="rounded-2xl border border-dashed border-border bg-card/50 p-5 text-sm text-muted-foreground"
+            :icon="MessageSquarePlus"
+            size="sm"
+            :title="t('No notes yet')"
+            :description="
+                t('Anything your team learns about this company belongs here.')
+            "
             data-test="no-notes"
-        >
-            {{
-                t(
-                    'No notes yet. Anything your team learns about this company belongs here.',
-                )
-            }}
-        </p>
+        />
 
         <ol v-else class="space-y-3">
             <li
                 v-for="note in props.notes"
                 :key="note.id"
-                class="group rounded-2xl border border-border bg-card p-4"
+                class="group rounded-2xl border border-border bg-background p-4"
                 :data-test="`note-${note.id}`"
             >
                 <div class="flex items-start justify-between gap-3">
@@ -126,5 +127,5 @@ function remove(note: LeadNote): void {
                 </p>
             </li>
         </ol>
-    </section>
+    </Panel>
 </template>

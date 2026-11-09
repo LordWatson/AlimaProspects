@@ -5,6 +5,40 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — 2026-11-09 — The lead record reads as one screen
+
+The page a member spends their day on had grown five different section shells and two different
+places to put an "Add…" button: the contacts panel put its add action **below** the list at the
+start edge, the tasks panel put its **above** the list at the end edge, four panels drew a cream
+card by hand, four more had no surface at all, and "Why now" — the panel that answers why anybody
+opened the lead — was the only one still on the stock shadcn card, so the most important thing on
+the screen was also the one that looked like it came from a different product. None of that is a
+bug any test would catch. It is just a screen that teaches you its layout again in every panel.
+
+There is now one shell, `components/ui/panel/Panel.vue`, and the ten panels are all it. Its
+`#actions` slot is in the header at the end edge, and **that is the reason the component exists**
+rather than a style it happens to have: a slot in one place is the only version of this fix that
+survives the next panel somebody writes. A `#description` slot took the standing hints that had
+been sharing a row with the buttons and losing. Each panel names its own region through `useId`, so
+a screen reader can move between ten panels the way a sighted reader moves between ten cards.
+
+Three things fell out of it that are worth their own line. **"Why now" is the one emphasised
+panel** — a heading-weight title where the other nine carry a DM Mono label — because a screen of
+ten identical panels has no lead at all. **A surface nested inside a panel is `bg-background`**:
+the forms and rows were `bg-card` on a `bg-card` panel, which is invisible, and the canvas colour
+also puts the input border back over WCAG 1.4.11's 3:1 in light mode. And **completed tasks fold
+away** behind "Show :count done", so a lead worked for a month is not a panel of struck-through
+text — except for a task ticked on this visit, which stays put, because hiding it at the moment of
+the tick took away the row focus was sitting on and turned undoing a mis-click into a hunt.
+
+Reviewed for brand and for UX before landing. The UX review overturned one of my calls: an empty
+state carries the action that resolves it **even when the panel header already has that action**,
+because on a phone the header can be two wrapped rows above where the eye lands — so the contacts
+empty state has its own "Find decision-makers" and "Add a contact". Three items are recorded in
+`brand-tokens.md` §7o for brand-owner approval: the one-emphasised-panel rule, the hairline under
+every panel header, and the product reading of §3's "max two weights per layout", which this
+screen already stretched before any of this.
+
 ### Added — 2026-11-09 — A contact can be added by hand
 
 A lead whose Contacts panel was empty got a sentence explaining why — Alima looks for role-based
@@ -16,13 +50,13 @@ lead in again through the add-a-lead form to record it.
 `POST /leads/{lead}/contacts` now takes a name, a job title, an email address and a phone number,
 authorised by `LeadPolicy::work` like every other control on that screen, and the form sits in the
 Contacts panel whether or not Alima found anybody — collapsed until it is asked for, because the
-panel's first answer should still be *let Alima look*.
+panel's first answer should still be _let Alima look_.
 
 Three things about the row it writes. It is **not a reveal**: nobody paid a vendor for a number off
 a business card, so the vendor-source columns stay null and there is nothing to charge to see it
 (ADR 0029). It **still asks `ContactApprovalGate`** — storing is the first of that gate's two
 moments, so an address on the team's do-not-contact list is refused before the row exists rather
-than stored and filtered at send time, and refused *with a message*, because the member typed it and
+than stored and filtered at send time, and refused _with a message_, because the member typed it and
 is owed the reason (ADR 0032). And it is written **unverified**, with `email_verification_status`
 left null for the normal verification to judge. The identity hashes go in through the model's own
 setters, so a hand-typed address matches a suppression entry — which the add-a-lead form's own
@@ -45,7 +79,7 @@ does not. A task that went overdue last month is still overdue today, and a filt
 would be a date control quietly deciding what somebody has to do; the panel prints which figures
 the period moves rather than leaving a reader to assume one rule covers both.
 
-**Can you reach them?** Fit answers *should we want them* and is deliberately blind to missing data,
+**Can you reach them?** Fit answers _should we want them_ and is deliberately blind to missing data,
 which is why an A-grade lead can sit on the list with no website and no contact. `leads.readiness`
 has answered the other question since the lead-quality work, and had never reached a chart. Now it
 sits directly under the fit mix in four bands, so a team whose A-grades are all in the bottom band

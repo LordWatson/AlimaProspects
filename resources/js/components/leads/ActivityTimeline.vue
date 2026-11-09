@@ -175,9 +175,11 @@ function isLast(activity: LeadActivity): boolean {
 </script>
 
 <template>
+    <!-- `sm`: this sits inside the History panel, not in place of a page. -->
     <EmptyState
         v-if="!props.activities.length"
         :icon="History"
+        size="sm"
         :title="t('Nothing has happened yet')"
         :description="
             t(

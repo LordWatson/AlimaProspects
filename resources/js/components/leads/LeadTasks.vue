@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { CalendarClock, Plus, Trash2 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { CalendarClock, ListTodo, Plus, Trash2 } from '@lucide/vue';
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Panel } from '@/components/ui/panel';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import type { LeadTask, TeamMemberOption } from '@/types';
@@ -27,9 +29,25 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
-const { dateTime, date } = useFormat();
+const { dateTime, date, number } = useFormat();
 
 const isAdding = ref(false);
+
+// Focus follows the affordance the member used, and goes back to it when the form closes. The
+// refs sit on wrapping elements rather than on `Input`/`Button`: those are `<script setup>`
+// components, so a ref to one is a closed instance proxy with no `focus()` on it.
+const titleField = useTemplateRef<HTMLElement>('titleField');
+const addTrigger = useTemplateRef<HTMLElement>('addTrigger');
+
+watch(isAdding, async (opening) => {
+    await nextTick();
+
+    if (opening) {
+        titleField.value?.querySelector('input')?.focus();
+    } else {
+        addTrigger.value?.querySelector('button')?.focus();
+    }
+});
 
 const form = useForm<{
     title: string;
@@ -54,6 +72,12 @@ function save(): void {
 }
 
 function setDone(task: LeadTask, done: boolean): void {
+    // Keep it on screen for the rest of the visit, so the tick has a visible effect and
+    // unticking it is where the member is already looking.
+    if (done && !justCompleted.value.includes(task.id)) {
+        justCompleted.value.push(task.id);
+    }
+
     useForm({ done }).put(`/leads/tasks/${task.id}`, { preserveScroll: true });
 }
 
@@ -67,35 +91,71 @@ const open = computed(() =>
 const done = computed(() =>
     props.tasks.filter((task) => task.status === 'done'),
 );
+
+/*
+ * Completed tasks are folded away rather than listed under the open ones. A lead that gets worked
+ * for a month accumulates them, and the panel became mostly struck-through text with the three
+ * things that still need doing at the top of it. They are one click away, not gone.
+ */
+const showDone = ref(false);
+
+// Ticked on this visit. A completed task would otherwise disappear from under the cursor.
+const justCompleted = ref<number[]>([]);
+
+const visible = computed(() =>
+    showDone.value
+        ? [...open.value, ...done.value]
+        : [
+              ...open.value,
+              ...done.value.filter((task) =>
+                  justCompleted.value.includes(task.id),
+              ),
+          ],
+);
 </script>
 
 <template>
-    <section class="space-y-4" data-test="tasks">
-        <div class="flex items-center justify-between gap-3">
-            <h2
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-            >
-                {{ t('To do') }}
-            </h2>
+    <Panel :title="t('To do')" :count="open.length" data-test="tasks">
+        <template #actions>
             <Button
-                v-if="props.canWrite && !isAdding"
-                variant="outline"
+                v-if="done.length"
+                variant="ghost"
                 size="sm"
                 type="button"
-                data-test="add-task"
-                @click="isAdding = true"
+                :aria-expanded="showDone"
+                data-test="toggle-done-tasks"
+                @click="showDone = !showDone"
             >
-                <Plus class="size-4" />
-                {{ t('Add a task') }}
+                {{
+                    showDone
+                        ? t('Hide done')
+                        : t('Show :count done', { count: number(done.length) })
+                }}
             </Button>
-        </div>
 
+            <span ref="addTrigger">
+                <Button
+                    v-if="props.canWrite && !isAdding"
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    data-test="add-task"
+                    @click="isAdding = true"
+                >
+                    <Plus class="size-4" />
+                    {{ t('Add a task') }}
+                </Button>
+            </span>
+        </template>
+
+        <!-- `bg-background` rather than `bg-card`: the form sits inside a cream card, and a card
+             on a card is invisible. The canvas colour reads as a well. -->
         <form
             v-if="isAdding"
-            class="space-y-4 rounded-2xl border border-border bg-card p-4"
+            class="space-y-4 rounded-2xl border border-border bg-background p-4"
             @submit.prevent="save"
         >
-            <div class="grid gap-2">
+            <div ref="titleField" class="grid gap-2">
                 <Label for="task-title">{{ t('What needs doing?') }}</Label>
                 <Input
                     id="task-title"
@@ -181,19 +241,30 @@ const done = computed(() =>
             </div>
         </form>
 
-        <p
-            v-if="!props.tasks.length"
-            class="rounded-2xl border border-dashed border-border bg-card/50 p-5 text-sm text-muted-foreground"
+        <EmptyState
+            v-if="!props.tasks.length && !isAdding"
+            :icon="ListTodo"
+            size="sm"
+            :title="t('Nothing to do yet')"
+            :description="t('Add what needs doing next, and who is doing it.')"
             data-test="no-tasks"
+        />
+
+        <!-- Everything outstanding is finished, and the done list is folded away: the panel would
+             otherwise be empty but for its own header. -->
+        <p
+            v-else-if="!visible.length && done.length"
+            class="text-sm text-muted-foreground"
+            data-test="all-tasks-done"
         >
-            {{ t('Nothing to do on this lead yet.') }}
+            {{ t('Nothing outstanding — every task here is done.') }}
         </p>
 
         <ul v-else class="space-y-2">
             <li
-                v-for="task in [...open, ...done]"
+                v-for="task in visible"
                 :key="task.id"
-                class="flex items-start gap-3 rounded-2xl border border-border bg-card p-4"
+                class="flex items-start gap-3 rounded-2xl border border-border bg-background p-4"
                 :data-test="`task-${task.id}`"
             >
                 <Checkbox
@@ -261,5 +332,5 @@ const done = computed(() =>
                 </button>
             </li>
         </ul>
-    </section>
+    </Panel>
 </template>

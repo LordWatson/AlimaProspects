@@ -29,7 +29,8 @@ const DESTRUCTIVE = /\bartisan\s+(?:migrate:(?:fresh|refresh|reset)|db:wipe)\b/;
 
 // A bare test runner, any path, anywhere in a compound command. `composer test` is
 // deliberately not matched: it is the entry point that clears the config cache first.
-const BARE_TEST_RUNNER = /\bartisan\s+test\b|\bvendor[\\/]bin[\\/](?:pest|phpunit)\b/;
+const BARE_TEST_RUNNER =
+    /\bartisan\s+test\b|\bvendor[\\/]bin[\\/](?:pest|phpunit)\b/;
 
 let input = '';
 process.stdin.on('data', (d) => (input += d));

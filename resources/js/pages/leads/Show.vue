@@ -11,9 +11,19 @@ import {
     Send,
     ShieldAlert,
     Sparkles,
+    UserRoundPlus,
     UserSearch,
+    Users,
 } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    useTemplateRef,
+    watch,
+} from 'vue';
 import CopyButton from '@/components/CopyButton.vue';
 import LeadNoticeRow from '@/components/leads/LeadNoticeRow.vue';
 import ActivityTimeline from '@/components/leads/ActivityTimeline.vue';
@@ -30,6 +40,8 @@ import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import ScoreDial from '@/components/scoring/ScoreDial.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Panel } from '@/components/ui/panel';
 import { Spinner } from '@/components/ui/spinner';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
@@ -329,6 +341,22 @@ const hasRolePreference = computed(
         contacts.value.some((contact) => !contact.is_role_based),
 );
 
+// The contacts panel's add-a-contact form. The state lives here rather than inside
+// `AddLeadContact` because the trigger is now the panel's header action, like every other panel's.
+const addingContact = ref(false);
+const addContactTrigger = useTemplateRef<HTMLElement>('addContactTrigger');
+
+// Closing the form removes the element focus is sitting on — its own Cancel button — which would
+// drop focus on the body. It goes back to the affordance the member opened it with.
+watch(addingContact, async (isOpen) => {
+    if (isOpen) {
+        return;
+    }
+
+    await nextTick();
+    addContactTrigger.value?.querySelector('button')?.focus();
+});
+
 // --- Contact enrichment (PL3) ----------------------------------------------
 // The request returns immediately and the waterfall runs on a worker, so the screen has to show
 // that something is happening and then pick the result up. Both halves matter: without the first,
@@ -591,27 +619,17 @@ onBeforeUnmount(() => {
           (brand-tokens.md §7f.2) and with the words in `text-foreground`, never in the status
           colour (§7f.3).
         -->
-        <section
+        <Panel
             v-if="notices.length"
-            class="space-y-3 rounded-2xl border border-border bg-card p-6"
-            aria-labelledby="notices-heading"
+            :title="t('Before you reach out')"
             data-test="lead-notices"
         >
-            <!-- Named by its own heading rather than by an `aria-label` repeating it: a region
-                 whose name and first heading are the same sentence says it twice. -->
-            <h2
-                id="notices-heading"
-                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-            >
-                {{ t('Before you reach out') }}
-            </h2>
-
             <ul class="space-y-2">
                 <li v-for="notice in notices" :key="notice.key">
                     <LeadNoticeRow :notice="notice" />
                 </li>
             </ul>
-        </section>
+        </Panel>
 
         <div class="grid gap-6 lg:grid-cols-[1fr_20rem]">
             <!--
@@ -630,16 +648,7 @@ onBeforeUnmount(() => {
                 />
 
                 <!-- Fit -->
-                <section
-                    class="space-y-4 rounded-2xl border border-border bg-card p-6"
-                    data-test="fit"
-                >
-                    <h2
-                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                    >
-                        {{ t('Fit') }}
-                    </h2>
-
+                <Panel :title="t('Fit')" data-test="fit">
                     <template v-if="score">
                         <div class="flex items-center gap-4">
                             <ScoreDial
@@ -689,24 +698,18 @@ onBeforeUnmount(() => {
                             </Link>
                         </Button>
                     </template>
-                </section>
+                </Panel>
 
                 <!-- The event, and then everything since: read-only. Why this lead exists at all, when "a provider found it"
                      isn't the whole story — a converted signal and the event behind it. Named for
                      what it shows, so it doesn't read as a second "Where this came from" (which is
                      further down, and is about per-field provenance). The server resolves this
                      through a contract, so the panel renders whatever module filled it in. -->
-                <section
+                <Panel
                     v-if="origin || otherEvents.length"
-                    class="space-y-4 rounded-2xl border border-border bg-card p-6"
+                    :title="otherEvents.length ? t('Events') : t('The event')"
                     data-test="origin"
                 >
-                    <h2
-                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                    >
-                        {{ otherEvents.length ? t('Events') : t('The event') }}
-                    </h2>
-
                     <div v-if="origin" class="flex items-start gap-3">
                         <span
                             class="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-muted-foreground"
@@ -862,19 +865,13 @@ onBeforeUnmount(() => {
                             </div>
                         </li>
                     </ol>
-                </section>
+                </Panel>
 
                 <!-- Where this came from -->
-                <section
-                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                <Panel
+                    :title="t('Where this came from')"
                     data-test="provenance"
                 >
-                    <h2
-                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                    >
-                        {{ t('Where this came from') }}
-                    </h2>
-
                     <dl class="space-y-3 text-sm">
                         <div class="space-y-0.5">
                             <dt class="text-xs text-muted-foreground">
@@ -933,7 +930,7 @@ onBeforeUnmount(() => {
                             )
                         }}
                     </p>
-                </section>
+                </Panel>
             </aside>
 
             <!-- Main column -->
@@ -950,16 +947,7 @@ onBeforeUnmount(() => {
                 />
 
                 <!-- Company facts -->
-                <section
-                    class="space-y-4 rounded-2xl border border-border bg-card p-6"
-                    data-test="company"
-                >
-                    <h2
-                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                    >
-                        {{ t('The company') }}
-                    </h2>
-
+                <Panel :title="t('The company')" data-test="company">
                     <!-- Why the fields below are thin, or still arriving. It belongs here
                          rather than with the compliance notices: it is an explanation of this
                          card, not something to know before reaching out. -->
@@ -1016,59 +1004,67 @@ onBeforeUnmount(() => {
                             <Badge variant="lilac">{{ tech }}</Badge>
                         </li>
                     </ul>
-                </section>
+                </Panel>
 
                 <!-- Contacts -->
-                <section
+                <Panel
                     id="contacts"
-                    class="scroll-mt-6 space-y-3"
+                    class="scroll-mt-6"
+                    :title="t('Contacts')"
+                    :count="contacts.length"
                     data-test="contacts"
                 >
-                    <div
-                        class="flex flex-wrap items-baseline justify-between gap-2"
-                    >
-                        <h2
-                            class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                        >
-                            {{ t('Contacts') }}
-                        </h2>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <p
-                                v-if="hasRolePreference"
-                                class="text-xs text-muted-foreground"
-                            >
-                                {{ t('Role addresses first — prefer those.') }}
-                            </p>
+                    <template v-if="hasRolePreference" #description>
+                        {{ t('Role addresses first — prefer those.') }}
+                    </template>
 
-                            <!-- Contact enrichment (PL3). Two buttons because they are two
-                                 different spends: finding *who* to talk to, and finding *how* to
-                                 reach the people already here. A single "Enrich" would hide which
-                                 one a member was paying for. -->
-                            <template v-if="enrichment && can.work">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    :disabled="enriching"
-                                    data-test="find-people"
-                                    @click="enrich('people')"
-                                >
-                                    <UserSearch class="size-3.5" />
-                                    {{ t('Find decision-makers') }}
-                                </Button>
-                                <Button
-                                    v-if="contacts.length"
-                                    variant="outline"
-                                    size="sm"
-                                    :disabled="enriching"
-                                    data-test="find-details"
-                                    @click="enrich('email')"
-                                >
-                                    <Mail class="size-3.5" />
-                                    {{ t('Find their details') }}
-                                </Button>
-                            </template>
-                        </div>
-                    </div>
+                    <template #actions>
+                        <!-- Contact enrichment (PL3). Two buttons because they are two
+                             different spends: finding *who* to talk to, and finding *how* to
+                             reach the people already here. A single "Enrich" would hide which
+                             one a member was paying for. -->
+                        <template v-if="enrichment && can.work">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                :disabled="enriching"
+                                data-test="find-people"
+                                @click="enrich('people')"
+                            >
+                                <UserSearch class="size-3.5" />
+                                {{ t('Find decision-makers') }}
+                            </Button>
+                            <Button
+                                v-if="contacts.length"
+                                variant="outline"
+                                size="sm"
+                                :disabled="enriching"
+                                data-test="find-details"
+                                @click="enrich('email')"
+                            >
+                                <Mail class="size-3.5" />
+                                {{ t('Find their details') }}
+                            </Button>
+                        </template>
+
+                        <!-- The add action sits where every other panel's sits, which is the
+                             whole reason `Panel` owns the slot: this one used to be under the
+                             list at the start edge while the tasks panel's was above it at the
+                             end, so a reader learned the layout twice. -->
+                        <span ref="addContactTrigger">
+                            <Button
+                                v-if="can.work && !addingContact"
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                data-test="add-contact-open"
+                                @click="addingContact = true"
+                            >
+                                <UserRoundPlus class="size-3.5" />
+                                {{ t('Add a contact') }}
+                            </Button>
+                        </span>
+                    </template>
 
                     <!-- Live, over the team's Reverb channel. A member who clicked Find has to
                          see that something is happening, or they click it again. -->
@@ -1082,6 +1078,15 @@ onBeforeUnmount(() => {
                         <Spinner class="size-3" />
                         {{ t('Alima is looking…') }}
                     </p>
+
+                    <!-- Directly under the button that opens it rather than at the foot of the
+                         panel: a form that appears somewhere the click was not is a form a
+                         member has to go and find. -->
+                    <AddLeadContact
+                        v-if="can.work"
+                        v-model:open="addingContact"
+                        :lead-id="lead.id"
+                    />
 
                     <ListTable
                         v-if="contacts.length"
@@ -1216,22 +1221,44 @@ onBeforeUnmount(() => {
                         </tbody>
                     </ListTable>
 
-                    <p
-                        v-else
-                        class="rounded-2xl border border-dashed border-border bg-card/50 p-5 text-sm text-muted-foreground"
+                    <!-- Suppressed while the form is open: an empty state telling a member to
+                         add somebody, sitting directly above the form they are filling in. -->
+                    <EmptyState
+                        v-else-if="!addingContact"
+                        :icon="Users"
+                        size="sm"
+                        :title="t('Nobody here yet')"
+                        :description="
+                            t(
+                                'Alima looks for role-based addresses on the company’s own pages. Find the decision-makers, or add somebody you already know.',
+                            )
+                        "
                         data-test="no-contacts"
                     >
-                        {{
-                            t(
-                                'No contacts found yet. Alima looks for role-based addresses on the company’s own pages — add one yourself if you already know who to speak to.',
-                            )
-                        }}
-                    </p>
-
-                    <!-- Whether or not Alima found anybody: a member who knows a second person at
-                         the company has the same need as one looking at an empty panel. -->
-                    <AddLeadContact v-if="can.work" :lead-id="lead.id" />
-                </section>
+                        <Button
+                            v-if="enrichment && can.work"
+                            variant="brand"
+                            size="sm"
+                            :disabled="enriching"
+                            data-test="find-people-empty"
+                            @click="enrich('people')"
+                        >
+                            <UserSearch class="size-4" />
+                            {{ t('Find decision-makers') }}
+                        </Button>
+                        <Button
+                            v-if="can.work"
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            data-test="add-contact-empty"
+                            @click="addingContact = true"
+                        >
+                            <UserRoundPlus class="size-4" />
+                            {{ t('Add a contact') }}
+                        </Button>
+                    </EmptyState>
+                </Panel>
 
                 <!-- The team's own work on the lead (Phase 10b) -->
                 <LeadTasks
@@ -1248,14 +1275,9 @@ onBeforeUnmount(() => {
                 />
 
                 <!-- Timeline -->
-                <section class="space-y-4">
-                    <h2
-                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
-                    >
-                        {{ t('History') }}
-                    </h2>
+                <Panel :title="t('History')" data-test="history">
                     <ActivityTimeline :activities="activities" />
-                </section>
+                </Panel>
             </div>
         </div>
     </div>

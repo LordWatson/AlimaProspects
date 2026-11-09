@@ -924,3 +924,63 @@ are all `aria-hidden` may be ignored outright — the pill could have announced 
 
 **Still open:** the mobile app's `--alima-text-muted` has not been measured against its surfaces in
 dark mode the way §7.10's web tokens have.
+
+### 7o. Added 2026-11-09 (one section shell for a record screen)
+
+The lead record page had **five** different section shells and two different places to put an
+"Add…" button. Contacts put its add action below the list at the start edge; tasks put its above
+the list at the end edge; four panels drew their own cream card by hand; four others had no surface
+at all; and "Why now" was the only one on the stock shadcn `Card`, so the most important panel on
+the screen was also the one that looked like it came from a different product. A reader learned the
+layout again in every panel.
+
+`resources/js/components/ui/panel/Panel.vue` is now the one shell, and the page's ten panels are
+all it. Five things in it, and the first is the only one that is really a rule.
+
+1. **A panel's actions live in its header, at the end edge.** This is why the component exists
+   rather than a style it happens to have: the slot is in one place, so the next panel somebody
+   writes cannot put its button somewhere new. `#description` takes a standing hint about the whole
+   panel (the contacts panel's "Role addresses first") which had been sharing a row with the
+   buttons and losing.
+2. **One emphasised panel per screen. For approval.** `emphasis` sets the title as
+   `text-base font-semibold` instead of the DM Mono eyebrow, and exactly one panel on the record
+   takes it — "Why now", which is the reason the member opened the lead. Without it the screen is
+   ten equal boxes and has no lead at all. Two things to confirm with it. It is a **brand decision
+   rather than a free choice**, and nothing enforces the "one" — it is a convention in a code
+   comment. And §3's "max two weights per layout" is **already stretched on this screen**
+   independently of this change: it carries Regular, Medium (`LeadWorkPanel`'s group labels,
+   `WhyNowPanel`'s evidence labels) and SemiBold (the origin panel's event titles). Confirm the
+   product reading of the weight rule — a page of panels is not a poster — or the medium weights go.
+3. **A hairline under every panel header. For approval.** `border-b border-border pb-4`, which
+   gives each panel a defined top instead of a title floating over its content. §7m.4 removed the
+   record card's _own_ hairline "with the name it used to separate", which was about that card's
+   borrowed hero composition rather than a rule against panel rules — but with ten panels the
+   screen now carries more horizontal lines than it did. Confirm, or the rule comes out and the
+   header is separated by space alone.
+4. **A surface nested inside a panel is `bg-background`, not `bg-card`.** The add-a-contact and
+   add-a-task forms, the task rows and the note rows were all `bg-card` **on** a `bg-card` panel,
+   which is invisible. The canvas colour is a step darker than the card in both modes, so it reads
+   as inset. It also helps a measurement: `--input` is `3.1:1` against `bg.canvas` by §2.1's own
+   figure, and was slightly under that on the lighter card, so a control's boundary (WCAG 1.4.11)
+   is now met in light mode where it was marginal. **Dark mode still fails it** — `--input`
+   `#514f5c` on `--background` `#181723` is about **2.2:1** — but that is §7.10's unapproved dark
+   tokens rather than anything new here, and it was ~2.0:1 on the card, so this change improves it.
+   Flagged so it is on the list with the rest of §7.10.
+5. **`EmptyState` gained `size="sm"`** for an empty state inside a panel rather than in place of a
+   page: three full-height ones stacked down a record (no contacts, no tasks, no notes) made a new
+   lead look like a fault. Two thirds the height, same composition. The three hand-rolled
+   dashed-border paragraphs that were doing this job are gone.
+
+**One thing the UX review changed, recorded because it is a rule rather than a fix.** An empty
+state carries the action that resolves it **even when the panel header already has that action**:
+the contacts empty state got "Find decision-makers" and "Add a contact" back, because the header's
+buttons can be two wrapped rows above where the eye lands on a phone, and an empty panel is the
+first-run moment. Notes and tasks keep theirs header-only — the notes composer is already open and
+the tasks header sits directly above its own empty state.
+
+**Left standing, and worth knowing before the next panel.** The contacts panel carries **three**
+header actions (two paid-enrichment spends plus the manual add) and they wrap at 375px. The UX
+review would collapse the two spends into a dropdown labelled "Find with Alima"; it was left
+because a dropdown adds a click to the main first-run action on desktop, and the two buttons exist
+precisely so a member can see which spend they are authorising (ADR 0029, §7h's note on naming a
+cost). Confirm, or they become a menu whose items each still name their own spend.

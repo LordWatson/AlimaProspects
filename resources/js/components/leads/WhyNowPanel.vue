@@ -5,13 +5,13 @@ import { computed, ref } from 'vue';
 import ConfidencePill from '@/components/leads/ConfidencePill.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Panel } from '@/components/ui/panel';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import type { EvidenceVerdict, Lead, LeadEvidence } from '@/types';
@@ -97,211 +97,201 @@ function verdictLabel(verdict: EvidenceVerdict): string {
 </script>
 
 <template>
-    <Card data-test="why-now">
-        <CardHeader class="gap-2">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle>{{ t('Why now') }}</CardTitle>
-                <ConfidencePill
-                    :confidence="lead.confidence"
-                    :band="lead.confidence_band"
-                    size="md"
-                />
-            </div>
-            <p v-if="freshest" class="text-xs text-muted-foreground">
-                {{
-                    t('Freshest thing we know: :when', {
-                        when: relative(freshest),
-                    })
-                }}
-            </p>
-        </CardHeader>
+    <Panel :title="t('Why now')" emphasis data-test="why-now">
+        <template #actions>
+            <ConfidencePill
+                :confidence="lead.confidence"
+                :band="lead.confidence_band"
+                size="md"
+            />
+        </template>
 
-        <CardContent class="space-y-5">
-            <!-- Alima's reading of the facts below. Labelled as such, and never shown on its
+        <template v-if="freshest" #description>
+            {{
+                t('Freshest thing we know: :when', {
+                    when: relative(freshest),
+                })
+            }}
+        </template>
+
+        <!-- Alima's reading of the facts below. Labelled as such, and never shown on its
                  own: the evidence is always underneath it. -->
-            <div v-if="lead.why_now_summary" class="space-y-1">
-                <p
-                    class="flex items-center gap-1.5 font-mono text-xs tracking-wide text-muted-foreground uppercase"
-                >
-                    <Sparkles class="size-3" aria-hidden="true" />
-                    {{ t('Alima’s read') }}
-                </p>
-                <p class="text-sm leading-relaxed" dir="auto">
-                    {{ lead.why_now_summary }}
-                </p>
-            </div>
-
-            <!-- Nothing yet. Two different situations, and the member should be able to tell
-                 them apart: no reasons at all, versus reasons but no sentence written yet. -->
-            <p v-if="!items.length" class="text-sm text-muted-foreground">
-                {{
-                    t(
-                        'Alima hasn’t found a reason to contact this company yet. Reasons arrive with discovery, enrichment and your signal watches.',
-                    )
-                }}
+        <div v-if="lead.why_now_summary" class="space-y-1">
+            <p
+                class="flex items-center gap-1.5 font-mono text-xs tracking-wide text-muted-foreground uppercase"
+            >
+                <Sparkles class="size-3" aria-hidden="true" />
+                {{ t('Alima’s read') }}
             </p>
+            <p class="text-sm leading-relaxed" dir="auto">
+                {{ lead.why_now_summary }}
+            </p>
+        </div>
 
-            <ol v-else class="space-y-4">
-                <li
-                    v-for="item in items"
-                    :key="item.id"
-                    class="border-s-2 border-border ps-3"
-                    :data-test="`evidence-${item.id}`"
-                >
-                    <div
-                        class="flex flex-wrap items-start justify-between gap-2"
-                    >
-                        <div class="min-w-0 space-y-1">
-                            <p
-                                class="text-sm font-medium"
-                                :class="
-                                    item.is_disputed
-                                        ? 'text-muted-foreground line-through'
-                                        : ''
-                                "
-                                dir="auto"
-                            >
-                                {{ item.title }}
-                            </p>
-                            <p
-                                v-if="item.summary"
-                                class="text-xs text-muted-foreground"
-                                dir="auto"
-                            >
-                                {{ item.summary }}
-                            </p>
-                        </div>
+        <!-- Nothing yet. Two different situations, and the member should be able to tell
+                 them apart: no reasons at all, versus reasons but no sentence written yet. -->
+        <p v-if="!items.length" class="text-sm text-muted-foreground">
+            {{
+                t(
+                    'Alima hasn’t found a reason to contact this company yet. Reasons arrive with discovery, enrichment and your signal watches.',
+                )
+            }}
+        </p>
 
-                        <!-- Flagging is work, not reading: Read-only members see the panel and
-                             no menu. -->
-                        <DropdownMenu v-if="canFlag">
-                            <DropdownMenuTrigger as-child>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    :disabled="flagging === item.id"
-                                    :aria-label="
-                                        t('Flag “:title”', {
-                                            title: item.title,
-                                        })
-                                    "
-                                    :data-test="`flag-${item.id}`"
-                                >
-                                    <Flag class="size-4" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                    v-for="verdict in verdicts"
-                                    :key="verdict.value"
-                                    :data-test="`flag-${item.id}-${verdict.value}`"
-                                    @select="flag(item, verdict.value)"
-                                >
-                                    {{ t(verdict.label) }}
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+        <ol v-else class="space-y-4">
+            <li
+                v-for="item in items"
+                :key="item.id"
+                class="border-s-2 border-border ps-3"
+                :data-test="`evidence-${item.id}`"
+            >
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="min-w-0 space-y-1">
+                        <p
+                            class="text-sm font-medium"
+                            :class="
+                                item.is_disputed
+                                    ? 'text-muted-foreground line-through'
+                                    : ''
+                            "
+                            dir="auto"
+                        >
+                            {{ item.title }}
+                        </p>
+                        <p
+                            v-if="item.summary"
+                            class="text-xs text-muted-foreground"
+                            dir="auto"
+                        >
+                            {{ item.summary }}
+                        </p>
                     </div>
 
-                    <div
-                        class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
-                    >
-                        <!-- The kind, as the row's one chip. A trigger event is the thing that
+                    <!-- Flagging is work, not reading: Read-only members see the panel and
+                             no menu. -->
+                    <DropdownMenu v-if="canFlag">
+                        <DropdownMenuTrigger as-child>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                :disabled="flagging === item.id"
+                                :aria-label="
+                                    t('Flag “:title”', {
+                                        title: item.title,
+                                    })
+                                "
+                                :data-test="`flag-${item.id}`"
+                            >
+                                <Flag class="size-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                                v-for="verdict in verdicts"
+                                :key="verdict.value"
+                                :data-test="`flag-${item.id}-${verdict.value}`"
+                                @select="flag(item, verdict.value)"
+                            >
+                                {{ t(verdict.label) }}
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+
+                <div
+                    class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+                >
+                    <!-- The kind, as the row's one chip. A trigger event is the thing that
                              makes a lead urgent, so it is the only kind that says so in a tinted
                              badge; everything else is an outline. -->
-                        <Badge
-                            :variant="item.is_timing ? 'lime' : 'outline'"
-                            class="text-xs"
-                        >
-                            {{ t(item.kind_label) }}
-                        </Badge>
+                    <Badge
+                        :variant="item.is_timing ? 'lime' : 'outline'"
+                        class="text-xs"
+                    >
+                        {{ t(item.kind_label) }}
+                    </Badge>
 
-                        <!-- Never a translation key: this is an outlet's or a register's own name. -->
-                        <span class="text-muted-foreground" dir="auto">{{
-                            item.source_label
-                        }}</span>
+                    <!-- Never a translation key: this is an outlet's or a register's own name. -->
+                    <span class="text-muted-foreground" dir="auto">{{
+                        item.source_label
+                    }}</span>
 
-                        <span
-                            v-if="item.observed_at"
-                            class="text-muted-foreground"
-                        >
-                            {{ date(item.observed_at) }}
-                        </span>
+                    <span v-if="item.observed_at" class="text-muted-foreground">
+                        {{ date(item.observed_at) }}
+                    </span>
 
-                        <!-- Only when it differs from the event's own date, which is when the gap
+                    <!-- Only when it differs from the event's own date, which is when the gap
                              is worth knowing about. -->
-                        <span
-                            v-if="
-                                item.observed_at &&
-                                date(item.captured_at) !==
-                                    date(item.observed_at)
-                            "
-                            class="text-muted-foreground"
-                        >
-                            {{
-                                t('found :when', {
-                                    when: relative(item.captured_at),
-                                })
-                            }}
-                        </span>
-                        <span
-                            v-else-if="!item.observed_at"
-                            class="text-muted-foreground"
-                        >
-                            {{
-                                t('found :when', {
-                                    when: relative(item.captured_at),
-                                })
-                            }}
-                        </span>
+                    <span
+                        v-if="
+                            item.observed_at &&
+                            date(item.captured_at) !== date(item.observed_at)
+                        "
+                        class="text-muted-foreground"
+                    >
+                        {{
+                            t('found :when', {
+                                when: relative(item.captured_at),
+                            })
+                        }}
+                    </span>
+                    <span
+                        v-else-if="!item.observed_at"
+                        class="text-muted-foreground"
+                    >
+                        {{
+                            t('found :when', {
+                                when: relative(item.captured_at),
+                            })
+                        }}
+                    </span>
 
-                        <a
-                            v-if="item.source_url"
-                            :href="item.source_url"
-                            target="_blank"
-                            rel="noopener nofollow"
-                            class="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
-                        >
-                            {{ t('Source') }}
-                            <ExternalLink class="size-3" aria-hidden="true" />
-                        </a>
-                    </div>
+                    <a
+                        v-if="item.source_url"
+                        :href="item.source_url"
+                        target="_blank"
+                        rel="noopener nofollow"
+                        class="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
+                    >
+                        {{ t('Source') }}
+                        <ExternalLink class="size-3" aria-hidden="true" />
+                    </a>
+                </div>
 
-                    <!-- How much this reason is carrying today, as a neutral magnitude. No hue,
+                <!-- How much this reason is carrying today, as a neutral magnitude. No hue,
                          no letter, no grade: it is a weight, not a verdict. -->
-                    <div class="mt-1.5 flex items-center gap-1.5">
+                <div class="mt-1.5 flex items-center gap-1.5">
+                    <span
+                        class="h-1 w-12 overflow-hidden rounded-full bg-muted"
+                        aria-hidden="true"
+                    >
                         <span
-                            class="h-1 w-12 overflow-hidden rounded-full bg-muted"
-                            aria-hidden="true"
-                        >
-                            <span
-                                class="block h-full rounded-full bg-foreground/60"
-                                :style="{ width: `${item.weight}%` }"
-                            />
-                        </span>
-                        <span class="text-xs text-muted-foreground">
-                            {{
-                                item.is_disputed
-                                    ? t('Flagged wrong — no longer counted')
-                                    : t('Strength :weight of 100', {
-                                          weight: String(item.weight),
-                                      })
-                            }}
-                        </span>
-                        <span
-                            v-if="item.my_verdict"
-                            class="text-xs text-muted-foreground"
-                        >
-                            ·
-                            {{
-                                t('You said: :verdict', {
-                                    verdict: verdictLabel(item.my_verdict),
-                                })
-                            }}
-                        </span>
-                    </div>
-                </li>
-            </ol>
-        </CardContent>
-    </Card>
+                            class="block h-full rounded-full bg-foreground/60"
+                            :style="{ width: `${item.weight}%` }"
+                        />
+                    </span>
+                    <span class="text-xs text-muted-foreground">
+                        {{
+                            item.is_disputed
+                                ? t('Flagged wrong — no longer counted')
+                                : t('Strength :weight of 100', {
+                                      weight: String(item.weight),
+                                  })
+                        }}
+                    </span>
+                    <span
+                        v-if="item.my_verdict"
+                        class="text-xs text-muted-foreground"
+                    >
+                        ·
+                        {{
+                            t('You said: :verdict', {
+                                verdict: verdictLabel(item.my_verdict),
+                            })
+                        }}
+                    </span>
+                </div>
+            </li>
+        </ol>
+    </Panel>
 </template>
