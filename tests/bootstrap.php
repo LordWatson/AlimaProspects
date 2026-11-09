@@ -36,9 +36,8 @@ if (file_exists($cachedConfig)) {
     // it too — this covers every other entry point.
     @unlink($cachedConfig);
 
-    fwrite(STDERR, "[tests] Removed bootstrap/cache/config.php: a cached config overrides every "
-        ."pin in phpunit.xml, including the database.
-");
+    fwrite(STDERR, '[tests] Removed bootstrap/cache/config.php: a cached config overrides every '
+        ."pin in phpunit.xml, including the database.\n");
 }
 
 /*
