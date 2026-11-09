@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\LeadCollaborationController;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\LeadController;
+use App\Modules\LeadsWorkspace\Http\Controllers\Web\LeadExportController;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\LeadTransferController;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\PipelineController;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\SavedViewController;
@@ -49,6 +50,21 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('leads/export', [LeadTransferController::class, 'export'])
         ->middleware(['throttle:leads-bulk', 'capability:csv_export'])
         ->name('leads.export');
+
+    // PL6's export, behind `prelaunch.export` (the controller checks it). **POST**, unlike the
+    // streamed one above, because this one creates a row, holds part of the team's allowance and
+    // writes a file — and a GET that did any of that would be done by a browser's prefetcher.
+    Route::post('leads/export', [LeadTransferController::class, 'exportFile'])
+        ->middleware(['throttle:leads-bulk', 'capability:csv_export'])
+        ->name('leads.export.store');
+
+    // The file itself. Not gated on `capability:csv_export`: the export has already been paid for
+    // out of the team's allowance, and refusing somebody their own finished file because a plan
+    // changed on Tuesday would be punishing them for our timing. The controller checks the team,
+    // the policy and the row's expiry (see its note).
+    Route::get('leads/exports/{export}/download', [LeadExportController::class, 'download'])
+        ->whereNumber('export')
+        ->name('leads.exports.download');
 
     // Notes and tasks are addressed by their own id, not the lead's — they are already team-scoped,
     // and carrying the lead in the URL would just be a second thing to keep in step.

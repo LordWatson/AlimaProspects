@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Modules\LeadsWorkspace\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Core\Enums\PrelaunchFeature;
 use App\Modules\LeadsWorkspace\Actions\BulkUpdateLeadsAction;
 use App\Modules\LeadsWorkspace\Actions\ExportLeadsAction;
 use App\Modules\LeadsWorkspace\Actions\ImportLeadsAction;
+use App\Modules\LeadsWorkspace\Actions\StartLeadExportAction;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\Concerns\ResolvesWorkspace;
 use App\Modules\LeadsWorkspace\Http\Requests\BulkLeadActionRequest;
 use App\Modules\LeadsWorkspace\Http\Requests\ImportLeadsRequest;
 use App\Modules\LeadsWorkspace\Http\Requests\ListLeadsRequest;
+use App\Modules\LeadsWorkspace\Http\Requests\StartLeadExportRequest;
 use App\Modules\LeadsWorkspace\Services\LeadCsvImporter;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -81,6 +84,47 @@ final class LeadTransferController extends Controller
         $this->authorize('export', $this->transientLead($team));
 
         return $export->handle($team, $user, $request->filters());
+    }
+
+    /**
+     * The export as PL6 does it: a preset, a receipt, and a file that may be built by a worker.
+     *
+     * Behind `prelaunch.export`, with the Phase 10b streamed export above still serving every team
+     * the flag is off for. Two paths out of here and both are a browser navigation rather than an
+     * Inertia visit, because what the member gets back is a file:
+     *
+     * - **Small enough to wait for:** a redirect to the download, so the file arrives in the click
+     *   they made. The receipt — rows written, companies left out — is on the row, and the leads
+     *   screen lists it.
+     * - **Too big:** back to the list with a toast, and a notification when the worker has it.
+     */
+    public function exportFile(
+        StartLeadExportRequest $request,
+        StartLeadExportAction $start,
+    ): RedirectResponse {
+        $user = $this->user($request);
+        $team = $this->team($request);
+
+        // A route that is not live for this team is a route that does not exist, rather than one
+        // that answers 403 — the flag is about whether the code is finished, not about permission.
+        abort_unless(PrelaunchFeature::Export->activeFor($team), 404);
+
+        $this->authorize('export', $this->transientLead($team));
+
+        $export = $start->handle($team, $user, $request->filters(), $request->preset(), $request->columns());
+
+        if ($export->isDownloadable()) {
+            // No toast: the file landing in their downloads is the feedback, and a flashed message
+            // would surface at whatever moment they next navigated.
+            return redirect()->route('leads.exports.download', ['export' => $export->getKey()]);
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'info',
+            'message' => __('Alima is building your export. We’ll tell you the moment it’s ready.'),
+        ]);
+
+        return back();
     }
 
     /**

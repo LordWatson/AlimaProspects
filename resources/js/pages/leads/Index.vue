@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
     ChevronRight,
     Columns3,
@@ -34,12 +34,21 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
@@ -49,6 +58,7 @@ import type {
     EnrichmentStatus,
     Lead,
     LeadFilterOptions,
+    LeadExportProps,
     LeadFilterState,
     LeadSort,
     LeadTag,
@@ -111,6 +121,14 @@ const props = defineProps<{
     minConfidence: number;
     /** Whether this team has contact enrichment (PL3). Off = no bulk Find button. */
     enrichment: boolean;
+    // --- CSV export (PL6) ---
+    /**
+     * Presets, the column catalogue and the team's recent exports. `enabled` off = the old link.
+     *
+     * Not called `export`: that is a reserved word, and a template expression reading
+     * `export.enabled` is a syntax error rather than a property access.
+     */
+    exportOptions: LeadExportProps;
 }>();
 
 const { t } = useI18n();
@@ -403,6 +421,61 @@ const exportUrl = computed(() => {
     return query === '' ? '/leads/export' : `/leads/export?${query}`;
 });
 
+/*
+ * The export dialog (PL6).
+ *
+ * It submits a **real browser form POST**, not an Inertia visit, for the reason the compliance
+ * export already does: the response is a file, and an XHR response cannot reach the user's disk.
+ * POST rather than GET because this export creates a row, holds part of the team's monthly
+ * allowance and writes a file - all three of which a browser's prefetcher would happily do on a
+ * link. The filters ride along in `exportUrl`'s query string, so the file is what is on screen.
+ */
+const page = usePage();
+const csrfToken = computed(() => page.props.csrfToken ?? '');
+const exportOpen = ref(false);
+const exportPreset = ref(
+    props.exportOptions.presets?.[0]?.value ?? 'leads_only',
+);
+const exportColumns = ref<string[]>([]);
+
+const isCustomExport = computed(() => exportPreset.value === 'custom');
+
+/** The columns the file will have, so a member can see the header row before they commit to it. */
+const exportColumnPreview = computed<string[]>(() =>
+    isCustomExport.value
+        ? exportColumns.value
+        : (props.exportOptions.presets?.find(
+              (item) => item.value === exportPreset.value,
+          )?.columns ?? []),
+);
+
+const recentExports = computed(() => props.exportOptions.recent ?? []);
+
+/**
+ * Close the dialog once the form has gone.
+ *
+ * A file response does not navigate, so without this the dialog sits open looking as though
+ * nothing happened — and a second click would create a second export and spend the allowance
+ * again. Deferred by a tick because closing synchronously can cancel the submit.
+ */
+function closeExportDialog(): void {
+    window.setTimeout(() => {
+        exportOpen.value = false;
+    }, 0);
+}
+
+// Choosing your own columns starts from the importable set rather than from nothing: an empty
+// list is a file with no columns, and nobody wants that as a starting point.
+watch(exportPreset, (value) => {
+    if (value === 'custom' && exportColumns.value.length === 0) {
+        exportColumns.value = [
+            ...(props.exportOptions.presets?.find(
+                (item) => item.value === 'leads_only',
+            )?.columns ?? []),
+        ];
+    }
+});
+
 /**
  * Push the new filter set into the URL and let the server rebuild the list. Everything about what
  * is on screen lives in the query string, so a filtered list can be shared, bookmarked and walked
@@ -564,9 +637,19 @@ function updatedAt(lead: Lead): string {
                                 {{ t('Import a CSV') }}
                             </Link>
                         </DropdownMenuItem>
-                        <!-- A plain link, not an Inertia visit: the response is a streamed
-                             file download. -->
-                        <DropdownMenuItem v-if="can.export" as-child>
+                        <!-- PL6: the dialog, where a member picks what goes in the file. With
+                             the flag off, the Phase 10b link - a plain link and not an Inertia
+                             visit, because the response is a streamed file download. -->
+                        <DropdownMenuItem
+                            v-if="can.export && exportOptions.enabled"
+                            class="cursor-pointer"
+                            data-test="export-open"
+                            @select="exportOpen = true"
+                        >
+                            <Download class="size-4" />
+                            {{ t('Export what I can see') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem v-else-if="can.export" as-child>
                             <a
                                 :href="exportUrl"
                                 class="w-full cursor-pointer"
@@ -1010,4 +1093,185 @@ function updatedAt(lead: Lead): string {
             </template>
         </template>
     </div>
+
+    <!-- PL6 -->
+    <Dialog
+        v-if="can.export && exportOptions.enabled"
+        v-model:open="exportOpen"
+    >
+        <DialogContent class="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
+            <DialogHeader>
+                <DialogTitle>{{ t('Take these leads out') }}</DialogTitle>
+                <DialogDescription>
+                    {{
+                        t(
+                            'The file has what is on screen now — the same filters, the same order. Only the emails and numbers you have already revealed are included, and companies on your do-not-contact list are left out.',
+                        )
+                    }}
+                </DialogDescription>
+            </DialogHeader>
+
+            <form
+                method="post"
+                :action="exportUrl"
+                class="space-y-5"
+                @submit="closeExportDialog"
+            >
+                <input type="hidden" name="_token" :value="csrfToken" />
+
+                <fieldset class="space-y-2">
+                    <legend class="mb-2 text-sm font-semibold text-foreground">
+                        {{ t('What goes in the file') }}
+                    </legend>
+
+                    <Label
+                        v-for="preset in exportOptions.presets ?? []"
+                        :key="preset.value"
+                        class="flex cursor-pointer items-start gap-3 rounded-2xl border border-border p-3 transition-colors has-[:checked]:border-brand has-[:checked]:bg-brand/5 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring"
+                    >
+                        <input
+                            v-model="exportPreset"
+                            type="radio"
+                            name="preset"
+                            class="mt-0.5 size-4 accent-brand"
+                            :value="preset.value"
+                        />
+                        <span class="space-y-1">
+                            <span class="block text-sm text-foreground">{{
+                                t(preset.label)
+                            }}</span>
+                            <span class="block text-xs text-muted-foreground">{{
+                                t(preset.description)
+                            }}</span>
+                        </span>
+                    </Label>
+                </fieldset>
+
+                <!-- The column keys themselves, not prettified labels: this is the header row
+                     the member is about to open in a spreadsheet. -->
+                <fieldset v-if="isCustomExport" class="space-y-2">
+                    <legend class="mb-2 text-sm font-semibold text-foreground">
+                        {{ t('Columns') }}
+                    </legend>
+                    <div class="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                        <Label
+                            v-for="column in exportOptions.columns ?? []"
+                            :key="column"
+                            class="flex cursor-pointer items-center gap-2 rounded-lg p-2 text-xs has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring"
+                        >
+                            <input
+                                v-model="exportColumns"
+                                type="checkbox"
+                                name="columns[]"
+                                class="size-4 accent-brand"
+                                :value="column"
+                            />
+                            <bdi class="font-mono text-muted-foreground">{{
+                                column
+                            }}</bdi>
+                        </Label>
+                    </div>
+                </fieldset>
+
+                <p
+                    v-if="isCustomExport && exportColumns.length === 0"
+                    id="export-columns-hint"
+                    class="text-xs text-muted-foreground"
+                >
+                    {{ t('Pick exactly the columns you need.') }}
+                </p>
+
+                <p class="text-xs text-muted-foreground">
+                    {{
+                        t(':count columns in this file.', {
+                            count: exportColumnPreview.length,
+                        })
+                    }}
+                    {{
+                        t(
+                            'Over :count rows Alima builds it in the background and tells you when it is ready.',
+                            { count: exportOptions.syncMaxRows ?? 500 },
+                        )
+                    }}
+                </p>
+
+                <DialogFooter>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        @click="exportOpen = false"
+                    >
+                        {{ t('Cancel') }}
+                    </Button>
+                    <Button
+                        type="submit"
+                        variant="brand"
+                        :disabled="isCustomExport && exportColumns.length === 0"
+                        :aria-describedby="
+                            isCustomExport && exportColumns.length === 0
+                                ? 'export-columns-hint'
+                                : undefined
+                        "
+                        data-test="export-submit"
+                    >
+                        <Download class="size-4" />
+                        {{ t('Export') }}
+                    </Button>
+                </DialogFooter>
+            </form>
+
+            <!-- The receipt. Where a queued file lands, and where somebody comes back for one
+                 whose email they have deleted. -->
+            <section
+                v-if="recentExports.length"
+                class="space-y-2 border-t border-border pt-4"
+            >
+                <h3 class="text-sm font-semibold text-foreground">
+                    {{ t('Recent exports') }}
+                </h3>
+                <ul class="space-y-2">
+                    <li
+                        v-for="item in recentExports"
+                        :key="item.id"
+                        class="flex flex-wrap items-center justify-between gap-2 text-xs"
+                    >
+                        <span class="text-muted-foreground">
+                            <bdi>{{ t(item.preset_label) }}</bdi>
+                            <span aria-hidden="true"> &middot; </span>
+                            <bdi>{{ t(item.state_label) }}</bdi>
+                            <template v-if="item.state === 'ready'">
+                                <span aria-hidden="true"> &middot; </span>
+                                <bdi>{{
+                                    t(':count rows', {
+                                        count: number(item.row_count),
+                                    })
+                                }}</bdi>
+                            </template>
+                            <template v-if="item.suppressed_count > 0">
+                                <span aria-hidden="true"> &middot; </span>
+                                <bdi>{{
+                                    t(
+                                        ':count left out for a do-not-contact entry',
+                                        {
+                                            count: number(
+                                                item.suppressed_count,
+                                            ),
+                                        },
+                                    )
+                                }}</bdi>
+                            </template>
+                        </span>
+                        <a
+                            v-if="item.downloadable"
+                            :href="'/leads/exports/' + item.id + '/download'"
+                            class="font-medium text-brand underline-offset-4 hover:underline"
+                            :data-test="'export-download-' + item.id"
+                        >
+                            {{ t('Download') }}
+                        </a>
+                    </li>
+                </ul>
+            </section>
+        </DialogContent>
+    </Dialog>
 </template>

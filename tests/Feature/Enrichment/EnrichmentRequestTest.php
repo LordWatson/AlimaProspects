@@ -327,6 +327,11 @@ it('refuses a reveal the approval gate will not allow', function (): void {
         {
             return false;
         }
+
+        public function allowsDomain(Team $team, string $domain): bool
+        {
+            return false;
+        }
     });
 
     // Asked **before** the charge: a bill for an address that may not be used is the worst of both

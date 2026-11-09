@@ -30,6 +30,18 @@ enum PrelaunchFeature: string
     /** PL3 — the vendor waterfall, the Contacts panel and the reveal. */
     case Enrichment = 'prelaunch.enrichment';
 
+    /** PL6 — column presets, the queued export, the download and the row allowance. */
+    case Export = 'prelaunch.export';
+
+    /**
+     * PL7 — the Integrations screen: outbound webhooks and the CRM framework.
+     *
+     * One flag for both halves, because they are one screen and one set of nouns. The CRM half has
+     * nothing to show until PL8 registers a connector, and a second flag for it would be a flag
+     * guarding a card that says "not available yet".
+     */
+    case Webhooks = 'prelaunch.webhooks';
+
     /**
      * Whether this flag is on for the given team.
      *

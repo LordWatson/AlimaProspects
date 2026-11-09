@@ -12,6 +12,7 @@ use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\Enrichment\Services\AllowAllContactApproval;
 use App\Modules\Enrichment\Services\EnrichmentWaterfall;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadsWorkspace\Services\LeadCsvExporter;
 use App\Modules\Outreach\Enums\SuppressionReason;
 use App\Modules\Outreach\Enums\SuppressionScope;
 use App\Modules\Outreach\Enums\SuppressionType;
@@ -43,6 +44,9 @@ it('reaches the gate from every path that stores or reveals a contact', function
     $paths = [
         RevealContactValueAction::class => [ContactApprovalGate::class, ContactNumberScreener::class],
         EnrichmentWaterfall::class => [ContactApprovalGate::class],
+        // PL6. The export is the path where honouring the list late is not good enough: once a
+        // row is in a spreadsheet on somebody's laptop, no later opt-out can reach it.
+        LeadCsvExporter::class => [ContactApprovalGate::class],
     ];
 
     foreach ($paths as $class => $expected) {
@@ -89,6 +93,28 @@ it('refuses to charge for an address the team may not use', function (): void {
         ->toThrow(EnrichmentException::class);
 
     expect($contact->refresh()->revealed_email_at)->toBeNull();
+});
+
+it('answers the company-level question the export asks', function (): void {
+    [, $team] = Fixtures::team();
+
+    app(SuppressionList::class)->suppress(
+        SuppressionType::Domain,
+        'optedout.test',
+        SuppressionScope::Team,
+        SuppressionReason::Manual,
+        (int) $team->getKey(),
+    );
+
+    $gate = app(ContactApprovalGate::class);
+
+    // A URL rather than a bare host, because that is what `leads.website` holds — the normaliser
+    // is `ContactIdentity`'s, shared with the suppression table itself.
+    expect($gate->allowsDomain($team, 'https://optedout.test/contact'))->toBeFalse()
+        ->and($gate->allowsDomain($team, 'fine.test'))->toBeTrue()
+        // Not a domain at all is not a refusal: there is nothing to judge, and refusing would
+        // drop every lead with a malformed website from every export.
+        ->and($gate->allowsDomain($team, 'not a domain'))->toBeTrue();
 });
 
 it('treats a suppressed domain as covering everyone at the company', function (): void {

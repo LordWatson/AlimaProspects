@@ -68,4 +68,21 @@ return [
         'export_chunk' => (int) env('LEADS_CSV_EXPORT_CHUNK', 200),
     ],
 
+    // PL6's export — the one a member chooses columns for, which is metered and keeps its file.
+    'export' => [
+        // Up to this many rows the file is written in the request, because a member who clicked
+        // Export wants a file and not a promise. Past it a worker does it and a notification
+        // carries the link. Raising it a long way means a request that outlives a PHP timeout.
+        'sync_max_rows' => (int) env('LEADS_EXPORT_SYNC_MAX_ROWS', 500),
+
+        // How long a finished file is kept before `leads:prune-exports` deletes it. A team's whole
+        // lead list sitting on a disk for ever is a breach waiting for a misconfigured bucket; a
+        // week is long enough for somebody to come back from leave and download it.
+        'retain_days' => (int) env('LEADS_EXPORT_RETAIN_DAYS', 7),
+
+        // The filesystem disk. `local` is `storage/app/private` — **never** the public disk: a
+        // file of leads behind a guessable URL is the whole list, unauthenticated.
+        'disk' => (string) env('LEADS_EXPORT_DISK', 'local'),
+    ],
+
 ];

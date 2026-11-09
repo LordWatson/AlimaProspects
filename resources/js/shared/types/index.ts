@@ -21,6 +21,7 @@ export * from './business-intel';
 export * from './compliance';
 export * from './enrichment';
 export * from './icp';
+export * from './integrations';
 export * from './lead-sourcing';
 export * from './leads-workspace';
 export * from './locale';

@@ -10,6 +10,7 @@ use App\Modules\Compliance\Providers\ComplianceServiceProvider;
 use App\Modules\Core\Providers\CoreServiceProvider;
 use App\Modules\Enrichment\Providers\EnrichmentServiceProvider;
 use App\Modules\ICP\Providers\IcpServiceProvider;
+use App\Modules\Integrations\Providers\IntegrationsServiceProvider;
 use App\Modules\LeadSourcing\Providers\LeadSourcingServiceProvider;
 use App\Modules\LeadsWorkspace\Providers\LeadsWorkspaceServiceProvider;
 use App\Modules\Notifications\Providers\NotificationsServiceProvider;
@@ -47,6 +48,9 @@ return [
     NotificationsServiceProvider::class,
     ReportingServiceProvider::class,
     AiInsightsServiceProvider::class,
+    // PL7. After every module whose events it relays and whose models it observes; it binds
+    // nothing anybody else reads, so its position only has to be after those.
+    IntegrationsServiceProvider::class,
     // Last on purpose: it replaces Lead Sourcing's LIA stub and Outreach's restriction resolver
     // with the real ones, so it must register after both (ADR 0002 / docs/compliance.md §6).
     ComplianceServiceProvider::class,

@@ -20,18 +20,22 @@ use App\Modules\LeadsWorkspace\Actions\ListLeadsAction;
 use App\Modules\LeadsWorkspace\Actions\ListSavedViewsAction;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\LeadsWorkspace\Data\LeadOrigin;
+use App\Modules\LeadsWorkspace\Enums\ExportPreset;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\Concerns\ResolvesWorkspace;
 use App\Modules\LeadsWorkspace\Http\Requests\ListLeadsRequest;
 use App\Modules\LeadsWorkspace\Http\Requests\StoreLeadRequest;
 use App\Modules\LeadsWorkspace\Http\Resources\LeadActivityResource;
+use App\Modules\LeadsWorkspace\Http\Resources\LeadExportResource;
 use App\Modules\LeadsWorkspace\Http\Resources\LeadNoteResource;
 use App\Modules\LeadsWorkspace\Http\Resources\LeadTagResource;
 use App\Modules\LeadsWorkspace\Http\Resources\LeadTaskResource;
 use App\Modules\LeadsWorkspace\Http\Resources\PipelineStageResource;
 use App\Modules\LeadsWorkspace\Http\Resources\SavedViewResource;
+use App\Modules\LeadsWorkspace\Models\LeadExport;
 use App\Modules\LeadsWorkspace\Models\LeadTag;
 use App\Modules\LeadsWorkspace\Models\SavedView;
 use App\Modules\LeadsWorkspace\Policies\SavedViewPolicy;
+use App\Modules\LeadsWorkspace\Services\LeadCsvExporter;
 use App\Modules\LeadsWorkspace\Services\LeadQueryBuilder;
 use App\Modules\LeadsWorkspace\Support\LeadFilterOptions;
 use App\Modules\Scoring\Http\Resources\LeadScoreResource;
@@ -106,7 +110,50 @@ final class LeadController extends Controller
             'hiddenCount' => $whyNow ? $leadQuery->suppressedCount($team, $filters) : 0,
             'minConfidence' => $confidence->thresholdFor($team),
             'enrichment' => PrelaunchFeature::Enrichment->activeFor($team),
+            // --- CSV export (PL6) ---
+            // `exportOptions` rather than `export`, because `export` is a reserved word in a Vue
+            // template expression and `export.enabled` is a syntax error rather than a read.
+            'exportOptions' => $this->exportProps($team),
         ]);
+    }
+
+    /**
+     * What the export dialog needs (PL6), or nothing at all when the flag is off.
+     *
+     * The column catalogue is sent as **the keys themselves**, deliberately untranslated: they are
+     * the header row the member is about to open in a spreadsheet, and a prettified label would
+     * mean picking "Company name" and finding `company_name` in the file.
+     *
+     * `recent` is the receipt — how many rows each file holds and how many companies were left out
+     * because somebody there is on the do-not-contact list. It is also where a queued export lands
+     * and where somebody comes back for a file whose notification they have deleted.
+     *
+     * @return array<string, mixed>
+     */
+    private function exportProps(Team $team): array
+    {
+        if (! PrelaunchFeature::Export->activeFor($team)) {
+            return ['enabled' => false];
+        }
+
+        return [
+            'enabled' => true,
+            'syncMaxRows' => max(1, (int) config('leads-workspace.export.sync_max_rows', 500)),
+            'presets' => array_map(static fn (ExportPreset $preset): array => [
+                'value' => $preset->value,
+                'label' => $preset->label(),
+                'description' => $preset->description(),
+                'columns' => $preset->columns(),
+            ], ExportPreset::cases()),
+            'columns' => LeadCsvExporter::ALL_COLUMNS,
+            'recent' => LeadExportResource::collection(
+                LeadExport::query()
+                    ->where('team_id', $team->getKey())
+                    ->latest('id')
+                    ->limit(5)
+                    ->get()
+            )->resolve(request()),
+        ];
     }
 
     /**

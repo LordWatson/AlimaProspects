@@ -91,6 +91,13 @@ flowchart TD
   Bill -->|CreditSource| AIp
   Bill -->|LeadQuotaSource| LS
   Bill -->|SeatLimitSource| Auth
+  Bill -->|ExportRowAllowance| LW
+  Bill -->|CrmRowAllowance| Intg
+  LW -->|lead created, re-scored| Intg[Integrations]
+  Enr -->|contact enriched| Intg
+  Sig -->|signal detected| Intg
+  Comp -->|ContactApprovalGate| Intg
+  Intg -->|signed webhooks + CRM push| Ext[("Customer tools")]
   Bill -->|allowance low| Notif
   Core --> Admin[Admin internal ops]
   Admin -->|suspension decorates CreditSource| AIp
@@ -124,7 +131,7 @@ flowchart TD
 | 15  | Billing & Plans               | MVP (built, Phase 16)       | `modules/billing-plans.md`               |
 | 16  | Compliance & Privacy          | MVP (built, Phase 15 + PL5) | `modules/compliance-privacy.md`          |
 | 17  | Admin (internal ops)          | MVP (built, Phases 19a–19c) | `modules/admin.md`                       |
-| 18  | Integrations                  | Post-MVP                    | `modules/integrations.md`                |
+| 18  | Integrations                  | MVP (built, PL7)            | `modules/integrations.md`                |
 | 19  | Mobile App                    | Built (Phase 18)            | `modules/mobile-app.md`                  |
 
 ## 5. Cross-cutting concerns
@@ -153,6 +160,30 @@ flowchart TD
   granting nothing. Platform-wide knobs live in `platform_settings`, **schema'd by
   `config/admin.php`** — an undeclared key throws, which is what keeps it from becoming a junk drawer
   and what lets the settings screen be generated rather than hand-written.
+- **The export allowance is the sixth seam (PL6, ADR 0033):** `LeadsWorkspace\Contracts\ExportRowAllowance`
+  joins the five before it, and the pattern's cheapness is the argument for it — the whole of it is a
+  reserve/commit mapping onto `UsageAllowance`. It is bound **inside** `billing.enforce_plans`,
+  unlike PL4's `CreditReserver`, and that asymmetry is the decision: a contact reveal is money
+  leaving the building per unit, so its reserve is a cost guard that stands whatever the switch says;
+  a row of a team's own data leaving costs us nothing, so a ceiling on it is a plan feature.
+- **The CRM allowance is the seventh seam (PL7, ADR 0034):** `Integrations\Contracts\CrmRowAllowance`,
+  beside PL6's and bound **inside** `billing.enforce_plans` for the same reason — a record pushed to
+  a customer's CRM costs us nothing, so a ceiling on it is a plan feature rather than a cost guard.
+  `BillingMetric::CrmSync` had existed since PL4 with an allowance on every plan and nothing spending
+  it; this is what spends it, one unit per record that actually moved. A **skip** (nothing changed)
+  and a **refusal** (the company is on the do-not-contact list) both release the hold, because
+  charging for the framework being careful would make the `synced_hash` optimisation cost money.
+- **Anything that leaves Alima goes through Integrations (PL7, ADR 0034):** outbound webhooks and the
+  CRM framework are one module, and it **listens outwards** — four hookups on other modules' events
+  and models, and nothing imports it, exactly as nothing imports Billing or Compliance. Two rules
+  travel with the data rather than with the screen. First, the export's argument applies again: a
+  record in somebody's CRM, like a row in a spreadsheet, is beyond every later check, so
+  `ContactApprovalGate::allowsDomain()` is asked **before** a connector is reached and a value nobody
+  paid to reveal is omitted rather than masked. Second, the webhook payload is built with the app's
+  **own API resources**, so masking is automatic rather than remembered. A connector is a registry
+  entry (ADR 0008's pattern, fourth appearance), the signature is `SignalWebhookSecret`'s
+  construction pointed outwards, and `SafeUrl` is re-asked **and pinned** at send time because DNS
+  changes after a form is submitted.
 - **A plan limit is asked for at the point of spend, and the fourth seam decorates (Signals, S16):** `Signals\Contracts\SignalQuotaSource` joins `CreditSource`, `LeadQuotaSource` and `SeatLimitSource` as a seam Billing fills in by binding over the owning module's own default — but it is the first that **decorates** rather than replaces, because it answers eight figures and a plan definition is allowed to be partial. So a figure has three states: a number, an explicit `null` meaning _unlimited_, and an **absent key** meaning the plan has taken no position, which is the only one that falls through to the module's own floor. Its stub is therefore the one of the four that is **not** permissive: the floors it reports are cost guards Signals shipped with, and turning plan enforcement off must not turn those off too. Enforcement is in `SignalSpendGuard`, not middleware, for ADR 0012's reason — the scheduler, a nightly sync and a queued run all spend a team's allowance with no request behind them — and a **ceiling refuses while a partial allowance clamps**, which is the difference between a team getting nothing and getting what they are still entitled to.
 - **Platform reporting (Admin, Phase 19c, ADR 0016):** the business's own figures — MRR and its movements,
   retention, the onboarding funnel, allowance consumption, provider cost and **gross margin per
@@ -339,7 +370,7 @@ flowchart TD
   "unknown" failing toward the restriction rather than away from it, and "most restrictive" asked of
   `OutreachRestriction::allowsDirectMarketing()` rather than hard-coded. Any later source that
   infers a person from a published place is held to the same rule.
-- **Compliance:** suppression/opt-out/retention/DSAR enforced by the system (Compliance & Privacy + `docs/compliance.md`). **Built in Phase 15 and completed in PL5** (ADR 0032, which added the public request door, TPS/CTPS screening and the PECR subscriber type), and it reaches other modules through **six** seams rather than by them knowing about it — the three Phase 15 built: `LeadSourcingContractsLeadInterestGate` (no recorded lawful basis, no discovery), `OutreachContractsLeadRestrictionResolver` (how a prospect may be approached, from their jurisdiction as well as any flag on the lead), and `SignalsServicesSignalsPersonalDataExporter` (which Signals answers a data-subject request with). And the three PL5 added: `EnrichmentContractsContactApprovalGate` (may we hold and reveal this person's details at all), `EnrichmentContractsContactNumberScreener` (what a do-not-call register says about a number — a _second_ seam rather than part of the gate, because a screening records a fact and never refuses) and `LeadSourcingContractsSubscriberTypeResolver` (which kind of subscriber a prospect is, where a regime draws that distinction). The do-not-contact table stays in Outreach — see that module's doc for why.
+- **Compliance:** suppression/opt-out/retention/DSAR enforced by the system (Compliance & Privacy + `docs/compliance.md`). **Built in Phase 15 and completed in PL5** (ADR 0032, which added the public request door, TPS/CTPS screening and the PECR subscriber type), and it reaches other modules through **six** seams rather than by them knowing about it — the three Phase 15 built: `LeadSourcingContractsLeadInterestGate` (no recorded lawful basis, no discovery), `OutreachContractsLeadRestrictionResolver` (how a prospect may be approached, from their jurisdiction as well as any flag on the lead), and `SignalsServicesSignalsPersonalDataExporter` (which Signals answers a data-subject request with). And the three PL5 added: `EnrichmentContractsContactApprovalGate` (may we hold and reveal this person's details at all — and, since PL6, may we put this **company** in a file at all, which is the one place honouring the list at the point of sending is not good enough, because a row in a spreadsheet is beyond every later check), `EnrichmentContractsContactNumberScreener` (what a do-not-call register says about a number — a _second_ seam rather than part of the gate, because a screening records a fact and never refuses) and `LeadSourcingContractsSubscriberTypeResolver` (which kind of subscriber a prospect is, where a regime draws that distinction). The do-not-contact table stays in Outreach — see that module's doc for why.
 - **Observability (Phase 20, ADR 0017):** structured logs with `team_id`/`user_id`/`request_id`;
   channels `ai`, `lead_sourcing`, `outreach`, `notifications`, `insights`, `signals`, `compliance`,
   `billing`. `compliance` is kept for 90 days, the longest of any channel: "did you honour the

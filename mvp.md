@@ -803,7 +803,9 @@ Each phase below: **Goal · Depends on · Modules & docs · Tasks · Data model 
 - **Outreach:** multi-step sequences; Gmail/Outlook OAuth sending; open/reply tracking; unsubscribe link handling; A/B message testing; deliverability (SPF/DKIM/DMARC) tooling.
 - **AI Insights:** full suite (best segments, message-angle performance, one-click ICP apply, learning from applied/dismissed).
 - **Scoring:** learning-to-rank from feedback; confidence intervals.
-- **Integrations:** outbound webhooks; Zapier/Make; HubSpot/Pipedrive sync; calendar booking links.
+- **Integrations:** ~~outbound webhooks; Zapier/Make~~ **done in PL7** (`pre-launch.md`, ADR 0034 —
+  signed webhooks plus the CRM framework); ~~HubSpot/Pipedrive sync~~ **planned as PL8/PL9**, on
+  PL7's `CrmConnector`; calendar booking links.
 - **Admin:** full CRUD; provider-health dashboards; feature-flag toggles UI; broadcast announcements.
 - **Auth:** SSO/SAML, SCIM, passkeys polish.
 - **Notifications:** SMS, Slack/Teams.

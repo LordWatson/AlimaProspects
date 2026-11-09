@@ -5,6 +5,187 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-09 — PL7: leaving is a contract
+
+Everything Alima has built so far ends on a screen. PL6 let a team take their list out as a file,
+which is the crudest possible answer to "put this where I work" — it is a file somebody has to
+remember to re-export. PL7 answers it properly, in two halves that are one module.
+
+**Outbound webhooks.** A team registers an https endpoint, ticks the events they want, and Alima
+posts each one as it happens: `lead.created`, `lead.updated`, `signal.detected`, `contact.enriched`,
+`lead.sent_to_crm`. Signed, retried on a 1m → 12h schedule, switched off after twenty consecutive
+failed deliveries with the admins told, and logged attempt by attempt with a redeliver button. That
+is the whole Zapier / Make / n8n surface for the price of one HTTP POST, which is why it came first.
+
+**The signature is the inbound one, pointed outwards.** `X-Alima-Signature: t=<ts>,v1=<hmac>` over
+`timestamp.body` — deliberately the same construction `SignalWebhookSecret` has used since S13b. The
+timestamp is **inside** the signature's scope, so a captured request cannot be refreshed by editing
+it, and the body is the **raw bytes sent**, because `json_encode(json_decode($body))` is not `$body`
+and signing a re-encoded payload would let anybody who can reorder keys keep a valid signature over
+different content. The secret is **encrypted, not hashed** — producing a signature means recomputing
+an HMAC, so a hash was never an option — and it is shown in the clear exactly once, by the call that
+mints it. Rotation replaces it rather than adding a second valid one. The screen explains how to
+verify it, because somebody building a receiver has that page open and a signature they cannot check
+is a signature they will skip.
+
+**The SSRF guard runs twice, and the second time it pins.** On save it is a usability control, and
+stricter than the shared guard: **https only**, where `SafeUrl` allows plain http for a lead's own
+website — a body carrying revealed contact details must not travel in the clear. At send time it is
+the real protection, because DNS changes after a form is submitted and that is the whole of
+rebinding: the addresses are approved and then **pinned** for the request, redirects are refused
+because a `Location` is an address nobody checked, and a host that will not resolve is refused
+outright. `FeedSignalSource` made that last call first, for the same reason — an endpoint we cannot
+pin is one we will not post a customer's lead data to. The guard is shared, never copied.
+
+**The delivery row is written before the request is made**, which makes the log honest (a worker
+killed mid-POST leaves a `pending` row rather than no evidence) and makes redelivery a job dispatch
+rather than a rebuild: the body it sends is what happened, not what the lead looks like today. A
+redelivery is a **new row**, because the log must keep saying the first attempt failed. The payload
+is built with the app's **own API resources**, so masking is automatic rather than remembered — a
+value nobody has paid to reveal cannot reach a customer's Zapier because somebody forgot to think
+about it.
+
+**A CRM framework, with no connector yet.** `CrmConnector` behind a registry keyed by provider —
+ADR 0008's pattern for the fourth time, so the push contains no `match` over providers — plus the
+three tables, a single-use OAuth `state`, token refresh, the note template and the push itself.
+Pipedrive is PL8 and HubSpot is PL9; both cards say "not available yet" rather than offering a
+Connect button that 404s, and the whole framework is exercised by a fake connector in the tests.
+
+**The export's argument applies again, one level out.** A CRM is a place a record goes in order to be
+contacted from, and once an organisation is in somebody's Pipedrive no later opt-out can reach it —
+exactly as a row in a spreadsheet is beyond every later check. So `ContactApprovalGate::allowsDomain()`
+is asked **before any connector is reached**, a value nobody paid to reveal is omitted rather than
+masked, and a suppressed address is dropped although the company is fine. A refusal is a **logged
+row** and not a silence, because "why is this company not in my CRM" has to have an answer.
+
+**Three brakes on the push, and all three are before the connector.** The suppression check; the
+`synced_hash` skip, over the fields a CRM can actually see rather than over the lead row, without
+which an auto-sync rule firing on every re-score would re-push every organisation a team owns,
+nightly; and one unit of `BillingMetric::CrmSync`, held when the push starts and settled against
+what moved. A skip and a refusal both give the hold back, because charging for the framework being
+careful would make being careful cost a team money. `CrmRowAllowance` is the **seventh** ADR 0012
+seam and the second bound inside `billing.enforce_plans`.
+
+**The company link is written twice, and that is the design.** Immediately after the company upsert
+with an **empty** `synced_hash`, so a retry updates the organisation we just created rather than
+making a second one; then again with the real fingerprint once the note and the people are through.
+An empty hash can never equal a `sha256`, so a push that died halfway is a real attempt next time.
+Writing the fingerprint with the link — which is what this did first — meant a note endpoint having
+a bad minute left the company in the customer's CRM with no note and no contacts, and every later
+push answering "already up to date", silently, for ever.
+
+**A dead credential and a refused one are different statuses.** `needs_reauth` is the customer's to
+fix and stops the sync with the admins told; `error` is ours or the provider's and is pushable,
+because the next attempt is how it recovers. The refresher retries exactly once on a refusal — the
+second one means something other than a stale token, and a loop there is a loop against somebody
+else's rate limit — and the Action is forbidden from downgrading `needs_reauth` to `error`, which was
+a real defect a test caught: the sync would have retried a credential only a person can replace, for
+ever, with nobody told.
+
+**Reconnecting checks the account.** `integration_links` is a memory of "their id for our row", so
+disconnecting does **not** delete it — a team who disconnects on Friday and reconnects on Monday
+should update what they already have rather than create every organisation again inside somebody
+else's CRM. Which is why a changed `external_account_id` clears the links, and why a provider that
+reports no account is treated as a change: "we do not know" and "it is the same" must not be the same
+branch.
+
+**Auto-sync is off by default**, hangs off `LeadScored` rather than a sweep, and treats an unjudged
+confidence as failing a floor rather than passing it — null is not zero (ADR 0028), and failing
+toward _not_ pushing is the safe direction when the thing that cannot be undone is a record arriving
+in somebody else's CRM.
+
+The two reviews this phase runs changed five things worth naming, because each was a defect rather
+than a preference: the partial-push rule above; `connect` becoming its own Owner/Admin ability, since
+authorising the OAuth routes on `viewAny` let any member replace the team's CRM and the callback had
+no check at all; `WebhookDispatcher` bound `scoped()` rather than `singleton()`, because as a
+singleton an endpoint added after a worker booted received nothing until a restart; the failure count
+`increment()`ed rather than read-modify-written, so twenty consecutive failures is reachable by an
+endpoint failing in parallel; and a host that fails to resolve now retrying instead of being treated
+as a permanent SSRF refusal, which had spent a delivery and a strike on every DNS blip. On the
+screen: the one-time secret gained a copy button and an announced live region, rotating and removing
+gained confirmations, a pending delivery stopped being rendered in amber (it is in progress, not a
+problem), and Latin values keep DM Mono under RTL, where `0`/`O` and `l`/`1` in a hand-transcribed
+secret otherwise become ambiguous.
+
+Also: two notifications that both say Alima has **stopped** doing something a team believes is
+running (`integration_needs_reauth`, `webhook_disabled`), neither configurable away from email
+because the only screen that would show it is one nobody opens once an integration works;
+`integrations:prune-deliveries` nightly, which never sweeps a pending row whatever its age, since a
+twelve-hour backoff means one can legitimately sit pending most of a day; no `/api/v1` routes, so a
+credential cannot decide where a team's whole lead flow is sent; and the whole screen behind
+`prelaunch.webhooks`. ADR 0034 and `docs/modules/integrations.md` carry the reasoning. 52 tests.
+
+### Added — 2026-11-08 — PL6: leads leave in a file
+
+The export has existed since Phase 10b: streamed, BOM'd, injection-proofed, and with the one column
+set the importer reads so a team can round-trip their list through a spreadsheet. All of that stays.
+What it could not do was everything a customer actually asks for — one column set means a file for a
+CRM and a file for Alima are the same file and suit neither; it wrote whatever was in the database,
+which after PL2 includes addresses a vendor was paid for and nobody has revealed, and after PL5
+includes people who have asked us to stop; and it was free, while `BillingMetric::ExportRows` has had
+an allowance on every plan since PL4 that nothing ever spent.
+
+**A preset is a list of column keys, and that is the whole of it.** Every row is built as a keyed map
+of every column the exporter can produce and then projected onto the preset's keys. Three things fall
+out of that: "choose your own columns" is a preset rather than a feature (the custom list is the same
+array, validated against the catalogue); a column cannot come to mean two things in two files,
+because only one piece of code produces it; and `LeadCsvExporter::COLUMNS` could stay **frozen in its
+original order**, so the round-trip test that ends in two merges and zero new leads still passes
+untouched. CRM-ready is the only preset that changes the shape rather than the columns — one row per
+contact with the company repeated — and a company nobody has been found at yet is still one row.
+
+**Three things do not reach the file, and only one of them is the suppression list.** A value nobody
+has paid to reveal is written as an **empty cell and never as the mask**: `j***@acme.com` in a
+spreadsheet is worse than a blank, because something downstream will eventually try to send to it. A
+company whose domain is on the do-not-contact list is **left out altogether, and counted** — this is
+the one place in the product where honouring the list at the point of sending is not good enough,
+since a row in a spreadsheet on somebody's laptop is beyond every later check, including an opt-out
+recorded five minutes afterwards. And a suppressed address at a company that is otherwise fine is
+**blanked while its row stays**, because the company is not the address, and that case is
+deliberately not counted, so the figure a member reconciles a row count against means one thing.
+
+Both of those rules reach the **Phase 10b export as well**, deliberately: they live in the shared
+exporter, so a team without the flag also stops exporting unrevealed addresses and suppressed
+companies. A flag is for hiding an unfinished feature, not for keeping a defect alive. What the old
+path does not gain is the receipt, because it streams and has no row to carry the count.
+
+The company-level question needed a third method on PL5's seam (`ContactApprovalGate::allowsDomain()`),
+reading the same `outreach_suppressions` as the other two. The test that proves the export asks it is
+an assertion over the **seam** — the exporter's constructor — in the list PL5 left open for "PL6's
+export and PL7's sync". A behaviour test per screen only covers the screens somebody remembered to
+write one for.
+
+**Up to 500 rows the member waits; past that a worker builds it and a notification carries the link.**
+One generator, one Action, called from both paths, because two things writing CSV would be two places
+the escaping, the BOM or the suppression rule could differ — and the one that differed would be the
+one nobody tested. The allowance is held **when the member asks** rather than in the worker: a
+refusal read while they are still looking at the screen is worth far more than one that arrives as a
+failed notification ten minutes later, and two large exports asked for at once must not both be told
+there is room. It is settled against the rows actually written, so a suppressed company gives its row
+back.
+
+`ExportRowAllowance` is the sixth ADR 0012 seam and the cheapest yet, which is the argument for the
+pattern. It is bound **inside** `billing.enforce_plans`, unlike PL4's `CreditReserver`, and the
+asymmetry is the decision: a reveal is money leaving the building per unit, so its reserve stands
+whatever the switch says; a row of a team's own data leaving costs us nothing.
+
+**The file has a deletion deadline.** It lives on the private disk for seven days and
+`leads:prune-exports` deletes it nightly — the file first, the row second, because a row pointing at
+nothing answers "that export has expired" honestly while a file nothing knows about is never deleted
+at all. An export is a team's whole lead list sitting outside the database's own retention sweeps,
+and the one still there in two years is the one still there when a bucket is misconfigured.
+
+**The download is addressed by a row id and the link is not signed.** The path is never a route
+parameter; the download checks the row's team, the same policy that produced it, and the row's own
+expiry. The plan asked for a signed URL good for 24 hours — what shipped needs the member's session
+_as well as_ the expiry, which is narrower, and a signature is for a door with no login behind it
+(PL5's verification link is the example). The download is deliberately not gated on the export
+capability although creating one is: refusing somebody their own finished file because a plan changed
+on Tuesday is punishing them for our timing.
+
+Behind `prelaunch.export`, so every team keeps the Phase 10b export until the flag is turned on.
+ADR 0033; 18 new tests.
+
 ### Added — 2026-11-17 — PL5: the compliance core
 
 Two of this codebase's seams have shipped since PL3 with a permissive default and a comment saying

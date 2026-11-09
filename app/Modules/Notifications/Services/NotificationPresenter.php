@@ -43,6 +43,9 @@ final class NotificationPresenter
             NotificationType::SignalOnAccount => $this->signalOnAccount($payload),
             NotificationType::PlaybookFired => $this->playbookFired($payload),
             NotificationType::InsightsReady => $this->insightsReady($payload),
+            NotificationType::ExportReady => $this->exportReady($payload),
+            NotificationType::IntegrationNeedsReauth => $this->integrationNeedsReauth($payload),
+            NotificationType::WebhookDisabled => $this->webhookDisabled($payload),
             NotificationType::CreditLow => $this->creditLow($payload),
             NotificationType::PaymentFailed => $this->paymentFailed($payload),
             NotificationType::AssessmentReviewDue => $this->assessmentReviewDue($payload),
@@ -236,6 +239,81 @@ final class NotificationPresenter
             ],
             url: '/insights',
             actionLabel: 'See the insights',
+        );
+    }
+
+    /**
+     * A finished export (PL6).
+     *
+     * The count is the point — "ready to download" without one gives a member no way to tell a
+     * complete file from a filter that matched almost nothing. The companies left out are named
+     * separately rather than subtracted, because that figure is the do-not-contact list doing its
+     * job and a member reconciling a row count by hand would otherwise go looking for a bug.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function exportReady(array $payload): NotificationContent
+    {
+        $rows = $this->count($payload, 'rows');
+        $suppressed = $this->count($payload, 'suppressed');
+        $exportId = $this->id($payload, 'export_id');
+
+        return new NotificationContent(
+            type: NotificationType::ExportReady,
+            title: 'Your export is ready',
+            body: $suppressed > 0
+                ? ':count rows are ready. :suppressed companies were left out — somebody there asked not to be contacted.'
+                : ':count rows are ready to download.',
+            params: ['count' => $rows, 'suppressed' => $suppressed],
+            // The file, not a screen. The link needs their session and the file is deleted after
+            // `leads-workspace.export.retain_days`, so a forwarded email is not a copy of the data.
+            url: $exportId === null ? '/leads' : '/leads/exports/'.$exportId.'/download',
+            actionLabel: 'Download the file',
+        );
+    }
+
+    /**
+     * A CRM connection that only a person can revive (PL7).
+     *
+     * The provider is named because a team may have two connected and "a CRM connection" would
+     * send somebody to check both. The body says what has stopped rather than what went wrong: a
+     * refresh token expiring is not something an Owner can be told anything useful about, and what
+     * they need to know is that leads are no longer arriving.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function integrationNeedsReauth(array $payload): NotificationContent
+    {
+        $provider = $payload['provider_label'] ?? null;
+
+        return new NotificationContent(
+            type: NotificationType::IntegrationNeedsReauth,
+            title: 'Reconnect :provider',
+            body: 'Alima has stopped sending records to :provider. Reconnect it to start again.',
+            params: ['provider' => is_string($provider) && $provider !== '' ? $provider : 'your CRM'],
+            url: '/integrations',
+            actionLabel: 'Reconnect',
+        );
+    }
+
+    /**
+     * An endpoint we have stopped posting to (PL7).
+     *
+     * The failure count is in the sentence because it is the one figure that distinguishes this
+     * from a blip: twenty consecutive failed deliveries is days of a dead URL, and saying so is
+     * what makes "we switched it off" read as reasonable rather than arbitrary.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function webhookDisabled(array $payload): NotificationContent
+    {
+        return new NotificationContent(
+            type: NotificationType::WebhookDisabled,
+            title: 'A webhook endpoint has been switched off',
+            body: 'It failed :count times in a row, so Alima has stopped sending to it. Check the address and switch it back on.',
+            params: ['count' => $this->count($payload, 'failures')],
+            url: '/integrations',
+            actionLabel: 'Open integrations',
         );
     }
 

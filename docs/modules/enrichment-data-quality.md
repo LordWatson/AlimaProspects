@@ -449,7 +449,13 @@ not one.
   fact about the number_ after. A TPS registration stops an unsolicited marketing call rather than
   possession, so a screening folded into the gate would have to refuse, and refusing would enforce a
   rule that does not exist. Both are bound by Compliance in PL5; both defaults are the status quo,
-  and `NoContactScreening`'s "do nothing" leaves a number `unchecked`, which is not `clear`).
+  and `NoContactScreening`'s "do nothing" leaves a number `unchecked`, which is not `clear`). The
+  gate answers **three** questions since PL6: the two about a person, and `allowsDomain()` about a
+  **company**, which the CSV export asks because the unit leaving the building there is a company
+  rather than a person (ADR 0033 §2). **PL7's CRM push asks the same three**, before any connector is
+  reached, and for the same reason one level further out: a record in somebody's Pipedrive is beyond
+  every later check, exactly as a row in a spreadsheet is (ADR 0034 §2). Two paths now, one question,
+  and a third would be another caller rather than another method.
 - **Actions:** `RequestLeadEnrichmentAction`, `RequestBulkEnrichmentAction`,
   `RevealContactValueAction`.
 - **Jobs:** `RunEnrichmentWaterfallJob` — where the reservation brackets the spending.

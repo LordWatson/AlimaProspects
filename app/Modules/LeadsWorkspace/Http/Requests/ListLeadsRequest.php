@@ -37,6 +37,25 @@ final class ListLeadsRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...self::filterRules(),
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'view' => ['nullable', 'integer'],
+        ];
+    }
+
+    /**
+     * The filter rules alone, without this screen's paging.
+     *
+     * Shared with {@see StartLeadExportRequest}: an export is the same question as the list, asked
+     * for a file instead of a page, and two copies of these rules would be two places a new filter
+     * has to be remembered — the one that was forgotten being the one that reaches the query
+     * unvalidated.
+     *
+     * @return array<string, mixed>
+     */
+    public static function filterRules(): array
+    {
+        return [
             'search' => ['nullable', 'string', 'max:'.LeadFilters::MAX_SEARCH],
             'grades' => ['nullable', 'array', 'max:'.count(ScoreGrade::cases())],
             'grades.*' => ['string', 'distinct', Rule::enum(ScoreGrade::class)],
@@ -70,8 +89,6 @@ final class ListLeadsRequest extends FormRequest
 
             'sort' => ['nullable', Rule::enum(LeadSort::class)],
             'direction' => ['nullable', Rule::enum(LeadSortDirection::class)],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'view' => ['nullable', 'integer'],
         ];
     }
 

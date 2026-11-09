@@ -31,4 +31,9 @@ final class AllowAllContactApproval implements ContactApprovalGate
     {
         return true;
     }
+
+    public function allowsDomain(Team $team, string $domain): bool
+    {
+        return true;
+    }
 }

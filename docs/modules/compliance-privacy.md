@@ -185,6 +185,36 @@ Which register it asks follows `SubscriberClassifier`'s answer — CTPS for a co
 for everybody else. The verdict is cached platform-wide, re-screened after 28 days, and a stale one
 stands when nobody can replace it.
 
+### 9. An export cannot take a suppressed company out of the building (PL6)
+
+`ContactApprovalGate` gained a third question, `allowsDomain()`, because the unit leaving in a CSV is
+a **company** rather than a person. `SuppressionApprovalGate` answers it from the same
+`outreach_suppressions` as the other two (`isDomainSuppressed`), so there is still one list and one
+normaliser.
+
+This is one of the two places in the product where honouring the list at the point of sending is not
+good enough. A send and a reveal ask the list again at the moment they act; a row that has left in a
+spreadsheet on somebody's laptop is beyond every later check, including an opt-out recorded five
+minutes afterwards. So a suppressed company is **left out of the file and counted**, and a suppressed
+address at a company that is otherwise fine is **blanked while its row stays** — the company is not
+the address.
+
+**PL7's CRM push is the other place, and it asks the same question.** A record in somebody's
+Pipedrive is beyond our reach in exactly the way a spreadsheet row is, so `SyncLeadToCrmAction` asks
+`allowsDomain()` before any connector is reached, omits a value nobody has paid to reveal rather than
+masking it, and drops a suppressed address at a company that is otherwise fine. A refusal is written
+to `integration_sync_logs` rather than passed over in silence, because "why is this company not in my
+CRM" has to have an answer (ADR 0034 §2).
+
+What neither of them covers is a company suppressed by its **registration number**: `SuppressionType::CompanyNumber`
+arrived with PL5 and nothing in the product reads it yet — not `OutreachGuard`, not this gate — so
+both paths are consistent with the rest rather than uniquely wrong. Fixing it belongs with whatever
+first consults that type, since the answer has to be the same for a send, a file and a sync.
+
+`tests/Feature/Compliance/ContactApprovalGateTest` asserts that the exporter takes the contract, in
+the list PL5 left open for exactly this phase. See ADR 0033 §§2–3 and
+`docs/modules/leads-workspace.md` → _CSV export, as PL6 does it_.
+
 ## External dependencies
 
 None. Every provider call this module could have made is one it deliberately does not: no identity-verification service for DSARs (⚖️ open), no third-party retention or consent platform. The only infrastructure requirement is **`ext-zip`**, now declared in `composer.json`.

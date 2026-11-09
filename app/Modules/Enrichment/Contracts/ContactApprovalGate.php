@@ -40,4 +40,16 @@ interface ContactApprovalGate
      * Whether this phone number may be held and shown for this team.
      */
     public function allowsPhone(Team $team, string $phone): bool;
+
+    /**
+     * Whether anything at this company's domain may be, which is the **company-level** question
+     * (PL6).
+     *
+     * Added for the export, where the unit leaving the building is a company rather than a person:
+     * "stop contacting anyone at this company" has to mean that a row for that company does not
+     * end up in a spreadsheet on somebody's laptop, where no later suppression can reach it. The
+     * email check already covers the domain for an address it is given — this is the same question
+     * asked when there is no address to ask it about.
+     */
+    public function allowsDomain(Team $team, string $domain): bool;
 }

@@ -244,3 +244,46 @@ export type CreateLeadForm = {
     pipeline_stage_id: number | null;
     note: string;
 };
+
+/**
+ * One column preset the export dialog offers (PL6). `columns` is the preset's own list, shown as
+ * the starting point when somebody switches to choosing their own.
+ */
+export type ExportPresetOption = {
+    value: string;
+    label: string;
+    description: string;
+    columns: string[];
+};
+
+/**
+ * One of the team's recent exports — the receipt, and the place a queued file lands.
+ *
+ * `suppressed_count` is companies left out because somebody there is on the do-not-contact list.
+ * It is shown rather than folded into the row count, because a member comparing 412 rows against
+ * 415 leads otherwise goes looking for a bug in the filter.
+ */
+export type LeadExportRow = {
+    id: number;
+    preset: string;
+    preset_label: string;
+    state: string;
+    state_label: string;
+    row_count: number;
+    suppressed_count: number;
+    created_at: string | null;
+    expires_at: string | null;
+    /** The file is still there and still in date — asked of the server, never inferred here. */
+    downloadable: boolean;
+};
+
+/** What the leads screen is given about exporting (PL6). Everything but `enabled` is absent while the flag is off. */
+export type LeadExportProps = {
+    enabled: boolean;
+    /** Up to this many rows the file arrives in the click; past it a worker builds it. */
+    syncMaxRows?: number;
+    presets?: ExportPresetOption[];
+    /** Every column an export can carry, as the header keys themselves. */
+    columns?: string[];
+    recent?: LeadExportRow[];
+};

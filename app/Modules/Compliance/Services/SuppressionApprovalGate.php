@@ -39,4 +39,9 @@ final class SuppressionApprovalGate implements ContactApprovalGate
     {
         return ! $this->suppressions->isPhoneSuppressed($phone, (int) $team->getKey());
     }
+
+    public function allowsDomain(Team $team, string $domain): bool
+    {
+        return ! $this->suppressions->isDomainSuppressed($domain, (int) $team->getKey());
+    }
 }

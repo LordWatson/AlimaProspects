@@ -63,20 +63,31 @@ The module listens **outwards**: Lead Sourcing, Enrichment and Scoring know noth
         - `Actions/ImportLeadsAction.php` + `Services/LeadCsvImporter.php` — CSV in, with column
           mapping and de-duplication.
         - `Actions/ExportLeadsAction.php` + `Services/LeadCsvExporter.php` — CSV out, streamed.
+        - `Actions/StartLeadExportAction.php` — PL6: count the rows, hold the allowance, then
+          decide whether the member waits or a worker builds it.
+        - `Actions/GenerateLeadExportAction.php` — the one place a file is written, called from
+          both paths, and the one place the allowance is settled.
+        - `Jobs/GenerateLeadExportJob.php` — the queue's half of it: once, with retries, and with
+          somebody told at the end either way.
+        - `Console/PruneLeadExportsCommand.php` — `leads:prune-exports`, nightly. The file first,
+          the row second.
+        - `Contracts/ExportRowAllowance.php` + `Services/UnmeteredExportRows.php` — the **sixth**
+          ADR 0012 seam; Billing binds `PlanExportRowAllowance` over the permissive default.
     - **Saved views:** `Actions/{SaveViewAction,ListSavedViewsAction,DeleteSavedViewAction}.php`
     - **Models:** `LeadActivity`, `SavedView`, `PipelineStage`, `LeadTag`, `LeadNote`, `LeadTask`,
-      `LeadAssignment`
+      `LeadAssignment`, `LeadExport`
     - **Enums:** `LeadActivityType`, `LeadSort`, `LeadSortDirection`, `StageOutcome`,
-      `LeadTaskStatus`, `BulkLeadAction`
+      `LeadTaskStatus`, `BulkLeadAction`, `ExportPreset`, `ExportState`
     - **Data:** `LeadFilters`, `LeadTaskData`, `BulkLeadRequestData`, `LeadImportResult`
     - **Policies:** `SavedViewPolicy`, `PipelineStagePolicy`, `LeadNotePolicy`, `LeadTaskPolicy`
       (plus `LeadSourcing\Policies\LeadPolicy`, which owns `view`/`work`/`import`/`export`)
     - **Listeners** (all `ShouldQueue`):
       `RecordDiscoveryActivity`, `RecordEnrichmentActivity`, `RecordScoringActivity`
-    - **Exceptions:** `LeadsWorkspaceException`
+    - **Exceptions:** `LeadsWorkspaceException`, `ExportException`
     - **Http:** `Controllers/Web/{LeadController,SavedViewController,PipelineController,LeadCollaborationController,LeadTransferController}`,
       `Controllers/Web/Concerns/ResolvesWorkspace`,
-      `Controllers/Api/V1/{LeadController,LeadWorkController}`, 11 `Requests/`, 7 `Resources/`
+      `Controllers/Web/LeadExportController` (the download),
+      `Controllers/Api/V1/{LeadController,LeadWorkController}`, 12 `Requests/`, 8 `Resources/`
     - `Providers/LeadsWorkspaceServiceProvider.php`
 - **Routes** — web (all `auth`+`verified`):
 
@@ -142,6 +153,8 @@ erDiagram
     TEAMS ||--o{ SAVED_VIEWS : owns
     TEAMS ||--o{ PIPELINE_STAGES : owns
     TEAMS ||--o{ LEAD_TAGS : owns
+    TEAMS ||--o{ LEAD_EXPORTS : owns
+    USERS ||--o{ LEAD_EXPORTS : asked
     PIPELINE_STAGES ||--o{ LEADS : holds
     LEADS ||--o{ LEAD_ACTIVITIES : has
     LEADS ||--o{ LEAD_NOTES : has
@@ -154,6 +167,13 @@ erDiagram
     USERS ||--o{ LEAD_TASKS : owes
     USERS ||--o{ LEAD_ASSIGNMENTS : works
 ```
+
+**`lead_exports`** (PL6) — one request to take leads out: the instruction (`preset`, `columns`,
+`filters` — the same canonical JSON a saved view stores, so a queued export still runs after a
+deploy), the artefact (`path` on the private disk, `expires_at`) and the receipt (`row_count`,
+`suppressed_count`). `reservation` is PL4's allowance handle, held from the moment the member asked.
+Nothing but the instruction is fillable: a request that could assert `path` or `row_count` would be
+a request claiming a file exists.
 
 **`lead_activities`** — the timeline. `team_id` + `lead_id` (both cascade), `user_id`
 (**null on delete**, so history outlives an account, and null to begin with for anything the
@@ -457,6 +477,58 @@ reason a team exports at all, and there is a test that does exactly that and end
 and zero new leads. The contact on each row is the lead's most role-based, least personal one,
 because that is the one a team is allowed to use (docs/compliance.md).
 
+### CSV export, as PL6 does it
+
+Behind the `prelaunch.export` flag. With it off a team keeps exactly the export above; with it on,
+`POST /leads/export` (**POST**, because this one creates a row, holds part of the team's allowance
+and writes a file — all three of which a browser's prefetcher would happily do on a link) and
+`GET /leads/exports/{export}/download`. Read **ADR 0033** before changing any of it.
+
+**A preset is a list of column keys** (`ExportPreset`), and every row is built as a keyed map of
+every column the exporter can produce and then projected onto the chosen keys. That is why
+"choose the columns" is a preset rather than a feature, and why `LeadCsvExporter::COLUMNS` is frozen
+in its original order — the round trip above depends on it, and everything PL6 added lives in the
+other presets. `CrmReady` is the only one that changes the **shape**: one row per contact with the
+company repeated, and still one row for a company nobody has been found at yet.
+
+**Three things do not reach the file**, and only one of them is the suppression list:
+
+| What                                   | What happens                      | Why                                                                        |
+| -------------------------------------- | --------------------------------- | -------------------------------------------------------------------------- |
+| A value nobody has paid to reveal      | **blank cell**, never the mask    | `j***@acme.com` in a CRM is worse than nothing; something will send to it  |
+| A company whose domain is suppressed   | **row left out**, and **counted** | once a row is in a spreadsheet no later opt-out can reach it               |
+| A suppressed address at a fine company | **blank cell**, row stays         | the company is not the address, and the counted figure must mean one thing |
+
+Those first two rules reach the **Phase 10b export too**, because both paths share
+`LeadCsvExporter`: a flag is for hiding an unfinished feature, not for keeping a defect alive, and
+the old export was handing out addresses PL2 charges to reveal. What the old path does not gain is
+the receipt — it streams, so there is no row to carry `suppressed_count` and nobody is told what was
+left out.
+
+The company-level question is `ContactApprovalGate::allowsDomain()` — PL5's seam, PL6's third
+method, reading the same `outreach_suppressions`. `tests/Feature/Compliance/ContactApprovalGateTest`
+asserts the exporter takes that contract, which is the list PL5 left open for this phase.
+
+**Up to `export.sync_max_rows` (500) the member waits**; past that `GenerateLeadExportJob` builds it
+and `NotificationType::ExportReady` carries the link. Both paths call the same
+`GenerateLeadExportAction`, because two things writing CSV would be two places the escaping, the BOM
+or the suppression rule could differ.
+
+**The rows are metered** under PL4's `BillingMetric::ExportRows` through `ExportRowAllowance`, the
+sixth ADR 0012 seam. Held when the member asks — a refusal they read on the screen beats one that
+arrives as a failed notification — and settled against the rows actually written, so a suppressed
+company gives its row back.
+
+**The file lives on the private disk for `export.retain_days` (7)** and `leads:prune-exports`
+deletes it nightly: the file first, the row second, because a row pointing at nothing answers "that
+export has expired" honestly while a file nothing knows about is never deleted. The download checks
+the team, the policy and the expiry; the path is never a route parameter, and there is deliberately
+no signature on the link (ADR 0033 §6).
+
+The dialog on the leads screen lists the team's **last five exports with their counts**. That list
+is the receipt — where a member learns 415 leads produced 412 rows because three companies are on
+their do-not-contact list — and where a queued file lands.
+
 ### The timeline
 
 | Event (module)                          | Listener (queued)          | Entry                                     |
@@ -651,3 +723,4 @@ collaboration, bulk, CSV and API tests.
 | 2026-11-01 | UI    | **The record page.** `leads/Show.vue` opened with the company name and a website and nothing else above the fold — the grade was a card in the right-hand column, the stage and the owner were inside the work panel below it, and the data’s age was at the very bottom of the page. It now opens with a header card and a read-only rail of the five figures somebody actually opens a lead for (fit, stage, who’s on it, contacts, data state), the two full-width warning cards are one tinted list — which also carries the notice that was missing, **enrichment having failed** — the fit panel uses `ScoreDial`, a contact’s email and phone can be copied (`CopyButton`) with role addresses sorted first as the compliance note already advised, the email confidence reads as a `MeterBar`, and the side column is grid-placed so the work panel comes **first on a phone**. `LeadWorkPanel` stopped showing assignees twice (removable chips _and_ the whole team as pressed toggles, with two ways to remove the same person) and its `<select>` became a `NativeSelect` — the last one on the app-wide list recorded in `signals.md`. No server change.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `resources/js/pages/leads/Show.vue`, `resources/js/components/leads/LeadWorkPanel.vue`, `resources/js/components/CopyButton.vue`, `lang/{en,ar}.json`, `docs/brand/brand-tokens.md` §7h.2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | 2026-11-02 | S10   | **The lead page became a history of what has happened to that company.** `LeadOriginProvider` gained `eventsFor(Lead)` beside `originFor()` — the origin answers _why this lead exists_, the events are _everything since_ — and `leads/Show.vue`'s "The event" panel became a **list** in date order, de-duplicated against the origin on the **article** rather than on `href` (every converted signal shares one feed-tab link). `LeadActivityType::SignalMatched` is the timeline entry a watch writes with no actor, because nobody did it: a scheduled watch found it, and attributing it to whoever is logged in would be a small lie. Signals fills both through the contract, so the workspace still imports nothing from Signals (ADR 0021).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 2026-11-06 | Q4    | **The list can be ordered by whether a lead is reachable.** `LeadSort::Readiness` ("Ready to contact") orders on `leads.readiness` - a different question from `Fit`, which is blind to missing data on purpose - with **nulls last explicitly**, because "not computed" is not zero and MySQL and SQLite disagree about where a null sorts (the lesson `SignalSortOrder` already learned). Surfaced **inside the existing "Data" column** rather than a tenth one, since that column already asks how complete a lead's data is: its header became sortable and the cell gained a neutral `MeterBar` plus the figure. Deliberately not a grade - no letter and no status colour - because a low readiness is a gap in our data, not a verdict about the prospect. Brand-reviewed, no violations.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `app/Modules/LeadsWorkspace/{Enums/LeadSort,Services/LeadQueryBuilder}.php`, `resources/js/pages/leads/Index.vue`, `resources/js/shared/types/leads-workspace.ts`, `lang/{en,ar}.json`, `tests/Feature/LeadsWorkspace/LeadsIndexTest.php`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 2026-11-08 | PL6   | **Leads leave in a file.** `lead_exports` (instruction + artefact + receipt), `ExportPreset` as a list of column keys so a custom column set is a preset rather than a feature, `ExportState`, `StartLeadExportAction` (count, hold the allowance, then sync or queue) + `GenerateLeadExportAction` (the one writer) + `GenerateLeadExportJob` + `leads:prune-exports`; `LeadCsvExporter` extended with the PL1/PL5 columns, the **revealed-only** rule, the suppressed-company exclusion and its count; `ContactApprovalGate::allowsDomain()` for the company-level question; `ExportRowAllowance` as the sixth ADR 0012 seam, metering `BillingMetric::ExportRows`; the download addressed by row id with no signature; `NotificationType::ExportReady`; the export dialog on `leads/Index.vue` with presets, a column picker and the last five receipts. Behind `prelaunch.export`. ADR 0033.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

@@ -6,6 +6,8 @@ namespace App\Modules\LeadsWorkspace\Providers;
 
 use App\Modules\Enrichment\Events\LeadEnriched;
 use App\Modules\LeadSourcing\Events\DiscoveryRunCompleted;
+use App\Modules\LeadsWorkspace\Console\PruneLeadExportsCommand;
+use App\Modules\LeadsWorkspace\Contracts\ExportRowAllowance;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\LeadsWorkspace\Listeners\RecordDiscoveryActivity;
 use App\Modules\LeadsWorkspace\Listeners\RecordEnrichmentActivity;
@@ -19,9 +21,11 @@ use App\Modules\LeadsWorkspace\Policies\LeadTaskPolicy;
 use App\Modules\LeadsWorkspace\Policies\PipelineStagePolicy;
 use App\Modules\LeadsWorkspace\Policies\SavedViewPolicy;
 use App\Modules\LeadsWorkspace\Services\NoLeadOrigin;
+use App\Modules\LeadsWorkspace\Services\UnmeteredExportRows;
 use App\Modules\ModuleServiceProvider;
 use App\Modules\Scoring\Events\LeadScored;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
@@ -53,6 +57,9 @@ final class LeadsWorkspaceServiceProvider extends ModuleServiceProvider
         // No lead has an origin beyond its source unless a module that creates leads says otherwise
         // (Signals rebinds this in S4). Bound here so the detail screen stands on its own.
         $this->app->bind(LeadOriginProvider::class, NoLeadOrigin::class);
+
+        // An export is not metered unless Billing says so (PL6's seam — see the contract).
+        $this->app->bind(ExportRowAllowance::class, UnmeteredExportRows::class);
     }
 
     public function boot(): void
@@ -70,5 +77,15 @@ final class LeadsWorkspaceServiceProvider extends ModuleServiceProvider
         RateLimiter::for('leads-bulk', fn (Request $request): Limit => Limit::perMinute(
             max(1, (int) config('leads-workspace.bulk_rate_limit', 20)),
         )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        // PL6. Daily and off-peak, after the other nightly sweeps: a team's whole lead list
+        // sitting on a disk is a deletion deadline rather than a quota (see the command).
+        $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {
+            $schedule->command('leads:prune-exports')->dailyAt('03:50')->withoutOverlapping();
+        });
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([PruneLeadExportsCommand::class]);
+        }
     }
 }

@@ -19,6 +19,8 @@ use App\Modules\Billing\Services\DisabledBillingGateway;
 use App\Modules\Billing\Services\PlanCapabilityGate;
 use App\Modules\Billing\Services\PlanCreditReserver;
 use App\Modules\Billing\Services\PlanCreditSource;
+use App\Modules\Billing\Services\PlanCrmRowAllowance;
+use App\Modules\Billing\Services\PlanExportRowAllowance;
 use App\Modules\Billing\Services\PlanLeadQuotaSource;
 use App\Modules\Billing\Services\PlanRegistry;
 use App\Modules\Billing\Services\PlanResolver;
@@ -29,7 +31,9 @@ use App\Modules\Core\Contracts\CapabilityGate;
 use App\Modules\Core\Enums\TeamRole;
 use App\Modules\Core\Models\Team;
 use App\Modules\Enrichment\Contracts\CreditReserver;
+use App\Modules\Integrations\Contracts\CrmRowAllowance;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
+use App\Modules\LeadsWorkspace\Contracts\ExportRowAllowance;
 use App\Modules\ModuleServiceProvider;
 use App\Modules\Signals\Contracts\SignalQuotaSource;
 use Carbon\CarbonImmutable;
@@ -161,6 +165,15 @@ final class BillingServiceProvider extends ModuleServiceProvider
                     $this->app->make(PlanResolver::class),
                 ),
             );
+
+            // The sixth seam (PL6). Inside the flag, unlike the fifth one above: an export costs
+            // us nothing per row, so a ceiling on it is a plan feature rather than a cost guard,
+            // and with plans off the workspace's own permissive default stands.
+            $this->app->bind(ExportRowAllowance::class, PlanExportRowAllowance::class);
+
+            // The seventh seam (PL7), beside the sixth and for the same reason: a record pushed to
+            // a customer's CRM costs us nothing, so a ceiling on it is a plan feature.
+            $this->app->bind(CrmRowAllowance::class, PlanCrmRowAllowance::class);
         }
     }
 

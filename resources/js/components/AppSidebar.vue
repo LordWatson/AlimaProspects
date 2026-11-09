@@ -6,6 +6,7 @@ import {
     CreditCard,
     LayoutGrid,
     Lightbulb,
+    Plug,
     Radar,
     Satellite,
     Scan,
@@ -203,6 +204,14 @@ const allChapters = computed<Chapter[]>(() => [
                 title: t('Plan & billing'),
                 icon: CreditCard,
                 href: '/billing',
+                match: 'startsWith',
+            },
+            {
+                // PL7. Beside Compliance and Billing rather than in the settings pane: the delivery
+                // log is a table, and the pane is a 36rem column built for forms.
+                title: t('Integrations'),
+                icon: Plug,
+                href: '/integrations',
                 match: 'startsWith',
             },
             {

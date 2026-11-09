@@ -321,6 +321,16 @@
         font-size: 110%;
         --font-sans: 'Tajawal', 'Arial', ui-sans-serif, system-ui, sans-serif;
         --font-mono: 'Tajawal', 'Arial', ui-sans-serif, system-ui, sans-serif;
+        /*
+          ...but a Latin-only value keeps DM Mono. A URL, an event key, a status code or a signing
+          secret has no Arabic in it, and a proportional face makes `0`/`O` and `l`/`1` ambiguous —
+          which is exactly where a hand-transcribed secret fails. Applied with `.mono-latin`
+          alongside `font-mono`, so the token above still governs Arabic labels (PL7).
+        */
+        .mono-latin {
+            --font-mono:
+                'DM Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+        }
         /* Arabic is never letter-spaced (brand-tokens.md §3) — neutralise the eyebrow
            tracking token so tracked eyebrows/labels keep Tajawal's joined letterforms. */
         --tracking-eyebrow: 0;

@@ -84,6 +84,36 @@ enum NotificationType: string
      */
     case InsightsReady = 'insights_ready';
 
+    // --- Leads Workspace (PL6) ---
+    /**
+     * An export too big to wait for has been written and is downloadable.
+     *
+     * Its own case rather than a variant of anything: it is the only notification in the product
+     * that carries a **link that expires**, and it is the only one a member is certain to be
+     * waiting for when it arrives.
+     */
+    case ExportReady = 'export_ready';
+
+    // --- Integrations (PL7) ---
+    /**
+     * A CRM connection is dead and only a person can revive it.
+     *
+     * The one failure in the integration framework a member *must* be told about: a dead connection
+     * is silent by definition, and the alternative is a team discovering in March that nothing has
+     * reached their CRM since January. Kept apart from an ordinary sync error on purpose — an email
+     * asking somebody to reconnect a connection that is fine is how a real alert gets ignored
+     * (`IntegrationStatus`).
+     */
+    case IntegrationNeedsReauth = 'integration_needs_reauth';
+
+    /**
+     * An outbound endpoint has been switched off after failing for days.
+     *
+     * Same argument: we have stopped sending, and nothing about a switched-off endpoint is visible
+     * unless somebody goes looking at a settings screen they have no reason to open.
+     */
+    case WebhookDisabled = 'webhook_disabled';
+
     // --- AI Platform / Billing ---
     /**
      * A plan allowance — AI credits or new companies — is nearly or fully spent, and work is about
@@ -145,6 +175,9 @@ enum NotificationType: string
             self::SignalOnAccount => 'Something happens to an account I am working',
             self::PlaybookFired => 'One of my rules does something',
             self::InsightsReady => 'The daily insights are ready',
+            self::ExportReady => 'An export is ready to download',
+            self::IntegrationNeedsReauth => 'A CRM connection needs reconnecting',
+            self::WebhookDisabled => 'A webhook endpoint is switched off',
             self::CreditLow => 'An allowance is running low',
             self::PaymentFailed => 'A payment fails',
             self::AssessmentReviewDue => 'A compliance review falls due',
@@ -164,6 +197,9 @@ enum NotificationType: string
             self::SignalOnAccount => 'When Alima finds news about a company already in your pipeline. Sent to whoever is working it.',
             self::PlaybookFired => 'When a playbook acts on a signal, or declines to. One message per rule per check.',
             self::InsightsReady => 'Each morning: who is going cold, and who is worth a call today.',
+            self::ExportReady => 'When a large export has finished building. Cannot be switched off — it is the only place the download link appears.',
+            self::IntegrationNeedsReauth => 'Owners and admins only — nothing reaches your CRM until somebody reconnects it.',
+            self::WebhookDisabled => 'Owners and admins only — an endpoint failed for days and we have stopped sending to it.',
             self::CreditLow => 'Owners and admins only — work stops when a plan allowance runs out.',
             self::PaymentFailed => 'Owners and admins only — a card was declined and the subscription is at risk.',
             self::AssessmentReviewDue => 'Owners and admins only — your lawful-basis record needs reviewing, and lead discovery stops without it.',
@@ -186,8 +222,15 @@ enum NotificationType: string
             // own pipeline.
             // My work, because the whole point of a rule is that it handed somebody something:
             // a lead to pick up, a task to do, a draft to read.
-            self::SignalOnAccount, self::PlaybookFired, self::TaskDue, self::LeadAssigned => NotificationGroup::MyWork,
-            self::CreditLow, self::PaymentFailed, self::AssessmentReviewDue, self::Announcement => NotificationGroup::Account,
+            // A file this member asked for, which is as much "my work" as a lead somebody gave
+            // them — and nothing like the billing notices below it.
+            self::SignalOnAccount, self::PlaybookFired, self::TaskDue, self::LeadAssigned,
+            self::ExportReady => NotificationGroup::MyWork,
+            // Account, beside the billing notices: a connection and an endpoint are workspace
+            // configuration rather than anybody's own work, and the people who can fix either are
+            // the people who set it up.
+            self::CreditLow, self::PaymentFailed, self::AssessmentReviewDue, self::Announcement,
+            self::IntegrationNeedsReauth, self::WebhookDisabled => NotificationGroup::Account,
             // With the digest rather than with Finding: both are a round-up a member reads once a
             // day, and both are the kind of thing somebody switches off together.
             self::InsightsReady, self::Digest => NotificationGroup::Summary,
@@ -219,7 +262,14 @@ enum NotificationType: string
             // reason: both end with the product refusing to do something, and both have a window
             // in which somebody can prevent that. An in-app badge alone would be seen by whoever
             // happened to log in.
-            self::CreditLow, self::PaymentFailed, self::AssessmentReviewDue => [
+            // The export joins them, for a different reason: the email is where the download
+            // link lives, and the link expires. A member who started a big export and closed the
+            // tab has nowhere else to find the file (PL6).
+            // PL7's two join them for the first of those reasons: both say we have **stopped**
+            // doing something the team believes is running, and the only screen that would show it
+            // is one nobody opens once an integration is working.
+            self::CreditLow, self::PaymentFailed, self::AssessmentReviewDue, self::ExportReady,
+            self::IntegrationNeedsReauth, self::WebhookDisabled => [
                 NotificationChannel::InApp,
                 NotificationChannel::Mail,
             ],
@@ -272,8 +322,15 @@ enum NotificationType: string
             // An event at a company somebody is working has a window of days, and holding it
             // until the morning round-up spends one of them. It is also the notification most
             // likely to produce a phone call, which is the point of the feature.
+            // And an export has a shorter clock than any of them: the file is deleted after
+            // `leads-workspace.export.retain_days`, so a link held until the morning is a link
+            // that may already be dead.
+            // And both PL7 notices mean **we have stopped doing something** that the team
+            // believes is running. Every hour one is held is an hour of leads not reaching a CRM
+            // or events not reaching a receiver, with nothing on any screen to suggest it.
             self::TaskDue, self::LeadAssigned, self::CreditLow, self::Digest,
-            self::PaymentFailed, self::AssessmentReviewDue, self::SignalOnAccount => false,
+            self::PaymentFailed, self::AssessmentReviewDue, self::SignalOnAccount,
+            self::ExportReady, self::IntegrationNeedsReauth, self::WebhookDisabled => false,
             // Digestible: a rule doing what it was told is confirmation, and tomorrow's round-up
             // is soon enough for a member who asked for one. The draft it prepared is waiting
             // either way, and the refusals are in the run log rather than in the notification.
@@ -294,6 +351,10 @@ enum NotificationType: string
             self::PaymentFailed,
             // A legal record, signed by a named person. A Member cannot complete it.
             self::AssessmentReviewDue,
+            // Only an Owner or Admin may touch an integration at all (PL7's two policies), so
+            // telling a Member would be telling them about something they cannot act on.
+            self::IntegrationNeedsReauth,
+            self::WebhookDisabled,
         ], strict: true);
     }
 
@@ -306,6 +367,10 @@ enum NotificationType: string
     {
         return ! in_array($this, [
             self::Digest,
+            // Not a preference, because it is the only place the download link appears: a member
+            // who switched it off would start exports and never be given the file (PL6). The way
+            // to not receive one is to not ask for an export.
+            self::ExportReady,
             // A tenant cannot switch off being told we are taking the product down on Sunday. The
             // operator's own `announcements.enabled` kill switch is the only off there is.
             self::Announcement,
