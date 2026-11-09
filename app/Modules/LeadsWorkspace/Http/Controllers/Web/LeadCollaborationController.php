@@ -7,6 +7,7 @@ namespace App\Modules\LeadsWorkspace\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadsWorkspace\Actions\CompleteLeadTaskAction;
+use App\Modules\LeadsWorkspace\Actions\CreateLeadContactAction;
 use App\Modules\LeadsWorkspace\Actions\CreateLeadNoteAction;
 use App\Modules\LeadsWorkspace\Actions\CreateLeadTaskAction;
 use App\Modules\LeadsWorkspace\Actions\DeleteLeadNoteAction;
@@ -15,6 +16,7 @@ use App\Modules\LeadsWorkspace\Actions\SetLeadAssigneesAction;
 use App\Modules\LeadsWorkspace\Actions\SyncLeadTagsAction;
 use App\Modules\LeadsWorkspace\Http\Controllers\Web\Concerns\ResolvesWorkspace;
 use App\Modules\LeadsWorkspace\Http\Requests\CompleteLeadTaskRequest;
+use App\Modules\LeadsWorkspace\Http\Requests\SaveLeadContactRequest;
 use App\Modules\LeadsWorkspace\Http\Requests\SaveLeadNoteRequest;
 use App\Modules\LeadsWorkspace\Http\Requests\SaveLeadTaskRequest;
 use App\Modules\LeadsWorkspace\Http\Requests\SetLeadAssigneesRequest;
@@ -96,6 +98,27 @@ final class LeadCollaborationController extends Controller
         $this->authorize('delete', $model);
 
         $this->teamContext->run($team, fn () => $delete->handle($model, $user));
+
+        return back();
+    }
+
+    /**
+     * A contact the member knows about and Alima didn't find. Authorised by `work` like everything
+     * else here: knowing who to call is the same job as noting what they said.
+     */
+    public function storeContact(
+        SaveLeadContactRequest $request,
+        int $lead,
+        CreateLeadContactAction $create,
+    ): RedirectResponse {
+        $user = $this->user($request);
+        $team = $this->team($request);
+
+        $model = $this->lead($request, $lead);
+
+        $this->authorize('work', $model);
+
+        $this->teamContext->run($team, fn () => $create->handle($team, $model, $user, $request->contact()));
 
         return back();
     }

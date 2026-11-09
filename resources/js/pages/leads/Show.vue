@@ -17,6 +17,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import CopyButton from '@/components/CopyButton.vue';
 import LeadNoticeRow from '@/components/leads/LeadNoticeRow.vue';
 import ActivityTimeline from '@/components/leads/ActivityTimeline.vue';
+import AddLeadContact from '@/components/leads/AddLeadContact.vue';
 import LeadNotes from '@/components/leads/LeadNotes.vue';
 import LeadTasks from '@/components/leads/LeadTasks.vue';
 import LeadWorkPanel from '@/components/leads/LeadWorkPanel.vue';
@@ -1222,10 +1223,14 @@ onBeforeUnmount(() => {
                     >
                         {{
                             t(
-                                'No contacts found yet. Alima looks for role-based addresses on the company’s own pages.',
+                                'No contacts found yet. Alima looks for role-based addresses on the company’s own pages — add one yourself if you already know who to speak to.',
                             )
                         }}
                     </p>
+
+                    <!-- Whether or not Alima found anybody: a member who knows a second person at
+                         the company has the same need as one looking at an empty panel. -->
+                    <AddLeadContact v-if="can.work" :lead-id="lead.id" />
                 </section>
 
                 <!-- The team's own work on the lead (Phase 10b) -->

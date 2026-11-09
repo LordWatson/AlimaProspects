@@ -41,6 +41,7 @@ const icons: Record<LeadActivityType, Component> = {
     scored: Sparkles,
     stage_changed: ArrowRightLeft,
     note_added: MessageSquare,
+    contact_added: UserRoundPlus,
     task_created: CircleDashed,
     task_completed: CircleCheck,
     assigned: UserPlus,
@@ -84,6 +85,10 @@ function describe(activity: LeadActivity): string {
                       to: String(p.to ?? ''),
                   })
                 : t('Moved to :to', { to: String(p.to ?? '') });
+        case 'contact_added':
+            return t('Contact added: :contact', {
+                contact: String(p.contact ?? ''),
+            });
         case 'note_added':
             return t('Note added: “:excerpt”', {
                 excerpt: String(p.excerpt ?? ''),

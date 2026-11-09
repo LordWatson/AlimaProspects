@@ -90,5 +90,8 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::put('assignees', [LeadCollaborationController::class, 'assignees'])->name('leads.assignees.set');
         Route::post('notes', [LeadCollaborationController::class, 'storeNote'])->name('leads.notes.store');
         Route::post('tasks', [LeadCollaborationController::class, 'storeTask'])->name('leads.tasks.store');
+        // A contact Alima couldn't find. Addressed by the lead, unlike notes and tasks: a contact
+        // only means anything as one of that company's.
+        Route::post('contacts', [LeadCollaborationController::class, 'storeContact'])->name('leads.contacts.store');
     });
 });

@@ -5,6 +5,29 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-09 — A contact can be added by hand
+
+A lead whose Contacts panel was empty got a sentence explaining why — Alima looks for role-based
+addresses on a company's own pages — and nothing to do about it. For a company that publishes no
+address anywhere Alima can read, that was the end of the road on the one screen whose job is to
+answer "how do I reach these people". A member who had a card in their pocket had to put the whole
+lead in again through the add-a-lead form to record it.
+
+`POST /leads/{lead}/contacts` now takes a name, a job title, an email address and a phone number,
+authorised by `LeadPolicy::work` like every other control on that screen, and the form sits in the
+Contacts panel whether or not Alima found anybody — collapsed until it is asked for, because the
+panel's first answer should still be *let Alima look*.
+
+Three things about the row it writes. It is **not a reveal**: nobody paid a vendor for a number off
+a business card, so the vendor-source columns stay null and there is nothing to charge to see it
+(ADR 0029). It **still asks `ContactApprovalGate`** — storing is the first of that gate's two
+moments, so an address on the team's do-not-contact list is refused before the row exists rather
+than stored and filtered at send time, and refused *with a message*, because the member typed it and
+is owed the reason (ADR 0032). And it is written **unverified**, with `email_verification_status`
+left null for the normal verification to judge. The identity hashes go in through the model's own
+setters, so a hand-typed address matches a suppression entry — which the add-a-lead form's own
+contact field still does not do.
+
 ### Added — 2026-11-09 — The dashboard knows who is looking
 
 The dashboard was built in Phase 13 and has been accurate ever since. It was also, from end to end,

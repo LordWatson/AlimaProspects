@@ -47,6 +47,41 @@ final class LeadsWorkspaceException extends DomainException
     }
 
     /**
+     * A contact a member typed in whose address is on the team's do-not-contact list. Refused at
+     * the point of **storing** it, not filtered later (ADR 0032).
+     */
+    public static function contactSuppressed(): self
+    {
+        $e = new self('That address is on your do-not-contact list, so Alima won’t store it.');
+        $e->errorCode = 'leads.contact_suppressed';
+
+        return $e;
+    }
+
+    /**
+     * The lead already has this contact — the same address, or the same name where there is no
+     * address. Almost always a double submit.
+     */
+    public static function contactExists(): self
+    {
+        $e = new self('This lead already has that contact.');
+        $e->errorCode = 'leads.contact_exists';
+
+        return $e;
+    }
+
+    /**
+     * Nothing to reach the contact by, or an address we can't reduce to a comparable form.
+     */
+    public static function unusableContact(): self
+    {
+        $e = new self('Add an email address or a phone number Alima can use.');
+        $e->errorCode = 'leads.unusable_contact';
+
+        return $e;
+    }
+
+    /**
      * A CSV that can't be read as one — no header, or nothing but a header.
      */
     public static function unreadableCsv(): self

@@ -15,6 +15,7 @@ export type LeadActivityType =
     // What the team did (Phase 10b).
     | 'stage_changed'
     | 'note_added'
+    | 'contact_added'
     | 'task_created'
     | 'task_completed'
     | 'assigned'

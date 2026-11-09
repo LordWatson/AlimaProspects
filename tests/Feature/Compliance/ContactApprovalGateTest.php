@@ -12,6 +12,7 @@ use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\Enrichment\Services\AllowAllContactApproval;
 use App\Modules\Enrichment\Services\EnrichmentWaterfall;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadsWorkspace\Actions\CreateLeadContactAction;
 use App\Modules\LeadsWorkspace\Services\LeadCsvExporter;
 use App\Modules\Outreach\Enums\SuppressionReason;
 use App\Modules\Outreach\Enums\SuppressionScope;
@@ -47,6 +48,9 @@ it('reaches the gate from every path that stores or reveals a contact', function
         // PL6. The export is the path where honouring the list late is not good enough: once a
         // row is in a spreadsheet on somebody's laptop, no later opt-out can reach it.
         LeadCsvExporter::class => [ContactApprovalGate::class],
+        // A contact a member types in is still a contact being stored, so the same question is
+        // asked before the row exists.
+        CreateLeadContactAction::class => [ContactApprovalGate::class],
     ];
 
     foreach ($paths as $class => $expected) {

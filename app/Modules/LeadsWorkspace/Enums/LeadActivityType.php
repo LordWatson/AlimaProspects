@@ -25,6 +25,7 @@ enum LeadActivityType: string
     // What the team did (Phase 10b).
     case StageChanged = 'stage_changed';
     case NoteAdded = 'note_added';
+    case ContactAdded = 'contact_added';
     case TaskCreated = 'task_created';
     case TaskCompleted = 'task_completed';
     case Assigned = 'assigned';
@@ -74,6 +75,7 @@ enum LeadActivityType: string
             self::Scored => 'Graded',
             self::StageChanged => 'Moved',
             self::NoteAdded => 'Note added',
+            self::ContactAdded => 'Contact added',
             self::TaskCreated => 'Task added',
             self::TaskCompleted => 'Task done',
             self::Assigned => 'Assigned',
@@ -97,7 +99,7 @@ enum LeadActivityType: string
             // `SignalMatched` is the clearest case there is: a scheduled watch found it and
             // attributing it to whoever happened to be logged in would be a small lie.
             self::Discovered, self::Enriched, self::Scored, self::SignalMatched => true,
-            self::StageChanged, self::NoteAdded, self::TaskCreated, self::TaskCompleted,
+            self::StageChanged, self::NoteAdded, self::ContactAdded, self::TaskCreated, self::TaskCompleted,
             self::Assigned, self::Unassigned, self::TagsChanged, self::Imported,
             self::Created, self::Contacted, self::SignalConverted => false,
         };
