@@ -216,5 +216,247 @@
             "label": "competitor",
             "why": "Offers the same design service with print."
         }
-    ]
+    ],
+    "signals": {
+        "presets": ["uk_funding_round", "uk_acquisition"],
+        "locations": ["Manchester"],
+        "icp": [
+            {
+                "type": "industry",
+                "value": "Food and drink",
+                "weight": 80
+            },
+            {
+                "type": "industry",
+                "value": "Hospitality",
+                "weight": 60
+            },
+            {
+                "type": "company_size",
+                "value": "2-50 employees",
+                "weight": 50
+            },
+            {
+                "type": "geography",
+                "value": "North West England",
+                "weight": 50
+            },
+            {
+                "type": "buying_signal",
+                "value": "new product launch",
+                "weight": 50
+            },
+            {
+                "type": "exclusion",
+                "value": "design agency",
+                "weight": null
+            }
+        ],
+        "articles": [
+            {
+                "id": 0,
+                "title": "Manchester craft distillery Ancoats Spirits raises £1.2m",
+                "snippet": "Independent gin and rum maker Ancoats Spirits has raised £1.2m to launch two new bottled ranges and expand into supermarkets.",
+                "source": "North West Business Post",
+                "days_ago": 2,
+                "label": "good",
+                "url": "https://northwestbusinesspost.example/manchester-craft-distillery-ancoats-spirits-raises-1-2m"
+            },
+            {
+                "id": 1,
+                "title": "Oat drink start-up Moss & Mill closes £800,000 seed round",
+                "snippet": "Lancashire oat drink brand Moss & Mill, a team of nine, has closed an £800,000 seed round ahead of a retail launch.",
+                "source": "Food Brand Weekly",
+                "days_ago": 3,
+                "label": "good",
+                "url": "https://foodbrandweekly.example/oat-drink-start-up-moss-mill-closes-800-000-seed-round"
+            },
+            {
+                "id": 2,
+                "title": "Stockport bakery group Crumb Street secures £500,000 investment",
+                "snippet": "Family-run bakery Crumb Street will open three new shops and launch a wholesale range after a £500,000 investment.",
+                "source": "North West Business Post",
+                "days_ago": 1,
+                "label": "good",
+                "url": "https://northwestbusinesspost.example/stockport-bakery-group-crumb-street-secures-500-000-investme"
+            },
+            {
+                "id": 3,
+                "title": "Independent coffee roaster Canal Roast acquires Tameside rival",
+                "snippet": "Manchester coffee roaster Canal Roast has bought Tameside roastery Beanfield and will relaunch its products under one brand.",
+                "source": "Food Brand Weekly",
+                "days_ago": 4,
+                "label": "good",
+                "url": "https://foodbrandweekly.example/independent-coffee-roaster-canal-roast-acquires-tameside-riv"
+            },
+            {
+                "id": 4,
+                "title": "Liverpool hot sauce brand Scouse Heat lands £350,000 funding",
+                "snippet": "Street-food favourite Scouse Heat has raised £350,000 to bottle its sauces for retail.",
+                "source": "Mersey Enterprise News",
+                "days_ago": 5,
+                "label": "good",
+                "url": "https://merseyenterprisenews.example/liverpool-hot-sauce-brand-scouse-heat-lands-350-000-funding"
+            },
+            {
+                "id": 5,
+                "title": "Cheshire brewery Weaver Ales raises £900,000 to open taproom",
+                "snippet": "Independent brewery Weaver Ales has raised £900,000 for a new canning line and a taproom in Northwich.",
+                "source": "North West Business Post",
+                "days_ago": 2,
+                "label": "good",
+                "url": "https://northwestbusinesspost.example/cheshire-brewery-weaver-ales-raises-900-000-to-open-taproom"
+            },
+            {
+                "id": 6,
+                "title": "Restaurant group Northern Table acquires two Leeds sites",
+                "snippet": "Manchester restaurant operator Northern Table, which runs six venues, has acquired two sites in Leeds for a new concept.",
+                "source": "Food Brand Weekly",
+                "days_ago": 6,
+                "label": "good",
+                "url": "https://foodbrandweekly.example/restaurant-group-northern-table-acquires-two-leeds-sites"
+            },
+            {
+                "id": 7,
+                "title": "Manchester fintech Ledgerly raises £12m Series A",
+                "snippet": "Payments software company Ledgerly has closed a £12m Series A led by Northern Ventures.",
+                "source": "North West Business Post",
+                "days_ago": 2,
+                "label": "misfit",
+                "url": "https://northwestbusinesspost.example/manchester-fintech-ledgerly-raises-12m-series-a"
+            },
+            {
+                "id": 8,
+                "title": "Global food giant Halvorsen Foods acquires snack maker for £400m",
+                "snippet": "Multinational Halvorsen Foods, which employs 30,000 people, has agreed a £400m takeover of a snack manufacturer.",
+                "source": "Food Brand Weekly",
+                "days_ago": 3,
+                "label": "misfit",
+                "url": "https://foodbrandweekly.example/global-food-giant-halvorsen-foods-acquires-snack-maker-for-4"
+            },
+            {
+                "id": 9,
+                "title": "Salford logistics software firm RouteLoop secures £3m",
+                "snippet": "RouteLoop, which makes delivery-planning software, has raised £3m from regional investors.",
+                "source": "North West Business Post",
+                "days_ago": 1,
+                "label": "misfit",
+                "url": "https://northwestbusinesspost.example/salford-logistics-software-firm-routeloop-secures-3m"
+            },
+            {
+                "id": 10,
+                "title": "Branding agency Loom & Ledger acquired by Halden Creative",
+                "snippet": "Manchester brand design agency Loom & Ledger has been bought by marketing group Halden Creative.",
+                "source": "North West Business Post",
+                "days_ago": 2,
+                "label": "competitor",
+                "url": "https://northwestbusinesspost.example/branding-agency-loom-ledger-acquired-by-halden-creative"
+            },
+            {
+                "id": 11,
+                "title": "Packaging design studio Foldworks raises £600,000",
+                "snippet": "Manchester packaging design studio Foldworks has raised £600,000 to grow its team of designers.",
+                "source": "Mersey Enterprise News",
+                "days_ago": 4,
+                "label": "competitor",
+                "url": "https://merseyenterprisenews.example/packaging-design-studio-foldworks-raises-600-000"
+            },
+            {
+                "id": 12,
+                "title": "Print and design firm Inkhouse buys Bolton rival",
+                "snippet": "Commercial printer and design house Inkhouse has acquired Bolton print firm Rapid Reprographics.",
+                "source": "North West Business Post",
+                "days_ago": 3,
+                "label": "competitor",
+                "url": "https://northwestbusinesspost.example/print-and-design-firm-inkhouse-buys-bolton-rival"
+            },
+            {
+                "id": 13,
+                "title": "20 food start-ups to watch this year",
+                "snippet": "Our annual list of the food and drink brands we think will break through.",
+                "source": "Food Brand Weekly",
+                "days_ago": 1,
+                "label": "not_event",
+                "url": "https://foodbrandweekly.example/20-food-start-ups-to-watch-this-year"
+            },
+            {
+                "id": 14,
+                "title": "How to pitch your drinks brand to investors",
+                "snippet": "Five founders share what worked when they raised money for their drinks businesses.",
+                "source": "Food Brand Weekly",
+                "days_ago": 2,
+                "label": "not_event",
+                "url": "https://foodbrandweekly.example/how-to-pitch-your-drinks-brand-to-investors"
+            },
+            {
+                "id": 15,
+                "title": "This week in North West funding",
+                "snippet": "A round-up of the week's investment news across the region.",
+                "source": "North West Business Post",
+                "days_ago": 1,
+                "label": "not_event",
+                "url": "https://northwestbusinesspost.example/this-week-in-north-west-funding"
+            },
+            {
+                "id": 16,
+                "title": "Where are they now: the kombucha brand that raised £1m in 2022",
+                "snippet": "Three years after its £1m raise, we catch up with Manchester kombucha maker Bright Culture.",
+                "source": "Food Brand Weekly",
+                "days_ago": 2,
+                "label": "stale",
+                "url": "https://foodbrandweekly.example/where-are-they-now-the-kombucha-brand-that-raised-1m-in-2022"
+            },
+            {
+                "id": 17,
+                "title": "Chorlton chocolate maker Cocoa Yard raises £400,000",
+                "snippet": "Bean-to-bar chocolate maker Cocoa Yard has raised £400,000 to expand its Chorlton workshop.",
+                "source": "North West Business Post",
+                "days_ago": 500,
+                "label": "stale",
+                "url": "https://northwestbusinesspost.example/chorlton-chocolate-maker-cocoa-yard-raises-400-000"
+            },
+            {
+                "id": 18,
+                "title": "Ancoats Spirits toasts £1.2m raise for new ranges",
+                "snippet": "Manchester distillery Ancoats Spirits has secured £1.2m of new investment and plans two bottled ranges for supermarkets.",
+                "source": "Mersey Enterprise News",
+                "days_ago": 2,
+                "label": "duplicate",
+                "url": "https://merseyenterprisenews.example/ancoats-spirits-toasts-1-2m-raise-for-new-ranges",
+                "of": 0
+            },
+            {
+                "id": 19,
+                "title": "Canal Roast snaps up Beanfield roastery",
+                "snippet": "Coffee roaster Canal Roast of Manchester has acquired Beanfield, the Tameside roastery, and will merge the two brands.",
+                "source": "North West Business Post",
+                "days_ago": 4,
+                "label": "duplicate",
+                "url": "https://northwestbusinesspost.example/canal-roast-snaps-up-beanfield-roastery",
+                "of": 3
+            }
+        ],
+        "profile_after_check": {
+            "delivery_model": "national",
+            "customer_size_range": "2-50 employees",
+            "customer_industries": [
+                "Food and drink producers",
+                "Bakeries",
+                "Breweries and distilleries",
+                "Coffee roasters",
+                "Restaurants and street food"
+            ],
+            "anti_customers": [
+                "National chains with in-house design teams",
+                "Design studios, agencies and printers",
+                "Businesses outside food, drink and hospitality"
+            ],
+            "buying_triggers": [
+                "A new product or range",
+                "A first retail listing",
+                "A new venue",
+                "New investment"
+            ]
+        }
+    }
 }

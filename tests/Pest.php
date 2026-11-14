@@ -309,7 +309,7 @@ function aiEventFor(string $eventKey, array $overrides = []): array
         'confidence' => 90,
         'relevance' => 80,
         'summary' => 'Acme did something notable.',
-        'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
         ...$overrides,
     ];
 }
@@ -331,5 +331,23 @@ function liaPayload(array $overrides = []): array
         'signals_scope' => null,
         'sign' => true,
         ...$overrides,
+    ];
+}
+
+/**
+ * Every field `signals.extract_event` requires, at its "nothing to say" value. The schema makes
+ * each one required since v3, so a canned answer that names only what its test is about spreads
+ * this first: `[...signalEventDefaults(), 'item_index' => 0, ...]`.
+ *
+ * @return array<string, mixed>
+ */
+function signalEventDefaults(): array
+{
+    return [
+        'item_index' => 0, 'is_event' => false, 'event_type' => null,
+        'subject_person_name' => null, 'subject_person_role' => null, 'subject_company_name' => null,
+        'counterparty_name' => null, 'amount' => null, 'currency' => null, 'location' => null,
+        'confidence' => 0, 'relevance' => 0, 'summary' => '', 'suggested_approach' => null,
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null,
     ];
 }

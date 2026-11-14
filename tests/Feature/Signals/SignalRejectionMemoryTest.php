@@ -79,13 +79,13 @@ it('remembers a non-event and skips it on the next run', function (): void {
     $this->fakeNews->willReturn(roundUp($this->fakeNews));
     // The model says: not one of your events.
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0,
+        ...signalEventDefaults(), 'item_index' => 0,
         'is_event' => false,
         'event_type' => null,
         'confidence' => 10,
         'relevance' => 10,
         'summary' => '',
-        'suggested_approach' => '',
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => '',
     ]]]);
 
     rejectionRun($team, $watch);
@@ -113,7 +113,7 @@ it('remembers a real event that missed the floor, separately', function (): void
 
     $this->fakeNews->willReturn(roundUp($this->fakeNews));
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0,
+        ...signalEventDefaults(), 'item_index' => 0,
         'is_event' => true,
         'event_type' => SignalPresetCatalogue::FUNDING_ROUND,
         'subject_company_name' => 'Acme DMCC',
@@ -121,7 +121,7 @@ it('remembers a real event that missed the floor, separately', function (): void
         // Under the relevance floor.
         'relevance' => 5,
         'summary' => 'A real round, not for this team.',
-        'suggested_approach' => 'Ask for a LinkedIn introduction.',
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => 'Ask for a LinkedIn introduction.',
     ]]]);
 
     rejectionRun($team, $watch);
@@ -138,8 +138,8 @@ it('asks again when the team adds a signal type', function (): void {
 
     $this->fakeNews->willReturn(roundUp($this->fakeNews));
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0, 'is_event' => false, 'event_type' => null,
-        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'suggested_approach' => '',
+        ...signalEventDefaults(), 'item_index' => 0, 'is_event' => false, 'event_type' => null,
+        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => '',
     ]]]);
     rejectionRun($team, $watch);
 
@@ -151,14 +151,14 @@ it('asks again when the team adds a signal type', function (): void {
 
     $this->fakeNews->willReturn(roundUp($this->fakeNews));
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0,
+        ...signalEventDefaults(), 'item_index' => 0,
         'is_event' => true,
         'event_type' => SignalPresetCatalogue::ACQUISITION,
         'subject_company_name' => 'Acme DMCC',
         'confidence' => 90,
         'relevance' => 80,
         'summary' => 'It was an acquisition after all.',
-        'suggested_approach' => 'Ask for a LinkedIn introduction.',
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => 'Ask for a LinkedIn introduction.',
     ]]]);
 
     $run = rejectionRun($team, $second);
@@ -173,8 +173,8 @@ it('forgets a rejection once it is out of the window', function (): void {
 
     $this->fakeNews->willReturn(roundUp($this->fakeNews));
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0, 'is_event' => false, 'event_type' => null,
-        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'suggested_approach' => '',
+        ...signalEventDefaults(), 'item_index' => 0, 'is_event' => false, 'event_type' => null,
+        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => '',
     ]]]);
     rejectionRun($team, $watch);
 
@@ -182,8 +182,8 @@ it('forgets a rejection once it is out of the window', function (): void {
 
     $this->fakeNews->willReturn(roundUp($this->fakeNews));
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0, 'is_event' => false, 'event_type' => null,
-        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'suggested_approach' => '',
+        ...signalEventDefaults(), 'item_index' => 0, 'is_event' => false, 'event_type' => null,
+        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => '',
     ]]]);
     rejectionRun($team, $watch);
 
@@ -205,8 +205,8 @@ it('remembers the whole story, not only the copy that was sent', function (): vo
         $this->fakeNews->item('The ten biggest Dubai deals of the year, ranked', 'https://c.test/x', source: 'MEED'),
     ]);
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0, 'is_event' => false, 'event_type' => null,
-        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'suggested_approach' => '',
+        ...signalEventDefaults(), 'item_index' => 0, 'is_event' => false, 'event_type' => null,
+        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => '',
     ]]]);
 
     rejectionRun($team, $watch);
@@ -222,14 +222,14 @@ it('never remembers a type the run did not offer', function (): void {
     $this->fakeNews->willReturn(roundUp($this->fakeNews));
     // A key nobody offered: our prompt's problem, not a verdict about the article (ADR 0018 §7).
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0,
+        ...signalEventDefaults(), 'item_index' => 0,
         'is_event' => true,
         'event_type' => 'hiring_surge',
         'subject_company_name' => 'Acme DMCC',
         'confidence' => 90,
         'relevance' => 80,
         'summary' => 'Something else entirely.',
-        'suggested_approach' => 'Ask for a LinkedIn introduction.',
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => 'Ask for a LinkedIn introduction.',
     ]]]);
 
     rejectionRun($team, $watch);
@@ -248,8 +248,8 @@ it('classifies everything again when the memory is switched off', function (): v
     foreach (range(1, 2) as $ignored) {
         $this->fakeNews->willReturn(roundUp($this->fakeNews));
         $this->fakeAi->queueStructured(['events' => [[
-            'item_index' => 0, 'is_event' => false, 'event_type' => null,
-            'confidence' => 10, 'relevance' => 10, 'summary' => '', 'suggested_approach' => '',
+            ...signalEventDefaults(), 'item_index' => 0, 'is_event' => false, 'event_type' => null,
+            'confidence' => 10, 'relevance' => 10, 'summary' => '', 'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => '',
         ]]]);
         rejectionRun($team, $watch);
     }
@@ -263,8 +263,8 @@ it('never skips one team’s article because another team rejected it', function
     $teamB = Team::factory()->create();
 
     $notEvent = ['events' => [[
-        'item_index' => 0, 'is_event' => false, 'event_type' => null,
-        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'suggested_approach' => '',
+        ...signalEventDefaults(), 'item_index' => 0, 'is_event' => false, 'event_type' => null,
+        'confidence' => 10, 'relevance' => 10, 'summary' => '', 'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => '',
     ]]];
 
     foreach ([$teamA, $teamB] as $team) {

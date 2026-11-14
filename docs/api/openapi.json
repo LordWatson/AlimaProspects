@@ -15127,6 +15127,13 @@
                             "null"
                         ]
                     },
+                    "why_it_matters": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "Why this event is a reason for this team to get in touch. Only ever set for a\nsubject the classifier judged a customer, and always shown beside the article."
+                    },
                     "source_url": {
                         "type": "string"
                     },
@@ -15144,7 +15151,8 @@
                             "web_search",
                             "companies_house",
                             "feed",
-                            "webhook"
+                            "webhook",
+                            "ai_research"
                         ]
                     },
                     "source_kind_label": {
@@ -15154,7 +15162,8 @@
                             "Web search",
                             "Companies House",
                             "A feed you choose",
-                            "Your own events"
+                            "Your own events",
+                            "AI research"
                         ]
                     },
                     "matched_template": {
@@ -15481,6 +15490,7 @@
                     "confidence",
                     "relevance",
                     "suggested_approach",
+                    "why_it_matters",
                     "source_url",
                     "source_name",
                     "source_kind",

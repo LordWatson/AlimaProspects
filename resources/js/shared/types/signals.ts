@@ -135,7 +135,8 @@ export type SignalSourceKind =
     | 'web_search'
     | 'companies_house'
     | 'feed'
-    | 'webhook';
+    | 'webhook'
+    | 'ai_research';
 
 /** A source with its label, and — on the type form — what it is good for. */
 export type SignalSourceOption = {
@@ -228,6 +229,8 @@ export type Signal = {
     /** 0–100: how likely this person is a high-net-worth prospect for this team. */
     relevance: number;
     suggested_approach: string | null;
+    /** One sentence on why this event matters to this seller. Only set for a subject judged a customer. */
+    why_it_matters: string | null;
     source_url: string;
     source_name: string | null;
     /** Which source found it. Always present — every pre-S13 signal is `news`, correctly (S13). */
@@ -438,6 +441,8 @@ export type SignalRun = {
     queries_trimmed: number;
     results_count: number;
     signals_created: number;
+    /** Real events left out because their subject is not a customer. */
+    not_fit_count: number;
     /** Integer micro-units. */
     cost_micros: number;
     /** Already user-safe — the exception's detail went to the log, not here. */
@@ -634,6 +639,36 @@ export type SignalDraft = {
     definition: SignalDefinitionForm | null;
 };
 
+/** One signal type Alima suggests for this business (Signals v3 P2). Nothing is saved. */
+export type SignalSuggestion = {
+    index: number;
+    title: string;
+    /** One sentence on why this event means a company may soon need what the team sells. */
+    rationale: string;
+    /** A library type to add as it ships; null when `draft` is a type drafted for this team. */
+    preset_key: string | null;
+    draft: SignalDraft | null;
+    /** `testing` while its sample search is out; `untested` when none could be run. */
+    state: 'testing' | 'tested' | 'untested';
+    /** Counts from the sample search, and the preview's own diagnosis (a translation key). */
+    preview: {
+        results: number;
+        events: number;
+        kept: number;
+        diagnosis: string;
+    } | null;
+};
+
+export type SignalSuggestionBatch = {
+    id: number;
+    status: 'pending' | 'ready' | 'failed';
+    failed: boolean;
+    /** Still drafting, or a sample search is out: the screen keeps asking for this prop. */
+    working: boolean;
+    created_at: string | null;
+    suggestions: SignalSuggestion[];
+};
+
 /** What a preview did with one article, and why (S9). */
 export type SignalPreviewVerdict =
     | 'ignored_domain'
@@ -641,6 +676,7 @@ export type SignalPreviewVerdict =
     | 'wrong_location'
     | 'below_confidence'
     | 'below_relevance'
+    | 'not_a_customer'
     | 'kept'
     /** The AI never got to it — out of credit, or it answered unusably twice. Not a finding. */
     | 'unclassified';

@@ -38,6 +38,8 @@ final class SignalRunResource extends JsonResource
             'queries_trimmed' => $run->queriesTrimmed(),
             'results_count' => $run->results_count,
             'signals_created' => $run->signals_created,
+            // Real events left out because their subject is not a customer (Signals v3 P1).
+            'not_fit_count' => (int) $run->not_fit_count,
             // Integer micro-units; the screen formats it in the team's currency.
             'cost_micros' => $run->cost_micros,
             'error' => $run->error,

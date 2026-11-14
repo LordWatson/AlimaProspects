@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\AiPlatform\Services;
 
 use App\Modules\AiPlatform\Contracts\AiClient;
+use App\Modules\AiPlatform\Contracts\AiResearcher;
 use App\Modules\AiPlatform\Contracts\AiTransport;
 use App\Modules\AiPlatform\Data\AiPromptRequest;
 use App\Modules\AiPlatform\Data\AiTransportResult;
+use App\Modules\AiPlatform\Data\AiWebSearch;
 use App\Modules\AiPlatform\Data\StructuredAiResponse;
 use App\Modules\AiPlatform\Enums\AiRequestStatus;
 use App\Modules\AiPlatform\Exceptions\AiInputTooLargeException;
@@ -25,7 +27,7 @@ use Illuminate\Contracts\Cache\Repository as CacheRepository;
  * response cache together. It depends on the {@see AiTransport} seam, never the SDK directly, so the
  * provider can be swapped and tests can fake the boundary (ADR 0005).
  */
-final class ClaudeAiClient implements AiClient
+final class ClaudeAiClient implements AiClient, AiResearcher
 {
     public function __construct(
         private readonly AiTransport $transport,
@@ -41,6 +43,23 @@ final class ClaudeAiClient implements AiClient
 
     public function structured(string $key, array $input = [], ?int $version = null): StructuredAiResponse
     {
+        return $this->run($key, $input, $version, null);
+    }
+
+    public function research(string $key, array $input, AiWebSearch $search, ?int $version = null): StructuredAiResponse
+    {
+        return $this->run($key, $input, $version, $search);
+    }
+
+    /**
+     * One prompt, start to finish. A research call differs in three places and nowhere else: it
+     * is never cached (the web is not a function of the input), its request carries the search
+     * tool with a longer timeout, and its cost includes the provider's per-search fee.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    private function run(string $key, array $input, ?int $version, ?AiWebSearch $webSearch): StructuredAiResponse
+    {
         $template = $this->registry->resolve($key, $version);
         $team = $this->currentTeam();
 
@@ -51,7 +70,7 @@ final class ClaudeAiClient implements AiClient
 
         $cacheKey = $this->cacheKey($template, $provider, $model, $input);
 
-        if ($this->cacheEnabled() && ($cached = $this->cache->get($cacheKey)) !== null) {
+        if ($webSearch === null && $this->cacheEnabled() && ($cached = $this->cache->get($cacheKey)) !== null) {
             /** @var array<string, mixed> $cached */
             return $this->fromCache($template, $model, $cached);
         }
@@ -74,7 +93,10 @@ final class ClaudeAiClient implements AiClient
             maxTokens: $template->max_tokens ?? (int) config('ai-platform.defaults.max_tokens', 2048),
             temperature: $template->temperature ?? (float) config('ai-platform.defaults.temperature', 0.2),
             jsonSchema: $template->schema,
-            timeout: (int) config('ai-platform.defaults.timeout', 60),
+            timeout: $webSearch === null
+                ? (int) config('ai-platform.defaults.timeout', 60)
+                : (int) config('ai-platform.defaults.research_timeout', 75),
+            webSearch: $webSearch,
         );
 
         return $this->generateWithValidation($template, $request, $input, $cacheKey);
@@ -164,7 +186,9 @@ final class ClaudeAiClient implements AiClient
         AiRequestStatus $status,
         ?string $errorCode = null,
     ): int {
-        $costMicros = $this->cost->costMicros($result->model, $result->inputTokens, $result->outputTokens);
+        $costMicros = $this->cost->costMicros($result->model, $result->inputTokens, $result->outputTokens)
+            // The provider bills each web search on top of the tokens its results take up.
+            + $result->webSearches * max(0, (int) config('ai-platform.cost.web_search_micros_per_request', 10_000));
 
         $this->usage->record(
             $template, $result->model, $template->tier,
@@ -189,7 +213,8 @@ final class ClaudeAiClient implements AiClient
     ): StructuredAiResponse {
         $costMicros = $this->recordResult($template, $result, $latencyMs, AiRequestStatus::Success);
 
-        if ($this->cacheEnabled()) {
+        // A research answer is about today's web: never served again from memory.
+        if ($this->cacheEnabled() && $result->webSearches === 0 && $result->sources === []) {
             $this->cache->put($cacheKey, [
                 'data' => $data,
                 'input_tokens' => $result->inputTokens,
@@ -210,6 +235,8 @@ final class ClaudeAiClient implements AiClient
             currency: $this->cost->currency(),
             cacheHit: false,
             latencyMs: $latencyMs,
+            sources: $result->sources,
+            webSearches: $result->webSearches,
         );
     }
 

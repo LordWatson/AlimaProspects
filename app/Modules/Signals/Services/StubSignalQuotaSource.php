@@ -42,6 +42,9 @@ final class StubSignalQuotaSource implements SignalQuotaSource
             monthlyPreviewQueries: null,
             // Zero in config means "no ceiling configured" (S12), which is this contract's null.
             articleFetchMicros: self::positiveOrNull((int) config('signals.article_fetch.monthly_cap_micros', 0)),
+            // Not `positiveOrNull`: for this one, zero means none rather than no ceiling. A missing
+            // figure must never read as an open tap on the dearest source in the module.
+            aiResearchMicros: max(0, (int) config('signals.sources.ai_research.monthly_cap_micros', 0)),
             playbooksEnabled: true,
             webhookSourceEnabled: true,
         );

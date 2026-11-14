@@ -54,6 +54,28 @@ final class FakeAiTransport implements AiTransport
     }
 
     /**
+     * Queue a research result: structured data, plus the pages the provider's web search is said
+     * to have returned and how many searches it ran.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  list<array{url: string, title: ?string, page_age: ?string}>  $sources
+     */
+    public function queueResearch(array $data, array $sources, int $webSearches = 1, int $inputTokens = 8_000, int $outputTokens = 600, string $model = 'claude-sonnet-5-5'): self
+    {
+        $this->queue[] = new AiTransportResult(
+            structured: $data,
+            text: (string) json_encode($data),
+            inputTokens: $inputTokens,
+            outputTokens: $outputTokens,
+            model: $model,
+            sources: $sources,
+            webSearches: $webSearches,
+        );
+
+        return $this;
+    }
+
+    /**
      * Queue a raw text result (no decoded structured payload) for the next call.
      */
     public function queueText(string $text, int $inputTokens = 1_000, int $outputTokens = 300, string $model = 'claude-sonnet-5-5'): self

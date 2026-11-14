@@ -216,5 +216,255 @@
             "label": "competitor",
             "why": "Fintech competing for the same budget."
         }
-    ]
+    ],
+    "signals": {
+        "presets": ["funding_round", "acquisition", "relocation"],
+        "locations": ["Dubai"],
+        "icp": [
+            {
+                "type": "industry",
+                "value": "Wholesale and distribution",
+                "weight": 80
+            },
+            {
+                "type": "industry",
+                "value": "Trading",
+                "weight": 70
+            },
+            {
+                "type": "company_size",
+                "value": "20-500 employees",
+                "weight": 50
+            },
+            {
+                "type": "geography",
+                "value": "United Arab Emirates",
+                "weight": 70
+            },
+            {
+                "type": "job_title",
+                "value": "Finance Manager",
+                "weight": 50
+            },
+            {
+                "type": "buying_signal",
+                "value": "expansion",
+                "weight": 50
+            },
+            {
+                "type": "exclusion",
+                "value": "fintech",
+                "weight": null
+            }
+        ],
+        "articles": [
+            {
+                "id": 0,
+                "title": "Dubai building materials distributor Al Noor Trading raises $15m",
+                "snippet": "Al Noor Trading, a Dubai distributor of building materials with 300 staff, has raised $15m to open warehouses in Abu Dhabi and Sharjah.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 2,
+                "label": "good",
+                "url": "https://gulftradejournal.example/dubai-building-materials-distributor-al-noor-trading-raises"
+            },
+            {
+                "id": 1,
+                "title": "Auto parts wholesaler Desert Line Parts acquires Sharjah rival",
+                "snippet": "Dubai auto parts wholesaler Desert Line Parts has acquired Sharjah-based Falcon Spares, doubling its trade customer base.",
+                "source": "Emirates Business Review",
+                "days_ago": 3,
+                "label": "good",
+                "url": "https://emiratesbusinessreview.example/auto-parts-wholesaler-desert-line-parts-acquires-sharjah-riv"
+            },
+            {
+                "id": 2,
+                "title": "Foodstuff trader Jebel Provisions secures $8m growth funding",
+                "snippet": "Jebel Ali foodstuff trading company Jebel Provisions, which supplies 1,200 restaurants and grocers on credit, has secured $8m.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 1,
+                "label": "good",
+                "url": "https://gulftradejournal.example/foodstuff-trader-jebel-provisions-secures-8m-growth-funding"
+            },
+            {
+                "id": 3,
+                "title": "Electronics distributor Marina Components moves headquarters to Dubai South",
+                "snippet": "Marina Components, a 150-employee electronics distributor, is relocating its headquarters and warehouse to Dubai South.",
+                "source": "Emirates Business Review",
+                "days_ago": 4,
+                "label": "good",
+                "url": "https://emiratesbusinessreview.example/electronics-distributor-marina-components-moves-headquarters"
+            },
+            {
+                "id": 4,
+                "title": "FMCG distributor Crescent Supply buys Abu Dhabi wholesaler",
+                "snippet": "Dubai FMCG distributor Crescent Supply has bought Abu Dhabi wholesaler Corniche Wholesale.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 5,
+                "label": "good",
+                "url": "https://gulftradejournal.example/fmcg-distributor-crescent-supply-buys-abu-dhabi-wholesaler"
+            },
+            {
+                "id": 5,
+                "title": "Industrial supplies firm Gulf Fastening raises $6m",
+                "snippet": "Dubai industrial supplies trader Gulf Fastening, with 90 staff, has raised $6m to expand its stock range.",
+                "source": "Emirates Business Review",
+                "days_ago": 2,
+                "label": "good",
+                "url": "https://emiratesbusinessreview.example/industrial-supplies-firm-gulf-fastening-raises-6m"
+            },
+            {
+                "id": 6,
+                "title": "Packaging wholesaler Oasis Pack acquired by regional group",
+                "snippet": "Dubai packaging wholesaler Oasis Pack, which sells to more than 800 businesses, has been acquired by Najd Holding.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 6,
+                "label": "good",
+                "url": "https://gulftradejournal.example/packaging-wholesaler-oasis-pack-acquired-by-regional-group"
+            },
+            {
+                "id": 7,
+                "title": "Riyadh logistics start-up SwiftHaul raises $20m",
+                "snippet": "Saudi logistics company SwiftHaul has raised $20m to expand across the kingdom.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 2,
+                "label": "misfit",
+                "url": "https://gulftradejournal.example/riyadh-logistics-start-up-swifthaul-raises-20m"
+            },
+            {
+                "id": 8,
+                "title": "Dubai fashion boutique Maison Lulu opens second store after angel round",
+                "snippet": "Consumer fashion boutique Maison Lulu has raised a small angel round to open a second shop in Dubai Mall.",
+                "source": "Emirates Business Review",
+                "days_ago": 3,
+                "label": "misfit",
+                "url": "https://emiratesbusinessreview.example/dubai-fashion-boutique-maison-lulu-opens-second-store-after"
+            },
+            {
+                "id": 9,
+                "title": "London hedge fund founder relocates to Dubai",
+                "snippet": "A London hedge fund founder has moved to Dubai and opened a family office in DIFC.",
+                "source": "Emirates Business Review",
+                "days_ago": 1,
+                "label": "misfit",
+                "url": "https://emiratesbusinessreview.example/london-hedge-fund-founder-relocates-to-dubai"
+            },
+            {
+                "id": 10,
+                "title": "Dubai invoicing fintech PayLedger raises $10m Series A",
+                "snippet": "E-invoicing and receivables fintech PayLedger has closed a $10m Series A.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 2,
+                "label": "competitor",
+                "url": "https://gulftradejournal.example/dubai-invoicing-fintech-payledger-raises-10m-series-a"
+            },
+            {
+                "id": 11,
+                "title": "Accounting software firm TallyGulf acquired by Zenbooks",
+                "snippet": "Dubai accounting software vendor TallyGulf has been acquired by Zenbooks.",
+                "source": "Emirates Business Review",
+                "days_ago": 4,
+                "label": "competitor",
+                "url": "https://emiratesbusinessreview.example/accounting-software-firm-tallygulf-acquired-by-zenbooks"
+            },
+            {
+                "id": 12,
+                "title": "Payments provider DirhamPay secures $25m",
+                "snippet": "Dubai payments provider DirhamPay has secured $25m to grow its business collections product.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 3,
+                "label": "competitor",
+                "url": "https://gulftradejournal.example/payments-provider-dirhampay-secures-25m"
+            },
+            {
+                "id": 13,
+                "title": "UAE funding tracker: every round announced this month",
+                "snippet": "A running list of funding rounds announced across the Emirates.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 1,
+                "label": "not_event",
+                "url": "https://gulftradejournal.example/uae-funding-tracker-every-round-announced-this-month"
+            },
+            {
+                "id": 14,
+                "title": "Five trends shaping wholesale in the Gulf",
+                "snippet": "Analysts set out what distributors should expect in the year ahead.",
+                "source": "Emirates Business Review",
+                "days_ago": 2,
+                "label": "not_event",
+                "url": "https://emiratesbusinessreview.example/five-trends-shaping-wholesale-in-the-gulf"
+            },
+            {
+                "id": 15,
+                "title": "Opinion: e-invoicing rules will change how traders work",
+                "snippet": "The new e-invoicing mandate is an opportunity, argues our columnist.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 1,
+                "label": "not_event",
+                "url": "https://gulftradejournal.example/opinion-e-invoicing-rules-will-change-how-traders-work"
+            },
+            {
+                "id": 16,
+                "title": "Flashback: the 2022 deal that made Sahara Hardware a regional name",
+                "snippet": "Three years on, we revisit Sahara Hardware's 2022 acquisition of a Dubai tools distributor.",
+                "source": "Emirates Business Review",
+                "days_ago": 2,
+                "label": "stale",
+                "url": "https://emiratesbusinessreview.example/flashback-the-2022-deal-that-made-sahara-hardware-a-regional"
+            },
+            {
+                "id": 17,
+                "title": "Dubai tyre wholesaler Tread Arabia raises $4m",
+                "snippet": "Tyre wholesaler Tread Arabia has raised $4m to expand its Dubai warehouse.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 430,
+                "label": "stale",
+                "url": "https://gulftradejournal.example/dubai-tyre-wholesaler-tread-arabia-raises-4m"
+            },
+            {
+                "id": 18,
+                "title": "Al Noor Trading lands $15m for new warehouses",
+                "snippet": "Building materials distributor Al Noor Trading of Dubai has raised $15m and will open warehouses in Abu Dhabi and Sharjah.",
+                "source": "Emirates Business Review",
+                "days_ago": 2,
+                "label": "duplicate",
+                "url": "https://emiratesbusinessreview.example/al-noor-trading-lands-15m-for-new-warehouses",
+                "of": 0
+            },
+            {
+                "id": 19,
+                "title": "Desert Line Parts buys Falcon Spares",
+                "snippet": "Dubai auto parts wholesaler Desert Line Parts has completed its acquisition of Falcon Spares of Sharjah.",
+                "source": "Gulf Trade Journal",
+                "days_ago": 3,
+                "label": "duplicate",
+                "url": "https://gulftradejournal.example/desert-line-parts-buys-falcon-spares",
+                "of": 1
+            }
+        ],
+        "profile_after_check": {
+            "delivery_model": "remote",
+            "customer_size_range": "20-500 employees",
+            "customer_industries": [
+                "Wholesale and distribution",
+                "Trading companies",
+                "Building materials",
+                "Auto parts",
+                "Foodstuff",
+                "Electronics",
+                "FMCG"
+            ],
+            "anti_customers": [
+                "Software vendors and fintechs",
+                "Accounting firms, banks and payment providers",
+                "Retailers selling only to consumers",
+                "Companies outside the UAE"
+            ],
+            "buying_triggers": [
+                "Expansion into a new emirate",
+                "A new warehouse",
+                "New funding",
+                "An acquisition"
+            ]
+        }
+    }
 }

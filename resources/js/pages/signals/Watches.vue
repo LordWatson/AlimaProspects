@@ -966,6 +966,23 @@ onBeforeUnmount(() => {
                                         })
                                     }}
                                 </span>
+                                <!-- Real events this check left out because the company is a
+                                     competitor or not a customer. Said, so a quiet feed is not
+                                     mistaken for a quiet week. -->
+                                <span
+                                    v-if="run.not_fit_count > 0"
+                                    class="text-muted-foreground"
+                                    :data-test="`not-fit-${run.id}`"
+                                >
+                                    {{
+                                        t(
+                                            'Left out, not your customers: :count',
+                                            {
+                                                count: run.not_fit_count,
+                                            },
+                                        )
+                                    }}
+                                </span>
                                 <!-- A trim is coverage this run did not have, so it is said rather
                                      than left for somebody to infer from a count that stopped
                                      growing (ADR 0019 §4). -->

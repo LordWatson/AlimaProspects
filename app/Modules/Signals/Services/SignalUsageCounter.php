@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Signals\Services;
 
+use App\Modules\AiPlatform\Models\AiRequest;
 use App\Modules\Core\Models\Team;
 use App\Modules\Signals\Enums\SignalRunStatus;
 use App\Modules\Signals\Models\Signal;
@@ -127,6 +128,28 @@ final class SignalUsageCounter
             ->count();
 
         return $read * max(0, (int) config('signals.article_fetch.cost_micros_per_fetch', 2_000));
+    }
+
+    /**
+     * What AI research has cost this team this month, in micro-units (v3 P4).
+     *
+     * Read off the AI ledger, where every research call already has a row whose cost includes the
+     * provider's per-search fee — a record over the ledger, never a counter (ADR 0012). A call
+     * whose answer would not validate is counted, because its row carries its cost. One that
+     * timed out is recorded at zero, so a search the provider ran before the timeout is missed: an
+     * under-count in the team's favour, bounded by one call per run.
+     */
+    public function aiResearchMicrosThisMonth(Team $team): int
+    {
+        [$start, $end] = self::thisMonth();
+
+        return (int) AiRequest::query()
+            ->withoutGlobalScopes()
+            ->where('team_id', $team->getKey())
+            ->where('prompt_key', AiResearchSignalSource::PROMPT_KEY)
+            ->where('created_at', '>=', $start)
+            ->where('created_at', '<', $end)
+            ->sum('cost_micros');
     }
 
     /**

@@ -44,6 +44,7 @@ import {
 } from '@/components/forms';
 import { FilterGroup, FilterToggle } from '@/components/list';
 import PageHero from '@/components/PageHero.vue';
+import SignalSuggestionsPanel from '@/components/signals/SignalSuggestionsPanel.vue';
 import SignalTypeIcon from '@/components/signals/SignalTypeIcon.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,7 @@ import type {
     SignalPresetPack,
     SignalPreviewResult,
     SignalPreviewVerdict,
+    SignalSuggestionBatch,
     SignalSourceKind,
     SignalSourceOption,
     SignalSubmission,
@@ -147,6 +149,8 @@ const props = defineProps<{
     preset_fields: string[];
     /** What this team has offered to the shared library, and what became of it (S15 task 4). */
     submissions: SignalSubmission[];
+    /** The latest batch of suggested types, or null if the team has never asked (v3 P2). */
+    suggestions: SignalSuggestionBatch | null;
     can: { manage: boolean; compose: boolean };
 }>();
 
@@ -965,6 +969,7 @@ const previewGroups = computed(() => {
         'kept',
         'below_confidence',
         'below_relevance',
+        'not_a_customer',
         'wrong_location',
         'not_an_event',
         'ignored_domain',
@@ -1235,6 +1240,20 @@ function confirmRemove(): void {
                 </Button>
             </template>
         </PageHero>
+
+        <!-- Suggested for this business (v3 P2), above the composer: it asks nothing of the
+             member, so it is the first thing to try. Behind the same capability as the composer,
+             which is the other AI shortcut on this screen. -->
+        <SignalSuggestionsPanel
+            v-if="can.manage && can.compose"
+            :batch="suggestions"
+            :presets="presets"
+            :at-ceiling="atCeiling"
+            :adding="adding"
+            :owned-names="definitions.map((definition) => definition.name)"
+            @use-draft="applyDraft"
+            @add-preset="addPreset"
+        />
 
         <!-- The composer (S9): the front door, for the member who knows the moment but not the
              format. The library is below it on purpose — the fastest path for most people is still

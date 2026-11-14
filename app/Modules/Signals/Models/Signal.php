@@ -11,6 +11,7 @@ use App\Modules\Core\Enums\Market;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\Signals\Enums\SignalDismissReason;
 use App\Modules\Signals\Enums\SignalMatchConfidence;
+use App\Modules\Signals\Enums\SignalSellerFit;
 use App\Modules\Signals\Enums\SignalSourceKind;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Services\SignalClusterer;
@@ -65,6 +66,9 @@ use Illuminate\Support\Str;
  * @property list<array<string, mixed>>|null $score_breakdown every component's value and share
  * @property Carbon|null $article_fetched_at when the full article was read; never the body (S12)
  * @property string|null $suggested_approach
+ * @property SignalSellerFit|null $seller_fit
+ * @property int|null $seller_fit_confidence
+ * @property string|null $why_it_matters
  * @property string $source_url
  * @property string|null $source_name
  * @property SignalSourceKind $source_kind
@@ -115,6 +119,9 @@ class Signal extends Model
         'resolved_market',
         'confidence',
         'relevance',
+        'seller_fit',
+        'seller_fit_confidence',
+        'why_it_matters',
         'heat',
         'score_breakdown',
         'article_fetched_at',
@@ -334,6 +341,8 @@ class Signal extends Model
             'currency' => Currency::class,
             'confidence' => 'integer',
             'relevance' => 'integer',
+            'seller_fit' => SignalSellerFit::class,
+            'seller_fit_confidence' => 'integer',
             'heat' => 'integer',
             'score_breakdown' => 'array',
             'article_fetched_at' => 'datetime',

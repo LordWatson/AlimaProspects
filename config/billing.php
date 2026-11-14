@@ -173,6 +173,7 @@ return [
                 'monthly_source_queries' => (int) env('BILLING_FREE_SIGNAL_QUERIES', 100),
                 'monthly_preview_queries' => (int) env('BILLING_FREE_SIGNAL_PREVIEWS', 20),
                 'article_fetch_micros' => (int) env('BILLING_FREE_SIGNAL_ARTICLE_MICROS', 0),
+                'ai_research_micros' => (int) env('BILLING_FREE_SIGNAL_AI_RESEARCH_MICROS', 0),
                 'playbooks' => false,
                 'webhook_source' => false,
             ],
@@ -218,6 +219,7 @@ return [
                 'monthly_source_queries' => (int) env('BILLING_STARTER_SIGNAL_QUERIES', 600),
                 'monthly_preview_queries' => (int) env('BILLING_STARTER_SIGNAL_PREVIEWS', 60),
                 'article_fetch_micros' => (int) env('BILLING_STARTER_SIGNAL_ARTICLE_MICROS', 0),
+                'ai_research_micros' => (int) env('BILLING_STARTER_SIGNAL_AI_RESEARCH_MICROS', 0),
                 'playbooks' => false,
                 'webhook_source' => false,
             ],
@@ -274,6 +276,7 @@ return [
                 // The full-article read is off by default product-wide; this is what it costs this
                 // plan when an operator turns it on (`SIGNALS_ARTICLE_FETCH_ENABLED`).
                 'article_fetch_micros' => (int) env('BILLING_TEAM_SIGNAL_ARTICLE_MICROS', 100_000),
+                'ai_research_micros' => (int) env('BILLING_TEAM_SIGNAL_AI_RESEARCH_MICROS', 2_000_000),
                 // **Both switches on, like every plan that has Signals at all.** The temptation was
                 // to hold the events API back for Scale — it is a developer integration, so it
                 // reads like an upmarket feature — but it shipped in S13b on every plan that had
@@ -318,6 +321,7 @@ return [
                 'monthly_source_queries' => (int) env('BILLING_SCALE_SIGNAL_QUERIES', 10_000),
                 'monthly_preview_queries' => (int) env('BILLING_SCALE_SIGNAL_PREVIEWS', 600),
                 'article_fetch_micros' => (int) env('BILLING_SCALE_SIGNAL_ARTICLE_MICROS', 500_000),
+                'ai_research_micros' => (int) env('BILLING_SCALE_SIGNAL_AI_RESEARCH_MICROS', 10_000_000),
                 'playbooks' => (bool) env('BILLING_SCALE_SIGNAL_PLAYBOOKS', true),
                 'webhook_source' => (bool) env('BILLING_SCALE_SIGNAL_WEBHOOK', true),
             ],
@@ -366,6 +370,7 @@ return [
                 'monthly_source_queries' => null,
                 'monthly_preview_queries' => null,
                 'article_fetch_micros' => null,
+                'ai_research_micros' => null,
                 'playbooks' => true,
                 'webhook_source' => true,
             ],

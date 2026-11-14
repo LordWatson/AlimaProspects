@@ -12,6 +12,7 @@ use Laravel\Ai\Contracts\Conversational;
 use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Promptable;
+use Laravel\Ai\Providers\Tools\ProviderTool;
 
 /**
  * The ad-hoc laravel/ai agent the {@see LaravelAiTransport} drives for a single prompt. Our registry
@@ -29,12 +30,14 @@ final class RegisteredPromptAgent implements Agent, Conversational, HasStructure
 
     /**
      * @param  array<string, mixed>|null  $jsonSchema
+     * @param  list<ProviderTool>  $providerTools  Provider-run tools (web search) this one prompt may use.
      */
     public function __construct(
         private readonly string $systemInstructions,
         private readonly ?array $jsonSchema,
         private readonly int $maxTokensValue,
         private readonly float $temperatureValue,
+        private readonly array $providerTools = [],
     ) {}
 
     public function instructions(): string
@@ -55,7 +58,7 @@ final class RegisteredPromptAgent implements Agent, Conversational, HasStructure
      */
     public function tools(): iterable
     {
-        return [];
+        return $this->providerTools;
     }
 
     /**

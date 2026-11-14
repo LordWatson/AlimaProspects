@@ -55,6 +55,15 @@ function cannedResponses(): array
         'lead_sourcing.eval_judge' => [
             'verdicts' => [['index' => 1, 'verdict' => 'competitor', 'reason' => 'Sells the same service.']],
         ],
+        'signals.propose_definitions' => [
+            'proposals' => [['title' => 'A new site', 'rationale' => 'A new site needs fitting out.', 'preset_key' => 'uk_planning_granted', 'definition' => null]],
+        ],
+        'signals.research_events' => [
+            'events' => [['source_url' => 'https://example.com/a', 'headline' => 'Acme opens a site', 'summary' => 'Acme opened a site.', 'outlet' => null, 'published' => null]],
+        ],
+        'signals.eval_judge' => [
+            'verdicts' => [['index' => 1, 'verdict' => 'wrong_company', 'reason' => 'A competitor.']],
+        ],
         'icp.refine_suggestions' => [
             'suggestions' => [
                 // `action` is v2's; v1 ignores it.
@@ -106,7 +115,7 @@ function cannedResponses(): array
                 'item_index' => 0, 'is_event' => true, 'event_type' => 'funding_round',
                 'subject_person_name' => 'Jane', 'subject_person_role' => 'CEO', 'subject_company_name' => 'Acme',
                 'counterparty_name' => null, 'amount' => 40_000_000, 'currency' => 'USD', 'location' => 'Dubai',
-                'confidence' => 90, 'relevance' => 80, 'summary' => 'Acme raised a Series A.', 'suggested_approach' => 'Intro via LinkedIn.',
+                'confidence' => 90, 'relevance' => 80, 'summary' => 'Acme raised a Series A.', 'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => 'Intro via LinkedIn.',
             ]],
         ],
         // The composer (S9). A **viable** draft, because that is the branch with a schema to
@@ -167,7 +176,7 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
     //
     // `lead_sourcing.eval_judge` is the thirteenth, and the only one the product never calls: it
     // grades discovery candidates for `relevance:eval` against a description the pipeline never sees.
-    expect(AiPromptTemplate::query()->count())->toBe(27)
+    expect(AiPromptTemplate::query()->count())->toBe(33)
         ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.compose_profile',
@@ -182,7 +191,10 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
             'outreach.draft_message',
             'scoring.qualitative_fit',
             'signals.compose_definition',
+            'signals.eval_judge',
             'signals.extract_event',
+            'signals.propose_definitions',
+            'signals.research_events',
         ]);
 });
 
@@ -216,5 +228,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(27);
+    expect(AiPromptTemplate::query()->count())->toBe(33);
 });

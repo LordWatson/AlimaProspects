@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\AiPlatform\Providers;
 
 use App\Modules\AiPlatform\Contracts\AiClient;
+use App\Modules\AiPlatform\Contracts\AiResearcher;
 use App\Modules\AiPlatform\Contracts\AiTransport;
 use App\Modules\AiPlatform\Contracts\CreditSource;
 use App\Modules\AiPlatform\Observability\AiUsageCard;
@@ -46,6 +47,18 @@ final class AiPlatformServiceProvider extends ModuleServiceProvider
         ));
         $this->app->singleton(AiTransport::class, LaravelAiTransport::class);
         $this->app->bind(CreditSource::class, StubCreditSource::class);
+
+        // The same object, asked for by its second promise (ADR 0039). Resolved through
+        // `AiClient` so a test that swaps the transport and forgets the client gets the swap here too.
+        $this->app->bind(AiResearcher::class, static function ($app): AiResearcher {
+            $client = $app->make(AiClient::class);
+
+            if (! $client instanceof AiResearcher) {
+                throw new \LogicException('The bound AiClient cannot run research prompts.');
+            }
+
+            return $client;
+        });
 
         $this->app->singleton(AiClient::class, function ($app): ClaudeAiClient {
             /** @var CacheRepository $cache */

@@ -556,6 +556,31 @@ class SignalsException extends DomainException
      * (S9): per-member rate limiting cannot express it, since twelve members each inside their own
      * limit can still empty an allowance in an afternoon.
      */
+    /**
+     * Suggestions were asked for with no business profile to draw them from (Signals v3 P2).
+     */
+    public static function suggestionsNeedProfile(): self
+    {
+        $e = new self('Tell Alima about your business first. Suggestions are drawn from your business profile.');
+        $e->errorCode = 'signals.suggestions_need_profile';
+        $e->status = 422;
+
+        return $e;
+    }
+
+    /**
+     * Suggestions were asked for again inside the team's daily limit (Signals v3 P2). A refusal
+     * with a number in it, for the reason {@see self::previewBudgetSpent()} gives.
+     */
+    public static function suggestionsOnCooldown(int $hours): self
+    {
+        $e = new self(sprintf('Alima has already suggested signal types for you in the last %d hours. Your suggestions are still here to use.', $hours));
+        $e->errorCode = 'signals.suggestions_on_cooldown';
+        $e->status = 429;
+
+        return $e;
+    }
+
     public static function previewBudgetSpent(): SignalAllowanceExceeded
     {
         $e = new SignalAllowanceExceeded('Your team has used its preview allowance for today. Previews reset tomorrow — you can still save this and try it on a watch.');

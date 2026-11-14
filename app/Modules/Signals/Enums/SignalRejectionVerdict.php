@@ -31,6 +31,7 @@ enum SignalRejectionVerdict: string
      * ({@see SignalDefinition::effectiveThresholds()}).
      */
     case BelowThreshold = 'below_threshold';
+    case NotFit = 'not_fit';
 
     /**
      * What this verdict tells somebody tuning the type that produced it.
@@ -42,6 +43,7 @@ enum SignalRejectionVerdict: string
         return match ($this) {
             self::NotEvent => 'The classifier did not read this as one of your events.',
             self::BelowThreshold => 'A real event, under this type’s confidence or relevance floor.',
+            self::NotFit => 'A real event, about a company that is not a customer of yours.',
         };
     }
 }

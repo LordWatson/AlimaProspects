@@ -76,7 +76,7 @@ function redirectEvent(): array
         'confidence' => 90,
         'relevance' => 80,
         'summary' => 'Acme raised a $40m Series A.',
-        'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
     ];
 }
 

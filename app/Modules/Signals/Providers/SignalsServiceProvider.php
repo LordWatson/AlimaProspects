@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Providers;
 
 use App\Modules\AiPlatform\Contracts\AiClient;
+use App\Modules\AiPlatform\Contracts\AiResearcher;
 use App\Modules\Core\Contracts\WebContentFetcher;
 use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\Core\Support\RobotsPolicy;
+use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadsWorkspace\Contracts\LeadOriginProvider;
 use App\Modules\ModuleServiceProvider;
 use App\Modules\Scoring\Contracts\LeadSignalSource;
@@ -16,6 +18,7 @@ use App\Modules\Signals\Console\ClusterSignalsBackfillCommand;
 use App\Modules\Signals\Console\DispatchDueSignalWatchesCommand;
 use App\Modules\Signals\Console\PruneSignalsCommand;
 use App\Modules\Signals\Console\RescoreSignalsCommand;
+use App\Modules\Signals\Console\SignalEvalCommand;
 use App\Modules\Signals\Contracts\SignalOutreachDrafter;
 use App\Modules\Signals\Contracts\SignalQuotaSource;
 use App\Modules\Signals\Contracts\SignalSourceProvider;
@@ -39,6 +42,7 @@ use App\Modules\Signals\Policies\SignalPolicy;
 use App\Modules\Signals\Policies\SignalTuningSuggestionPolicy;
 use App\Modules\Signals\Policies\SignalWatchlistPolicy;
 use App\Modules\Signals\Policies\SignalWatchPolicy;
+use App\Modules\Signals\Services\AiResearchSignalSource;
 use App\Modules\Signals\Services\CompaniesHouseNumberLookup;
 use App\Modules\Signals\Services\CompaniesHouseSignalSource;
 use App\Modules\Signals\Services\FeedSignalSource;
@@ -94,6 +98,8 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 DispatchDueSignalWatchesCommand::class,
+                // Signals v3: the measuring stick. Live and paid, so never scheduled.
+                SignalEvalCommand::class,
                 PruneSignalsCommand::class,
                 // S11, and deliberately **not** scheduled: a backfill is a one-off an operator
                 // runs when the phase ships, and a nightly re-clustering of a stable archive
@@ -148,6 +154,12 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         RateLimiter::for('signals-compose', fn (Request $request): Limit => Limit::perHour(
             max(1, (int) config('signals.composer.rate_limit', 20)),
         )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        // Asking for suggestions is refused once a day per team by the Action; this only stops
+        // a member hammering the button into that refusal.
+        RateLimiter::for('signals-suggest', fn (Request $request): Limit => Limit::perHour(6)
+            // Per team, because the spend is the team's: six members are not six allowances.
+            ->by('team:'.($request->user()->current_team_id ?? $request->ip())));
 
         RateLimiter::for('signals-preview', fn (Request $request): Limit => Limit::perHour(
             max(1, (int) config('signals.preview.rate_limit', 10)),
@@ -223,14 +235,14 @@ final class SignalsServiceProvider extends ModuleServiceProvider
 
             $registry->register(new NewsSignalSource(
                 $app->make(HttpFactory::class),
-                $this->sourceBreaker($app),
+                self::sourceBreaker($app),
                 $app->make(SignalItemNormaliser::class),
                 $app->make(IgnoredDomains::class),
             ));
 
             $registry->register(new WebSearchSignalSource(
                 $app->make(HttpFactory::class),
-                $this->sourceBreaker($app),
+                self::sourceBreaker($app),
                 $app->make(SignalItemNormaliser::class),
                 $app->make(IgnoredDomains::class),
             ));
@@ -252,7 +264,7 @@ final class SignalsServiceProvider extends ModuleServiceProvider
             // provider's health, and tripping it should not touch anybody's news.
             $registry->register(new FeedSignalSource(
                 $app->make(HttpFactory::class),
-                $this->sourceBreaker($app),
+                self::sourceBreaker($app),
                 $app->make(SignalItemNormaliser::class),
                 $app->make(IgnoredDomains::class),
                 $app->make(Cache::class),
@@ -262,6 +274,13 @@ final class SignalsServiceProvider extends ModuleServiceProvider
             // outbound request. Everything that needed hardening happened at the door, where the
             // data came from outside (ADR 0023 §7).
             $registry->register(new WebhookSignalSource);
+
+            // Claude's web search (v3 P4, ADR 0039), and only when it is switched on. ADR 0023's
+            // invariant is that a registered source is an available one, so a source that is off
+            // for the platform is not in the registry at all rather than in it and declining.
+            if (SignalSourceKind::AiResearch->isAvailable()) {
+                $registry->register(self::aiResearchSource($app));
+            }
 
             return $registry;
         });
@@ -394,7 +413,26 @@ final class SignalsServiceProvider extends ModuleServiceProvider
         );
     }
 
-    private function sourceBreaker(Container $app): CircuitBreaker
+    /**
+     * The AI research source, built the one way it is built.
+     *
+     * Public and static because two things besides this provider need one: a test that switches
+     * the source on after the registry exists, and the evaluation harness. The researcher is
+     * resolved when a call is made rather than now, because the registry is a singleton and may
+     * be built before a test swaps the AI transport.
+     */
+    public static function aiResearchSource(Container $app): AiResearchSignalSource
+    {
+        return new AiResearchSignalSource(
+            static fn (): AiResearcher => $app->make(AiResearcher::class),
+            $app->make(TeamContext::class),
+            $app->make(SignalSpendGuard::class),
+            self::sourceBreaker($app),
+            $app->make(SignalItemNormaliser::class),
+        );
+    }
+
+    private static function sourceBreaker(Container $app): CircuitBreaker
     {
         return new CircuitBreaker(
             $app->make(Cache::class),

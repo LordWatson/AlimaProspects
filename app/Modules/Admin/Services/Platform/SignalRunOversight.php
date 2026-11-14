@@ -231,6 +231,7 @@ final class SignalRunOversight
         return match ($kind) {
             SignalSourceKind::News => PlatformProvider::SerperNews,
             SignalSourceKind::WebSearch => PlatformProvider::SignalsWebSearch,
+            SignalSourceKind::AiResearch => PlatformProvider::SignalsAiResearch,
             // **Lead Sourcing's row, deliberately** (S13b). The signals source shares that
             // credential and that breaker, because the registry rate-limits per API key and one
             // quota deserves one circuit — so the honest light to show here is the one that is

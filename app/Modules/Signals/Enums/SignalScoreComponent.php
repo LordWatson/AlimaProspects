@@ -45,6 +45,9 @@ enum SignalScoreComponent: string
     /** Fit against the team's active ICP, through `Scoring`'s own criteria match. */
     case IcpFit = 'icp_fit';
 
+    /** Whether the subject is a customer of this seller at all, from the article and the seller's own description (Signals v3 P1). */
+    case SellerFit = 'seller_fit';
+
     /** A translation key naming the component on the card. */
     public function label(): string
     {
@@ -57,6 +60,7 @@ enum SignalScoreComponent: string
             self::Seniority => 'Who it is about',
             self::ClusterBreadth => 'How widely reported',
             self::IcpFit => 'Fit with your ideal customer',
+            self::SellerFit => 'Whether they would buy from you',
         };
     }
 
@@ -78,6 +82,7 @@ enum SignalScoreComponent: string
             self::Seniority => 'An event about a founder or a chief executive is worth more than one about a department.',
             self::ClusterBreadth => 'A story several outlets carried is likelier to be real than one only an aggregator ran.',
             self::IcpFit => 'The same criteria your lead scores use, applied to what this event is about.',
+            self::SellerFit => 'Whether the company in the story is the kind you sell to, judged from the article and your business profile.',
         };
     }
 

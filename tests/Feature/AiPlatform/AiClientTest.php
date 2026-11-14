@@ -41,15 +41,15 @@ it('returns schema-valid structured output and logs usage + cost for the team', 
         ->and($response->promptVersion)->toBe(1)
         ->and($response->tier)->toBe(AiTier::Reasoning)
         ->and($response->cacheHit)->toBeFalse()
-        // Sonnet: 1000 * 3 + 500 * 15 = 10_500 micro-units.
-        ->and($response->costMicros)->toBe(10_500);
+        // Sonnet: 1000 * 2 + 500 * 10 = 7_000 micro-units.
+        ->and($response->costMicros)->toBe(7_000);
 
     $row = AiRequest::query()->withoutGlobalScopes()->firstOrFail();
     expect($row->team_id)->toBe($team->getKey())
         ->and($row->status)->toBe(AiRequestStatus::Success)
         ->and($row->input_tokens)->toBe(1_000)
         ->and($row->output_tokens)->toBe(500)
-        ->and($row->cost_micros)->toBe(10_500)
+        ->and($row->cost_micros)->toBe(7_000)
         ->and($row->cache_hit)->toBeFalse();
 });
 
@@ -65,8 +65,8 @@ it('resolves the model + price from the prompt tier (cheap → Haiku)', function
     $response = $client->structured('test.extract', ['text' => 'about acme']);
 
     expect($fake->lastRequest()?->model)->toBe('claude-haiku-5-5')
-        // Haiku: 2000 * 1 + 500 * 5 = 4_500 micro-units.
-        ->and($response->costMicros)->toBe(4_500);
+        // Haiku: 2000 * 0.1 + 500 * 0.5 = 450 micro-units.
+        ->and($response->costMicros)->toBe(450);
 });
 
 it('retries once on an invalid response, then succeeds', function (): void {

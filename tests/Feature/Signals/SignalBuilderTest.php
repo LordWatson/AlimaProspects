@@ -242,7 +242,7 @@ it('previews a draft and persists no signals, only a ledger row', function (): v
     ]);
 
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0,
+        ...signalEventDefaults(), 'item_index' => 0,
         'is_event' => true,
         'event_type' => 'manufacturer_sold',
         'subject_company_name' => 'Acme Engineering',
@@ -365,11 +365,11 @@ it('produces every verdict from a crafted sample', function (): void {
     ]);
 
     $this->fakeAi->queueStructured(['events' => [
-        ['item_index' => 0, 'is_event' => true, 'event_type' => 'manufacturer_sold', 'confidence' => 95, 'relevance' => 85, 'summary' => 'Acme was sold.', 'location' => 'Dubai'],
-        ['item_index' => 1, 'is_event' => false, 'event_type' => null, 'confidence' => 10, 'relevance' => 10, 'summary' => 'A round-up.'],
-        ['item_index' => 2, 'is_event' => true, 'event_type' => 'manufacturer_sold', 'confidence' => 90, 'relevance' => 80, 'summary' => 'A London firm was sold.', 'location' => 'London'],
-        ['item_index' => 3, 'is_event' => true, 'event_type' => 'manufacturer_sold', 'confidence' => 30, 'relevance' => 80, 'summary' => 'Possibly a sale.', 'location' => 'Dubai'],
-        ['item_index' => 4, 'is_event' => true, 'event_type' => 'manufacturer_sold', 'confidence' => 90, 'relevance' => 5, 'summary' => 'A corner shop.', 'location' => 'Dubai'],
+        [...signalEventDefaults(), 'item_index' => 0, 'is_event' => true, 'event_type' => 'manufacturer_sold', 'confidence' => 95, 'relevance' => 85, 'summary' => 'Acme was sold.', 'location' => 'Dubai'],
+        [...signalEventDefaults(), 'item_index' => 1, 'is_event' => false, 'event_type' => null, 'confidence' => 10, 'relevance' => 10, 'summary' => 'A round-up.'],
+        [...signalEventDefaults(), 'item_index' => 2, 'is_event' => true, 'event_type' => 'manufacturer_sold', 'confidence' => 90, 'relevance' => 80, 'summary' => 'A London firm was sold.', 'location' => 'London'],
+        [...signalEventDefaults(), 'item_index' => 3, 'is_event' => true, 'event_type' => 'manufacturer_sold', 'confidence' => 30, 'relevance' => 80, 'summary' => 'Possibly a sale.', 'location' => 'Dubai'],
+        [...signalEventDefaults(), 'item_index' => 4, 'is_event' => true, 'event_type' => 'manufacturer_sold', 'confidence' => 90, 'relevance' => 5, 'summary' => 'A corner shop.', 'location' => 'Dubai'],
     ]]);
 
     $result = previewDraft($team);
@@ -408,7 +408,7 @@ it('diagnoses templates that find nothing differently from thresholds that rejec
         $this->fakeNews->item('Acme sold', 'https://gulfbusiness.com/one'),
     ]);
     $this->fakeAi->queueStructured(['events' => [[
-        'item_index' => 0, 'is_event' => true, 'event_type' => 'manufacturer_sold',
+        ...signalEventDefaults(), 'item_index' => 0, 'is_event' => true, 'event_type' => 'manufacturer_sold',
         'confidence' => 20, 'relevance' => 20, 'summary' => 'Acme was sold.', 'location' => 'Dubai',
     ]]]);
 

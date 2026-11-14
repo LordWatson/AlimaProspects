@@ -65,6 +65,11 @@ return [
         // opinion over a name and a snippet: worth showing, not worth much on its own.
         'relevance_gate' => (int) env('EVIDENCE_RELIABILITY_RELEVANCE_GATE', 35),
 
+        // Claude's web search as a signal source (ADR 0039). The page is real — an item whose link
+        // the search did not return is dropped — but the summary beside it is the model's, so it
+        // sits with web search rather than with the press.
+        'ai_research' => (int) env('EVIDENCE_RELIABILITY_AI_RESEARCH', 45),
+
         // A lead converted from a signal keeps the article's own source key, so `signal` is only
         // reached by a row whose origin was lost — the provenance equivalent of "somewhere".
         'signal' => (int) env('EVIDENCE_RELIABILITY_SIGNAL', 50),

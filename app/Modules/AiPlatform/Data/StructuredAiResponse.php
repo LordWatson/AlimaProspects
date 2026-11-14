@@ -17,6 +17,7 @@ final readonly class StructuredAiResponse
 {
     /**
      * @param  array<string, mixed>  $data  Schema-valid output.
+     * @param  list<array{url: string, title: ?string, page_age: ?string}>  $sources  Pages a research call's searches returned.
      */
     public function __construct(
         public array $data,
@@ -30,6 +31,10 @@ final readonly class StructuredAiResponse
         public string $currency,
         public bool $cacheHit,
         public int $latencyMs,
+        // A research call only (`AiResearcher`): the pages its searches returned, and how many
+        // searches it ran. `costMicros` already includes the per-search fee.
+        public array $sources = [],
+        public int $webSearches = 0,
     ) {}
 
     /**

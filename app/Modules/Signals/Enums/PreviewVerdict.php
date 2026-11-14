@@ -38,6 +38,9 @@ enum PreviewVerdict: string
     /** An event this type is sure of, about somebody this team would not want. */
     case BelowRelevance = 'below_relevance';
 
+    /** A real event about a competitor, or a company the team does not sell to (Signals v3 P1). */
+    case NotACustomer = 'not_a_customer';
+
     /** It would have become a signal. */
     case Kept = 'kept';
 
@@ -59,6 +62,7 @@ enum PreviewVerdict: string
             self::WrongLocation => 'Wrong place',
             self::BelowConfidence => 'Not sure enough',
             self::BelowRelevance => 'Not relevant enough',
+            self::NotACustomer => 'Not a customer',
             self::Kept => 'Would appear',
             self::Unclassified => 'Not checked',
         };
@@ -85,6 +89,7 @@ enum PreviewVerdict: string
             self::WrongLocation => 'Real events, somewhere you are not watching. Add the place to a watch, or have the searches name one.',
             self::BelowConfidence => 'Likely events that Alima is not sure enough about. Lower "How sure Alima must be" to let these through.',
             self::BelowRelevance => 'Real events, about businesses outside your ideal customer. Lower "How well it must fit you", or accept that these are noise.',
+            self::NotACustomer => 'Real events, about competitors or companies you would not sell to. A real check leaves these out.',
             self::Kept => 'These would appear in your feed.',
             self::Unclassified => 'Alima found these but could not check them just now. Try again in a minute.',
         };
@@ -103,7 +108,7 @@ enum PreviewVerdict: string
         return match ($this) {
             // `Unclassified` is not a finding either way — nobody looked.
             self::IgnoredDomain, self::NotAnEvent, self::Unclassified => false,
-            self::WrongLocation, self::BelowConfidence, self::BelowRelevance, self::Kept => true,
+            self::WrongLocation, self::BelowConfidence, self::BelowRelevance, self::NotACustomer, self::Kept => true,
         };
     }
 

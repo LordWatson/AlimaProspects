@@ -216,5 +216,259 @@
             "label": "competitor",
             "why": "IT consultancy."
         }
-    ]
+    ],
+    "signals": {
+        "presets": [
+            "uk_acquisition",
+            "uk_senior_appointment",
+            "uk_funding_round"
+        ],
+        "locations": ["Birmingham"],
+        "icp": [
+            {
+                "type": "industry",
+                "value": "Manufacturing",
+                "weight": 80
+            },
+            {
+                "type": "company_size",
+                "value": "100-1000 employees",
+                "weight": 70
+            },
+            {
+                "type": "geography",
+                "value": "United Kingdom",
+                "weight": 40
+            },
+            {
+                "type": "job_title",
+                "value": "Finance Director",
+                "weight": 50
+            },
+            {
+                "type": "job_title",
+                "value": "Operations Director",
+                "weight": 50
+            },
+            {
+                "type": "buying_signal",
+                "value": "acquisition",
+                "weight": 60
+            },
+            {
+                "type": "exclusion",
+                "value": "IT consultancy",
+                "weight": null
+            }
+        ],
+        "articles": [
+            {
+                "id": 0,
+                "title": "Black Country castings firm Tipton Foundries acquires Walsall machining business",
+                "snippet": "Tipton Foundries, which employs 340 people, has acquired precision machinist Walsall CNC and will bring both sites onto one production system.",
+                "source": "Midlands Manufacturing News",
+                "days_ago": 2,
+                "label": "good",
+                "url": "https://midlandsmanufacturingnews.example/black-country-castings-firm-tipton-foundries-acquires-walsal"
+            },
+            {
+                "id": 1,
+                "title": "Fastener maker Bromwich Bolt appoints new finance director",
+                "snippet": "West Bromwich fastener manufacturer Bromwich Bolt, a 220-strong business, has appointed Helen Marsh as finance director.",
+                "source": "Midlands Manufacturing News",
+                "days_ago": 3,
+                "label": "good",
+                "url": "https://midlandsmanufacturingnews.example/fastener-maker-bromwich-bolt-appoints-new-finance-director"
+            },
+            {
+                "id": 2,
+                "title": "Coventry plastics manufacturer Polyform secures £8m growth funding",
+                "snippet": "Injection moulder Polyform, with 180 staff and £24m turnover, has raised £8m to open a second factory in Nuneaton.",
+                "source": "Industry Midlands",
+                "days_ago": 1,
+                "label": "good",
+                "url": "https://industrymidlands.example/coventry-plastics-manufacturer-polyform-secures-8m-growth-fu"
+            },
+            {
+                "id": 3,
+                "title": "Food manufacturer Severn Valley Foods buys Telford bakery plant",
+                "snippet": "Severn Valley Foods, a 600-employee ready-meal manufacturer, has acquired a bakery plant in Telford.",
+                "source": "Industry Midlands",
+                "days_ago": 4,
+                "label": "good",
+                "url": "https://industrymidlands.example/food-manufacturer-severn-valley-foods-buys-telford-bakery-pl"
+            },
+            {
+                "id": 4,
+                "title": "Automotive components maker Castle Bromwich Pressings names operations director",
+                "snippet": "Castle Bromwich Pressings, which supplies pressed parts and employs 450, has named James Okafor operations director.",
+                "source": "Midlands Manufacturing News",
+                "days_ago": 5,
+                "label": "good",
+                "url": "https://midlandsmanufacturingnews.example/automotive-components-maker-castle-bromwich-pressings-names"
+            },
+            {
+                "id": 5,
+                "title": "Electronics assembler Redditch Circuits acquired by management team",
+                "snippet": "The management of Redditch Circuits, a 150-person electronics assembly business, has completed a buyout backed by Mercia Growth.",
+                "source": "Industry Midlands",
+                "days_ago": 2,
+                "label": "good",
+                "url": "https://industrymidlands.example/electronics-assembler-redditch-circuits-acquired-by-manageme"
+            },
+            {
+                "id": 6,
+                "title": "Machinery builder Stourbridge Engineering raises £5m for new site",
+                "snippet": "Packaging machinery manufacturer Stourbridge Engineering, with 260 employees, has raised £5m to move to a larger site.",
+                "source": "Midlands Manufacturing News",
+                "days_ago": 6,
+                "label": "good",
+                "url": "https://midlandsmanufacturingnews.example/machinery-builder-stourbridge-engineering-raises-5m-for-new"
+            },
+            {
+                "id": 7,
+                "title": "Birmingham law firm Colmore Legal appoints managing partner",
+                "snippet": "Commercial law firm Colmore Legal has appointed a new managing partner.",
+                "source": "Birmingham Business Wire",
+                "days_ago": 2,
+                "label": "misfit",
+                "url": "https://birminghambusinesswire.example/birmingham-law-firm-colmore-legal-appoints-managing-partner"
+            },
+            {
+                "id": 8,
+                "title": "Three-person 3D printing start-up LayerLab raises £150,000",
+                "snippet": "Digbeth start-up LayerLab, founded last year by three graduates, has raised £150,000 from angels.",
+                "source": "Birmingham Business Wire",
+                "days_ago": 3,
+                "label": "misfit",
+                "url": "https://birminghambusinesswire.example/three-person-3d-printing-start-up-layerlab-raises-150-000"
+            },
+            {
+                "id": 9,
+                "title": "Fashion retailer Bullring Threads acquires online rival",
+                "snippet": "Birmingham clothing retailer Bullring Threads has bought an online fashion store.",
+                "source": "Birmingham Business Wire",
+                "days_ago": 1,
+                "label": "misfit",
+                "url": "https://birminghambusinesswire.example/fashion-retailer-bullring-threads-acquires-online-rival"
+            },
+            {
+                "id": 10,
+                "title": "ERP consultancy Gridline Systems acquired by Northway IT",
+                "snippet": "Solihull ERP implementation consultancy Gridline Systems has been acquired by IT services group Northway IT.",
+                "source": "Birmingham Business Wire",
+                "days_ago": 2,
+                "label": "competitor",
+                "url": "https://birminghambusinesswire.example/erp-consultancy-gridline-systems-acquired-by-northway-it"
+            },
+            {
+                "id": 11,
+                "title": "Software reseller Meridian ERP appoints sales director",
+                "snippet": "Birmingham ERP reseller Meridian ERP has appointed a new sales director to grow its manufacturing practice.",
+                "source": "Industry Midlands",
+                "days_ago": 4,
+                "label": "competitor",
+                "url": "https://industrymidlands.example/software-reseller-meridian-erp-appoints-sales-director"
+            },
+            {
+                "id": 12,
+                "title": "IT consultancy Brindley Digital raises £2m",
+                "snippet": "Birmingham IT consultancy Brindley Digital has raised £2m to expand its systems integration team.",
+                "source": "Birmingham Business Wire",
+                "days_ago": 3,
+                "label": "competitor",
+                "url": "https://birminghambusinesswire.example/it-consultancy-brindley-digital-raises-2m"
+            },
+            {
+                "id": 13,
+                "title": "Top 50 Midlands manufacturers ranked",
+                "snippet": "Our annual ranking of the region's fifty largest manufacturers by turnover.",
+                "source": "Industry Midlands",
+                "days_ago": 2,
+                "label": "not_event",
+                "url": "https://industrymidlands.example/top-50-midlands-manufacturers-ranked"
+            },
+            {
+                "id": 14,
+                "title": "Comment: the skills gap is holding Midlands factories back",
+                "snippet": "Manufacturers cannot hire the engineers they need, writes our industry editor.",
+                "source": "Midlands Manufacturing News",
+                "days_ago": 1,
+                "label": "not_event",
+                "url": "https://midlandsmanufacturingnews.example/comment-the-skills-gap-is-holding-midlands-factories-back"
+            },
+            {
+                "id": 15,
+                "title": "Appointments round-up: who moved where this month",
+                "snippet": "A digest of this month's senior moves across the region.",
+                "source": "Birmingham Business Wire",
+                "days_ago": 1,
+                "label": "not_event",
+                "url": "https://birminghambusinesswire.example/appointments-round-up-who-moved-where-this-month"
+            },
+            {
+                "id": 16,
+                "title": "Ten years on: how Dudley Forge survived its 2015 takeover",
+                "snippet": "A decade after it was acquired, we look back at how forgings maker Dudley Forge changed.",
+                "source": "Midlands Manufacturing News",
+                "days_ago": 2,
+                "label": "stale",
+                "url": "https://midlandsmanufacturingnews.example/ten-years-on-how-dudley-forge-survived-its-2015-takeover"
+            },
+            {
+                "id": 17,
+                "title": "Valve manufacturer Smethwick Flow acquires Derby distributor",
+                "snippet": "Smethwick Flow, which employs 300, has acquired a Derby valve distributor.",
+                "source": "Industry Midlands",
+                "days_ago": 450,
+                "label": "stale",
+                "url": "https://industrymidlands.example/valve-manufacturer-smethwick-flow-acquires-derby-distributor"
+            },
+            {
+                "id": 18,
+                "title": "Tipton Foundries buys Walsall CNC in machining push",
+                "snippet": "Castings group Tipton Foundries has bought Walsall CNC, adding precision machining to its 340-strong operation.",
+                "source": "Industry Midlands",
+                "days_ago": 2,
+                "label": "duplicate",
+                "url": "https://industrymidlands.example/tipton-foundries-buys-walsall-cnc-in-machining-push",
+                "of": 0
+            },
+            {
+                "id": 19,
+                "title": "Polyform lands £8m to build Nuneaton factory",
+                "snippet": "Coventry injection moulding firm Polyform has secured £8m of growth funding for a second factory in Nuneaton.",
+                "source": "Midlands Manufacturing News",
+                "days_ago": 1,
+                "label": "duplicate",
+                "url": "https://midlandsmanufacturingnews.example/polyform-lands-8m-to-build-nuneaton-factory",
+                "of": 2
+            }
+        ],
+        "profile_after_check": {
+            "delivery_model": "national",
+            "customer_size_range": "100-1,000 employees",
+            "customer_industries": [
+                "Manufacturing",
+                "Castings and fasteners",
+                "Machinery",
+                "Food manufacturing",
+                "Plastics",
+                "Automotive components",
+                "Electronics assembly"
+            ],
+            "anti_customers": [
+                "Manufacturers under 50 staff",
+                "Multinationals with a global ERP template",
+                "ERP vendors, resellers and IT consultancies",
+                "Non-manufacturers"
+            ],
+            "buying_triggers": [
+                "An acquisition",
+                "A new site",
+                "Rapid growth",
+                "A new finance or operations director"
+            ]
+        }
+    }
 }

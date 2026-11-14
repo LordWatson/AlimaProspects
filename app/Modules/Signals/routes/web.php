@@ -66,6 +66,11 @@ Route::middleware(['auth', 'verified', 'capability:signals'])->group(function ()
         // exist, because the pricing page would promise a gate that is not there.
         ->middleware(['capability:signal_composer', 'throttle:signals-compose'])
         ->name('signal-definitions.compose');
+    // Suggested types for this business (Signals v3 P2): the composer's AI shortcut with no
+    // sentence to type, so it sits behind the same capability.
+    Route::post('signals/types/suggestions', [SignalDefinitionController::class, 'suggest'])
+        ->middleware(['capability:signal_composer', 'throttle:signals-suggest'])
+        ->name('signal-definitions.suggest');
     Route::post('signals/types/preview', [SignalDefinitionController::class, 'preview'])
         ->middleware('throttle:signals-preview')
         ->name('signal-definitions.preview');

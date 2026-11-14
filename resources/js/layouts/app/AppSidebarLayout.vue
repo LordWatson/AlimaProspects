@@ -213,7 +213,13 @@ const today = computed(() =>
                 </div>
             </header>
 
-            <main class="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+            <!-- `scroll-region`: this element scrolls, not the window, so Inertia has to be told to
+                 send it back to the top on each visit. Without it a new page opens wherever the
+                 last one was left. -->
+            <main
+                scroll-region
+                class="flex-1 overflow-y-auto px-4 py-5 sm:px-6"
+            >
                 <!--
                   Keyed by the page component, not the URL: a new screen fades up, while a filter
                   change on the same screen (a new query string) keeps its state and does not
