@@ -392,7 +392,7 @@ onBeforeUnmount(() => {
                 <li v-for="run in runs" :key="run.id">
                     <Link
                         :href="`/discovery/${run.id}`"
-                        class="group/row block rounded-2xl border border-border bg-card px-5 py-4 transition-colors hover:border-brand/40 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        class="group/row block rounded-[1.25rem] border border-transparent bg-card px-5 py-4 shadow-sm transition-colors hover:border-brand/40 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                         :data-test="`run-${run.id}`"
                     >
                         <span

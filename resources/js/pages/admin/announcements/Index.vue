@@ -254,7 +254,7 @@ function submit(): void {
                 <li
                     v-for="a in announcements"
                     :key="a.id"
-                    class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border bg-card px-4 py-3"
+                    class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[1.25rem] border border-transparent bg-card px-4 py-3 shadow-sm dark:border-border"
                 >
                     <Badge :variant="a.variant">{{ a.level }}</Badge>
 

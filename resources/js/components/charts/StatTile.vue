@@ -49,16 +49,18 @@ const deltaText = computed(() => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-4 bg-card p-5 sm:p-6">
+    <div
+        class="flex flex-col gap-3 border-b border-border p-4 sm:border-e sm:p-5 xl:border-b-0 xl:last:border-e-0"
+    >
         <p
-            class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+            class="font-mono text-[0.625rem] tracking-[0.16em] text-muted-foreground uppercase rtl:tracking-normal"
         >
             {{ t(kpi.label) }}
         </p>
 
         <div class="flex items-end justify-between gap-3">
             <p
-                class="text-4xl font-bold tracking-tight tabular-nums sm:text-5xl"
+                class="text-[2.75rem] leading-none font-bold tracking-[-0.03em] tabular-nums"
             >
                 {{ value }}
             </p>

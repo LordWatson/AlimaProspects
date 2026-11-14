@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import type { HTMLAttributes } from 'vue';
 import { cn } from '@/lib/utils';
 
@@ -50,8 +50,12 @@ const props = withDefaults(
     },
 );
 
+// Bars grow from nothing on arrival (one frame after mount, so the transition has a start).
+const ready = ref(false);
+onMounted(() => requestAnimationFrame(() => (ready.value = true)));
+
 const fraction = computed(() => {
-    if (props.max <= 0) return 0;
+    if (props.max <= 0 || !ready.value) return 0;
 
     return Math.min(1, Math.max(0, props.value / props.max));
 });
@@ -96,7 +100,7 @@ const track = computed(
             aria-hidden="true"
         >
             <span
-                class="duration-base block h-full rounded-full transition-[width] ease-brand"
+                class="block h-full rounded-full transition-[width] duration-700 ease-brand motion-reduce:transition-none"
                 :class="fill"
                 :style="{ width: `${fraction * 100}%` }"
             />

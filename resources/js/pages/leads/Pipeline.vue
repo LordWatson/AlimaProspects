@@ -278,7 +278,7 @@ function removeStage(stage: PipelineStage): void {
         <!-- Add a stage -->
         <form
             v-if="isAddingStage"
-            class="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-end"
+            class="flex flex-col gap-3 rounded-[1.25rem] border border-transparent bg-card p-4 shadow-sm sm:flex-row sm:items-end dark:border-border"
             @submit.prevent="addStage"
         >
             <div ref="addField" class="grid flex-1 gap-2">

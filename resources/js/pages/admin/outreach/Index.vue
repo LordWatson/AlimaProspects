@@ -129,7 +129,7 @@ function submit(): void {
             </h2>
 
             <div
-                class="overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                 tabindex="0"
                 role="region"
                 aria-label="Deliverability by channel"
@@ -374,7 +374,7 @@ function submit(): void {
 
                 <template v-else>
                     <div
-                        class="overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                         tabindex="0"
                         role="region"
                         aria-label="Global do-not-contact list"

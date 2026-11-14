@@ -160,6 +160,26 @@ it('loads the detail screen without a lazy load', function (): void {
         ->assertOk();
 });
 
+it('shows who is on the lead, its tags and its stage, so the work panel adds rather than replaces', function (): void {
+    [$user, $team] = Fixtures::team();
+    $lead = Fixtures::lead($team);
+
+    $this->actingAs($user)
+        ->put(route('leads.assignees.set', ['lead' => $lead->getKey()]), ['user_ids' => [$user->getKey()]])
+        ->assertRedirect();
+    $this->actingAs($user)
+        ->put("/leads/{$lead->getKey()}/tags", ['tags' => ['warm']])
+        ->assertRedirect();
+
+    $this->actingAs($user)
+        ->get(route('leads.show', ['lead' => $lead->getKey()]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('lead.assignees.0.id', $user->getKey())
+            ->where('lead.tags.0.name', 'warm')
+            ->has('lead.stage'));
+});
+
 it('404s on a lead id that does not exist', function (): void {
     [$user] = Fixtures::team();
 

@@ -127,7 +127,7 @@ onBeforeUnmount(() => {
             <Button
                 variant="ghost"
                 size="icon-sm"
-                class="relative"
+                class="relative border border-border bg-card hover:border-foreground hover:bg-card"
                 :aria-label="
                     unread > 0
                         ? t(':count unread notifications', { count: unread })
@@ -135,10 +135,10 @@ onBeforeUnmount(() => {
                 "
                 data-test="notification-bell"
             >
-                <Bell class="size-5" />
+                <Bell class="size-4" />
                 <span
                     v-if="unread > 0"
-                    class="absolute -end-0.5 -top-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-lime px-1 font-mono text-xs leading-4 font-semibold text-ink"
+                    class="absolute -end-0.5 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-brand px-1 font-mono text-[0.5625rem] leading-4 font-medium text-brand-foreground"
                     aria-hidden="true"
                 >
                     {{ badge }}
@@ -146,11 +146,7 @@ onBeforeUnmount(() => {
             </Button>
         </DropdownMenuTrigger>
 
-        <DropdownMenuContent
-            class="w-80 rounded-xl p-0"
-            align="end"
-            :side-offset="8"
-        >
+        <DropdownMenuContent class="w-80 p-0" align="end" :side-offset="8">
             <div
                 class="flex items-center justify-between gap-2 border-b border-border px-4 py-3"
             >

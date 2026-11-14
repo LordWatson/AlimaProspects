@@ -161,7 +161,7 @@ function markAllRead(): void {
                 </h2>
 
                 <ul
-                    class="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card"
+                    class="divide-y divide-border overflow-hidden rounded-[1.25rem] border border-transparent bg-card shadow-sm dark:border-border"
                 >
                     <li
                         v-for="notification in day.rows"

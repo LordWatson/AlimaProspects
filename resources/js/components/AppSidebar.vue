@@ -1,22 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import {
-    Building2,
-    ChevronsUpDown,
-    CreditCard,
-    LayoutGrid,
-    Lightbulb,
-    Plug,
-    Radar,
-    Satellite,
-    Scan,
-    Send,
-    ShieldCheck,
-    Target,
-    UserCog,
-    Users,
-    type LucideIcon,
-} from '@lucide/vue';
+import { ChevronsUpDown } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import PandaFace from '@/components/PandaFace.vue';
@@ -33,7 +17,8 @@ import { edit as editProfile } from '@/routes/profile';
 import type { AppCapability } from '@/types';
 
 /*
- * Alima app sidebar — a deep-teal editorial rail. The active item is an Acid
+ * Alima app sidebar — a deep-teal editorial rail of labels and numbers, no icons (the Alima
+ * Planner reference). The active item is an Acid
  * Lime pill (lime is the shell's hero accent — decorative, never a status).
  * Shared by the desktop rail and the mobile drawer. Only real destinations
  * appear here. Logical properties mirror under RTL; the logo never mirrors.
@@ -51,7 +36,6 @@ const page = usePage();
 type Item = {
     n?: string;
     title: string;
-    icon: LucideIcon;
     href: string;
     match?: 'exact' | 'startsWith';
     /**
@@ -107,7 +91,6 @@ const allChapters = computed<Chapter[]>(() => [
             {
                 n: '01',
                 title: t('Dashboard'),
-                icon: LayoutGrid,
                 href: dashboard().url,
             },
         ],
@@ -119,21 +102,18 @@ const allChapters = computed<Chapter[]>(() => [
             {
                 n: '02',
                 title: t('Business profile'),
-                icon: Building2,
                 href: '/onboarding',
                 match: 'startsWith',
             },
             {
                 n: '03',
                 title: t('Background check'),
-                icon: Scan,
                 href: '/business-intel',
                 match: 'startsWith',
             },
             {
                 n: '04',
                 title: t('Ideal customers'),
-                icon: Target,
                 href: '/icp',
                 match: 'startsWith',
             },
@@ -146,21 +126,18 @@ const allChapters = computed<Chapter[]>(() => [
             {
                 n: '05',
                 title: t('Lead discovery'),
-                icon: Radar,
                 href: '/discovery',
                 match: 'startsWith',
             },
             {
                 n: '06',
                 title: t('Leads'),
-                icon: Users,
                 href: '/leads',
                 match: 'startsWith',
             },
             {
                 n: '07',
                 title: t('Signals'),
-                icon: Satellite,
                 capability: 'signals',
                 // `startsWith` so the watch-settings screen keeps the nav item lit — it is the same
                 // destination as far as a member is concerned.
@@ -176,7 +153,6 @@ const allChapters = computed<Chapter[]>(() => [
             {
                 n: '08',
                 title: t('Outreach'),
-                icon: Send,
                 // The per-lead draft screen is reached from the lead, not from here. What this points at
                 // is the team-level half of Outreach — the briefs and the do-not-contact list — and the
                 // second of those has to be findable without a lead in hand (docs/compliance.md §3.2).
@@ -192,7 +168,6 @@ const allChapters = computed<Chapter[]>(() => [
             {
                 n: '09',
                 title: t('Insights'),
-                icon: Lightbulb,
                 capability: 'ai_insights',
                 href: '/insights',
                 match: 'startsWith',
@@ -207,7 +182,6 @@ const allChapters = computed<Chapter[]>(() => [
                 // The settings pane itself — profile, security, team, notifications, tokens,
                 // appearance. Labelled for what it holds so the item does not echo its chapter.
                 title: t('Account'),
-                icon: UserCog,
                 href: editProfile().url,
                 match: 'startsWith',
             },
@@ -218,7 +192,6 @@ const allChapters = computed<Chapter[]>(() => [
                 // mid-afternoon, the person it stopped for should be able to see that the month's
                 // allowance is gone.
                 title: t('Plan & billing'),
-                icon: CreditCard,
                 href: '/billing',
                 match: 'startsWith',
             },
@@ -226,7 +199,6 @@ const allChapters = computed<Chapter[]>(() => [
                 // PL7. Beside Compliance and Billing rather than in the settings pane: the delivery
                 // log is a table, and the pane is a 36rem column built for forms.
                 title: t('Integrations'),
-                icon: Plug,
                 flag: 'prelaunch.webhooks',
                 href: '/integrations',
                 match: 'startsWith',
@@ -236,7 +208,6 @@ const allChapters = computed<Chapter[]>(() => [
                 // numbered chapters. The do-not-contact list stays under Outreach, where a member
                 // reaches for it while working a lead.
                 title: t('Compliance'),
-                icon: ShieldCheck,
                 href: '/compliance',
                 match: 'startsWith',
             },
@@ -271,7 +242,6 @@ const operatorChapters = computed<Chapter[]>(() => {
     if (isOperator.value) {
         items.push({
             title: t('Operations panel'),
-            icon: ShieldCheck,
             href: '/admin',
             match: 'startsWith',
         });
@@ -279,7 +249,6 @@ const operatorChapters = computed<Chapter[]>(() => {
 
     items.push({
         title: t('Your account'),
-        icon: UserCog,
         href: editProfile().url,
         match: 'startsWith',
     });
@@ -323,12 +292,16 @@ const isActive = (item: Item): boolean =>
 <template>
     <div class="flex h-full flex-col bg-teal text-cream">
         <!-- Brand header -->
-        <div class="px-5 pt-6 pb-5">
+        <div class="px-6 pt-6 pb-5">
             <Link
                 :href="dashboard()"
-                class="inline-flex rounded-md focus-visible:ring-2 focus-visible:ring-cream focus-visible:outline-none"
+                class="inline-flex flex-col gap-4 rounded-md focus-visible:ring-2 focus-visible:ring-cream focus-visible:outline-none"
             >
-                <AppLogo tone="dark" />
+                <AppLogo tone="dark" size="sm" />
+                <span
+                    class="font-mono text-xs tracking-eyebrow text-teal-20 uppercase rtl:tracking-normal"
+                    >Prospects</span
+                >
             </Link>
         </div>
 
@@ -337,12 +310,12 @@ const isActive = (item: Item): boolean =>
             <div
                 v-for="(chapter, index) in chapters"
                 :key="chapter.key"
-                :class="index === 0 ? 'pt-2' : 'pt-6'"
+                :class="index === 0 ? 'pt-1' : 'pt-4'"
             >
                 <p
                     v-if="chapter.label"
                     :id="`nav-chapter-${chapter.key}`"
-                    class="px-3 pb-2 font-mono text-[0.625rem] tracking-eyebrow text-cream/45 uppercase rtl:tracking-normal"
+                    class="px-3 pb-1.5 font-mono text-xs tracking-eyebrow text-teal-20 uppercase rtl:tracking-normal"
                 >
                     {{ chapter.label }}
                 </p>
@@ -356,17 +329,13 @@ const isActive = (item: Item): boolean =>
                         <Link
                             :href="item.href"
                             :aria-current="isActive(item) ? 'page' : undefined"
-                            class="group flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-start text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-cream focus-visible:outline-none"
+                            class="group flex w-full items-center gap-3 rounded-full px-3 py-2 text-start text-sm transition-colors duration-150 ease-brand focus-visible:ring-2 focus-visible:ring-cream focus-visible:outline-none"
                             :class="
                                 isActive(item)
-                                    ? 'bg-lime text-ink'
-                                    : 'text-cream/85 hover:bg-cream/10'
+                                    ? 'bg-lime font-semibold text-ink'
+                                    : 'text-cream hover:bg-cream/10'
                             "
                         >
-                            <component
-                                :is="item.icon"
-                                class="size-[18px] shrink-0"
-                            />
                             <span class="flex-1 truncate">{{
                                 item.title
                             }}</span>
@@ -376,8 +345,8 @@ const isActive = (item: Item): boolean =>
                                 class="font-mono text-[0.625rem]"
                                 :class="
                                     isActive(item)
-                                        ? 'text-ink/60'
-                                        : 'text-cream/35'
+                                        ? 'text-ink/70'
+                                        : 'text-cream/70'
                                 "
                                 >{{ item.n }}</span
                             >
@@ -388,16 +357,14 @@ const isActive = (item: Item): boolean =>
         </nav>
 
         <!-- Footer: peek watermark + tagline + user -->
-        <div class="relative px-5 pt-2 pb-5">
-            <div
-                class="pointer-events-none absolute inset-x-0 -top-4 flex justify-center overflow-hidden opacity-10"
+        <div class="flex flex-col gap-3 px-5 pt-4 pb-4">
+            <PandaFace
+                class="ms-1.5 h-[86px] w-[120px] text-teal-deep"
                 aria-hidden="true"
-            >
-                <PandaFace class="h-24 w-24 text-cream" />
-            </div>
+            />
 
             <p
-                class="relative font-mono text-[0.625rem] leading-relaxed tracking-eyebrow text-cream/40 uppercase rtl:tracking-normal"
+                class="max-w-[12rem] font-mono text-xs leading-relaxed tracking-eyebrow text-teal-20 uppercase rtl:tracking-normal"
             >
                 {{ t('Marketing brighter together.') }}
             </p>
@@ -406,24 +373,20 @@ const isActive = (item: Item): boolean =>
                 <DropdownMenuTrigger as-child>
                     <button
                         type="button"
-                        class="relative mt-4 flex w-full items-center gap-3 rounded-2xl border border-cream/15 bg-cream/5 p-2.5 text-start transition-colors hover:bg-cream/10 focus-visible:ring-2 focus-visible:ring-cream focus-visible:outline-none"
+                        class="flex w-full items-center gap-2.5 rounded-full bg-teal-deep py-2 ps-2 pe-3 text-start transition-colors duration-150 hover:bg-ink/40 focus-visible:ring-2 focus-visible:ring-cream focus-visible:outline-none"
                     >
                         <span
-                            class="flex size-9 shrink-0 items-center justify-center rounded-full bg-lilac text-sm font-semibold text-ink"
+                            class="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-cream font-mono text-[0.625rem] text-teal"
                         >
                             {{ initials }}
                         </span>
                         <span class="min-w-0 flex-1">
                             <span
-                                class="block truncate text-sm font-semibold text-cream"
+                                class="block truncate text-[0.8125rem] font-medium text-cream"
                                 >{{ user?.name }}</span
                             >
-                            <span
-                                class="block truncate text-xs text-cream/50"
-                                >{{ user?.email }}</span
-                            >
                         </span>
-                        <ChevronsUpDown class="size-4 shrink-0 text-cream/50" />
+                        <ChevronsUpDown class="size-4 shrink-0 text-cream/75" />
                     </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent

@@ -135,7 +135,7 @@ function assessmentState(record: AdminAssessment): {
 
             <div
                 v-else
-                class="overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                 tabindex="0"
                 role="region"
                 aria-label="Legitimate-interest assessments"
@@ -209,7 +209,7 @@ function assessmentState(record: AdminAssessment): {
 
             <div
                 v-if="policies.length > 0"
-                class="overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                 tabindex="0"
                 role="region"
                 aria-label="Retention policies"
@@ -302,7 +302,7 @@ function assessmentState(record: AdminAssessment): {
             />
 
             <form
-                class="flex flex-wrap items-end gap-3 rounded-2xl border border-border bg-card px-4 py-3"
+                class="flex flex-wrap items-end gap-3 rounded-[1.25rem] border border-transparent bg-card px-4 py-3 shadow-sm dark:border-border"
                 @submit.prevent="apply"
             >
                 <div class="flex flex-col gap-1">
@@ -342,7 +342,7 @@ function assessmentState(record: AdminAssessment): {
 
             <template v-else>
                 <div
-                    class="overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                     tabindex="0"
                     role="region"
                     aria-label="Compliance events"

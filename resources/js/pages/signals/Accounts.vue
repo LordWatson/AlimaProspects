@@ -333,7 +333,7 @@ function rotationDays(watchlist: SignalWatchlist): number {
         <section
             v-for="watchlist in watchlists"
             :key="watchlist.id"
-            class="space-y-4 rounded-2xl border border-border bg-card p-6"
+            class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             :data-test="`watchlist-${watchlist.id}`"
         >
             <div class="flex flex-wrap items-start justify-between gap-3">

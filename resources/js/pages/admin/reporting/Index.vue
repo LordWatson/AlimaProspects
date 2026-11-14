@@ -130,7 +130,9 @@ const cohortCount = computed(() => props.report.funnel[0]?.value ?? 0);
 
         <template v-else>
             <section aria-label="Headline figures">
-                <dl class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <dl
+                    class="grid border-t-[1.5px] border-foreground sm:grid-cols-2 xl:grid-cols-4"
+                >
                     <StatTile
                         v-for="kpi in report.kpis"
                         :key="kpi.key"

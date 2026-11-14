@@ -32,7 +32,7 @@ const props = withDefaults(
 <template>
     <section
         :id="props.id ?? undefined"
-        class="scroll-mt-6 space-y-5 rounded-2xl border border-border bg-card p-6"
+        class="scroll-mt-6 space-y-5 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
     >
         <header class="flex items-start gap-3">
             <!-- Solid Deep Teal rather than `text-brand` on a 10% tint of itself: that

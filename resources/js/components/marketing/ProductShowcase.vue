@@ -1,17 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import {
-    Building2,
-    LayoutGrid,
-    Lightbulb,
-    Radar,
-    Satellite,
-    Scan,
-    Send,
-    Target,
-    Users,
-} from '@lucide/vue';
-import type { LucideIcon } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useReducedMotion } from '@/composables/useReducedMotion';
@@ -66,16 +54,16 @@ type Screen = {
     stat: { label: string; value: string; caption: string };
 };
 
-const nav: { n: string; title: string; icon: LucideIcon }[] = [
-    { n: '01', title: t('Dashboard'), icon: LayoutGrid },
-    { n: '02', title: t('Business profile'), icon: Building2 },
-    { n: '03', title: t('Background check'), icon: Scan },
-    { n: '04', title: t('Ideal customers'), icon: Target },
-    { n: '05', title: t('Lead discovery'), icon: Radar },
-    { n: '06', title: t('Leads'), icon: Users },
-    { n: '07', title: t('Signals'), icon: Satellite },
-    { n: '08', title: t('Outreach'), icon: Send },
-    { n: '09', title: t('Insights'), icon: Lightbulb },
+const nav: { n: string; title: string }[] = [
+    { n: '01', title: t('Dashboard') },
+    { n: '02', title: t('Business profile') },
+    { n: '03', title: t('Background check') },
+    { n: '04', title: t('Ideal customers') },
+    { n: '05', title: t('Lead discovery') },
+    { n: '06', title: t('Leads') },
+    { n: '07', title: t('Signals') },
+    { n: '08', title: t('Outreach') },
+    { n: '09', title: t('Insights') },
 ];
 
 const screens = computed<Screen[]>(() => [
@@ -308,22 +296,22 @@ onBeforeUnmount(stop);
     >
         <!-- The app window ---------------------------------------------------->
         <div
-            class="overflow-hidden rounded-3xl bg-cream-surface shadow-md ring-1 ring-ink/10"
+            class="overflow-hidden rounded-[1.75rem] bg-cream-surface shadow-frame ring-1 ring-ink/10"
         >
             <!-- Window chrome -->
             <div
-                class="flex items-center gap-3 border-b border-border bg-background px-4 py-3"
+                class="flex h-12 items-center gap-3 border-b border-border bg-background px-[1.125rem]"
             >
                 <span class="flex gap-1.5" aria-hidden="true">
-                    <span class="size-2.5 rounded-full bg-ink/15" />
-                    <span class="size-2.5 rounded-full bg-ink/15" />
-                    <span class="size-2.5 rounded-full bg-ink/15" />
+                    <span class="size-[11px] rounded-full bg-ink/15" />
+                    <span class="size-[11px] rounded-full bg-ink/15" />
+                    <span class="size-[11px] rounded-full bg-ink/15" />
                 </span>
                 <span
-                    class="mx-auto hidden rounded-full bg-secondary px-4 py-1 font-mono text-[0.625rem] text-muted-foreground sm:block"
+                    class="mx-auto hidden rounded-full bg-secondary px-[1.125rem] py-1 font-mono text-xs text-ink-80 sm:block"
                     dir="ltr"
                 >
-                    alimaprospects.app
+                    alimaprospects.com
                 </span>
             </div>
 
@@ -344,17 +332,13 @@ onBeforeUnmount(stop);
                     <ul class="space-y-0.5 px-2.5">
                         <li v-for="item in nav" :key="item.n">
                             <span
-                                class="duration-base flex items-center gap-2.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors ease-brand"
+                                class="flex items-center gap-2.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors duration-[250ms] ease-brand"
                                 :class="
                                     item.n === screens[active].n
-                                        ? 'bg-lime text-ink'
-                                        : 'text-cream/80'
+                                        ? 'bg-lime font-semibold text-ink'
+                                        : 'text-cream'
                                 "
                             >
-                                <component
-                                    :is="item.icon"
-                                    class="size-3.5 shrink-0"
-                                />
                                 <span class="flex-1 truncate">{{
                                     item.title
                                 }}</span>
@@ -458,7 +442,7 @@ onBeforeUnmount(stop);
                         <!-- 05 · Lead discovery ------------------------------->
                         <div
                             v-if="screen.key === 'discovery'"
-                            class="rounded-2xl border border-border bg-card p-5"
+                            class="rounded-[1.25rem] border border-transparent bg-card p-5 shadow-sm dark:border-border"
                         >
                             <p
                                 class="font-mono text-[0.5625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
@@ -501,7 +485,7 @@ onBeforeUnmount(stop);
                         <!-- 06 · Leads ---------------------------------------->
                         <div
                             v-else-if="screen.key === 'leads'"
-                            class="overflow-hidden rounded-2xl border border-border bg-card"
+                            class="overflow-hidden rounded-[1.25rem] border border-transparent bg-card shadow-sm dark:border-border"
                         >
                             <ul class="divide-y divide-border">
                                 <li
@@ -539,7 +523,7 @@ onBeforeUnmount(stop);
                         <!-- 07 · Signals -------------------------------------->
                         <div
                             v-else-if="screen.key === 'signals'"
-                            class="overflow-hidden rounded-2xl border border-border bg-card"
+                            class="overflow-hidden rounded-[1.25rem] border border-transparent bg-card shadow-sm dark:border-border"
                         >
                             <ul class="divide-y divide-border">
                                 <li
@@ -574,7 +558,7 @@ onBeforeUnmount(stop);
                         <!-- 08 · Outreach ------------------------------------->
                         <div
                             v-else
-                            class="rounded-2xl border border-border bg-card p-5"
+                            class="rounded-[1.25rem] border border-transparent bg-card p-5 shadow-sm dark:border-border"
                         >
                             <p class="text-xs font-semibold">
                                 {{
@@ -625,29 +609,25 @@ onBeforeUnmount(stop);
                 :aria-selected="index === active"
                 :aria-controls="`showcase-panel-${screen.key}`"
                 :tabindex="index === active ? 0 : -1"
-                class="duration-base flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ease-brand focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="flex h-11 items-center gap-2 rounded-full border-[1.5px] px-4 text-sm font-semibold transition-[background-color,color,border-color,transform] duration-[250ms] ease-brand focus-visible:ring-[3px] focus-visible:ring-cream focus-visible:ring-offset-2 focus-visible:ring-offset-teal focus-visible:outline-none active:scale-95"
                 :class="
                     index === active
-                        ? 'bg-ink text-cream'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        ? 'border-cream bg-cream text-ink'
+                        : 'border-cream/40 text-cream hover:border-cream hover:bg-cream/10'
                 "
                 @click="select(index)"
                 @keydown="onTabKeydown($event, index)"
             >
                 <span
                     class="font-mono text-[0.625rem]"
-                    :class="
-                        index === active ? 'text-lime' : 'text-muted-foreground'
-                    "
+                    :class="index === active ? 'text-teal' : 'text-cream/75'"
                     >{{ screen.n }}</span
                 >
                 {{ screen.tab }}
             </button>
         </div>
 
-        <p
-            class="mt-4 text-center font-mono text-[0.625rem] text-muted-foreground"
-        >
+        <p class="mt-4 text-center font-mono text-xs text-cream/75">
             {{
                 t(
                     'Illustrative screens. The companies and figures are made up.',

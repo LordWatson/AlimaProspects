@@ -329,7 +329,7 @@ onBeforeUnmount(() => {
         <!-- Running -->
         <section
             v-else-if="isRunning"
-            class="flex flex-col items-center gap-5 rounded-2xl border border-border bg-card px-6 py-14 text-center"
+            class="flex flex-col items-center gap-5 rounded-[1.25rem] border border-transparent bg-card px-6 py-14 text-center shadow-sm dark:border-border"
             data-test="running"
         >
             <Spinner class="size-8 text-brand" />
@@ -351,7 +351,7 @@ onBeforeUnmount(() => {
         <!-- Failed -->
         <section
             v-else-if="report && report.status === 'failed'"
-            class="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card px-6 py-12 text-center"
+            class="flex flex-col items-center gap-4 rounded-[1.25rem] border border-transparent bg-card px-6 py-12 text-center shadow-sm dark:border-border"
             role="alert"
             data-test="failed"
         >
@@ -407,7 +407,7 @@ onBeforeUnmount(() => {
             <!-- Findings cards -->
             <div class="grid gap-5 lg:grid-cols-2">
                 <article
-                    class="space-y-2 rounded-2xl border border-border bg-card p-6 lg:col-span-2"
+                    class="space-y-2 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm lg:col-span-2 dark:border-border"
                 >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
@@ -420,7 +420,7 @@ onBeforeUnmount(() => {
                 </article>
 
                 <article
-                    class="space-y-2 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-2 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
@@ -441,7 +441,7 @@ onBeforeUnmount(() => {
                 </article>
 
                 <article
-                    class="space-y-2 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-2 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
@@ -455,7 +455,7 @@ onBeforeUnmount(() => {
 
                 <article
                     v-if="ownIndustry"
-                    class="space-y-2 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-2 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
@@ -475,7 +475,7 @@ onBeforeUnmount(() => {
 
                 <article
                     v-if="customerIndustries.length"
-                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
@@ -506,7 +506,7 @@ onBeforeUnmount(() => {
 
                 <article
                     v-if="targetCustomers.length"
-                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
@@ -528,7 +528,7 @@ onBeforeUnmount(() => {
 
                 <article
                     v-if="decisionMakerTitles.length"
-                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
@@ -616,7 +616,7 @@ onBeforeUnmount(() => {
 
                 <article
                     v-if="competitors.length"
-                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
