@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\LeadSourcing\Actions\RecordLeadEvidenceAction;
 use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
 use App\Modules\LeadSourcing\Enums\LeadSource;
@@ -12,6 +13,7 @@ use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Services\CandidateRelevanceGate;
 use App\Modules\LeadSourcing\Services\LeadCandidateFilter;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use App\Modules\LeadSourcing\Testing\FakeLeadSourceProvider;
@@ -62,6 +64,8 @@ function runDiscovery(Team $team, DiscoveryRun $run): void
         app(LeadSourceProviderRegistry::class),
         app(TeamContext::class),
         app(LeadCandidateFilter::class),
+        app(CandidateRelevanceGate::class),
+        app(RecordLeadEvidenceAction::class),
     );
 }
 
@@ -245,11 +249,7 @@ it('marks the run failed via failed() after a provider error', function (): void
     $job = new DiscoverLeadsJob((int) $team->getKey(), (int) $run->getKey());
 
     // Running throws (so the queue would retry); the run is left non-terminal, then failed() settles it.
-    expect(fn () => $job->handle(
-        app(LeadSourceProviderRegistry::class),
-        app(TeamContext::class),
-        app(LeadCandidateFilter::class),
-    ))->toThrow(RuntimeException::class);
+    expect(fn () => app()->call([$job, 'handle']))->toThrow(RuntimeException::class);
 
     $job->failed(new RuntimeException('provider down'));
 

@@ -112,7 +112,7 @@ it('blends the rules with the AI assessment into a graded score with an explanat
         ->and($score->strengths)->toBe(['Right industry', 'Right city'])
         ->and($score->concerns)->toBe(['No size on record'])
         ->and($score->prompt_key)->toBe('scoring.qualitative_fit')
-        ->and($score->prompt_version)->toBe(2)
+        ->and($score->prompt_version)->toBe(3)
         ->and($score->breakdown)->toHaveCount(1)
         ->and($score->scored_at)->not->toBeNull()
         ->and($score->cost_micros)->toBeGreaterThan(0);

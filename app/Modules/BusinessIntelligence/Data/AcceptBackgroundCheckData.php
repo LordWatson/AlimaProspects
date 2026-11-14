@@ -15,6 +15,8 @@ final class AcceptBackgroundCheckData extends Data
     public function __construct(
         public bool $applyToProfile = true,
         public bool $seedIcp = false,
+        /** @var list<string> profile fields where the member chose the finding over their own entry */
+        public array $overrides = [],
     ) {}
 
     /**
@@ -25,6 +27,7 @@ final class AcceptBackgroundCheckData extends Data
         return new self(
             applyToProfile: (bool) ($validated['apply_to_profile'] ?? true),
             seedIcp: (bool) ($validated['seed_icp'] ?? false),
+            overrides: array_values(array_filter((array) ($validated['overrides'] ?? []), is_string(...))),
         );
     }
 }

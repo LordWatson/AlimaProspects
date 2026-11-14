@@ -6,12 +6,14 @@ use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Enrichment\Enums\EnrichmentStatus;
 use App\Modules\Enrichment\Jobs\EnrichLeadJob;
+use App\Modules\LeadSourcing\Actions\RecordLeadEvidenceAction;
 use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Events\DiscoveryRunCompleted;
 use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Services\CandidateRelevanceGate;
 use App\Modules\LeadSourcing\Services\LeadCandidateFilter;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use App\Modules\LeadSourcing\Testing\FakeLeadSourceProvider;
@@ -73,6 +75,8 @@ it('fans out enrichment from a completed discovery run', function (): void {
         app(LeadSourceProviderRegistry::class),
         app(TeamContext::class),
         app(LeadCandidateFilter::class),
+        app(CandidateRelevanceGate::class),
+        app(RecordLeadEvidenceAction::class),
     );
 
     Queue::assertPushed(EnrichLeadJob::class, 1);

@@ -34,6 +34,8 @@ final class DiscoveryQuery extends Data
      * @param  list<string>  $excludeTerms  words marking a result as the wrong kind of company
      * @param  string|null  $customerDescription  who this search is for, in one line, shown to the team
      * @param  bool  $shaped  whether an AI pass wrote `terms`, or the deterministic fallback did
+     * @param  list<string>  $sicCodes  UK SIC 2007 codes of the customers' trades (Companies House only)
+     * @param  list<string>  $queries  further search angles beyond `terms` (web search only)
      */
     public function __construct(
         public LeadSource $source,
@@ -45,6 +47,8 @@ final class DiscoveryQuery extends Data
         public array $excludeTerms = [],
         public ?string $customerDescription = null,
         public bool $shaped = false,
+        public array $sicCodes = [],
+        public array $queries = [],
     ) {}
 
     /**
@@ -89,10 +93,23 @@ final class DiscoveryQuery extends Data
      * terms are merged on top of the ICP's own exclusions rather than replacing them: a member who
      * typed an exclusion means it regardless of what the model came up with.
      *
+     * A SIC code is kept only if it is shaped like one. The model is asked for codes it is sure of
+     * and will sometimes offer a word instead; a malformed value would be sent to the register as a
+     * filter, so the shape is checked here rather than trusted (a prompt describes a constraint, it
+     * does not enforce one). A well-formed code the register does not know simply matches nothing,
+     * and the provider falls back to the name search.
+     *
      * @param  list<string>  $excludeTerms
+     * @param  list<string>  $sicCodes
+     * @param  list<string>  $queries
      */
-    public function withShapedTerms(string $terms, ?string $customerDescription, array $excludeTerms): self
-    {
+    public function withShapedTerms(
+        string $terms,
+        ?string $customerDescription,
+        array $excludeTerms,
+        array $sicCodes = [],
+        array $queries = [],
+    ): self {
         return new self(
             source: $this->source,
             terms: Str::limit(trim($terms), 200, ''),
@@ -103,6 +120,14 @@ final class DiscoveryQuery extends Data
             excludeTerms: self::normaliseExclusions([...$this->excludeTerms, ...$excludeTerms]),
             customerDescription: self::clean($customerDescription),
             shaped: true,
+            sicCodes: array_slice(array_values(array_filter(
+                $sicCodes,
+                static fn (string $code): bool => preg_match('/^\d{5}$/', $code) === 1,
+            )), 0, 4),
+            queries: array_slice(array_values(array_filter(array_map(
+                static fn (string $query): string => Str::limit(trim(str_replace('"', '', $query)), 120, ''),
+                $queries,
+            ))), 0, 5),
         );
     }
 
@@ -125,6 +150,8 @@ final class DiscoveryQuery extends Data
             excludeTerms: self::strings($params['exclude_terms'] ?? []),
             customerDescription: is_string($description) ? self::clean($description) : null,
             shaped: (bool) ($params['shaped'] ?? false),
+            sicCodes: self::strings($params['sic_codes'] ?? []),
+            queries: self::strings($params['queries'] ?? []),
         );
     }
 
@@ -144,6 +171,8 @@ final class DiscoveryQuery extends Data
             'exclude_terms' => $this->excludeTerms,
             'customer_description' => $this->customerDescription,
             'shaped' => $this->shaped,
+            'sic_codes' => $this->sicCodes,
+            'queries' => $this->queries,
         ];
     }
 

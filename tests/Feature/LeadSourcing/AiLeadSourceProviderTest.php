@@ -11,6 +11,7 @@ use App\Modules\AiPlatform\Exceptions\UnknownPromptException;
 use App\Modules\AiPlatform\Testing\FakeAiTransport;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\LeadSourcing\Actions\RecordLeadEvidenceAction;
 use App\Modules\LeadSourcing\Data\DiscoveryQuery;
 use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
@@ -20,16 +21,20 @@ use App\Modules\LeadSourcing\Jobs\DiscoverLeadsJob;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadSourcing\Services\AiLeadSourceProvider;
+use App\Modules\LeadSourcing\Services\CandidateRelevanceGate;
+use App\Modules\LeadSourcing\Services\DiscoveryPayloadBuilder;
 use App\Modules\LeadSourcing\Services\LeadCandidateFilter;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
+use App\Modules\LeadSourcing\Services\WebSearchProvider;
 use Database\Seeders\AiPromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
 
 /*
- * The AI lead source (Phase 7c): the one provider with no index behind it. The whole AI Platform
+ * The AI lead source (Phase 7c; grounded in real search results since ADR 0035). The whole AI Platform
  * pipeline runs here against `FakeAiTransport` — registry, rendering, schema validation, cost
  * logging — because what matters is not that a mock was called but that a *model's answer* becomes
  * rows that the scorer can actually judge.
@@ -38,7 +43,26 @@ uses(RefreshDatabase::class);
 beforeEach(function (): void {
     Queue::fake();
     $this->seed(AiPromptTemplateSeeder::class);
+
+    config()->set('lead-sourcing.providers.web_search.api_key', 'test-key');
+    config()->set('lead-sourcing.providers.web_search.base_url', 'https://google.serper.dev');
+    config()->set('lead-sourcing.providers.web_search.cost_micros_per_request', 3_000);
 });
+
+/**
+ * The search results the model is given to read. Since ADR 0035 the source has no recall path:
+ * what it may name is bounded by what a search actually returned.
+ *
+ * @param  list<array{title: string, link: string, snippet?: string}>|null  $organic
+ */
+function fakeSearchResults(?array $organic = null): void
+{
+    Http::fake(['google.serper.dev/*' => Http::response(['organic' => $organic ?? [
+        ['title' => 'Northern Rooms | Boutique hotel in Manchester', 'link' => 'https://northernrooms.co.uk/', 'snippet' => 'A four-site independent hotel group.'],
+        ['title' => 'The 10 best boutique hotels in Manchester', 'link' => 'https://citymag.example/best-hotels', 'snippet' => 'Our pick of the best.'],
+        ['title' => 'Cotton Mill Hotel', 'link' => 'https://cottonmill.example/rooms', 'snippet' => 'Forty rooms in a converted mill.'],
+    ]])]);
+}
 
 function bootAiSource(): array
 {
@@ -59,6 +83,7 @@ function aiQuery(int $limit = 25): DiscoveryQuery
         location: 'Manchester',
         limit: $limit,
         customerDescription: 'Hospitality businesses that commission branding work',
+        queries: ['boutique hotels'],
     );
 }
 
@@ -73,23 +98,28 @@ function discoverWithAi(Team $team, DiscoveryQuery $query): array
     );
 }
 
-it('turns the model’s companies into leads carrying the fields a score is made of', function (): void {
-    [$team, $transport] = bootAiSource();
+function aiSourceWith(AiClient $client): AiLeadSourceProvider
+{
+    return new AiLeadSourceProvider($client, app(WebSearchProvider::class), app(DiscoveryPayloadBuilder::class));
+}
 
-    $transport->queueStructured([
-        'companies' => [
-            [
-                'company_name' => 'Northern Rooms',
-                'industry' => 'Boutique hotel',
-                'employee_range' => '11-50',
-                'website' => 'northernrooms.co.uk',
-                'locality' => 'Manchester',
-                'region' => 'Greater Manchester',
-                'country' => 'GB',
-                'why' => 'A four-site independent hotel group that rebrands regularly.',
-            ],
+it('names only companies a search result shows, taking identity from the result', function (): void {
+    [$team, $transport] = bootAiSource();
+    fakeSearchResults();
+
+    $transport->queueStructured(['companies' => [
+        [
+            'source_index' => 1,
+            'company_name' => 'Northern Rooms',
+            'industry' => 'Boutique hotel',
+            'employee_range' => '11-50',
+            'locality' => 'Manchester',
+            'country' => 'GB',
+            'why' => 'An independent hotel group.',
         ],
-    ]);
+        // Cites a result that was never offered: this is the model recalling, and it is not stored.
+        ['source_index' => 9, 'company_name' => 'Remembered Hotel Co', 'industry' => 'Hotel'],
+    ]]);
 
     $leads = discoverWithAi($team, aiQuery());
 
@@ -102,49 +132,43 @@ it('turns the model’s companies into leads carrying the fields a score is made
         // The two fields no index-backed provider fills, and the reason this source exists.
         ->and($lead->industry)->toBe('Boutique hotel')
         ->and($lead->employeeRange)->toBe('11-50')
-        ->and($lead->locality)->toBe('Manchester')
-        ->and($lead->country)->toBe('GB')
-        // A bare domain gets a scheme, so the lead keys on its DOMAIN and collapses with the
-        // web-search or Places record of the same company instead of becoming a second row.
+        // The website and the source are the cited result's own, never text the model wrote, so
+        // the lead keys on a real domain and collapses with the web-search record of the company.
         ->and($lead->website)->toBe('https://northernrooms.co.uk')
+        ->and($lead->sourceUrl)->toBe('https://northernrooms.co.uk/')
         ->and($lead->dedupeKey())->toBe('domain:northernrooms.co.uk')
-        // Provenance: the claim, and the prompt version of the model that made it.
-        ->and($lead->raw['claim']['why'])->toBe('A four-site independent hotel group that rebrands regularly.')
-        ->and($lead->raw['prompt_version'])->toBe(1);
+        // Provenance: the claim, the result it was read from, and the prompt version that read it.
+        ->and($lead->raw['claim']['why'])->toBe('An independent hotel group.')
+        ->and($lead->raw['result']['title'])->toBe('Northern Rooms | Boutique hotel in Manchester')
+        ->and($lead->raw['prompt_version'])->toBe(2);
+
+    // The model was shown the results, numbered, and nothing else to name from.
+    expect($transport->requests[0]->prompt)
+        ->toContain('1. Northern Rooms | Boutique hotel in Manchester')
+        ->toContain('3. Cotton Mill Hotel');
 });
 
 it('drops what it cannot trust instead of storing a plausible-looking value', function (): void {
     [$team, $transport] = bootAiSource();
+    fakeSearchResults();
 
-    $transport->queueStructured([
-        'companies' => [
-            // A country name rather than a code: truncated to the column it is going into, this
-            // would have been stored as "UN" and read as a country by anyone looking at the row.
-            ['company_name' => 'Acme Hotels', 'industry' => 'Hotel', 'country' => 'United Kingdom'],
-            // A sentence where a domain belongs.
-            ['company_name' => 'Beta Rooms', 'industry' => 'Hotel', 'website' => 'their site is down'],
-            // Broken JSON bled into the headcount field — the exact live failure. It is a valid
-            // string, so schema validation passes it, but it is not a count and (at 70+ chars) would
-            // overflow the 64-char column and fail the run. Dropped to null; the company is kept.
-            ['company_name' => 'Gamma Rooms', 'industry' => 'Hotel', 'employee_range' => "51-200','locality':'London'}]}\n```\nI need to correct that output."],
-            // No name at all — nothing to be a lead.
-            ['company_name' => '   ', 'industry' => 'Hotel'],
-        ],
-    ]);
+    $transport->queueStructured(['companies' => [
+        // A country name rather than a code: truncated to its column this would be stored as "UN".
+        ['source_index' => 1, 'company_name' => 'Northern Rooms', 'industry' => 'Hotel', 'country' => 'United Kingdom'],
+        // Broken JSON bled into the headcount field, a live failure. Dropped to null; the company is kept.
+        ['source_index' => 3, 'company_name' => 'Cotton Mill Hotel', 'industry' => 'Hotel', 'employee_range' => '51-200,locality:London}]} I need to correct that.'],
+        // No name at all: nothing to be a lead.
+        ['source_index' => 2, 'company_name' => '   ', 'industry' => 'Hotel'],
+    ]]);
 
     $leads = discoverWithAi($team, aiQuery());
 
-    expect($leads)->toHaveCount(3)
+    expect($leads)->toHaveCount(2)
         ->and($leads[0]->country)->toBeNull()
-        ->and($leads[1]->website)->toBeNull()
-        ->and($leads[2]->companyName)->toBe('Gamma Rooms')
-        ->and($leads[2]->employeeRange)->toBeNull();
+        ->and($leads[1]->employeeRange)->toBeNull();
 });
 
 it('keeps a real headcount band but never one wider than its column', function (): void {
-    // The provider nulls a band that isn't a count; the DTO is the storage backstop for anything a
-    // provider still lets through — `leads.employee_range` is VARCHAR(64), not the 255 other text
-    // columns are, and overflowing it is what failed the live run.
     $kept = new SourcedLead(source: LeadSource::Ai, companyName: 'Acme', employeeRange: '1,000-5,000');
     $clamped = new SourcedLead(source: LeadSource::Ai, companyName: 'Acme', employeeRange: str_repeat('9', 300));
 
@@ -152,55 +176,62 @@ it('keeps a real headcount band but never one wider than its column', function (
         ->and(mb_strlen((string) $clamped->toLeadAttributes()['employee_range']))->toBe(64);
 });
 
-it('collapses the same company named twice in one answer', function (): void {
+it('collapses two companies read out of the same result', function (): void {
     [$team, $transport] = bootAiSource();
+    fakeSearchResults();
 
-    $transport->queueStructured([
-        'companies' => [
-            ['company_name' => 'Northern Rooms', 'industry' => 'Hotel', 'website' => 'https://northernrooms.co.uk'],
-            ['company_name' => 'Northern Rooms Ltd', 'industry' => 'Hotel', 'website' => 'northernrooms.co.uk/about'],
-        ],
-    ]);
+    $transport->queueStructured(['companies' => [
+        ['source_index' => 1, 'company_name' => 'Northern Rooms', 'industry' => 'Hotel'],
+        ['source_index' => 1, 'company_name' => 'Northern Rooms', 'industry' => 'Hotel group'],
+    ]]);
 
     expect(discoverWithAi($team, aiQuery()))->toHaveCount(1);
 });
 
 it('never asks for more companies than the output ceiling allows', function (): void {
     [$team, $transport] = bootAiSource();
+    fakeSearchResults();
 
-    config()->set('lead-sourcing.providers.ai.max_results', 3);
+    config()->set('lead-sourcing.providers.ai.max_results', 1);
 
-    $transport->queueStructured([
-        'companies' => array_map(
-            static fn (int $i): array => ['company_name' => "Hotel {$i}", 'industry' => 'Hotel'],
-            range(1, 10),
-        ),
-    ]);
+    $transport->queueStructured(['companies' => [
+        ['source_index' => 1, 'company_name' => 'Northern Rooms', 'industry' => 'Hotel'],
+        ['source_index' => 3, 'company_name' => 'Cotton Mill Hotel', 'industry' => 'Hotel'],
+    ]]);
 
     // A run asking for 25 is clamped: the count here is an output-token cost, not a request count.
-    expect(discoverWithAi($team, aiQuery(25)))->toHaveCount(3)
-        ->and($transport->requests[0]->prompt)->toContain('up to 3');
+    expect(discoverWithAi($team, aiQuery(25)))->toHaveCount(1)
+        ->and($transport->requests[0]->prompt)->toContain('up to 1');
 });
 
-it('asks nothing of the model when there is nothing to search with', function (): void {
+it('asks nothing of the model when there is nothing to search with, or the search finds nothing', function (): void {
     [$team, $transport] = bootAiSource();
+    fakeSearchResults([]);
 
-    $query = new DiscoveryQuery(source: LeadSource::Ai, terms: '  ');
-
-    expect(discoverWithAi($team, $query))->toBe([])
+    expect(discoverWithAi($team, new DiscoveryQuery(source: LeadSource::Ai, terms: '  ')))->toBe([])
+        // No results means nothing the model is allowed to name, so it is not asked.
+        ->and(discoverWithAi($team, aiQuery()))->toBe([])
         ->and($transport->requests)->toBeEmpty();
 });
 
-it('charges the run nothing, because the AI ledger already holds the cost', function (): void {
-    // Metering it here as well would count one request twice in the platform margin: `ai_requests`
-    // is where `PlatformRollup` reads Claude spend from.
-    expect(app(AiLeadSourceProvider::class)->costMicros(10))->toBe(0);
+it('charges the run for its searches, and leaves the model cost on the AI ledger', function (): void {
+    [$team, $transport] = bootAiSource();
+    fakeSearchResults();
+    $transport->queueStructured(['companies' => []]);
+
+    $provider = app(AiLeadSourceProvider::class);
+    app(TeamContext::class)->run($team, fn (): array => $provider->discover(aiQuery()));
+
+    // One search request. The model call is on `ai_requests`, where `PlatformRollup` reads Claude
+    // spend from; metering it here as well would count it twice in the platform margin.
+    expect($provider->costMicros(0))->toBe(3_000);
 });
 
 it('fails the run with its own message when the AI allowance is spent', function (): void {
     [$team] = bootAiSource();
+    fakeSearchResults();
 
-    app()->instance(AiClient::class, new class implements AiClient
+    $provider = aiSourceWith(new class implements AiClient
     {
         public function structured(string $key, array $input = [], ?int $version = null): StructuredAiResponse
         {
@@ -208,28 +239,22 @@ it('fails the run with its own message when the AI allowance is spent', function
         }
     });
 
-    $provider = new AiLeadSourceProvider(app(AiClient::class));
-
     try {
         app(TeamContext::class)->run($team, fn () => $provider->discover(aiQuery()));
         $this->fail('Expected the discovery to be refused.');
     } catch (LeadSourcingException $e) {
-        // Not `quota_exhausted`: that is the lead allowance, fixed by a different thing.
+        // Not `quota_exhausted`: that is the lead allowance, fixed by a different thing. Terminal,
+        // so it must not burn the job's attempts.
         expect($e->errorCode())->toBe('lead_sourcing.ai_allowance_exhausted')
-            // Terminal — a retry would be refused for the same reason, so it must not burn the
-            // job's attempts.
             ->and($e->isRetryable())->toBeFalse();
     }
 });
 
 it('fails fast, not three times, when the prompt is not seeded in this database', function (): void {
-    // What actually happened on the first live run: the prompt row had not been seeded, every
-    // attempt raised `ai.unknown_prompt`, and because it was handled as a provider failure the job
-    // spent all three of its tries on a condition no retry can change -- and told the member to
-    // try again shortly, which was wrong advice three times over.
     [$team] = bootAiSource();
+    fakeSearchResults();
 
-    $provider = new AiLeadSourceProvider(new class implements AiClient
+    $provider = aiSourceWith(new class implements AiClient
     {
         public function structured(string $key, array $input = [], ?int $version = null): StructuredAiResponse
         {
@@ -248,8 +273,9 @@ it('fails fast, not three times, when the prompt is not seeded in this database'
 
 it('lets the queue retry a transport failure', function (): void {
     [$team] = bootAiSource();
+    fakeSearchResults();
 
-    $provider = new AiLeadSourceProvider(new class implements AiClient
+    $provider = aiSourceWith(new class implements AiClient
     {
         public function structured(string $key, array $input = [], ?int $version = null): StructuredAiResponse
         {
@@ -269,18 +295,17 @@ it('lets the queue retry a transport failure', function (): void {
     }
 });
 
-it('persists an AI lead with the trade and headcount the scorer reads', function (): void {
+it('persists a grounded AI lead with the trade the scorer reads and the search spend on the run', function (): void {
     [$team, $transport] = bootAiSource();
+    fakeSearchResults();
 
-    $transport->queueStructured([
-        'companies' => [[
-            'company_name' => 'Northern Rooms',
-            'industry' => 'Boutique hotel',
-            'employee_range' => '11-50',
-            'website' => 'https://northernrooms.co.uk',
-            'country' => 'GB',
-        ]],
-    ]);
+    $transport->queueStructured(['companies' => [[
+        'source_index' => 1,
+        'company_name' => 'Northern Rooms',
+        'industry' => 'Boutique hotel',
+        'employee_range' => '11-50',
+        'country' => 'GB',
+    ]]]);
 
     $run = app(TeamContext::class)->run($team, fn (): DiscoveryRun => DiscoveryRun::factory()->create([
         'team_id' => $team->getKey(),
@@ -293,14 +318,16 @@ it('persists an AI lead with the trade and headcount the scorer reads', function
         app(LeadSourceProviderRegistry::class),
         app(TeamContext::class),
         app(LeadCandidateFilter::class),
+        app(CandidateRelevanceGate::class),
+        app(RecordLeadEvidenceAction::class),
     );
 
     $lead = Lead::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->sole();
 
     expect($run->fresh()->status)->toBe(DiscoveryRunStatus::Completed)
-        // Zero on the run, not because the call was free but because its cost is on the AI ledger.
-        ->and($run->fresh()->cost_micros)->toBe(0)
+        ->and($run->fresh()->cost_micros)->toBe(3_000)
         ->and($lead->source)->toBe(LeadSource::Ai)
         ->and($lead->industry)->toBe('Boutique hotel')
-        ->and($lead->employee_range)->toBe('11-50');
+        ->and($lead->employee_range)->toBe('11-50')
+        ->and($lead->website)->toBe('https://northernrooms.co.uk');
 });

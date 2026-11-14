@@ -32,6 +32,10 @@ final class DiscoveryRunResource extends JsonResource
             'requested_limit' => $this->requested_limit,
             'leads_found' => $this->leads_found,
             'leads_created' => $this->leads_created,
+            // What the relevance gate left out, and a sample of why — company names and one-line
+            // reasons only, so a member can check it dropped the right things.
+            'leads_rejected' => $this->leads_rejected,
+            'rejections' => $this->rejections ?? [],
             'cost_micros' => $this->cost_micros,
             'error_message' => $this->error_message,
             'started_at' => $this->started_at?->toIso8601String(),

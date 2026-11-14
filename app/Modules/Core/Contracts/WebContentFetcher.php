@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Core\Contracts;
 
+use App\Modules\Core\Services\SiteReader;
+
 /**
  * Fetches a public web page as plain, inert text — the single SSRF-safe fetch seam shared across
  * modules (Business Intelligence's background check, Enrichment's fact extraction). Implementations
@@ -19,6 +21,19 @@ interface WebContentFetcher
      * result (it never throws for an ordinary fetch failure).
      */
     public function fetch(?string $url): string;
+
+    /**
+     * Fetch a page as text **and** the links on it that stay on the same host (relevance P3).
+     *
+     * For a caller that reads more than one page of a site ({@see SiteReader}):
+     * {@see self::fetch()} throws the markup away, and the links are in the markup. Only same-host
+     * http(s) links are returned, absolute and de-duplicated — a reader is given no way to wander
+     * off the site it was pointed at. Same guards and the same failure mode as `fetch()`: an
+     * unreadable page is `['text' => '', 'links' => []]`, never an exception.
+     *
+     * @return array{text: string, links: list<string>}
+     */
+    public function fetchPage(?string $url): array;
 
     /**
      * Fetch a **line-oriented** text file with its line breaks intact (Signals S12).

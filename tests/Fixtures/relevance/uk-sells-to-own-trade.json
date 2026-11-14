@@ -1,0 +1,220 @@
+{
+    "key": "uk-sells-to-own-trade",
+    "note": "Every company in this file is fictional. `about` is written as a search snippet would read. This business sells to its OWN trade, so a blanket own-industry exclusion destroys its pipeline: the good fits are marketing agencies.",
+    "location": "London",
+    "sources": ["web_search", "ai", "google_places"],
+    "profile": {
+        "company_name": "Backroom SEO",
+        "website": "https://backroomseo.example",
+        "industry": "Digital marketing",
+        "company_size": "small",
+        "locations": ["London"],
+        "regions_served": ["uk"],
+        "primary_market": "uk",
+        "products_services": [
+            "White-label SEO",
+            "White-label link building",
+            "Technical SEO audits for agencies"
+        ],
+        "value_proposition": "We are the SEO team behind other agencies: you keep the client and the margin, we do the work under your brand.",
+        "pricing_min": 60000,
+        "pricing_max": 600000,
+        "pricing_currency": "gbp",
+        "customer_examples": [
+            "Juniper Creative",
+            "Fathom Web Studio",
+            "Loud Owl PR"
+        ]
+    },
+    "pages": {
+        "/": "Backroom SEO. White-label SEO for agencies. We never work with end clients. Become a partner agency.",
+        "/how-it-works": "Web design studios, creative agencies, PR firms and marketing consultancies use us to offer SEO without hiring an SEO team. You brief us, we deliver audits, on-page work, content and links under your brand, and you bill your client. NDA as standard. 18 specialists in London.",
+        "/partners": "Our partners include Juniper Creative, Fathom Web Studio and Loud Owl PR. Agencies usually come to us when a client asks for SEO and they have nobody in-house, or when their freelancer lets them down.",
+        "/pricing": "Monthly retainers from £600 per client account, up to £6,000 for large sites. We do not take on businesses directly: if you are not an agency, we will refer you to one of our partners."
+    },
+    "ground_truth": "UK marketing-adjacent agencies of about 3-60 staff that have clients but no in-house SEO team: web design and development studios, creative and branding agencies, PR firms, social media agencies, marketing consultancies. These ARE in the seller's own broad industry and are the right answer. Not specialist SEO agencies or other white-label SEO or link-building providers (those are the competitors); not end-client businesses such as shops, clinics or trades; not large network agencies with their own search departments.",
+    "companies": [
+        {
+            "name": "Alder & Vane Creative",
+            "website": "https://aldervane.example",
+            "about": "Branding and web design agency in Shoreditch, team of 12.",
+            "label": "good",
+            "why": "Agency without SEO."
+        },
+        {
+            "name": "Northlight Web Studio",
+            "website": "https://northlightweb.example",
+            "about": "We build Shopify and WordPress sites for growing brands.",
+            "label": "good",
+            "why": "Build studio, no search team."
+        },
+        {
+            "name": "Peregrine PR",
+            "website": "https://peregrinepr.example",
+            "about": "Consumer PR agency for food and lifestyle brands.",
+            "label": "good",
+            "why": "PR firm that could resell SEO."
+        },
+        {
+            "name": "Hatchling Social",
+            "website": "https://hatchlingsocial.example",
+            "about": "Social media management agency, Manchester.",
+            "label": "good",
+            "why": "Social agency."
+        },
+        {
+            "name": "Marketing Marlowe Consultancy",
+            "website": "https://marlowemarketing.example",
+            "about": "Fractional marketing directors for SMEs.",
+            "label": "good",
+            "why": "Consultancy needing delivery partners."
+        },
+        {
+            "name": "Quay Street Digital Marketing",
+            "website": "https://quaystreetdigital.example",
+            "about": "Full-service digital marketing agency: web, email and paid social.",
+            "label": "good",
+            "why": "Digital marketing agency with no SEO line; must not be excluded as own trade."
+        },
+        {
+            "name": "Foxglove Design Co",
+            "website": "https://foxglovedesign.example",
+            "about": "Brand identity and websites for hospitality.",
+            "label": "good",
+            "why": "Design agency."
+        },
+        {
+            "name": "Tandem Content",
+            "website": "https://tandemcontent.example",
+            "about": "Copywriting and content studio for B2B tech.",
+            "label": "good",
+            "why": "Adjacent agency."
+        },
+        {
+            "name": "Little Giant Agency",
+            "website": "https://littlegiant.example",
+            "about": "Integrated creative agency, 40 people, Leeds.",
+            "label": "good",
+            "why": "Mid-size agency without search."
+        },
+        {
+            "name": "Codewright Developers",
+            "website": "https://codewright.example",
+            "about": "Bespoke web application developers who hand over marketing to partners.",
+            "label": "good",
+            "why": "Explicitly partners out marketing."
+        },
+        {
+            "name": "Hartley's Garden Centre",
+            "website": "https://hartleysgarden.example",
+            "about": "Family garden centre in Surrey.",
+            "label": "bad",
+            "why": "End client; they never work with end clients."
+        },
+        {
+            "name": "City Smile Orthodontics",
+            "website": "https://citysmileortho.example",
+            "about": "Invisible braces in central London.",
+            "label": "bad",
+            "why": "End client."
+        },
+        {
+            "name": "OmniGlobal Media Group",
+            "website": "https://omniglobalmedia.example",
+            "about": "Global agency network with 9,000 staff and a dedicated search division.",
+            "label": "bad",
+            "why": "Has its own search department."
+        },
+        {
+            "name": "Agency Directory UK",
+            "website": "https://agencydirectoryuk.example",
+            "about": "Compare marketing agencies near you.",
+            "label": "bad",
+            "why": "A directory."
+        },
+        {
+            "name": "Kestrel Roofing Supplies",
+            "website": "https://kestrelroofing.example",
+            "about": "Roofing materials merchant.",
+            "label": "bad",
+            "why": "End client."
+        },
+        {
+            "name": "Agence Lumière Paris",
+            "website": "https://agencelumiere.example",
+            "about": "Agence de communication à Paris.",
+            "label": "bad",
+            "why": "Outside the UK."
+        },
+        {
+            "name": "Jo Bell Marketing Freelancer",
+            "website": "https://jobellmarketing.example",
+            "about": "Freelance marketer, one client at a time.",
+            "label": "bad",
+            "why": "Too small to resell."
+        },
+        {
+            "name": "Brixton Community Radio",
+            "website": "https://brixtonradio.example",
+            "about": "Volunteer-run community station.",
+            "label": "bad",
+            "why": "Not an agency."
+        },
+        {
+            "name": "Printworks Signage Ltd",
+            "website": "https://printworkssignage.example",
+            "about": "Shop signs and vehicle wraps.",
+            "label": "bad",
+            "why": "Not a marketing agency with retained clients."
+        },
+        {
+            "name": "Recruit Right Marketing Jobs",
+            "website": "https://recruitrightmarketing.example",
+            "about": "Recruitment agency for marketing roles.",
+            "label": "bad",
+            "why": "Recruiter, not a marketing agency."
+        },
+        {
+            "name": "Whitehat Partners",
+            "website": "https://whitehatpartners.example",
+            "about": "White-label SEO and PPC for UK agencies.",
+            "label": "competitor",
+            "why": "Same product."
+        },
+        {
+            "name": "LinkForge",
+            "website": "https://linkforge.example",
+            "about": "Link building service for agencies and in-house teams.",
+            "label": "competitor",
+            "why": "Competes on links."
+        },
+        {
+            "name": "Summit Search",
+            "website": "https://summitsearch.example",
+            "about": "Specialist SEO agency, London.",
+            "label": "competitor",
+            "why": "SEO agency."
+        },
+        {
+            "name": "The Engine Room",
+            "website": "https://engineroom.example",
+            "about": "Outsourced search marketing delivered under your agency's brand.",
+            "label": "competitor",
+            "why": "Same product; nothing in the name says so."
+        },
+        {
+            "name": "Rankwell SEO Consultants",
+            "website": "https://rankwell.example",
+            "about": "Technical SEO audits and consultancy.",
+            "label": "competitor",
+            "why": "SEO consultancy."
+        },
+        {
+            "name": "Offshore Agency Support Ltd",
+            "website": "https://offshoreagencysupport.example",
+            "about": "White-label web, SEO and design resource for UK agencies.",
+            "label": "competitor",
+            "why": "White-label provider."
+        }
+    ]
+}

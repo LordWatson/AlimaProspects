@@ -61,6 +61,10 @@ return [
         // never worth quoting.
         'ai' => (int) env('EVIDENCE_RELIABILITY_AI', 35),
 
+        // The relevance gate's one-line reading of why a company fits (ADR 0035). A model's
+        // opinion over a name and a snippet: worth showing, not worth much on its own.
+        'relevance_gate' => (int) env('EVIDENCE_RELIABILITY_RELEVANCE_GATE', 35),
+
         // A lead converted from a signal keeps the article's own source key, so `signal` is only
         // reached by a row whose origin was lost — the provenance equivalent of "somewhere".
         'signal' => (int) env('EVIDENCE_RELIABILITY_SIGNAL', 50),

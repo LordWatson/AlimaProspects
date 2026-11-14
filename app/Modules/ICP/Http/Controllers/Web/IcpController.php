@@ -12,6 +12,7 @@ use App\Modules\ICP\Actions\CreateIcpAction;
 use App\Modules\ICP\Actions\DeleteIcpAction;
 use App\Modules\ICP\Actions\FindIcpAction;
 use App\Modules\ICP\Actions\GetIcpsAction;
+use App\Modules\ICP\Actions\GetPendingIcpSuggestionsAction;
 use App\Modules\ICP\Actions\SetActiveIcpAction;
 use App\Modules\ICP\Actions\UpdateIcpAction;
 use App\Modules\ICP\Contracts\IcpCalibrationSource;
@@ -22,6 +23,7 @@ use App\Modules\ICP\Http\Requests\SaveIcpRequest;
 use App\Modules\ICP\Http\Resources\IcpDraftResource;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
+use App\Modules\ICP\Support\OwnTrade;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -34,7 +36,7 @@ use Inertia\Response;
  */
 final class IcpController extends Controller
 {
-    public function index(Request $request, GetIcpsAction $getIcps, IcpCalibrationSource $calibration): Response
+    public function index(Request $request, GetIcpsAction $getIcps, IcpCalibrationSource $calibration, GetPendingIcpSuggestionsAction $getSuggestions): Response
     {
         $team = $this->team($request);
 
@@ -51,11 +53,14 @@ final class IcpController extends Controller
             'icps' => $icps->map(fn (Icp $icp): array => $this->serializeIcp($icp))->all(),
             'criterionTypes' => $this->criterionTypes(),
             'calibration' => $active instanceof Icp ? $calibration->summarise($active)->toArray() : null,
+            // What Alima proposes for the active profile and nobody has answered yet. Proposals
+            // only: nothing here has changed the profile.
+            'suggestions' => $active instanceof Icp ? $getSuggestions->handle($active) : [],
             'can' => ['manage' => $request->user()?->can('create', $this->transientIcp($team)) ?? false],
         ]);
     }
 
-    public function create(Request $request): Response
+    public function create(Request $request, OwnTrade $ownTrade): Response
     {
         $team = $this->team($request);
 
@@ -64,6 +69,7 @@ final class IcpController extends Controller
         return Inertia::render('icp/Edit', [
             'icp' => null,
             'criterionTypes' => $this->criterionTypes(),
+            'ownIndustry' => $ownTrade->for($team),
         ]);
     }
 
@@ -119,7 +125,7 @@ final class IcpController extends Controller
         return to_route('icp.index');
     }
 
-    public function edit(Request $request, int $icp, FindIcpAction $find): Response
+    public function edit(Request $request, int $icp, FindIcpAction $find, OwnTrade $ownTrade): Response
     {
         $team = $this->team($request);
         $model = $find->handle($team, $icp);
@@ -129,6 +135,7 @@ final class IcpController extends Controller
         return Inertia::render('icp/Edit', [
             'icp' => $this->serializeIcp($model),
             'criterionTypes' => $this->criterionTypes(),
+            'ownIndustry' => $ownTrade->for($team),
         ]);
     }
 

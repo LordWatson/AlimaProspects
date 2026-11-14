@@ -197,6 +197,58 @@ function signalDefinitionIds(Team $team, array $keys = [SignalPresetCatalogue::F
  *
  * @return array{AiClient, FakeAiTransport, Team}
  */
+/**
+ * A complete `business_intel.background_check` v3 answer. Every customer-side field is required by
+ * the schema (an optional field is one a model may decline to write), so a test that only cares
+ * about one of them overrides it and takes the rest from here.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function backgroundFindings(array $overrides = []): array
+{
+    return [
+        'summary' => 'Acme Marketing is a UK agency growth partner.',
+        'offering' => 'Done-for-you demand generation.',
+        'positioning' => 'Premium, results-first.',
+        'own_industry' => 'Marketing agency',
+        'competitors' => ['Beta Agency'],
+        'customer_industries' => ['SaaS', 'Professional services'],
+        'target_customers' => ['Early-stage SaaS companies'],
+        'decision_maker_titles' => ['Marketing Director', 'Founder'],
+        'proof_customers' => [],
+        'problems_solved' => [],
+        'buying_triggers' => [],
+        'anti_customers' => [],
+        'pricing_min' => null,
+        'pricing_max' => null,
+        'pricing_currency' => null,
+        'delivery_model' => null,
+        'customer_size_range' => null,
+        'evidence' => [],
+        ...$overrides,
+    ];
+}
+
+/**
+ * A `lead_sourcing.shape_query` v2 answer that says the same thing to every provider — what most
+ * tests want, since they are about what happens to the answer and not about its phrasing.
+ *
+ * @param  array<string, mixed>  $extra
+ * @return array<string, mixed>
+ */
+function shapedQueries(string $terms, array $extra = []): array
+{
+    return [
+        'customer_description' => 'Customers',
+        'web_queries' => $terms === '' ? [] : [$terms],
+        'google_places' => $terms,
+        'companies_house' => ['name_terms' => $terms, 'sic_codes' => []],
+        'ai_brief' => $terms,
+        ...$extra,
+    ];
+}
+
 function bootAi(): array
 {
     $team = Team::factory()->create();

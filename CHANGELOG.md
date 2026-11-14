@@ -5,6 +5,65 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-14 — A background check that shows its working, and a profile that learns
+
+Phases P3 and P4 of `docs/plans/ai-relevance-plan.md`.
+
+- **The background check reads your site, not just its homepage** (ADR 0036): up to six pages,
+  asking `robots.txt` first, with hard limits on pages, size and time. It now finds the customers
+  you name, what a job costs, how you deliver, how big your customers are, what makes one ready to
+  buy and who you do not serve. For a team that has typed nothing but its name and website, that
+  took the share of good-fit candidates from 73% to 81%.
+- **Every finding shows where it came from**: the exact words and a link to the page. A quote that
+  is not on the page it cites is thrown away before you see it.
+- **Accepting a check no longer writes two fields and stops.** It fills what is blank, and where
+  you already entered something different it shows both and keeps yours unless you choose the
+  finding.
+- **Alima suggests changes to your ideal customer profile** from how it has actually graded your
+  leads and what you marked good or bad. A suggestion is only ever a proposal: accept it and it is
+  an ordinary edit, dismiss it and it is not raised again.
+- **The profile editor warns when an industry signal looks like your own trade**, the mistake that
+  turns a search for customers into a search for competitors. It warns; it does not stop you.
+
+### Changed — 2026-11-14 — Discovery finds customers, not pages or competitors
+
+Phases P1 and P2 of `docs/plans/ai-relevance-plan.md`, measured against the baseline taken the same
+day: across six fixture businesses the share of candidates that are a good fit went from **62% to
+between 83% and 88%** over three runs, and the share of labelled competitors that get through the
+screen went from **86% to between 0% and 8%**. A discovery run costs a little more than it did
+(about $0.13 against $0.11 for four sources). Each figure is a single live run; see
+`docs/modules/lead-sourcing.md` → _Relevance evaluation_ for how far to trust them.
+
+What changed, in the order it matters to a team:
+
+- **A relevance check before a company becomes a lead** (ADR 0035). Each candidate is judged against
+  the team's own business; a confident competitor or misfit is left out, and the run screen says
+  how many and why. Everything else is kept, and nothing is left out when the check cannot run.
+- **The AI source reads real search results.** It can no longer name a company from memory: every
+  company it returns traces to a result, and the website stored is the result's own.
+- **Web search asks several short questions instead of one long one**, and says which country it is
+  searching from. Companies House is searched by sector, active companies only, in the place.
+- **Every step now knows the whole seller**: what a job costs, how big the business is, the
+  customers it already has and who its competitors are reach the search, the ICP composer and the
+  scorer. Accepting a background check writes what it learned about buyers onto the profile.
+- **One model call shapes the search for every provider**, where it used to be one per provider.
+
+### Added — 2026-11-14 — A way to measure whether leads fit the business
+
+The first phase of `docs/plans/ai-relevance-plan.md`, and deliberately no change to what the product
+does. `php artisan relevance:eval` runs six fixture businesses through the real chain — background
+check, seeded ICP, query shaping, providers, candidate screening — and reports precision@N, how many
+competitors leak through, how many good fits are lost, and what the run cost. It calls live
+providers and a live model, so it is a command that asks first rather than a test, and it stores no
+leads. Its judge (`lead_sourcing.eval_judge`) is scored against hand labels before its precision
+figures are believed. See `docs/modules/lead-sourcing.md` → _Relevance evaluation_.
+
+### Fixed — 2026-11-14 — The ICP composer refused every draft
+
+`DraftIcp::fromAi()` read its validated data from the wrong validator (the last criterion's, not the
+profile's), so "Draft my profile" answered every description with a refusal. Two tests were failing
+on `main` for it.
+
 ### Changed — 2026-11-09 — The lead record reads as one screen
 
 The page a member spends their day on had grown five different section shells and two different

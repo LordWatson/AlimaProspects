@@ -2,6 +2,7 @@
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { AlertTriangle, Check, RefreshCw, Scan, Sparkles } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import FindingEvidence from '@/components/business-intel/FindingEvidence.vue';
 import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,9 +13,11 @@ import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import { useI18n } from '@/composables/useI18n';
 import type {
+    BackgroundCheckEvidence,
     BackgroundCheckProgress,
     BusinessIntelProfile,
     BusinessIntelReport,
+    ProfileMappingRow,
 } from '@/types';
 
 defineOptions({
@@ -26,6 +29,8 @@ defineOptions({
 const props = defineProps<{
     report: BusinessIntelReport | null;
     profile: BusinessIntelProfile;
+    /** What accepting would change in the profile, field by field. Empty unless a report is ready. */
+    mapping: ProfileMappingRow[];
     can: { manage: boolean };
 }>();
 
@@ -90,16 +95,157 @@ const hasCustomerSignals = computed(
         decisionMakerTitles.value.length > 0,
 );
 
+/**
+ * The quotes behind one finding. `undefined` for a report written before findings carried
+ * evidence, which the evidence block reads as "show nothing" rather than "nothing supports this".
+ */
+function evidenceFor(field: string): BackgroundCheckEvidence[] | undefined {
+    return findings.value?.evidence?.filter((item) => item.field === field);
+}
+
+const priceBand = computed(() => {
+    const min = findings.value?.pricing_min ?? null;
+    const max = findings.value?.pricing_max ?? null;
+    const code = (findings.value?.pricing_currency ?? '').toUpperCase();
+    const format = (value: number) => value.toLocaleString('en');
+
+    if (min == null && max == null) {
+        return null;
+    }
+
+    if (min != null && max != null) {
+        return `${format(min)} – ${format(max)} ${code}`.trim();
+    }
+
+    return min != null
+        ? t('From :amount', { amount: `${format(min)} ${code}`.trim() })
+        : t('Up to :amount', {
+              amount: `${format(max as number)} ${code}`.trim(),
+          });
+});
+
+const deliveryLabels: Record<string, string> = {
+    local: 'In person, close to where you are based',
+    regional: 'In person, across your region',
+    national: 'Anywhere in the country',
+    remote: 'Remotely, wherever the customer is',
+};
+
+/** The findings a search for customers depends on, each with the evidence field it is filed under. */
+const moreFindings = computed(() => {
+    const value = findings.value;
+
+    if (!value) {
+        return [];
+    }
+
+    return [
+        {
+            field: 'proof_customers',
+            title: t('Customers your site names'),
+            hint: t('Alima looks for more companies like these.'),
+            items: value.proof_customers ?? [],
+            text: null,
+        },
+        {
+            field: 'problems_solved',
+            title: t('Problems you solve'),
+            hint: null,
+            items: value.problems_solved ?? [],
+            text: null,
+        },
+        {
+            field: 'buying_triggers',
+            title: t('What makes a customer ready to buy'),
+            hint: null,
+            items: value.buying_triggers ?? [],
+            text: null,
+        },
+        {
+            field: 'anti_customers',
+            title: t('Who is not a customer'),
+            hint: t('Alima leaves these out when it looks for leads.'),
+            items: value.anti_customers ?? [],
+            text: null,
+        },
+        {
+            field: 'pricing',
+            title: t('What a job costs'),
+            hint: t('This tells Alima how big a customer needs to be.'),
+            items: [],
+            text: priceBand.value,
+        },
+        {
+            field: 'delivery_model',
+            title: t('How you deliver'),
+            hint: t('This tells Alima how far away a customer can be.'),
+            items: [],
+            text: value.delivery_model
+                ? t(
+                      deliveryLabels[value.delivery_model] ??
+                          value.delivery_model,
+                  )
+                : null,
+        },
+        {
+            field: 'customer_size_range',
+            title: t('How big your customers are'),
+            hint: null,
+            items: [],
+            text: value.customer_size_range ?? null,
+        },
+    ].filter((finding) => finding.items.length > 0 || finding.text);
+});
+
+const fieldLabels: Record<string, string> = {
+    industry: 'Your industry',
+    value_proposition: 'What you offer',
+    customer_examples: 'Customers you already have',
+    customer_industries: 'Industries that buy from you',
+    target_customers: 'Kinds of customer',
+    buyer_titles: 'Who decides at a customer',
+    competitors: 'Competitors',
+    problems_solved: 'Problems you solve',
+    buying_triggers: 'What makes a customer ready to buy',
+    anti_customers: 'Who is not a customer',
+    pricing: 'What a job costs',
+    delivery_model: 'How you deliver',
+    customer_size_range: 'How big your customers are',
+};
+
+const fills = computed(() =>
+    props.mapping.filter((row) => row.state === 'fill'),
+);
+const conflicts = computed(() =>
+    props.mapping.filter((row) => row.state === 'conflict'),
+);
+
 const acceptForm = useForm({
     apply_to_profile: true,
     seed_icp: false,
+    // Fields where the team entered something else and chose Alima's finding. Empty by default:
+    // what the team typed wins unless they say otherwise.
+    overrides: [] as string[],
 });
+
+function setOverride(field: string, chosen: boolean | 'indeterminate'): void {
+    acceptForm.overrides =
+        chosen === true
+            ? [...new Set([...acceptForm.overrides, field])]
+            : acceptForm.overrides.filter((item) => item !== field);
+}
 
 function accept(): void {
     if (!props.report) return;
-    acceptForm.post(`/business-intel/${props.report.id}/accept`, {
-        preserveScroll: true,
-    });
+    // A choice made while the profile option was ticked means nothing once it is unticked.
+    acceptForm
+        .transform((data) => ({
+            ...data,
+            overrides: data.apply_to_profile ? data.overrides : [],
+        }))
+        .post(`/business-intel/${props.report.id}/accept`, {
+            preserveScroll: true,
+        });
 }
 
 function rerun(): void {
@@ -264,7 +410,7 @@ onBeforeUnmount(() => {
                     class="space-y-2 rounded-2xl border border-border bg-card p-6 lg:col-span-2"
                 >
                     <h2
-                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
                         {{ t('Summary') }}
                     </h2>
@@ -277,7 +423,7 @@ onBeforeUnmount(() => {
                     class="space-y-2 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
-                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
                         {{ t('What you offer') }}
                     </h2>
@@ -291,13 +437,14 @@ onBeforeUnmount(() => {
                         {{ t('You said:') }}
                         <span dir="auto">{{ profile.value_proposition }}</span>
                     </p>
+                    <FindingEvidence :items="evidenceFor('offering')" />
                 </article>
 
                 <article
                     class="space-y-2 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
-                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
                         {{ t('Positioning') }}
                     </h2>
@@ -311,7 +458,7 @@ onBeforeUnmount(() => {
                     class="space-y-2 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
-                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
                         {{ t('Your industry') }}
                     </h2>
@@ -323,6 +470,7 @@ onBeforeUnmount(() => {
                             )
                         }}
                     </p>
+                    <FindingEvidence :items="evidenceFor('own_industry')" />
                 </article>
 
                 <article
@@ -330,7 +478,7 @@ onBeforeUnmount(() => {
                     class="space-y-3 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
-                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
                         {{ t('Industries that buy from you') }}
                     </h2>
@@ -351,6 +499,9 @@ onBeforeUnmount(() => {
                             {{ item }}
                         </li>
                     </ul>
+                    <FindingEvidence
+                        :items="evidenceFor('customer_industries')"
+                    />
                 </article>
 
                 <article
@@ -358,7 +509,7 @@ onBeforeUnmount(() => {
                     class="space-y-3 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
-                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
                         {{ t('Likely target customers') }}
                     </h2>
@@ -372,6 +523,7 @@ onBeforeUnmount(() => {
                             {{ item }}
                         </li>
                     </ul>
+                    <FindingEvidence :items="evidenceFor('target_customers')" />
                 </article>
 
                 <article
@@ -379,7 +531,7 @@ onBeforeUnmount(() => {
                     class="space-y-3 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
-                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
                         {{ t('Who to ask for') }}
                     </h2>
@@ -393,12 +545,50 @@ onBeforeUnmount(() => {
                             {{ item }}
                         </li>
                     </ul>
+                    <FindingEvidence
+                        :items="evidenceFor('decision_maker_titles')"
+                    />
+                </article>
+
+                <!-- What a search for customers depends on beyond who they are: the customers
+                     already won, what a job costs, how far the business can serve. -->
+                <article
+                    v-for="finding in moreFindings"
+                    :key="finding.field"
+                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                    :data-test="`finding-${finding.field}`"
+                >
+                    <h2
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    >
+                        {{ finding.title }}
+                    </h2>
+                    <p v-if="finding.text" class="text-foreground" dir="auto">
+                        {{ finding.text }}
+                    </p>
+                    <ul v-else class="flex flex-wrap gap-1.5">
+                        <li
+                            v-for="item in finding.items"
+                            :key="item"
+                            class="inline-flex rounded-full bg-accent px-3 py-1 text-xs text-foreground"
+                            dir="auto"
+                        >
+                            {{ item }}
+                        </li>
+                    </ul>
+                    <p
+                        v-if="finding.hint"
+                        class="text-sm text-muted-foreground"
+                    >
+                        {{ finding.hint }}
+                    </p>
+                    <FindingEvidence :items="evidenceFor(finding.field)" />
                 </article>
 
                 <!-- Carries its meaning with an icon and a real heading, not with the tint alone. -->
                 <article
                     v-if="!hasCustomerSignals"
-                    class="flex items-start gap-3 rounded-2xl bg-warning/12 p-6"
+                    class="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/12 p-6"
                     role="note"
                     data-test="no-customer-signals"
                 >
@@ -429,7 +619,7 @@ onBeforeUnmount(() => {
                     class="space-y-3 rounded-2xl border border-border bg-card p-6"
                 >
                     <h2
-                        class="font-mono text-[0.625rem] tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
                         {{ t('Possible competitors') }}
                     </h2>
@@ -443,6 +633,7 @@ onBeforeUnmount(() => {
                             {{ item }}
                         </li>
                     </ul>
+                    <FindingEvidence :items="evidenceFor('competitors')" />
                 </article>
             </div>
 
@@ -458,7 +649,7 @@ onBeforeUnmount(() => {
                     <p class="text-sm text-muted-foreground">
                         {{
                             t(
-                                'Accepting fills any blank fields in your business profile. It never overwrites what you’ve already entered.',
+                                'Accepting fills the blank fields in your business profile. Where you already entered something different, yours stays unless you choose otherwise below.',
                             )
                         }}
                     </p>
@@ -474,6 +665,92 @@ onBeforeUnmount(() => {
                         {{ t('Fill in my business profile') }}
                     </Label>
                 </div>
+
+                <!-- What that will do, field by field, so nothing changes unseen. -->
+                <div
+                    v-if="acceptForm.apply_to_profile && fills.length"
+                    class="flex flex-col gap-2 ps-7"
+                    data-test="mapping-fills"
+                >
+                    <h3 class="text-sm font-medium">
+                        {{ t('Alima will fill in') }}
+                    </h3>
+                    <dl class="flex flex-col gap-2 text-sm">
+                        <div v-for="row in fills" :key="row.field">
+                            <dt class="text-muted-foreground">
+                                {{ t(fieldLabels[row.field] ?? row.field) }}
+                            </dt>
+                            <dd class="break-words" dir="auto">
+                                {{ row.proposed }}
+                            </dd>
+                        </div>
+                    </dl>
+                </div>
+
+                <fieldset
+                    v-if="acceptForm.apply_to_profile && conflicts.length"
+                    class="flex flex-col gap-3 ps-7"
+                    data-test="mapping-conflicts"
+                >
+                    <legend class="text-sm font-medium">
+                        {{ t('Where your site says something different') }}
+                    </legend>
+                    <p class="text-sm text-muted-foreground">
+                        {{
+                            t(
+                                'Your own entry is kept. Tick a row to use what Alima found instead.',
+                            )
+                        }}
+                    </p>
+                    <div
+                        v-for="row in conflicts"
+                        :key="row.field"
+                        class="flex flex-col gap-2 rounded-lg border border-border bg-background p-3"
+                    >
+                        <p class="text-sm font-medium">
+                            {{ t(fieldLabels[row.field] ?? row.field) }}
+                        </p>
+                        <dl class="grid gap-2 text-sm sm:grid-cols-2">
+                            <div>
+                                <dt class="text-xs text-muted-foreground">
+                                    {{ t('You entered') }}
+                                </dt>
+                                <dd class="break-words" dir="auto">
+                                    {{ row.current }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-muted-foreground">
+                                    {{ t('Alima found') }}
+                                </dt>
+                                <dd class="break-words" dir="auto">
+                                    {{ row.proposed }}
+                                </dd>
+                            </div>
+                        </dl>
+                        <div class="flex items-start gap-3">
+                            <Checkbox
+                                :id="`override-${row.field}`"
+                                :model-value="
+                                    acceptForm.overrides.includes(row.field)
+                                "
+                                :data-test="`override-${row.field}`"
+                                @update:model-value="
+                                    setOverride(row.field, $event)
+                                "
+                            />
+                            <Label
+                                :for="`override-${row.field}`"
+                                class="text-sm font-normal"
+                            >
+                                {{ t('Use what Alima found') }}
+                                <span class="sr-only">{{
+                                    t(fieldLabels[row.field] ?? row.field)
+                                }}</span>
+                            </Label>
+                        </div>
+                    </div>
+                </fieldset>
 
                 <div class="flex items-start gap-3">
                     <Checkbox

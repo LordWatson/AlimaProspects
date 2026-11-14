@@ -29,10 +29,16 @@ final class HttpWebContentFetcher implements WebContentFetcher
 
     public function fetch(?string $url): string
     {
+        return $this->fetchPage($url)['text'];
+    }
+
+    public function fetchPage(?string $url): array
+    {
+        $empty = ['text' => '', 'links' => []];
         $url = $this->normaliseUrl($url);
 
         if ($url === null) {
-            return '';
+            return $empty;
         }
 
         try {
@@ -41,24 +47,64 @@ final class HttpWebContentFetcher implements WebContentFetcher
             $response = $this->request($url);
 
             if ($response->failed()) {
-                return '';
+                return $empty;
             }
 
             $contentType = (string) $response->header('Content-Type');
 
             if ($contentType !== '' && ! Str::contains($contentType, ['html', 'text'], ignoreCase: true)) {
-                return '';
+                return $empty;
             }
 
-            return $this->toText($this->readCapped($response));
+            $html = $this->readCapped($response);
+
+            return ['text' => $this->toText($html), 'links' => $this->sameHostLinks($html, $url)];
         } catch (Throwable $e) {
             Log::channel('ai')->warning('Web content fetch failed.', [
                 'url' => $url,
                 'exception' => $e->getMessage(),
             ]);
 
-            return '';
+            return $empty;
         }
+    }
+
+    /**
+     * The page's links that stay on its own host, as absolute URLs without a query or fragment.
+     *
+     * Deliberately narrow: a relative or root-relative path, or an absolute link to the same host.
+     * Everything else — another site, `mailto:`, `javascript:`, a protocol-relative link elsewhere
+     * — is dropped, so a caller following these can never be led off the site it was pointed at.
+     * Each is still fetched through the guarded request, which re-checks it.
+     *
+     * @return list<string>
+     */
+    private function sameHostLinks(string $html, string $base): array
+    {
+        $host = Str::lower((string) parse_url($base, PHP_URL_HOST));
+        $origin = parse_url($base, PHP_URL_SCHEME).'://'.$host;
+
+        preg_match_all('/<a\b[^>]*\bhref\s*=\s*["\']([^"\'#?\s]+)/i', $html, $matches);
+
+        $links = [];
+
+        foreach (array_slice($matches[1], 0, 300) as $href) {
+            $href = html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            if (preg_match('#^https?://#i', $href) === 1) {
+                if (Str::lower((string) parse_url($href, PHP_URL_HOST)) !== $host) {
+                    continue;
+                }
+            } elseif (preg_match('#^[a-z][a-z0-9+.-]*:#i', $href) === 1 || str_starts_with($href, '//')) {
+                continue;
+            } else {
+                $href = $origin.'/'.ltrim($href, '/');
+            }
+
+            $links[rtrim($href, '/')] = true;
+        }
+
+        return array_keys($links);
     }
 
     /**

@@ -73,6 +73,17 @@ export type CriterionCalibration = {
  * how often it matched, missed, was left to the AI review, or had no data. Null when there is no
  * active profile. The grade mix is exact; the criterion counts are over a recent sample.
  */
+/** One change Alima proposes to a profile. A proposal: nothing changes until a member accepts. */
+export type IcpSuggestion = {
+    id: number;
+    action: 'add' | 'remove' | 'reweight';
+    type: string;
+    type_label: string;
+    value: string;
+    weight: number | null;
+    rationale: string;
+};
+
 export type IcpCalibration = {
     scored_leads: number;
     excluded: number;

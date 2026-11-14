@@ -129,7 +129,7 @@ final class DraftIcp extends Data
         }
 
         /** @var array<string, mixed> $validated */
-        $validated = $validator->validated();
+        $validated = $shell->validated();
 
         // Viable, but no criteria followed — a profile with nothing in it grades nothing and
         // searches for nothing, so it is a refusal with a nudge rather than an empty editor. The

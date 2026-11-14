@@ -22,4 +22,16 @@ use App\Modules\ICP\Support\NullIcpCalibrationSource;
 interface IcpCalibrationSource
 {
     public function summarise(Icp $icp): IcpCalibration;
+
+    /**
+     * What the team's own use of a profile says about it, for the refinement suggestions
+     * (relevance P4): the leads members marked a good or a bad fit, and what recent searches found
+     * and left out. A marked lead is **one line of company-level fact** — a trade, a size, a place
+     * — and never its name: it is evidence about the profile rather than about anybody. A
+     * left-out company is the relevance gate's own one-line reason, which is model-written prose
+     * and may mention the company it is about; callers wrap it as untrusted content.
+     *
+     * @return array{good: list<string>, bad: list<string>, rejected: list<string>}
+     */
+    public function feedback(Icp $icp): array;
 }

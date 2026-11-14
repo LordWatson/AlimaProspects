@@ -1,0 +1,220 @@
+{
+    "key": "uae-b2b-saas",
+    "note": "Every company in this file is fictional. `about` is written as a search snippet would read.",
+    "location": "Dubai",
+    "sources": ["web_search", "ai", "google_places"],
+    "profile": {
+        "company_name": "Raseed",
+        "website": "https://raseed.example",
+        "industry": "Software",
+        "company_size": "small",
+        "locations": ["Dubai"],
+        "regions_served": ["uae"],
+        "primary_market": "uae",
+        "products_services": [
+            "Accounts receivable automation",
+            "E-invoicing",
+            "Payment reminders and collections"
+        ],
+        "value_proposition": "Raseed gets UAE trading companies paid faster: FTA-ready e-invoices, automatic reminders in Arabic and English, and a live view of who owes what.",
+        "pricing_min": 150000,
+        "pricing_max": 1200000,
+        "pricing_currency": "aed",
+        "customer_examples": [
+            "Al Noor Building Materials",
+            "Gulfline Auto Parts",
+            "Deira Foodstuff Trading"
+        ]
+    },
+    "pages": {
+        "/": "Raseed. Get paid on time. Accounts receivable software built for UAE distributors and trading companies. Book a demo with our Dubai team.",
+        "/product": "Send FTA-compliant e-invoices, chase overdue invoices automatically by email and WhatsApp in Arabic and English, and reconcile payments against your ERP. Integrates with Tally, Zoho Books and Odoo. Built for finance teams of 2 to 20 handling hundreds of credit customers. Most customers come to us when their overdue receivables pass sixty days or when e-invoicing becomes mandatory for them.",
+        "/customers": "Trusted by trading companies across the Emirates. Al Noor Building Materials cut its days sales outstanding by a third. Gulfline Auto Parts chases four hundred credit accounts with one accountant. Deira Foodstuff Trading reconciles payments daily.",
+        "/pricing": "Plans from AED 1,500 a month. Growth plan AED 4,500 a month. Enterprise from AED 12,000 a month. Raseed is not built for retailers selling to consumers or for sole traders."
+    },
+    "ground_truth": "UAE-based wholesalers, distributors and trading companies (building materials, auto parts, foodstuff, electronics, FMCG, industrial supplies) with roughly 20-500 staff that sell on credit to many business customers and have a finance or accounts team. Not software vendors, accounting firms, banks, payment providers or fintechs; not retailers selling only to consumers; not sole traders; not companies outside the UAE.",
+    "companies": [
+        {
+            "name": "Al Safa Electrical Trading LLC",
+            "website": "https://alsafaelectrical.example",
+            "about": "Wholesale distributor of cables, switchgear and lighting to contractors across the UAE.",
+            "label": "good",
+            "why": "Trade distributor selling on credit."
+        },
+        {
+            "name": "Emirates Steel Stockists",
+            "website": "https://emiratessteelstock.example",
+            "about": "Steel bars, sheets and sections from our Jebel Ali yard. Credit accounts for contractors.",
+            "label": "good",
+            "why": "Building materials on credit."
+        },
+        {
+            "name": "Baraka Foodstuff Trading",
+            "website": "https://barakafoodstuff.example",
+            "about": "Importer and distributor of rice, pulses and spices to 600 groceries and restaurants.",
+            "label": "good",
+            "why": "FMCG distributor with many credit customers."
+        },
+        {
+            "name": "Desert Hawk Auto Spares",
+            "website": "https://deserthawkspares.example",
+            "about": "Genuine and aftermarket parts wholesale, Sharjah Industrial Area.",
+            "label": "good",
+            "why": "Auto parts trading."
+        },
+        {
+            "name": "Mina Packaging Supplies",
+            "website": "https://minapackaging.example",
+            "about": "Cartons, films and labels for manufacturers and e-commerce sellers, Dubai Investment Park.",
+            "label": "good",
+            "why": "B2B supplier."
+        },
+        {
+            "name": "Gulf Medical Consumables FZE",
+            "website": "https://gulfmedconsumables.example",
+            "about": "Distributor of disposables and devices to clinics and hospitals in the GCC.",
+            "label": "good",
+            "why": "Distributor with institutional credit customers."
+        },
+        {
+            "name": "Oryx Industrial Tools",
+            "website": "https://oryxtools.example",
+            "about": "Power tools, fasteners and safety equipment for the construction and oil and gas sectors.",
+            "label": "good",
+            "why": "Industrial supplies trading."
+        },
+        {
+            "name": "Software Square Trading LLC",
+            "website": "https://softwaresquare.example",
+            "about": "Wholesale of tiles and sanitaryware. Showroom on Sheikh Zayed Road.",
+            "label": "good",
+            "why": "A tile wholesaler; 'Software' in the name must not exclude it."
+        },
+        {
+            "name": "Liwa Chemicals Distribution",
+            "website": "https://liwachemicals.example",
+            "about": "Industrial and cleaning chemicals supplied in bulk across the Emirates.",
+            "label": "good",
+            "why": "B2B distributor."
+        },
+        {
+            "name": "Najm Electronics Wholesale",
+            "website": "https://najmelectronics.example",
+            "about": "Mobile accessories and consumer electronics wholesale to retailers, Deira.",
+            "label": "good",
+            "why": "Wholesale to retailers on credit."
+        },
+        {
+            "name": "Bloom Flower Boutique",
+            "website": "https://bloomboutique.example",
+            "about": "Luxury bouquets delivered same day in Dubai Marina.",
+            "label": "bad",
+            "why": "Consumer retailer."
+        },
+        {
+            "name": "Kensington Steel Stockholders Ltd",
+            "website": "https://kensingtonsteel.example",
+            "about": "Steel stockholder in Birmingham, UK.",
+            "label": "bad",
+            "why": "Outside the UAE."
+        },
+        {
+            "name": "Zayed Heights Real Estate",
+            "website": "https://zayedheights.example",
+            "about": "Off-plan apartments and villas brokerage.",
+            "label": "bad",
+            "why": "Not a trading company with receivables."
+        },
+        {
+            "name": "Palm Smile Dental Clinic",
+            "website": "https://palmsmile.example",
+            "about": "Cosmetic and family dentistry in Jumeirah.",
+            "label": "bad",
+            "why": "Consumer service."
+        },
+        {
+            "name": "Ahmed Mobile Repair",
+            "website": "https://ahmedmobilerepair.example",
+            "about": "One-man phone repair kiosk, Karama.",
+            "label": "bad",
+            "why": "Sole trader, cash business."
+        },
+        {
+            "name": "Dubai SME Directory",
+            "website": "https://dubaismedirectory.example",
+            "about": "Find trading companies in Dubai by category.",
+            "label": "bad",
+            "why": "A directory."
+        },
+        {
+            "name": "Falcon International School",
+            "website": "https://falconschool.example",
+            "about": "British curriculum school in Abu Dhabi.",
+            "label": "bad",
+            "why": "Wrong sector."
+        },
+        {
+            "name": "Sahara Adventure Tours",
+            "website": "https://saharaadventure.example",
+            "about": "Desert safaris and dune buggy trips.",
+            "label": "bad",
+            "why": "Consumer tourism."
+        },
+        {
+            "name": "Emirates National Oil Corporation",
+            "website": "https://enoccorp.example",
+            "about": "State-owned energy group with 11,000 employees.",
+            "label": "bad",
+            "why": "Far too large; runs its own treasury systems."
+        },
+        {
+            "name": "Golden Spoon Restaurant",
+            "website": "https://goldenspoon.example",
+            "about": "Family restaurant in Al Barsha serving Lebanese cuisine.",
+            "label": "bad",
+            "why": "Consumer business, no credit customers."
+        },
+        {
+            "name": "Tahseel Collections Cloud",
+            "website": "https://tahseel.example",
+            "about": "AR automation and e-invoicing platform for GCC businesses.",
+            "label": "competitor",
+            "why": "Same product."
+        },
+        {
+            "name": "Fatoora Pro",
+            "website": "https://fatoorapro.example",
+            "about": "FTA-compliant e-invoicing software for UAE SMEs.",
+            "label": "competitor",
+            "why": "E-invoicing vendor."
+        },
+        {
+            "name": "LedgerLoop",
+            "website": "https://ledgerloop.example",
+            "about": "Automated payment reminders and receivables dashboards that plug into your ERP.",
+            "label": "competitor",
+            "why": "Same product; nothing in the name says so."
+        },
+        {
+            "name": "Hisab ERP Solutions",
+            "website": "https://hisaberp.example",
+            "about": "ERP and accounting software with a collections module for distributors.",
+            "label": "competitor",
+            "why": "Overlapping software vendor."
+        },
+        {
+            "name": "Crescent Chartered Accountants",
+            "website": "https://crescentca.example",
+            "about": "Outsourced bookkeeping and receivables management for trading companies.",
+            "label": "competitor",
+            "why": "Sells the outcome as a service."
+        },
+        {
+            "name": "PayBridge Gulf",
+            "website": "https://paybridgegulf.example",
+            "about": "B2B payment links and invoice collection for wholesalers.",
+            "label": "competitor",
+            "why": "Fintech competing for the same budget."
+        }
+    ]
+}

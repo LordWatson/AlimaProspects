@@ -13,11 +13,12 @@ use App\Modules\BusinessIntelligence\Enums\BackgroundCheckStatus;
 use App\Modules\BusinessIntelligence\Events\BackgroundCheckProgressed;
 use App\Modules\BusinessIntelligence\Models\BusinessIntelReport;
 use App\Modules\Core\Contracts\CapabilityGate;
-use App\Modules\Core\Contracts\WebContentFetcher;
 use App\Modules\Core\Enums\Capability;
 use App\Modules\Core\Models\Team;
+use App\Modules\Core\Services\SiteReader;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Onboarding\Models\BusinessProfile;
+use App\Modules\Onboarding\Support\SellerBrief;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,7 +32,7 @@ use Throwable;
 /**
  * Runs the AI background check for a team (Phase 6). It resolves the report to fulfil (an explicit
  * pending report from a re-run, or — on the onboarding trigger — the team's pending report or a
- * fresh version), fetches the business's public web text via the {@see WebContentFetcher}, runs the
+ * fresh version), reads the business's own site through the {@see SiteReader}, runs the
  * `business_intel.background_check` prompt through the {@see AiClient}, validates + stores the
  * structured findings, and broadcasts progress on the team's private channel.
  *
@@ -82,7 +83,7 @@ final class RunBackgroundCheckJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(
         AiClient $ai,
-        WebContentFetcher $fetcher,
+        SiteReader $site,
         TeamContext $teamContext,
         CapabilityGate $capabilities,
     ): void {
@@ -100,7 +101,7 @@ final class RunBackgroundCheckJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $teamContext->run($this->teamId, function () use ($ai, $fetcher): void {
+        $teamContext->run($this->teamId, function () use ($ai, $site): void {
             $report = $this->resolveReport();
 
             // Nothing to do: the report was already completed (idempotent retry) or no longer exists.
@@ -113,9 +114,11 @@ final class RunBackgroundCheckJob implements ShouldBeUnique, ShouldQueue
 
             $this->broadcast($report->status, 10, 'Starting your background check', $report->version);
 
-            // --- External work: fetch public web text (outside any transaction) ---
+            // --- External work: read the site (outside any transaction) ---
+            // The homepage and the few pages that say what the business does and who for, each
+            // one asked of `robots.txt` first and bounded in pages, characters and seconds.
             $website = $hasProfile ? $profile->website : null;
-            $webText = $fetcher->fetch($website);
+            $pages = $site->read($website);
             $this->broadcast(BackgroundCheckStatus::Pending, 45, 'Reading your public web presence', $report->version);
 
             // --- External work: run the AI background-check prompt ---
@@ -123,8 +126,17 @@ final class RunBackgroundCheckJob implements ShouldBeUnique, ShouldQueue
                 $response = $ai->structured('business_intel.background_check', [
                     'business_name' => $hasProfile ? ($profile->company_name ?? '') : '',
                     'website' => $website ?? '',
+                    // What the team typed about itself. Theirs, but free text all the same.
+                    'team_profile' => UntrustedContent::from(SellerBrief::for($profile) ?? 'Not yet described.'),
                     // Scraped content is untrusted — wrapped so embedded instructions can't execute.
-                    'web_content' => UntrustedContent::from($webText),
+                    // Numbered, because every finding has to say which page it was read on.
+                    'pages' => UntrustedContent::from($pages === []
+                        ? 'The website could not be read.'
+                        : implode("\n\n", array_map(
+                            static fn (array $page, int $i): string => sprintf("=== Page %d: %s ===\n%s", $i + 1, $page['url'], $page['text']),
+                            $pages,
+                            array_keys($pages),
+                        ))),
                 ]);
             } catch (AiCreditExceededException|InvalidAiResponseException $e) {
                 // Terminal: retrying won't help (no credit / model can't produce valid output).
@@ -133,7 +145,8 @@ final class RunBackgroundCheckJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
-            $findings = BackgroundCheckFindings::fromAi($response->data);
+            // Evidence is kept only where the quoted words really are on the page cited.
+            $findings = BackgroundCheckFindings::fromAi($response->data)->withVerifiedEvidence($pages);
 
             DB::transaction(function () use ($report, $findings, $response): void {
                 $report->forceFill([
@@ -154,6 +167,8 @@ final class RunBackgroundCheckJob implements ShouldBeUnique, ShouldQueue
                 'prompt_version' => $response->promptVersion,
                 'cost_micros' => $response->costMicros,
                 'cache_hit' => $response->cacheHit,
+                'pages_read' => count($pages),
+                'evidence_kept' => count($findings->evidence),
             ]);
 
             $this->broadcast(BackgroundCheckStatus::Ready, 100, 'Your background check is ready', $report->version);

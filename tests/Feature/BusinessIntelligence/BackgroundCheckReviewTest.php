@@ -102,7 +102,13 @@ it('accepts a report: fills blank profile fields, seeds an ICP, and marks it acc
         $profile = BusinessProfile::query()->where('team_id', $team->getKey())->firstOrFail();
         // The team's OWN trade, not one of its customers' industries.
         expect($profile->industry)->toBe('Marketing agency')
-            ->and($profile->value_proposition)->toBe('Demand generation for B2B SaaS.');
+            ->and($profile->value_proposition)->toBe('Demand generation for B2B SaaS.')
+            // Who buys and who competes used to stay inside the report, where nothing that
+            // searches or scores could read them.
+            ->and($profile->customer_industries)->toBe(['SaaS', 'Professional services'])
+            ->and($profile->target_customers)->toBe(['Early-stage SaaS companies'])
+            ->and($profile->buyer_titles)->toBe(['Head of Marketing', 'Founder'])
+            ->and($profile->competitors)->toBe(['Beta Agency']);
 
         expect($report->fresh()->status)->toBe(BackgroundCheckStatus::Accepted);
 
@@ -118,6 +124,7 @@ it('does not overwrite a profile field the team already filled', function (): vo
     app(TeamContext::class)->run($team, fn () => BusinessProfile::factory()->completed()->create([
         'team_id' => $team->getKey(),
         'industry' => 'Logistics',
+        'competitors' => ['Our Real Rival'],
     ]));
     $report = readyReport($team);
 
@@ -127,7 +134,8 @@ it('does not overwrite a profile field the team already filled', function (): vo
 
     app(TeamContext::class)->run($team, function () use ($team): void {
         $profile = BusinessProfile::query()->where('team_id', $team->getKey())->firstOrFail();
-        expect($profile->industry)->toBe('Logistics');
+        expect($profile->industry)->toBe('Logistics')
+            ->and($profile->competitors)->toBe(['Our Real Rival']);
     });
 });
 

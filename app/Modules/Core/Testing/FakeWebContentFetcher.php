@@ -68,6 +68,30 @@ final class FakeWebContentFetcher implements WebContentFetcher
     }
 
     /**
+     * Links to hand back with a page, per URL.
+     *
+     * @var array<string, list<string>>
+     */
+    private array $links = [];
+
+    /**
+     * Say which same-host links a page carries, so a test can walk a site of more than one page.
+     *
+     * @param  list<string>  $links
+     */
+    public function linksFrom(string $url, array $links): self
+    {
+        $this->links[$url] = $links;
+
+        return $this;
+    }
+
+    public function fetchPage(?string $url): array
+    {
+        return ['text' => $this->fetch($url), 'links' => $this->links[(string) $url] ?? []];
+    }
+
+    /**
      * The line-oriented read (S12).
      *
      * Returns the same canned bodies as {@see self::fetch()} — a double has no markup to strip, so

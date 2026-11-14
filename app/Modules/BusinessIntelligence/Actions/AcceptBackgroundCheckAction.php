@@ -10,6 +10,7 @@ use App\Modules\BusinessIntelligence\Data\BackgroundCheckFindings;
 use App\Modules\BusinessIntelligence\Enums\BackgroundCheckStatus;
 use App\Modules\BusinessIntelligence\Exceptions\BackgroundCheckException;
 use App\Modules\BusinessIntelligence\Models\BusinessIntelReport;
+use App\Modules\BusinessIntelligence\Support\ProfileMapping;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Services\AuditLogger;
 use App\Modules\Core\Support\TeamContext;
@@ -17,13 +18,15 @@ use App\Modules\ICP\Actions\CreateIcpAction;
 use App\Modules\ICP\Data\CriterionData;
 use App\Modules\ICP\Data\IcpData;
 use App\Modules\ICP\Enums\CriterionType;
+use App\Modules\Onboarding\Enums\DeliveryModel;
 use App\Modules\Onboarding\Models\BusinessProfile;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Accept a ready background-check report. Merges its findings into the team's Business Profile —
- * filling only blank fields, never overwriting what the business itself entered — and optionally
- * seeds a suggested ICP from the findings. Marks the report accepted. Everything is one transaction.
+ * filling blank fields, and replacing what the business itself entered only for a field the member
+ * explicitly chose ({@see ProfileMapping}) — and optionally seeds a suggested ICP from the findings.
+ * Marks the report accepted. Everything is one transaction.
  */
 final class AcceptBackgroundCheckAction
 {
@@ -36,6 +39,7 @@ final class AcceptBackgroundCheckAction
         private readonly TeamContext $teamContext,
         private readonly AuditLogger $audit,
         private readonly CreateIcpAction $createIcp,
+        private readonly ProfileMapping $mapping,
     ) {}
 
     public function handle(Team $team, BusinessIntelReport $report, AcceptBackgroundCheckData $data, ?User $actor = null): BusinessIntelReport
@@ -57,9 +61,7 @@ final class AcceptBackgroundCheckAction
 
             $findings = BackgroundCheckFindings::fromAi($fresh->findings ?? []);
 
-            if ($data->applyToProfile) {
-                $this->mergeIntoProfile($team, $findings);
-            }
+            $written = $data->applyToProfile ? $this->mergeIntoProfile($team, $findings, $data->overrides) : [];
 
             if ($data->seedIcp) {
                 $this->seedIcp($team, $findings, $actor);
@@ -74,6 +76,9 @@ final class AcceptBackgroundCheckAction
             $this->audit->log('business_intel.accepted', $fresh, [
                 'version' => $fresh->version,
                 'applied_to_profile' => $data->applyToProfile,
+                // Which fields changed, and which of those replaced something the team had typed.
+                'profile_fields_written' => $written,
+                'profile_fields_overridden' => array_values(array_intersect($written, $data->overrides)),
                 'seeded_icp' => $data->seedIcp,
             ], $actor);
 
@@ -82,33 +87,23 @@ final class AcceptBackgroundCheckAction
     }
 
     /**
-     * Fill blank Business Profile fields from the findings. Never clobbers a value the team set.
+     * Write the findings onto the Business Profile: every blank field, and — only where the member
+     * chose it — a field the team had already filled in differently. What is written is exactly
+     * what {@see ProfileMapping} showed them on the review screen.
+     *
+     * @param  list<string>  $overrides
+     * @return list<string> the profile fields written
      */
-    private function mergeIntoProfile(Team $team, BackgroundCheckFindings $findings): void
+    private function mergeIntoProfile(Team $team, BackgroundCheckFindings $findings, array $overrides): array
     {
         $profile = BusinessProfile::query()
             ->where('team_id', $team->getKey())
             ->lockForUpdate()
             ->first();
 
-        if (! $profile instanceof BusinessProfile) {
-            return;
-        }
-
-        $updates = [];
-
-        // The team's OWN trade. Never `customerIndustries` — that is who buys from them.
-        if (($profile->industry === null || $profile->industry === '') && $findings->ownIndustry !== null) {
-            $updates['industry'] = $findings->ownIndustry;
-        }
-
-        if (($profile->value_proposition === null || $profile->value_proposition === '') && $findings->offering !== '') {
-            $updates['value_proposition'] = $findings->offering;
-        }
-
-        if ($updates !== []) {
-            $profile->forceFill($updates)->save();
-        }
+        return $profile instanceof BusinessProfile
+            ? $this->mapping->apply($profile, $findings, $overrides)
+            : [];
     }
 
     /**
@@ -153,6 +148,23 @@ final class AcceptBackgroundCheckAction
             return;
         }
 
+        // What the site says beyond who buys (relevance P3/P4): how big they are, how far away
+        // they can be, and what makes one ready. Each is a criterion the profile would otherwise
+        // leave to the member to think of.
+        if ($findings->customerSizeRange !== null) {
+            $criteria[] = new CriterionData(type: CriterionType::CompanySize, value: $findings->customerSizeRange, weight: 50);
+        }
+
+        // Only a business that has to turn up in person is tied to where it is based.
+        $base = BusinessProfile::query()->where('team_id', $team->getKey())->value('locations');
+        if (in_array($findings->deliveryModel, [DeliveryModel::Local, DeliveryModel::Regional], true) && is_array($base) && isset($base[0])) {
+            $criteria[] = new CriterionData(type: CriterionType::Geography, value: (string) $base[0], weight: 55);
+        }
+
+        foreach (array_slice($findings->buyingTriggers, 0, 3) as $trigger) {
+            $criteria[] = new CriterionData(type: CriterionType::BuyingSignal, value: $trigger, weight: 35);
+        }
+
         foreach ($this->exclusions($findings) as $exclusion) {
             $criteria[] = new CriterionData(type: CriterionType::Exclusion, value: $exclusion, weight: null);
         }
@@ -180,6 +192,11 @@ final class AcceptBackgroundCheckAction
 
         foreach (array_slice($findings->competitors, 0, self::MAX_ICP_CRITERIA_PER_TYPE) as $competitor) {
             $values[] = $competitor;
+        }
+
+        // And who the business itself says it does not serve.
+        foreach (array_slice($findings->antiCustomers, 0, self::MAX_ICP_CRITERIA_PER_TYPE) as $antiCustomer) {
+            $values[] = $antiCustomer;
         }
 
         // Case-insensitive de-dupe, original casing kept — a competitor is often named after the

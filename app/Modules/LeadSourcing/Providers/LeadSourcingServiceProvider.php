@@ -8,6 +8,7 @@ use App\Modules\AiPlatform\Contracts\AiClient;
 use App\Modules\Core\Support\CircuitBreaker;
 use App\Modules\LeadSourcing\Console\BackfillEvidenceCommand;
 use App\Modules\LeadSourcing\Console\EvidenceSourceQualityCommand;
+use App\Modules\LeadSourcing\Console\RelevanceEvalCommand;
 use App\Modules\LeadSourcing\Contracts\CompanyWebsiteResolver;
 use App\Modules\LeadSourcing\Contracts\LeadInterestGate;
 use App\Modules\LeadSourcing\Contracts\LeadQuotaSource;
@@ -23,6 +24,7 @@ use App\Modules\LeadSourcing\Services\AiLeadSourceProvider;
 use App\Modules\LeadSourcing\Services\AllowAllLeadInterestGate;
 use App\Modules\LeadSourcing\Services\CompaniesHouseProvider;
 use App\Modules\LeadSourcing\Services\DiscoveryLimitGuard;
+use App\Modules\LeadSourcing\Services\DiscoveryPayloadBuilder;
 use App\Modules\LeadSourcing\Services\GooglePlacesProvider;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use App\Modules\LeadSourcing\Services\NoSubscriberType;
@@ -84,7 +86,14 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
             $registry->register(new WebSearchProvider($http, $breaker));
             // No HTTP client and no breaker: this one goes through the AI Platform, which owns the
             // transport, the retries, the credit allowance and the cost ledger.
-            $registry->register(new AiLeadSourceProvider($app->make(AiClient::class)));
+            // It reads real search results (ADR 0035), through its **own** web-search provider:
+            // that class remembers how many requests its last search made, and sharing the
+            // instance registered above would let one source report the other's spend.
+            $registry->register(new AiLeadSourceProvider(
+                $app->make(AiClient::class),
+                new WebSearchProvider($http, $breaker),
+                $app->make(DiscoveryPayloadBuilder::class),
+            ));
 
             return $registry;
         });
@@ -107,6 +116,7 @@ final class LeadSourcingServiceProvider extends ModuleServiceProvider
             $this->commands([
                 BackfillEvidenceCommand::class,
                 EvidenceSourceQualityCommand::class,
+                RelevanceEvalCommand::class,
             ]);
         }
     }

@@ -111,3 +111,62 @@ it('throws when no API key is configured', function (): void {
         ->toThrow(LeadSourcingException::class);
     Http::assertNothingSent();
 });
+
+it('searches by SIC code, active companies and place when the query carries codes', function (): void {
+    Http::fake([
+        'api.company-information.service.gov.uk/advanced-search/*' => Http::response(['items' => [[
+            'company_name' => 'LEEDS BLOCK MANAGEMENT LTD',
+            'company_number' => '05186032',
+            'company_status' => 'active',
+            'registered_office_address' => ['locality' => 'Leeds', 'postal_code' => 'LS7 2AA'],
+            'sic_codes' => ['68320'],
+        ]]]),
+    ]);
+
+    $leads = app(CompaniesHouseProvider::class)->discover(new DiscoveryQuery(
+        source: LeadSource::CompaniesHouse,
+        terms: 'property management',
+        location: 'Leeds',
+        sicCodes: ['68320'],
+    ));
+
+    expect($leads)->toHaveCount(1)
+        ->and($leads[0]->companyName)->toBe('LEEDS BLOCK MANAGEMENT LTD')
+        ->and($leads[0]->locality)->toBe('Leeds')
+        ->and($leads[0]->sicCodes)->toBe(['68320']);
+
+    Http::assertSent(fn ($request): bool => str_contains($request->url(), '/advanced-search/companies')
+        && $request['sic_codes'] === '68320'
+        && $request['company_status'] === 'active'
+        && $request['location'] === 'Leeds');
+});
+
+it('falls back to the name search when the register has nothing under those codes', function (): void {
+    Http::fake([
+        // The advanced search answers "no companies found" with a 404, which is not a failure.
+        'api.company-information.service.gov.uk/advanced-search/*' => Http::response([], 404),
+        'api.company-information.service.gov.uk/search/*' => Http::response(['items' => [
+            ['title' => 'ACME LETTINGS LTD', 'company_number' => '1', 'company_status' => 'active'],
+        ]]),
+    ]);
+
+    $leads = app(CompaniesHouseProvider::class)->discover(new DiscoveryQuery(
+        source: LeadSource::CompaniesHouse,
+        terms: 'lettings',
+        sicCodes: ['00000'],
+    ));
+
+    expect($leads)->toHaveCount(1)->and($leads[0]->companyName)->toBe('ACME LETTINGS LTD');
+});
+
+it('never returns a dissolved or insolvent company', function (): void {
+    Http::fake(['api.company-information.service.gov.uk/*' => Http::response(['items' => [
+        ['title' => 'GONE LTD', 'company_number' => '1', 'company_status' => 'dissolved'],
+        ['title' => 'FAILING LTD', 'company_number' => '2', 'company_status' => 'liquidation'],
+        ['title' => 'TRADING LTD', 'company_number' => '3', 'company_status' => 'active'],
+    ]])]);
+
+    $leads = app(CompaniesHouseProvider::class)->discover(chQuery());
+
+    expect(array_map(static fn ($lead): string => $lead->companyName, $leads))->toBe(['TRADING LTD']);
+});

@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { AlertTriangle, ArrowLeft, Building2, ExternalLink } from '@lucide/vue';
+import {
+    AlertTriangle,
+    ArrowLeft,
+    Building2,
+    ChevronDown,
+    ExternalLink,
+} from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import {
     ListCell,
@@ -13,6 +19,11 @@ import PageHero from '@/components/PageHero.vue';
 import GradeBadge from '@/components/scoring/GradeBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
@@ -242,14 +253,100 @@ onBeforeUnmount(() => {
                 </span>
             </div>
 
+            <!-- What the relevance check left out, and why. Shown so a member can see it
+                 dropped the right companies, and correct their profile when it did not. -->
+            <Collapsible
+                v-if="run.leads_rejected > 0"
+                :default-open="!leads.length"
+                class="group rounded-lg border border-border bg-card"
+                data-test="rejections"
+            >
+                <CollapsibleTrigger as-child>
+                    <button
+                        type="button"
+                        class="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-start text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    >
+                        <span>
+                            {{
+                                t(
+                                    'Left out :count companies that did not fit your business',
+                                    { count: run.leads_rejected },
+                                )
+                            }}
+                        </span>
+                        <ChevronDown
+                            class="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+                            aria-hidden="true"
+                        />
+                    </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                    <div class="flex flex-col gap-2 px-4 pb-4">
+                        <p class="max-w-prose text-xs text-muted-foreground">
+                            {{
+                                t(
+                                    'Alima checks each company against your business profile before saving it. If one of these belongs in your list, correct your profile or ideal customers and run again.',
+                                )
+                            }}
+                        </p>
+                        <ul class="divide-y divide-border">
+                            <li
+                                v-for="(rejection, index) in run.rejections"
+                                :key="index"
+                                class="flex flex-col gap-1 py-2"
+                            >
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span
+                                        class="min-w-0 text-sm font-medium break-words"
+                                        dir="auto"
+                                        >{{ rejection.name }}</span
+                                    >
+                                    <Badge variant="secondary">
+                                        {{
+                                            rejection.verdict === 'competitor'
+                                                ? t('Competitor')
+                                                : t('Not a fit')
+                                        }}
+                                    </Badge>
+                                </div>
+                                <span
+                                    class="text-xs text-muted-foreground"
+                                    dir="auto"
+                                    >{{ rejection.reason }}</span
+                                >
+                            </li>
+                        </ul>
+                        <p
+                            v-if="run.leads_rejected > run.rejections.length"
+                            class="font-mono text-xs text-muted-foreground"
+                        >
+                            {{
+                                t('Showing :shown of :count', {
+                                    shown: run.rejections.length,
+                                    count: run.leads_rejected,
+                                })
+                            }}
+                        </p>
+                    </div>
+                </CollapsibleContent>
+            </Collapsible>
+
             <EmptyState
                 v-if="!leads.length"
                 :icon="Building2"
-                :title="t('No companies matched')"
+                :title="
+                    run.leads_rejected > 0
+                        ? t('Nothing fit your business')
+                        : t('No companies matched')
+                "
                 :description="
-                    t(
-                        'This run found no companies. Try broadening your search terms or picking a different source.',
-                    )
+                    run.leads_rejected > 0
+                        ? t(
+                              'Alima checked the companies this run found and left them all out. Read the reasons above, update your business profile or ideal customers, then run again.',
+                          )
+                        : t(
+                              'This run found no companies. Try broadening your search terms or picking a different source.',
+                          )
                 "
             />
 

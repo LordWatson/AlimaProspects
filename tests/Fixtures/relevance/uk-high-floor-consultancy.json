@@ -1,0 +1,220 @@
+{
+    "key": "uk-high-floor-consultancy",
+    "note": "Every company in this file is fictional. `about` is written as a search snippet would read. The price floor is the point: the right sector at the wrong size is a bad fit.",
+    "location": "Birmingham",
+    "sources": ["web_search", "ai", "companies_house"],
+    "profile": {
+        "company_name": "Foundry Lane Consulting",
+        "website": "https://foundrylane.example",
+        "industry": "IT consulting",
+        "company_size": "medium",
+        "locations": ["Birmingham"],
+        "regions_served": ["uk"],
+        "primary_market": "uk",
+        "products_services": [
+            "ERP selection and implementation",
+            "Manufacturing systems integration",
+            "ERP rescue and re-implementation"
+        ],
+        "value_proposition": "Independent ERP implementation for mid-sized manufacturers who have outgrown spreadsheets and Sage: shop floor to finance, live in nine months.",
+        "pricing_min": 8000000,
+        "pricing_max": 60000000,
+        "pricing_currency": "gbp",
+        "customer_examples": [
+            "Brindley Castings",
+            "Tame Valley Fasteners",
+            "Arden Food Machinery"
+        ]
+    },
+    "pages": {
+        "/": "Foundry Lane Consulting. ERP for manufacturers who make real things. Speak to a manufacturing systems lead.",
+        "/services": "We select, implement and rescue ERP systems for UK manufacturers with 100 to 1,000 employees and £15m to £200m turnover. We connect MRP, shop-floor data capture, quality and finance. 60 consultants in Birmingham and Sheffield, working on site across the UK.",
+        "/clients": "Clients include Brindley Castings, Tame Valley Fasteners and Arden Food Machinery. Typical triggers: a failed audit, an acquisition, a new plant, a legacy system going out of support, or a finance director who can no longer close the month.",
+        "/engagements": "Engagements start at £80,000 and a full implementation is typically £250,000 to £600,000. We are not the right firm for businesses under fifty staff, and we do not resell software."
+    },
+    "ground_truth": "UK manufacturers with roughly 100-1,000 employees (turnover about £15m-£200m) making physical products: castings, fasteners, machinery, food manufacturing, plastics, automotive components, electronics assembly. Strongest when a trigger is visible: acquisition, new site, rapid growth, legacy system end-of-life. The buyer is a finance, operations or IT director. Not ERP vendors, resellers or IT consultancies; not manufacturers under about 50 staff (cannot afford an £80k floor); not multinationals with a global ERP template; not non-manufacturers.",
+    "companies": [
+        {
+            "name": "Hadley Precision Engineering",
+            "website": "https://hadleyprecision.example",
+            "about": "CNC machining for aerospace, 240 employees, two sites in the West Midlands.",
+            "label": "good",
+            "why": "Mid-sized manufacturer."
+        },
+        {
+            "name": "Severnside Plastics Group",
+            "website": "https://severnsideplastics.example",
+            "about": "Injection moulder, 400 staff, has acquired two competitors since 2024.",
+            "label": "good",
+            "why": "Right size with an acquisition trigger."
+        },
+        {
+            "name": "Wrekin Food Manufacturing",
+            "website": "https://wrekinfoods.example",
+            "about": "Chilled ready-meal producer supplying supermarkets, 650 employees.",
+            "label": "good",
+            "why": "Food manufacturer in range."
+        },
+        {
+            "name": "Consulting Works Foundry Ltd",
+            "website": "https://consultingworksfoundry.example",
+            "about": "Iron foundry in Walsall employing 180.",
+            "label": "good",
+            "why": "A foundry; 'Consulting' in the name must not exclude it."
+        },
+        {
+            "name": "Tyseley Automotive Components",
+            "website": "https://tyseleyauto.example",
+            "about": "Tier-2 automotive pressings and assemblies, 520 staff.",
+            "label": "good",
+            "why": "Automotive supplier in range."
+        },
+        {
+            "name": "Don Valley Steel Fabrications",
+            "website": "https://donvalleysteel.example",
+            "about": "Structural steel fabricator opening a second plant in Rotherham.",
+            "label": "good",
+            "why": "New plant trigger."
+        },
+        {
+            "name": "Kelham Electronics Assembly",
+            "website": "https://kelhamelectronics.example",
+            "about": "Contract electronics manufacturer, 150 employees.",
+            "label": "good",
+            "why": "In range."
+        },
+        {
+            "name": "Ironbridge Pumps & Valves",
+            "website": "https://ironbridgepumps.example",
+            "about": "Designs and manufactures industrial pumps, £40m turnover.",
+            "label": "good",
+            "why": "In range."
+        },
+        {
+            "name": "Charnwood Packaging Machinery",
+            "website": "https://charnwoodmachinery.example",
+            "about": "Builds packaging lines for food producers, 300 staff.",
+            "label": "good",
+            "why": "Machinery maker like a named client."
+        },
+        {
+            "name": "Peak Fasteners Ltd",
+            "website": "https://peakfasteners.example",
+            "about": "Manufacturer of industrial fasteners, 210 employees, still running a 1990s MRP system.",
+            "label": "good",
+            "why": "Legacy system trigger."
+        },
+        {
+            "name": "Bob's Bespoke Metalwork",
+            "website": "https://bobsmetalwork.example",
+            "about": "Three-man fabrication workshop making gates and railings.",
+            "label": "bad",
+            "why": "Right sector, far too small for the floor."
+        },
+        {
+            "name": "Titan Aerospace Global",
+            "website": "https://titanaerospaceglobal.example",
+            "about": "Multinational with 80,000 employees and a single global SAP template.",
+            "label": "bad",
+            "why": "Too large; ERP decided globally."
+        },
+        {
+            "name": "Midlands Logistics & Haulage",
+            "website": "https://midlandshaulage.example",
+            "about": "Road haulage operator, 300 drivers.",
+            "label": "bad",
+            "why": "Not a manufacturer."
+        },
+        {
+            "name": "Edgbaston Private Hospital",
+            "website": "https://edgbastonhospital.example",
+            "about": "Independent hospital.",
+            "label": "bad",
+            "why": "Not a manufacturer."
+        },
+        {
+            "name": "Craft Candle Workshop",
+            "website": "https://craftcandleworkshop.example",
+            "about": "Handmade candles, team of six.",
+            "label": "bad",
+            "why": "Makes things but tiny."
+        },
+        {
+            "name": "UK Manufacturers Directory",
+            "website": "https://ukmanufacturersdirectory.example",
+            "about": "Search 20,000 UK manufacturers.",
+            "label": "bad",
+            "why": "A directory."
+        },
+        {
+            "name": "Shenzhen Brightway Electronics",
+            "website": "https://brightway.example",
+            "about": "Electronics manufacturer in Shenzhen.",
+            "label": "bad",
+            "why": "Outside the UK."
+        },
+        {
+            "name": "Sutton Coldfield Estate Agents",
+            "website": "https://suttonestates.example",
+            "about": "Sales and lettings.",
+            "label": "bad",
+            "why": "Wrong sector."
+        },
+        {
+            "name": "Mercia Machine Tools (in administration)",
+            "website": "https://merciamachinetools.example",
+            "about": "Administrators appointed March 2026.",
+            "label": "bad",
+            "why": "Insolvent."
+        },
+        {
+            "name": "Greenfield Micro-Brewery",
+            "website": "https://greenfieldmicrobrewery.example",
+            "about": "Brewery with 12 staff.",
+            "label": "bad",
+            "why": "Too small."
+        },
+        {
+            "name": "Sagewell ERP Partners",
+            "website": "https://sagewellerp.example",
+            "about": "ERP reseller and implementation partner for manufacturers.",
+            "label": "competitor",
+            "why": "Same service."
+        },
+        {
+            "name": "Meridian Systems Integration",
+            "website": "https://meridiansi.example",
+            "about": "MES and ERP integration consultancy.",
+            "label": "competitor",
+            "why": "Same service."
+        },
+        {
+            "name": "Tallis & Row",
+            "website": "https://tallisrow.example",
+            "about": "Independent advisers on ERP selection and programme rescue.",
+            "label": "competitor",
+            "why": "Same service; nothing in the name says so."
+        },
+        {
+            "name": "FactoryCloud Software",
+            "website": "https://factorycloud.example",
+            "about": "Cloud ERP built for discrete manufacturers.",
+            "label": "competitor",
+            "why": "ERP vendor."
+        },
+        {
+            "name": "Big Four Advisory LLP",
+            "website": "https://bigfouradvisory.example",
+            "about": "Technology transformation and ERP programmes.",
+            "label": "competitor",
+            "why": "Competes for the same programmes."
+        },
+        {
+            "name": "Anvil IT Consulting",
+            "website": "https://anvilitconsulting.example",
+            "about": "IT consultancy specialising in manufacturing systems.",
+            "label": "competitor",
+            "why": "IT consultancy."
+        }
+    ]
+}

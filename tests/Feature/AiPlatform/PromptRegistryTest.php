@@ -25,11 +25,17 @@ function cannedResponses(): array
             'own_industry' => 'Marketing agency', 'customer_industries' => ['Retail'],
             'target_customers' => ['SMEs'], 'decision_maker_titles' => ['Marketing Director'],
             'competitors' => ['Rival Ltd'], 'confidence' => 0.8,
+            // v3's required fields; v1 and v2 ignore them.
+            'proof_customers' => ['Pollen Bakery'], 'problems_solved' => ['Slow launches'],
+            'buying_triggers' => ['Opening a second site'], 'anti_customers' => ['National chains'],
+            'pricing_min' => 2500, 'pricing_max' => 15000, 'pricing_currency' => 'gbp',
+            'delivery_model' => 'national', 'customer_size_range' => '2-50 employees',
+            'evidence' => [['field' => 'pricing', 'value' => 'from 2,500', 'page' => 1, 'quote' => 'Projects start at 2,500', 'confidence' => 90]],
         ],
         'lead_sourcing.ai_discovery' => [
             'companies' => [
                 [
-                    'company_name' => 'Northern Rooms', 'industry' => 'Boutique hotel',
+                    'source_index' => 1, 'company_name' => 'Northern Rooms', 'industry' => 'Boutique hotel',
                     'employee_range' => '11-50', 'website' => 'https://northernrooms.test',
                     'locality' => 'Manchester', 'region' => 'Greater Manchester', 'country' => 'GB',
                     'why' => 'An independent hotel group that rebrands regularly.',
@@ -37,13 +43,23 @@ function cannedResponses(): array
             ],
         ],
         'lead_sourcing.shape_query' => [
+            // Satisfies both versions: v1 wanted one `terms`, v2 wants a search per provider.
             'terms' => 'boutique hotels', 'customer_description' => 'Independent hotels that rebrand.',
             'exclude_terms' => ['graphic design'], 'reasoning' => 'Hospitality buys design work.',
+            'web_queries' => ['boutique hotels'], 'google_places' => 'boutique hotel',
+            'companies_house' => ['name_terms' => 'hotel', 'sic_codes' => ['55100']], 'ai_brief' => 'Independent hotels.',
+        ],
+        'lead_sourcing.judge_candidates' => [
+            'verdicts' => [['index' => 1, 'verdict' => 'competitor', 'confidence' => 90, 'reason' => 'Sells the same service.']],
+        ],
+        'lead_sourcing.eval_judge' => [
+            'verdicts' => [['index' => 1, 'verdict' => 'competitor', 'reason' => 'Sells the same service.']],
         ],
         'icp.refine_suggestions' => [
             'suggestions' => [
-                ['type' => 'industry', 'value' => 'SaaS', 'weight' => 80, 'rationale' => 'Fits.'],
-                ['type' => 'exclusion', 'value' => 'competitor.com', 'weight' => null, 'rationale' => 'Rival.'],
+                // `action` is v2's; v1 ignores it.
+                ['action' => 'add', 'type' => 'industry', 'value' => 'SaaS', 'weight' => 80, 'rationale' => 'Fits.'],
+                ['action' => 'add', 'type' => 'exclusion', 'value' => 'competitor.com', 'weight' => null, 'rationale' => 'Rival.'],
             ],
         ],
         // The ICP composer. A **viable** draft, because that is the branch with a schema to
@@ -148,7 +164,10 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
     // application already holds rather than to produce something it does not have — which is why
     // its schema carries `cited_sources` that nothing renders: a summary citing an item the prompt
     // was never given is a hallucination the field makes visible.
-    expect(AiPromptTemplate::query()->count())->toBe(18)
+    //
+    // `lead_sourcing.eval_judge` is the thirteenth, and the only one the product never calls: it
+    // grades discovery candidates for `relevance:eval` against a description the pipeline never sees.
+    expect(AiPromptTemplate::query()->count())->toBe(27)
         ->and(AiPromptTemplate::query()->pluck('key')->unique()->sort()->values()->all())->toBe([
             'business_intel.background_check',
             'icp.compose_profile',
@@ -157,6 +176,8 @@ it('seeds every prompt from docs/ai-prompts.md', function (): void {
             'lead.enrich_extract',
             'lead.why_now',
             'lead_sourcing.ai_discovery',
+            'lead_sourcing.eval_judge',
+            'lead_sourcing.judge_candidates',
             'lead_sourcing.shape_query',
             'outreach.draft_message',
             'scoring.qualitative_fit',
@@ -170,7 +191,7 @@ it('resolves the active version of a seeded prompt', function (): void {
 
     $template = app(PromptRegistry::class)->resolve('scoring.qualitative_fit');
 
-    expect($template->version)->toBe(2)
+    expect($template->version)->toBe(3)
         ->and($template->hasSchema())->toBeTrue();
 });
 
@@ -195,5 +216,5 @@ it('is idempotent when re-seeded', function (): void {
     $this->seed(AiPromptTemplateSeeder::class);
     $this->seed(AiPromptTemplateSeeder::class);
 
-    expect(AiPromptTemplate::query()->count())->toBe(18);
+    expect(AiPromptTemplate::query()->count())->toBe(27);
 });

@@ -28,4 +28,17 @@ return [
 
     'user_agent' => env('WEB_FETCH_USER_AGENT', 'AlimaProspectsBot/1.0 (+https://alimaprospects.com/bot)'),
 
+    /*
+    | Reading a business's own site (App\Modules\Core\Services\SiteReader): the homepage plus the
+    | few pages that say what it does and who for. Every value is a hard cap, and whichever runs
+    | out first ends the read. `max_seconds` has to leave the background-check job room for its AI
+    | call inside the queue's 85-second timeout.
+    */
+    'site' => [
+        'max_pages' => (int) env('WEB_FETCH_SITE_MAX_PAGES', 6),
+        'page_chars' => (int) env('WEB_FETCH_SITE_PAGE_CHARS', 8_000),
+        'max_total_chars' => (int) env('WEB_FETCH_SITE_MAX_TOTAL_CHARS', 40_000),
+        'max_seconds' => (int) env('WEB_FETCH_SITE_MAX_SECONDS', 25),
+    ],
+
 ];

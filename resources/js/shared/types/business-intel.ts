@@ -24,7 +24,43 @@ export type BackgroundCheckFindings = {
     competitors?: string[];
     /** Present only on reports produced by prompt v1, where it meant the team's own trade. */
     suggested_industries?: string[];
-    confidence: number | null;
+    confidence?: number | null;
+    /** Customers the site names: clients, case studies. Company names only. (v3) */
+    proof_customers?: string[];
+    problems_solved?: string[];
+    /** Situations that make a customer ready to buy. (v3) */
+    buying_triggers?: string[];
+    /** Who the business says it does not serve. (v3) */
+    anti_customers?: string[];
+    /** Major units, as the site states them. (v3) */
+    pricing_min?: number | null;
+    pricing_max?: number | null;
+    pricing_currency?: string | null;
+    delivery_model?: 'local' | 'regional' | 'national' | 'remote' | null;
+    customer_size_range?: string | null;
+    /** The page and the words each finding rests on. Absent on reports before v3. */
+    evidence?: BackgroundCheckEvidence[];
+};
+
+/** One quote supporting one finding. The server has confirmed the quote is on the page. */
+export type BackgroundCheckEvidence = {
+    field: string;
+    value: string;
+    page: number;
+    quote: string;
+    confidence: number;
+    url?: string;
+};
+
+/**
+ * What accepting a report would do to one profile field: fill a blank, leave a match alone, or —
+ * where the team entered something else — ask. `current` and `proposed` are already display text.
+ */
+export type ProfileMappingRow = {
+    field: string;
+    current: string | null;
+    proposed: string;
+    state: 'fill' | 'same' | 'conflict';
 };
 
 export type BusinessIntelReport = {

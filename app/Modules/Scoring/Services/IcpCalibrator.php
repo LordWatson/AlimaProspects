@@ -9,8 +9,10 @@ use App\Modules\ICP\Data\CriterionCalibration;
 use App\Modules\ICP\Data\IcpCalibration;
 use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Models\Icp;
+use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\Scoring\Enums\CriterionMatch;
 use App\Modules\Scoring\Models\LeadScore;
+use App\Modules\Scoring\Models\ScoreFeedback;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -63,6 +65,66 @@ final class IcpCalibrator implements IcpCalibrationSource
             criteria: $criteria,
             sampleSize: $sample->count(),
         );
+    }
+
+    /**
+     * What members and the relevance gate have said about leads graded against this profile.
+     *
+     * A marked lead is described by the three facts a criterion can be written about — its trade,
+     * its size and its place — and by nothing that identifies it. The gate's refusals are its own
+     * one-line reasons, taken from the runs this profile shaped. Capped, newest first: this goes
+     * into a prompt, and the last few weeks say more than the first.
+     */
+    public function feedback(Icp $icp): array
+    {
+        $cap = 15;
+        $marked = ['good' => [], 'bad' => []];
+
+        $rows = ScoreFeedback::query()
+            ->where('score_feedback.team_id', $icp->team_id)
+            ->join('lead_scores', 'lead_scores.id', '=', 'score_feedback.lead_score_id')
+            ->join('leads', 'leads.id', '=', 'lead_scores.lead_id')
+            ->where('lead_scores.icp_id', $icp->getKey())
+            // Raw joins bypass the tenancy scope on the joined tables, so each is named.
+            ->where('lead_scores.team_id', $icp->team_id)
+            ->where('leads.team_id', $icp->team_id)
+            ->orderByDesc('score_feedback.id')
+            ->limit($cap * 4)
+            ->get(['score_feedback.rating', 'leads.industry', 'leads.employee_range', 'leads.locality', 'leads.country', 'lead_scores.grade']);
+
+        foreach ($rows as $row) {
+            $rating = $row->rating->value;
+
+            if (count($marked[$rating]) >= $cap) {
+                continue;
+            }
+
+            $marked[$rating][] = sprintf(
+                'trade: %s; size: %s; place: %s; graded %s',
+                $row->getAttribute('industry') ?? 'unknown',
+                $row->getAttribute('employee_range') ?? 'unknown',
+                implode(', ', array_filter([$row->getAttribute('locality'), $row->getAttribute('country')])) ?: 'unknown',
+                (string) $row->getAttribute('grade'),
+            );
+        }
+
+        $rejected = [];
+
+        foreach (DiscoveryRun::query()
+            ->where('team_id', $icp->team_id)
+            ->where('icp_id', $icp->getKey())
+            ->where('leads_rejected', '>', 0)
+            ->orderByDesc('id')
+            ->limit(5)
+            ->pluck('rejections') as $sample) {
+            foreach ((array) $sample as $rejection) {
+                if (count($rejected) < $cap && is_array($rejection)) {
+                    $rejected[] = ($rejection['verdict'] ?? 'not_fit').': '.Str::limit((string) ($rejection['reason'] ?? ''), 200, '');
+                }
+            }
+        }
+
+        return ['good' => $marked['good'], 'bad' => $marked['bad'], 'rejected' => $rejected];
     }
 
     /**
