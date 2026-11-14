@@ -17,6 +17,7 @@ use App\Modules\Signals\Models\SignalPreview;
 use App\Modules\Signals\Models\SignalRejection;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalSourceStat;
+use App\Modules\Signals\Models\SignalSuggestionBatch;
 use App\Modules\Signals\Models\SignalWatchlistEntry;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -220,6 +221,19 @@ final class SignalRetention
         return SignalPreview::query()
             ->withoutGlobalScopes()
             ->where('created_at', '<', now()->subDays($this->days('preview_days', 30)));
+    }
+
+    /**
+     * Batches of suggested signal types (Signals v3 P2), swept on `created_at`. They hold drafts
+     * and counts, never an article or a name, and the daily limit only ever reads the latest.
+     *
+     * @return Builder<SignalSuggestionBatch>
+     */
+    public function eligibleSuggestions(): Builder
+    {
+        return SignalSuggestionBatch::query()
+            ->withoutGlobalScopes()
+            ->where('created_at', '<', now()->subDays($this->days('suggestion_days', 90)));
     }
 
     /**

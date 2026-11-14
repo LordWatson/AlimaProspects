@@ -93,6 +93,9 @@ final class SignalResource extends JsonResource
             'confidence' => $signal->confidence,
             'relevance' => $signal->relevance,
             'suggested_approach' => $signal->suggested_approach,
+            // Why this event is a reason for this team to get in touch. Only ever set for a
+            // subject the classifier judged a customer, and always shown beside the article.
+            'why_it_matters' => $signal->why_it_matters,
             'source_url' => $signal->source_url,
             'source_name' => $signal->source_name,
             // Which source found it, and the query that did (S13). The kind is always present —

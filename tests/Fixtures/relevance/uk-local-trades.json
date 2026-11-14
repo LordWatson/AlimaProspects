@@ -217,5 +217,252 @@
             "label": "competitor",
             "why": "Sells the same compliance testing."
         }
-    ]
+    ],
+    "signals": {
+        "presets": ["uk_planning_granted", "uk_acquisition"],
+        "locations": ["Leeds"],
+        "icp": [
+            {
+                "type": "geography",
+                "value": "Leeds",
+                "weight": 70
+            },
+            {
+                "type": "geography",
+                "value": "West Yorkshire",
+                "weight": 60
+            },
+            {
+                "type": "industry",
+                "value": "Property management",
+                "weight": 70
+            },
+            {
+                "type": "industry",
+                "value": "Facilities management",
+                "weight": 60
+            },
+            {
+                "type": "industry",
+                "value": "Education",
+                "weight": 40
+            },
+            {
+                "type": "buying_signal",
+                "value": "planning permission granted",
+                "weight": 60
+            },
+            {
+                "type": "exclusion",
+                "value": "electrical contractor",
+                "weight": null
+            }
+        ],
+        "articles": [
+            {
+                "id": 0,
+                "title": "Calverley Estates wins approval for Leeds office refurbishment",
+                "snippet": "Leeds City Council has granted planning permission to property company Calverley Estates for a 60,000 sq ft refurbishment of Park Row House in the city centre.",
+                "source": "Yorkshire Property Journal",
+                "days_ago": 2,
+                "label": "good",
+                "url": "https://yorkshirepropertyjournal.example/calverley-estates-wins-approval-for-leeds-office-refurbishme"
+            },
+            {
+                "id": 1,
+                "title": "Planning granted for Holbeck warehouse conversion",
+                "snippet": "Ridings Property Management has been given the go-ahead to convert a Victorian warehouse in Holbeck, Leeds, into 40 managed office suites.",
+                "source": "Leeds Business Daily",
+                "days_ago": 3,
+                "label": "good",
+                "url": "https://leedsbusinessdaily.example/planning-granted-for-holbeck-warehouse-conversion"
+            },
+            {
+                "id": 2,
+                "title": "Pennine Academies Trust gets green light for new sixth-form block",
+                "snippet": "Bradford planners have approved a three-storey sixth-form block for Pennine Academies Trust, which runs nine schools across West Yorkshire.",
+                "source": "West Riding Gazette",
+                "days_ago": 4,
+                "label": "good",
+                "url": "https://westridinggazette.example/pennine-academies-trust-gets-green-light-for-new-sixth-form"
+            },
+            {
+                "id": 3,
+                "title": "Leeds facilities firm Northgate FM acquires Castle Facilities",
+                "snippet": "Leeds-based facilities management company Northgate FM has acquired Wakefield rival Castle Facilities, adding 70 managed commercial sites.",
+                "source": "Yorkshire Property Journal",
+                "days_ago": 1,
+                "label": "good",
+                "url": "https://yorkshirepropertyjournal.example/leeds-facilities-firm-northgate-fm-acquires-castle-facilitie"
+            },
+            {
+                "id": 4,
+                "title": "Shopfitter Kirkstall Interiors acquired by Aireborough Capital",
+                "snippet": "Leeds shopfitting and fit-out contractor Kirkstall Interiors, which employs 85 people, has been bought by Yorkshire investor Aireborough Capital.",
+                "source": "Leeds Business Daily",
+                "days_ago": 5,
+                "label": "good",
+                "url": "https://leedsbusinessdaily.example/shopfitter-kirkstall-interiors-acquired-by-aireborough-capit"
+            },
+            {
+                "id": 5,
+                "title": "Approval for 120-bed care home in Wakefield",
+                "snippet": "Wharfedale Care Group has won planning permission for a 120-bed care home on the former depot site in Wakefield.",
+                "source": "West Riding Gazette",
+                "days_ago": 2,
+                "label": "good",
+                "url": "https://westridinggazette.example/approval-for-120-bed-care-home-in-wakefield"
+            },
+            {
+                "id": 6,
+                "title": "Aire Housing Association granted permission for 84 flats in Armley",
+                "snippet": "Leeds housing association Aire Housing has been granted permission for 84 affordable flats and a community hub in Armley.",
+                "source": "Leeds Business Daily",
+                "days_ago": 6,
+                "label": "good",
+                "url": "https://leedsbusinessdaily.example/aire-housing-association-granted-permission-for-84-flats-in"
+            },
+            {
+                "id": 7,
+                "title": "Planning granted for 200,000 sq ft logistics park in Bristol",
+                "snippet": "Severn Estates has secured planning permission for a logistics park at Avonmouth, Bristol.",
+                "source": "Property Wire UK",
+                "days_ago": 2,
+                "label": "misfit",
+                "url": "https://propertywireuk.example/planning-granted-for-200-000-sq-ft-logistics-park-in-bristol"
+            },
+            {
+                "id": 8,
+                "title": "Glasgow housing association approved for 150 homes",
+                "snippet": "Clydeview Homes has been given planning approval for 150 homes in the east end of Glasgow.",
+                "source": "Property Wire UK",
+                "days_ago": 3,
+                "label": "misfit",
+                "url": "https://propertywireuk.example/glasgow-housing-association-approved-for-150-homes"
+            },
+            {
+                "id": 9,
+                "title": "Leeds homeowner wins approval for loft extension after two-year battle",
+                "snippet": "A Roundhay homeowner has finally been granted planning permission for a dormer loft extension to his semi-detached house.",
+                "source": "Leeds Business Daily",
+                "days_ago": 1,
+                "label": "misfit",
+                "url": "https://leedsbusinessdaily.example/leeds-homeowner-wins-approval-for-loft-extension-after-two-y"
+            },
+            {
+                "id": 10,
+                "title": "Leeds electrical contractor Sparkwell acquires Volt Services",
+                "snippet": "Commercial electrical contractor Sparkwell Electrical of Leeds has acquired Bradford electricians Volt Services.",
+                "source": "Yorkshire Property Journal",
+                "days_ago": 2,
+                "label": "competitor",
+                "url": "https://yorkshirepropertyjournal.example/leeds-electrical-contractor-sparkwell-acquires-volt-services"
+            },
+            {
+                "id": 11,
+                "title": "M&E contractor Ridgeway Building Services bought by national group",
+                "snippet": "Leeds mechanical and electrical contractor Ridgeway Building Services has been acquired by Halden Group.",
+                "source": "Leeds Business Daily",
+                "days_ago": 4,
+                "label": "competitor",
+                "url": "https://leedsbusinessdaily.example/m-e-contractor-ridgeway-building-services-bought-by-national"
+            },
+            {
+                "id": 12,
+                "title": "Electrical wholesaler Yorkshire Cable Supplies acquired",
+                "snippet": "Leeds electrical wholesaler Yorkshire Cable Supplies has been bought by trade distributor Brightline.",
+                "source": "West Riding Gazette",
+                "days_ago": 3,
+                "label": "competitor",
+                "url": "https://westridinggazette.example/electrical-wholesaler-yorkshire-cable-supplies-acquired"
+            },
+            {
+                "id": 13,
+                "title": "The 10 biggest planning decisions in Yorkshire this year",
+                "snippet": "From stadium plans to city-centre towers, we round up the ten planning decisions that shaped Yorkshire.",
+                "source": "Yorkshire Property Journal",
+                "days_ago": 2,
+                "label": "not_event",
+                "url": "https://yorkshirepropertyjournal.example/the-10-biggest-planning-decisions-in-yorkshire-this-year"
+            },
+            {
+                "id": 14,
+                "title": "Opinion: why Leeds needs a faster planning system",
+                "snippet": "Developers wait too long for decisions, argues our columnist, and the city is paying for it.",
+                "source": "Leeds Business Daily",
+                "days_ago": 1,
+                "label": "not_event",
+                "url": "https://leedsbusinessdaily.example/opinion-why-leeds-needs-a-faster-planning-system"
+            },
+            {
+                "id": 15,
+                "title": "Weekly deals round-up: Yorkshire property",
+                "snippet": "Our weekly digest of lettings, sales and acquisitions across the region.",
+                "source": "Property Wire UK",
+                "days_ago": 1,
+                "label": "not_event",
+                "url": "https://propertywireuk.example/weekly-deals-round-up-yorkshire-property"
+            },
+            {
+                "id": 16,
+                "title": "Looking back: when Trinity Estates won approval for the Wellington Street tower",
+                "snippet": "Five years on, we revisit the 2021 decision that gave Leeds property firm Trinity Estates permission for its Wellington Street office tower.",
+                "source": "Yorkshire Property Journal",
+                "days_ago": 2,
+                "label": "stale",
+                "url": "https://yorkshirepropertyjournal.example/looking-back-when-trinity-estates-won-approval-for-the-welli"
+            },
+            {
+                "id": 17,
+                "title": "Headingley Property Management granted permission for student block",
+                "snippet": "Leeds planners have approved a 200-bed student block for Headingley Property Management.",
+                "source": "Leeds Business Daily",
+                "days_ago": 420,
+                "label": "stale",
+                "url": "https://leedsbusinessdaily.example/headingley-property-management-granted-permission-for-studen"
+            },
+            {
+                "id": 18,
+                "title": "Park Row House revamp approved as Calverley Estates gets go-ahead",
+                "snippet": "Property firm Calverley Estates can now refurbish Park Row House in Leeds after councillors approved its 60,000 sq ft scheme.",
+                "source": "West Riding Gazette",
+                "days_ago": 2,
+                "label": "duplicate",
+                "url": "https://westridinggazette.example/park-row-house-revamp-approved-as-calverley-estates-gets-go",
+                "of": 0
+            },
+            {
+                "id": 19,
+                "title": "Northgate FM buys Castle Facilities in Wakefield deal",
+                "snippet": "Facilities management firm Northgate FM, based in Leeds, has completed the acquisition of Castle Facilities of Wakefield.",
+                "source": "Leeds Business Daily",
+                "days_ago": 1,
+                "label": "duplicate",
+                "url": "https://leedsbusinessdaily.example/northgate-fm-buys-castle-facilities-in-wakefield-deal",
+                "of": 3
+            }
+        ],
+        "profile_after_check": {
+            "delivery_model": "local",
+            "customer_size_range": "5-500 employees",
+            "customer_industries": [
+                "Property management",
+                "Facilities management",
+                "Shopfitting",
+                "Education",
+                "Care homes",
+                "Housing associations"
+            ],
+            "anti_customers": [
+                "Homeowners",
+                "Electricians and M&E contractors",
+                "Organisations outside Yorkshire"
+            ],
+            "buying_triggers": [
+                "Planning permission granted",
+                "A building changes owner",
+                "A refurbishment or fit-out"
+            ]
+        }
+    }
 }

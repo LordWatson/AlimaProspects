@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Signals\Data;
 
 use App\Modules\Core\Enums\Currency;
+use App\Modules\Signals\Enums\SignalSellerFit;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use Illuminate\Support\Str;
@@ -47,6 +48,10 @@ final class ExtractedSignal extends Data
         public int $relevance,
         public string $summary,
         public string $suggestedApproach,
+        // Signals v3 P1. Null on a pre-classified registry filing: nobody judged it.
+        public ?SignalSellerFit $sellerFit = null,
+        public int $fitConfidence = 0,
+        public ?string $whyItMatters = null,
     ) {}
 
     /** Largest deal size we'll store, in major units — guards against absurd model output / overflow. */
@@ -95,7 +100,21 @@ final class ExtractedSignal extends Data
             relevance: self::clampScore($item['relevance'] ?? 0),
             summary: Str::limit(trim((string) ($item['summary'] ?? '')), self::MAX_SUMMARY, ''),
             suggestedApproach: self::approach($item['suggested_approach'] ?? null),
+            sellerFit: $fit = SignalSellerFit::tryFrom((string) ($item['subject_fit'] ?? '')),
+            fitConfidence: self::clampScore($item['fit_confidence'] ?? 0),
+            // A reason to get in touch only exists for a subject judged a customer.
+            whyItMatters: $fit === SignalSellerFit::Fit ? self::text($item['why_it_matters'] ?? null) : null,
         );
+    }
+
+    /**
+     * Whether the classifier is sure the subject is not a customer: a competitor, or a kind of
+     * company the seller does not sell to. Below the floor the event is kept, because a wrong
+     * "no" hides a lead and a wrong "yes" only costs a member a glance.
+     */
+    public function isConfidentMisfit(int $minConfidence): bool
+    {
+        return $this->sellerFit?->isRejection() === true && $this->fitConfidence >= $minConfidence;
     }
 
     /**
@@ -158,13 +177,25 @@ final class ExtractedSignal extends Data
      * The floors are passed in because they are **per definition** since S7
      * ({@see SignalDefinition::effectiveThresholds()}): a team that found one of their types too
      * noisy can raise its confidence floor without touching the rest.
+     *
+     * A subject the classifier is sure is a customer clears the relevance floor whatever its
+     * relevance figure (Signals v3 P1). The two used to be one question; now that fit is asked
+     * directly, the first eval had confident fits scoring 30–35 for relevance because they were
+     * a town away from the watched place, and the floor threw away five good events in seven.
+     * `$minFitConfidence` above 100 switches the rule off.
      */
-    public function meetsThreshold(int $minConfidence, int $minRelevance): bool
+    public function meetsThreshold(int $minConfidence, int $minRelevance, int $minFitConfidence = 101): bool
     {
         return $this->isEvent
             && $this->eventKey !== null
             && $this->confidence >= $minConfidence
-            && $this->relevance >= $minRelevance;
+            && ($this->relevance >= $minRelevance || $this->isConfidentFit($minFitConfidence));
+    }
+
+    /** Whether the classifier is sure the subject is the kind of company the team sells to. */
+    public function isConfidentFit(int $minConfidence): bool
+    {
+        return $this->sellerFit === SignalSellerFit::Fit && $this->fitConfidence >= $minConfidence;
     }
 
     private static function text(mixed $value): ?string

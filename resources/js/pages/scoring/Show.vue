@@ -351,64 +351,76 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                     <span class="h-0.5 w-7 bg-current" aria-hidden="true" />
                     {{ t('Why this lead matches') }}
                 </h2>
-                <p
-                    class="max-w-4xl text-xl leading-snug font-light tracking-[-0.01em] sm:text-2xl rtl:tracking-normal"
-                    dir="auto"
-                >
-                    {{ score.explanation }}
-                </p>
-
+                <!-- On a wide screen the reading sits on the left and the two lists beside it,
+                     so the card is filled rather than left half empty by the text's measure. With
+                     no lists the paragraph keeps its measure on its own. -->
                 <div
-                    v-if="score.strengths.length || score.concerns.length"
-                    class="grid gap-3 sm:grid-cols-2"
+                    class="grid gap-6 xl:items-start xl:gap-8"
+                    :class="
+                        score.strengths.length || score.concerns.length
+                            ? 'xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]'
+                            : ''
+                    "
                 >
-                    <div
-                        v-if="score.strengths.length"
-                        class="space-y-3 rounded-[1.25rem] bg-cream/10 p-5"
+                    <p
+                        class="max-w-4xl text-xl leading-snug font-light tracking-[-0.01em] sm:text-2xl rtl:tracking-normal"
+                        dir="auto"
                     >
-                        <h3 class="text-sm font-semibold rtl:font-bold">
-                            {{ t('In its favour') }}
-                        </h3>
-                        <ul class="space-y-2">
-                            <li
-                                v-for="item in score.strengths"
-                                :key="item"
-                                class="flex items-start gap-2.5 text-sm text-cream/90"
-                                dir="auto"
-                            >
-                                <span
-                                    class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-lime text-ink"
-                                    aria-hidden="true"
-                                    ><Check class="size-3" stroke-width="3"
-                                /></span>
-                                {{ item }}
-                            </li>
-                        </ul>
-                    </div>
+                        {{ score.explanation }}
+                    </p>
+
                     <div
-                        v-if="score.concerns.length"
-                        class="space-y-3 rounded-[1.25rem] bg-cream/10 p-5"
+                        v-if="score.strengths.length || score.concerns.length"
+                        class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"
                     >
-                        <h3 class="text-sm font-semibold rtl:font-bold">
-                            {{ t('Worth checking') }}
-                        </h3>
-                        <ul class="space-y-2">
-                            <li
-                                v-for="item in score.concerns"
-                                :key="item"
-                                class="flex items-start gap-2.5 text-sm text-cream/90"
-                                dir="auto"
-                            >
-                                <span
-                                    class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-lilac text-ink"
-                                    aria-hidden="true"
-                                    ><CircleAlert
-                                        class="size-3"
-                                        stroke-width="3"
-                                /></span>
-                                {{ item }}
-                            </li>
-                        </ul>
+                        <div
+                            v-if="score.strengths.length"
+                            class="space-y-3 rounded-[1.25rem] bg-cream/10 p-5"
+                        >
+                            <h3 class="text-sm font-semibold rtl:font-bold">
+                                {{ t('In its favour') }}
+                            </h3>
+                            <ul class="space-y-2">
+                                <li
+                                    v-for="item in score.strengths"
+                                    :key="item"
+                                    class="flex items-start gap-2.5 text-sm text-cream/90"
+                                    dir="auto"
+                                >
+                                    <span
+                                        class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-lime text-ink"
+                                        aria-hidden="true"
+                                        ><Check class="size-3" stroke-width="3"
+                                    /></span>
+                                    {{ item }}
+                                </li>
+                            </ul>
+                        </div>
+                        <div
+                            v-if="score.concerns.length"
+                            class="space-y-3 rounded-[1.25rem] bg-cream/10 p-5"
+                        >
+                            <h3 class="text-sm font-semibold rtl:font-bold">
+                                {{ t('Worth checking') }}
+                            </h3>
+                            <ul class="space-y-2">
+                                <li
+                                    v-for="item in score.concerns"
+                                    :key="item"
+                                    class="flex items-start gap-2.5 text-sm text-cream/90"
+                                    dir="auto"
+                                >
+                                    <span
+                                        class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-lilac text-ink"
+                                        aria-hidden="true"
+                                        ><CircleAlert
+                                            class="size-3"
+                                            stroke-width="3"
+                                    /></span>
+                                    {{ item }}
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </section>

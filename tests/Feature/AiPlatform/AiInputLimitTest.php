@@ -138,7 +138,7 @@ it('sends a prompt that fits, and raises the usage event for the live card', fun
         return $event->promptKey === 'test.summary'
             && $event->inputTokens === 100
             && $event->outputTokens === 50
-            && $event->costMicros === 1_050;
+            && $event->costMicros === 700;
     });
 });
 

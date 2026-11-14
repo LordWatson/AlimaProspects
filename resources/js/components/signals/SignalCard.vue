@@ -283,6 +283,19 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                 >
                     {{ signal.summary }}
                 </p>
+                <!-- Why this event is a reason for this team to get in touch. Alima's reading of
+                     the article against their business profile, and labelled as that: it is a
+                     judgement, not something the article said. -->
+                <p
+                    v-if="signal.why_it_matters"
+                    class="text-sm text-foreground"
+                    data-test="why-it-matters"
+                >
+                    <span class="font-medium">{{
+                        t('Alima’s reading of why this matters to you:')
+                    }}</span>
+                    <span dir="auto">{{ ' ' + signal.why_it_matters }}</span>
+                </p>
             </div>
 
             <!-- Who, and how much — one line rather than a two-column grid. -->

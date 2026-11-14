@@ -25,8 +25,8 @@ defineOptions({
 const props = defineProps<{
     insights: {
         data: Insight[];
-        links: PaginationLink[];
         meta: {
+            links: PaginationLink[];
             current_page: number;
             last_page: number;
             from: number | null;
@@ -171,7 +171,7 @@ const timezone = computed(() => isolate(props.schedule.timezone));
 
                 <Pagination
                     v-if="insights.meta.last_page > 1"
-                    :links="insights.links"
+                    :links="insights.meta.links"
                     :meta="insights.meta"
                     :label="t('Insight pages')"
                 />

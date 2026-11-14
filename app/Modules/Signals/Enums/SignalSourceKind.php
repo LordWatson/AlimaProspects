@@ -100,6 +100,15 @@ enum SignalSourceKind: string
      */
     case Webhook = 'webhook';
 
+    /**
+     * Claude, searching the web for one signal type (Signals v3 P4, ADR 0039).
+     *
+     * The dearest source by two orders of magnitude, so it is switched off for the platform by
+     * default, capped by its own monthly allowance, and only run for a type whose other sources
+     * came back thin. Its items are classified like any other source's.
+     */
+    case AiResearch = 'ai_research';
+
     /** The default every pre-S13 definition and signal belongs to. */
     public static function default(): self
     {
@@ -114,6 +123,7 @@ enum SignalSourceKind: string
             self::CompaniesHouse => 'Companies House',
             self::Feed => 'A feed you choose',
             self::Webhook => 'Your own events',
+            self::AiResearch => 'AI research',
         };
     }
 
@@ -132,6 +142,7 @@ enum SignalSourceKind: string
             self::CompaniesHouse => 'UK filings for the accounts on a watchlist: officer and ownership changes, insolvency, charges. Structured and certain, so nothing is guessed — and free.',
             self::Feed => 'An industry newsletter, a regulator’s filings feed, a portal’s press releases. Everything it publishes is read, so a focused feed beats a broad one.',
             self::Webhook => 'Events your own systems push to Alima, signed with a secret only you hold. They are read and judged exactly like news.',
+            self::AiResearch => 'Alima searches the web itself for this kind of event when the other sources find little. Slower and dearer than a news search, so it runs sparingly and inside its own monthly allowance.',
         };
     }
 
@@ -153,6 +164,8 @@ enum SignalSourceKind: string
     {
         return match ($this) {
             self::News, self::WebSearch, self::CompaniesHouse, self::Feed, self::Webhook => true,
+            // Off for the whole platform until an operator turns it on: it spends real money per call.
+            self::AiResearch => (bool) config('signals.sources.ai_research.enabled', false),
         };
     }
 
@@ -166,7 +179,7 @@ enum SignalSourceKind: string
     {
         return match ($this) {
             self::News, self::WebSearch => true,
-            self::CompaniesHouse, self::Feed, self::Webhook => false,
+            self::CompaniesHouse, self::Feed, self::Webhook, self::AiResearch => false,
         };
     }
 
@@ -211,7 +224,7 @@ enum SignalSourceKind: string
             // can send anything. Neither does anything useful until somebody supplies that, which
             // is why the form asks rather than letting the box be ticked and nothing happen.
             self::Feed, self::Webhook => true,
-            self::News, self::WebSearch, self::CompaniesHouse => false,
+            self::News, self::WebSearch, self::CompaniesHouse, self::AiResearch => false,
         };
     }
 
@@ -248,7 +261,7 @@ enum SignalSourceKind: string
     public function carriesAFetchableArticle(): bool
     {
         return match ($this) {
-            self::News, self::WebSearch, self::Feed => true,
+            self::News, self::WebSearch, self::Feed, self::AiResearch => true,
             self::CompaniesHouse, self::Webhook => false,
         };
     }
@@ -308,7 +321,7 @@ enum SignalSourceKind: string
      */
     public static function available(): array
     {
-        $order = [self::News, self::WebSearch, self::CompaniesHouse, self::Feed, self::Webhook];
+        $order = [self::News, self::WebSearch, self::CompaniesHouse, self::Feed, self::Webhook, self::AiResearch];
 
         return array_values(array_filter($order, static fn (self $kind): bool => $kind->isAvailable()));
     }

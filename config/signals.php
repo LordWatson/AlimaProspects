@@ -176,6 +176,19 @@ return [
      * per-team daily cap over a composer ledger is S16's cost-governance work, where the other
      * per-team ceilings live.
      */
+    /*
+     * "Suggest signal types for my business" (Signals v3 P2). One batch is a reasoning-tier call
+     * plus a sample search per suggestion, drawn from the same daily preview allowance as a
+     * preview a member runs by hand. `cooldown_hours` is per team, counted over
+     * `signal_suggestion_batches`.
+     */
+    'suggestions' => [
+        'max' => (int) env('SIGNALS_SUGGESTIONS_MAX', 5),
+        'cooldown_hours' => (int) env('SIGNALS_SUGGESTIONS_COOLDOWN_HOURS', 24),
+        // Requests in that window whatever became of them: a failed one may still have been billed.
+        'max_attempts' => (int) env('SIGNALS_SUGGESTIONS_MAX_ATTEMPTS', 3),
+    ],
+
     'composer' => [
         'rate_limit' => (int) env('SIGNALS_COMPOSER_RATE_LIMIT', 10),
         'max_brief' => (int) env('SIGNALS_COMPOSER_MAX_BRIEF', 1_000),
@@ -183,6 +196,15 @@ return [
 
     // AI thresholds applied in S3 (declared here so the whole feature's knobs live together): a kept
     // signal needs is_event && confidence >= min_confidence && relevance >= min_relevance.
+    /*
+     * Signals v3 P1. A real event whose subject the classifier judges a competitor or not a
+     * customer is left out of the feed only at or above this confidence in that verdict. Lower it
+     * and fewer competitors get through, at the price of hiding more real customers.
+     */
+    'seller_fit' => [
+        'min_confidence' => (int) env('SIGNALS_SELLER_FIT_MIN_CONFIDENCE', 70),
+    ],
+
     'min_confidence' => (int) env('SIGNALS_MIN_CONFIDENCE', 60),
     'min_relevance' => (int) env('SIGNALS_MIN_RELEVANCE', 40),
 
@@ -287,6 +309,9 @@ return [
             'cluster_breadth' => (int) env('SIGNALS_WEIGHT_CLUSTER_BREADTH', 5),
             // Reuses `Scoring`'s criteria match rather than inventing a second fit score.
             'icp_fit' => (int) env('SIGNALS_WEIGHT_ICP_FIT', 15),
+            // Whether the subject is a customer of this seller at all (Signals v3 P1). Left out of
+            // the average when the article does not say enough, which is most of the time.
+            'seller_fit' => (int) env('SIGNALS_WEIGHT_SELLER_FIT', 20),
         ],
 
         // An event's value halves every this-many days. Seven is a week: a funding round from
@@ -504,6 +529,32 @@ return [
     |
     */
     'sources' => [
+        /*
+         * Claude's web search as a source (v3 P4, ADR 0039). OFF by default: it is the dearest
+         * source by two orders of magnitude. When on, a signal type opts in by ticking it, and a
+         * run calls it only for a type whose other sources returned fewer than `min_results`
+         * items, at most `max_calls_per_run` times.
+         *
+         * `cost_micros_per_request` is an estimate for the run's own cost line (three searches at
+         * the provider's fee, plus the tokens their results take up); the true figure is each
+         * call's `ai_requests` row, which is what the monthly allowance is counted over.
+         * `monthly_cap_micros` is the floor a plan that says nothing leaves standing, and zero
+         * means none.
+         */
+        'ai_research' => [
+            'enabled' => (bool) env('SIGNALS_AI_RESEARCH_ENABLED', false),
+            'cost_micros_per_request' => (int) env('SIGNALS_AI_RESEARCH_COST_MICROS', 80_000),
+            // Per step of a call, and a call can take two steps, so the true ceiling is twice this.
+            'max_searches' => (int) env('SIGNALS_AI_RESEARCH_MAX_SEARCHES', 2),
+            // Countries the provider's search will localise to. It rejects a request naming any
+            // other (the UAE among them), so those are searched without a location.
+            'location_countries' => ['GB', 'US'],
+            'max_items' => (int) env('SIGNALS_AI_RESEARCH_MAX_ITEMS', 8),
+            'window_days' => (int) env('SIGNALS_AI_RESEARCH_WINDOW_DAYS', 30),
+            'max_calls_per_run' => (int) env('SIGNALS_AI_RESEARCH_MAX_CALLS_PER_RUN', 1),
+            'min_results' => (int) env('SIGNALS_AI_RESEARCH_MIN_RESULTS', 5),
+            'monthly_cap_micros' => (int) env('SIGNALS_AI_RESEARCH_MONTHLY_CAP_MICROS', 2_000_000),
+        ],
 
         'news' => [
             'cost_micros_per_request' => (int) env('SIGNALS_NEWS_COST_MICROS', 1_000),
@@ -861,6 +912,8 @@ return [
         // A retention window shorter than the period a figure is measured over is an allowance that
         // refills itself. `run_days` and `spend_days` at 400 are comfortably clear of it.
         'preview_days' => (int) env('SIGNALS_RETENTION_PREVIEW_DAYS', 40),
+        // Suggested types nobody took. Drafts and counts only, and stale once the profile moves on.
+        'suggestion_days' => (int) env('SIGNALS_RETENTION_SUGGESTION_DAYS', 90),
 
         // Cost history. Thirteen months, so a year-on-year comparison and a late invoice query
         // both still have something to read. Only **finished** runs are swept, whatever their age:

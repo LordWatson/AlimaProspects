@@ -8,6 +8,7 @@ use App\Modules\ICP\Models\Icp;
 use App\Modules\Signals\Data\SignalScore;
 use App\Modules\Signals\Data\SignalScoreComponentValue;
 use App\Modules\Signals\Enums\SignalScoreComponent;
+use App\Modules\Signals\Enums\SignalSellerFit;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalCluster;
 use App\Modules\Signals\Models\SignalDefinition;
@@ -96,6 +97,7 @@ final class SignalScorer
             $this->seniority($signal, $overrides),
             $this->breadth($signal, $cluster, $overrides),
             $this->icp($signal, $teamId, $overrides),
+            $this->sellerFit($signal, $overrides),
         ];
 
         return $this->combine($components);
@@ -403,6 +405,41 @@ final class SignalScorer
             // Count-neutral: Arabic needs dual and plural forms that ":count outlets" cannot give,
             // so the figure stands alone and the component's explanation carries the words.
             (string) $sources,
+        );
+    }
+
+    /**
+     * Whether the subject is a customer at all (Signals v3 P1).
+     *
+     * The classifier's own verdict, stored at extraction. **Unknown is not zero:** most snippets do
+     * not say enough to judge, and that leaves the component out of both sides of the average. A
+     * rejection only reaches a stored signal when the classifier was not sure of it, so it counts
+     * against the signal in proportion to how sure it was.
+     *
+     * @param  array<string, mixed>|null  $overrides
+     */
+    private function sellerFit(Signal $signal, ?array $overrides): SignalScoreComponentValue
+    {
+        $weight = SignalScoreComponent::SellerFit->weight($overrides);
+        $fit = $signal->seller_fit;
+
+        if ($fit === null || $fit === SignalSellerFit::Unknown) {
+            return SignalScoreComponentValue::unknown(
+                SignalScoreComponent::SellerFit,
+                $weight,
+                'The article does not say enough about them to tell.',
+                translatable: true,
+            );
+        }
+
+        $confidence = (int) $signal->seller_fit_confidence;
+
+        return SignalScoreComponentValue::of(
+            SignalScoreComponent::SellerFit,
+            $fit->isRejection() ? 100 - $confidence : $confidence,
+            $weight,
+            $fit->label(),
+            translatable: true,
         );
     }
 

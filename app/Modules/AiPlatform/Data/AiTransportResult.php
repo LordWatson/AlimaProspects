@@ -13,6 +13,7 @@ final readonly class AiTransportResult
 {
     /**
      * @param  array<string, mixed>|null  $structured  The decoded structured output, or null for a free-text response.
+     * @param  list<array{url: string, title: ?string, page_age: ?string}>  $sources  Pages a research call's searches returned.
      */
     public function __construct(
         public ?array $structured,
@@ -21,5 +22,8 @@ final readonly class AiTransportResult
         public int $outputTokens,
         public string $model,
         public ?int $cacheReadInputTokens = null,
+        // What a research call's searches returned, and how many it ran. Empty and zero otherwise.
+        public array $sources = [],
+        public int $webSearches = 0,
     ) {}
 }

@@ -103,6 +103,7 @@ final class PruneSignalsCommand extends Command
         // The spend rows go before the runs for no ordering reason at all — they are independent —
         // but in the order somebody reads them.
         $previews = $this->sweep($this->retention->eligiblePreviews(), $dryRun);
+        $suggestions = $this->sweep($this->retention->eligibleSuggestions(), $dryRun);
         $playbookRuns = $this->sweep($this->retention->eligiblePlaybookRuns(), $dryRun);
         $sourceStats = $this->sweep($this->retention->eligibleSourceStats(), $dryRun);
         $spend = $this->sweep($this->retention->eligibleSpend(), $dryRun);
@@ -117,6 +118,7 @@ final class PruneSignalsCommand extends Command
             'clusters_repaired' => $repaired,
             'inbound_events_deleted' => $inbound,
             'previews_deleted' => $previews,
+            'suggestion_batches_deleted' => $suggestions,
             'playbook_runs_deleted' => $playbookRuns,
             'source_stats_deleted' => $sourceStats,
             'spend_rows_deleted' => $spend,
@@ -152,9 +154,10 @@ final class PruneSignalsCommand extends Command
         // A third sentence rather than a longer second one: S16's six tables are housekeeping and
         // cost history, and an operator reading this came for the signals.
         $this->info(sprintf(
-            '%s %d preview(s), %d playbook log(s), %d source tally(ies), %d spend row(s), %d run(s) and %d orphaned watchlist entry(ies).',
+            '%s %d preview(s), %d suggestion batch(es), %d playbook log(s), %d source tally(ies), %d spend row(s), %d run(s) and %d orphaned watchlist entry(ies).',
             $dryRun ? 'Would also delete' : 'Also deleted',
             $previews,
+            $suggestions,
             $playbookRuns,
             $sourceStats,
             $spend,

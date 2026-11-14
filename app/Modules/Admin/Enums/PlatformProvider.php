@@ -51,6 +51,9 @@ enum PlatformProvider: string
      */
     case SignalsWebSearch = 'signals_web_search';
 
+    /** Claude's web search as a signal source (Signals v3 P4). Its own breaker, like every source. */
+    case SignalsAiResearch = 'signals_ai_research';
+
     /** Firebase Cloud Messaging, for mobile push. */
     case Push = 'fcm';
 
@@ -78,6 +81,7 @@ enum PlatformProvider: string
             self::WebSearch => 'Serper (web search)',
             self::SerperNews => 'Serper (news)',
             self::SignalsWebSearch => 'Serper (web search, Signals)',
+            self::SignalsAiResearch => 'Claude web search (Signals)',
             self::Push => 'Firebase push',
             self::Claude => 'Claude',
             self::Resend => 'Resend',
@@ -95,6 +99,7 @@ enum PlatformProvider: string
             self::WebSearch => 'Web-search discovery runs fail.',
             self::SerperNews => 'Signal watches find nothing; scheduled runs record a failure and retry on the next tick.',
             self::SignalsWebSearch => 'Signal types that run on web search contribute nothing. Their news queries are unaffected — that is why the two breakers are separate.',
+            self::SignalsAiResearch => 'AI research adds nothing to signal runs. Every other source is unaffected, and no run fails: the source is an enhancement and steps aside.',
             self::Push => 'Mobile push is dropped. In-app and email notifications still arrive.',
             self::Claude => 'Scoring, drafting, insights and the background check stop. Discovery still finds companies; they arrive unscored.',
             self::Resend => 'Outreach sends and notification emails fail. Nothing is silently marked sent — a failed send is recorded as failed.',
@@ -111,7 +116,7 @@ enum PlatformProvider: string
     {
         return match ($this) {
             self::CompaniesHouse, self::GooglePlaces, self::WebSearch => 'lead_sourcing:cb',
-            self::SerperNews, self::SignalsWebSearch => 'signals:cb',
+            self::SerperNews, self::SignalsWebSearch, self::SignalsAiResearch => 'signals:cb',
             self::Push => 'notifications:cb',
             // Enrichment's own, deliberately not Lead Sourcing's: a verifier being down and
             // Companies House being down are not the same event, and a shared prefix would make a
@@ -166,7 +171,7 @@ enum PlatformProvider: string
     public function isMetered(): bool
     {
         return match ($this) {
-            self::Resend, self::Stripe, self::Push, self::SignalsWebSearch => false,
+            self::Resend, self::Stripe, self::Push, self::SignalsWebSearch, self::SignalsAiResearch => false,
             // Enrichment's spend is on `enrichment_attempts`, per call, and the provider panel
             // reads it from there (PL3) rather than from `platform_daily_metrics` — so this row
             // carries health and a live hit rate, and says nothing through the rollup. Same shape

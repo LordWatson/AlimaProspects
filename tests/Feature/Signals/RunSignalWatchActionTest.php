@@ -10,7 +10,9 @@ use App\Modules\Core\Enums\Market;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Signals\Actions\RunSignalWatchAction;
+use App\Modules\Signals\Enums\SignalRejectionVerdict;
 use App\Modules\Signals\Enums\SignalRunStatus;
+use App\Modules\Signals\Enums\SignalSellerFit;
 use App\Modules\Signals\Enums\SignalStatus;
 use App\Modules\Signals\Events\SignalRunProgressed;
 use App\Modules\Signals\Events\SignalsDetected;
@@ -18,6 +20,7 @@ use App\Modules\Signals\Exceptions\SignalsException;
 use App\Modules\Signals\Models\Signal;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalDefinitionSpend;
+use App\Modules\Signals\Models\SignalRejection;
 use App\Modules\Signals\Models\SignalRun;
 use App\Modules\Signals\Models\SignalWatch;
 use App\Modules\Signals\Services\SignalQueryBuilder;
@@ -69,6 +72,10 @@ function fundingEvent(int $index = 0, int $confidence = 90, int $relevance = 80)
         'relevance' => $relevance,
         'summary' => 'Acme raised a $40m Series A led by regional investors.',
         'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
+        // Signals v3 P1: required by the schema; most articles do not say enough to judge.
+        'subject_fit' => 'unknown',
+        'fit_confidence' => 0,
+        'why_it_matters' => null,
     ];
 }
 
@@ -470,4 +477,101 @@ it('completes a run whose spend ledger write fails, rather than re-billing the s
     expect($run->status)->toBe(SignalRunStatus::Completed)
         ->and($run->signals_created)->toBe(1)
         ->and($run->cost_micros)->toBeGreaterThan(0);
+});
+
+it('leaves out an event whose subject is confidently not a customer, and says so on the run', function (): void {
+    Event::fake([SignalsDetected::class]);
+
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([
+        $this->fakeNews->item('Acme closes $40m Series A', 'https://gulfbusiness.com/acme'),
+        $this->fakeNews->item('Rival Ledger raises $10m', 'https://gulfbusiness.com/rival'),
+        $this->fakeNews->item('Maybe Rival raises $5m', 'https://gulfbusiness.com/maybe'),
+    ]);
+
+    $this->fakeAi->queueStructured(aiEvents([
+        [...fundingEvent(0), 'subject_fit' => 'fit', 'fit_confidence' => 85, 'why_it_matters' => 'A distributor with new money to spend on finance systems.'],
+        [...fundingEvent(1), 'subject_company_name' => 'Rival Ledger', 'subject_fit' => 'competitor', 'fit_confidence' => 90, 'why_it_matters' => 'Ignored: not a fit.'],
+        // Below the floor: a wrong "no" hides a lead, so an unsure one is kept and ranked lower.
+        [...fundingEvent(2), 'subject_company_name' => 'Maybe Rival', 'subject_fit' => 'competitor', 'fit_confidence' => 50, 'why_it_matters' => null],
+    ]));
+
+    $run = runWatchFor($team, $watch);
+
+    $signals = Signal::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->orderBy('id')->get();
+
+    expect($run->status)->toBe(SignalRunStatus::Completed)
+        ->and($run->signals_created)->toBe(2)
+        ->and($run->not_fit_count)->toBe(1)
+        ->and($signals->pluck('subject_company_name')->all())->toBe(['Acme DMCC', 'Maybe Rival'])
+        ->and($signals[0]->seller_fit)->toBe(SignalSellerFit::Fit)
+        ->and($signals[0]->why_it_matters)->toBe('A distributor with new money to spend on finance systems.')
+        ->and($signals[1]->seller_fit)->toBe(SignalSellerFit::Competitor)
+        // A reason to get in touch is only ever stored for a subject judged a customer.
+        ->and($signals[1]->why_it_matters)->toBeNull()
+        ->and(SignalRejection::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->pluck('verdict')->all())
+        ->toBe([SignalRejectionVerdict::NotFit]);
+
+    $component = static fn (Signal $signal): array => collect($signal->score_breakdown['components'] ?? $signal->score_breakdown)
+        ->firstWhere('component', 'seller_fit');
+
+    // Sure it is a customer counts for it; unsure it is a competitor counts half against it.
+    expect($component($signals[0])['value'])->toBe(85)
+        ->and($component($signals[1])['value'])->toBe(50)
+        ->and($signals[0]->heat)->toBeGreaterThan($signals[1]->heat);
+});
+
+it('does not score a fit nobody judged', function (): void {
+    Event::fake([SignalsDetected::class]);
+
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team);
+
+    $this->fakeNews->willReturn([$this->fakeNews->item('Acme closes $40m Series A', 'https://gulfbusiness.com/acme')]);
+    $this->fakeAi->queueStructured(aiEvents([
+        [...fundingEvent(0), 'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null],
+    ]));
+
+    runWatchFor($team, $watch);
+
+    $signal = Signal::query()->withoutGlobalScopes()->where('team_id', $team->getKey())->firstOrFail();
+    $component = collect($signal->score_breakdown['components'] ?? $signal->score_breakdown)->firstWhere('component', 'seller_fit');
+
+    // Unknown is not zero: the component is listed, and left out of the average.
+    expect($signal->seller_fit)->toBe(SignalSellerFit::Unknown)
+        ->and($component['value'])->toBeNull();
+});
+
+it('files two reports of one deal under one card when they lead with different parties', function (): void {
+    Event::fake([SignalsDetected::class]);
+
+    $team = Team::factory()->create();
+    $watch = dubaiWatch($team, [SignalPresetCatalogue::ACQUISITION]);
+
+    $this->fakeNews->willReturn([
+        $this->fakeNews->item('Canal Roast acquires Beanfield', 'https://gulfbusiness.com/canal-roast'),
+        $this->fakeNews->item('Beanfield roastery changes hands in surprise sale', 'https://arabianbusiness.com/beanfield'),
+    ]);
+
+    $deal = static fn (int $index, string $subject, string $counterparty): array => [
+        ...fundingEvent($index), 'event_type' => SignalPresetCatalogue::ACQUISITION,
+        'subject_company_name' => $subject, 'counterparty_name' => $counterparty,
+    ];
+
+    $this->fakeAi->queueStructured(aiEvents([
+        $deal(0, 'Canal Roast', 'Beanfield'),
+        // The second outlet tells it from the other side.
+        $deal(1, 'Beanfield', 'Canal Roast'),
+    ]));
+
+    runWatchFor($team, $watch);
+
+    $signals = Signal::query()->withoutGlobalScopes()->where('team_id', $team->getKey());
+
+    expect((clone $signals)->count())->toBe(2)
+        ->and((clone $signals)->distinct()->count('signal_cluster_id'))->toBe(1)
+        // One card in the feed, not two.
+        ->and(app(TeamContext::class)->run($team, fn () => Signal::query()->representatives()->count()))->toBe(1);
 });

@@ -271,7 +271,7 @@ it('previews a definition over the API without persisting a signal', function ()
 
     $news->willReturn([$news->item('Acme Engineering sold', 'https://gulfbusiness.com/acme')]);
     $fake->queueStructured(['events' => [[
-        'item_index' => 0,
+        ...signalEventDefaults(), 'item_index' => 0,
         'is_event' => true,
         'event_type' => 'manufacturer_sold',
         'confidence' => 90,

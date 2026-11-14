@@ -633,6 +633,8 @@ final class SignalQueryBuilder
             $config = $definition->sourceConfig($kind);
             $config['definition_id'] = $definition->getKey() === null ? null : (int) $definition->getKey();
             $config['team_id'] = $definition->team_id === null ? null : (int) $definition->team_id;
+            // The watched places, for a source that composes its own searches (v3 P4).
+            $config['places'] = $spec->locations;
 
             $queries[$key] = new SignalSourceQuery(
                 eventKey: $definition->key,

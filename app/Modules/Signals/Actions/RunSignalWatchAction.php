@@ -20,6 +20,7 @@ use App\Modules\LeadSourcing\Models\Lead;
 use App\Modules\LeadsWorkspace\Actions\RecordLeadActivityAction;
 use App\Modules\LeadsWorkspace\Enums\LeadActivityType;
 use App\Modules\Onboarding\Models\BusinessProfile;
+use App\Modules\Onboarding\Support\SellerBrief;
 use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Data\ExtractedSignal;
 use App\Modules\Signals\Data\SignalQueryEntity;
@@ -333,7 +334,12 @@ final class RunSignalWatchAction
         // And the ones it has already said no to, under this exact set of types (S11). The
         // fingerprint is what makes "already said no" a statement about a question rather than
         // about an article: add a type and every one of these is asked again.
-        $fingerprint = $this->rejections->fingerprintFor($definitions);
+        //
+        // And the business profile is part of the question since the classifier started judging
+        // the company against it (ADR 0037): a "not a customer" remembered for thirty days would
+        // otherwise outlive the profile edit that was meant to correct it. Any change to the
+        // profile asks everything again, which errs toward paying once more rather than hiding.
+        $fingerprint = sha1($this->rejections->fingerprintFor($definitions).'|'.($profile?->updated_at?->getTimestamp() ?? 0));
         $items = $this->dropRejected($watch, $fingerprint, $items);
 
         $this->broadcast($run, SignalRunStatus::Running, 55, 'Analysing what we found');
@@ -346,7 +352,7 @@ final class RunSignalWatchAction
         // again, and the ROI card shows one run's cost for two (review). Nothing is swallowed — the
         // exception goes on exactly as before.
         try {
-            [$kept, $aiCostMicros, $creditExhausted] = $this->extract($watch, $definitions, $icp, $profile, $items, $fingerprint);
+            [$kept, $aiCostMicros, $creditExhausted, $notFitCount] = $this->extract($watch, $definitions, $icp, $profile, $items, $fingerprint);
         } catch (Throwable $e) {
             $recordSpend();
 
@@ -354,6 +360,8 @@ final class RunSignalWatchAction
         }
 
         $costMicros = $searchCostMicros + $aiCostMicros;
+        // Saved with whatever settles the run below.
+        $run->not_fit_count = max(0, $notFitCount);
 
         // The AI half is **allocated**, not measured: one classification call is offered every type
         // on the watch at once, so each type carries its share of the results it put into the
@@ -508,8 +516,28 @@ final class RunSignalWatchAction
         /** @var array<string, array<string, int>> $perType answered queries, per source per type */
         $perType = [];
 
+        // **AI research goes last, and only where it is needed** (v3 P4, ADR 0039). It is the
+        // dearest source by two orders of magnitude, so it is held until every other source has
+        // answered and then run for a type only if they found little — and at most a fixed number
+        // of times per run, whatever the plan asked for.
+        $isResearch = static fn (SignalSourceQuery $query): bool => $query->kind === SignalSourceKind::AiResearch;
+        $queries = [...array_filter($queries, static fn (SignalSourceQuery $q): bool => ! $isResearch($q)), ...array_filter($queries, $isResearch)];
+        $researchCalls = 0;
+        $maxResearchCalls = max(0, (int) config('signals.sources.ai_research.max_calls_per_run', 1));
+        $thin = max(0, (int) config('signals.sources.ai_research.min_results', 5));
+        /** @var array<string, int> $foundPerType  results per signal type, across every source so far */
+        $foundPerType = [];
+
         try {
             foreach ($queries as $query) {
+                if ($isResearch($query)) {
+                    if ($researchCalls >= $maxResearchCalls || ($foundPerType[$query->eventKey] ?? 0) >= $thin) {
+                        continue;
+                    }
+
+                    $researchCalls++;
+                }
+
                 $provider = $this->sources->find($query->kind);
 
                 if (! $provider instanceof SignalSourceProvider) {
@@ -556,6 +584,7 @@ final class RunSignalWatchAction
                 $perType[$query->kind->value][$query->eventKey] =
                     ($perType[$query->kind->value][$query->eventKey] ?? 0) + 1;
                 $spend->recordQuery($query->eventKey, count($items));
+                $foundPerType[$query->eventKey] = ($foundPerType[$query->eventKey] ?? 0) + count($items);
 
                 foreach ($items as $item) {
                     $rawCount++;
@@ -730,7 +759,7 @@ final class RunSignalWatchAction
      *
      * @param  list<SignalDefinition>  $definitions  The types offered to the model for this run.
      * @param  list<SourceItem>  $items
-     * @return array{0: list<array{0: ExtractedSignal, 1: SourceItem, 2: SignalDefinition}>, 1: int, 2: bool} kept triples, AI cost, credit-exhausted
+     * @return array{0: list<array{0: ExtractedSignal, 1: SourceItem, 2: SignalDefinition}>, 1: int, 2: bool, 3: int} kept triples, AI cost, credit-exhausted, events left out as not a customer
      */
     private function extract(SignalWatch $watch, array $definitions, ?Icp $icp, ?BusinessProfile $profile, array $items, string $fingerprint): array
     {
@@ -769,11 +798,16 @@ final class RunSignalWatchAction
         $notEvent = [];
         /** @var list<string> $belowThreshold */
         $belowThreshold = [];
+        /** @var list<string> $notFit */
+        $notFit = [];
+        $minFitConfidence = (int) config('signals.seller_fit.min_confidence', 70);
 
         foreach (array_chunk($representatives, self::BATCH_SIZE) as $batch) {
             try {
                 $response = $this->ai->structured('signals.extract_event', [
-                    'business_profile' => $this->profileSummary($profile),
+                    // The team's own description of itself, some of it read off its website by
+                    // the background check: data, never instructions.
+                    'business_profile' => UntrustedContent::from(SellerBrief::for($profile) ?? 'No business profile on record.'),
                     'location' => implode(', ', $this->watchedPlaces($watch)),
                     // The types, with their names, explainers and the rules that tell this kind of
                     // event from the round-ups that look like it. This is what the enum's three
@@ -790,7 +824,7 @@ final class RunSignalWatchAction
                     'signal_watch_id' => $watch->getKey(),
                 ]);
 
-                return [$kept, $costMicros, true];
+                return [$kept, $costMicros, true, 0];
             } catch (InvalidAiResponseException) {
                 // The AI client already retried once; a still-invalid batch is skipped, not fatal.
                 Log::channel('signals')->warning('Signal extraction skipped a batch: the AI response was not schema-valid.', [
@@ -843,7 +877,17 @@ final class RunSignalWatchAction
 
                 $thresholds = $definition->effectiveThresholds();
 
-                if ($extracted->meetsThreshold($thresholds['min_confidence'], $thresholds['min_relevance'])) {
+                if ($extracted->meetsThreshold($thresholds['min_confidence'], $thresholds['min_relevance'], $minFitConfidence)) {
+                    // A real event about a company the team would not sell to — a competitor, or
+                    // somebody outside what they describe as a customer (Signals v3 P1). Left out
+                    // only when the classifier is sure; counted on the run so the feed never
+                    // just looks quiet.
+                    if ($extracted->isConfidentMisfit($minFitConfidence)) {
+                        $notFit = [...$notFit, ...$this->keysOf($story)];
+
+                        continue;
+                    }
+
                     // Every outlet that covered it becomes a row; they are clustered into one card
                     // by `complete()`, which is where the subject and the type are known.
                     foreach ($story as $member) {
@@ -862,7 +906,12 @@ final class RunSignalWatchAction
             // would be worse, because a truncated-but-schema-valid answer would then hide every
             // real event in that batch for thirty days (found in review). A response that named at
             // least one item was read; one that named none tells us nothing about any of them.
-            if ($answered !== []) {
+            //
+            // And a response that named only a few is not trusted either (Signals v3 P1): the
+            // eval baseline caught one that returned a single damaged row for a batch of ten, and
+            // the other nine — all genuine events — were then remembered as "not an event" for
+            // thirty days. Silence is a verdict only from an answer that covered most of the batch.
+            if (count($answered) * 2 > count($batch)) {
                 foreach ($batch as $index => $item) {
                     if (isset($answered[$index])) {
                         continue;
@@ -894,9 +943,10 @@ final class RunSignalWatchAction
             $fingerprint,
             array_values(array_diff($notEvent, $keptKeys)),
             array_values(array_diff($belowThreshold, $keptKeys)),
+            $notFit = array_values(array_unique(array_diff($notFit, $keptKeys))),
         );
 
-        return [$kept, $costMicros, false];
+        return [$kept, $costMicros, false, count($notFit)];
     }
 
     /**
@@ -1016,25 +1066,28 @@ final class RunSignalWatchAction
      *
      * @param  list<string>  $notEvent
      * @param  list<string>  $belowThreshold
+     * @param  list<string>  $notFit
      */
-    private function rememberRejections(SignalWatch $watch, string $fingerprint, array $notEvent, array $belowThreshold): void
+    private function rememberRejections(SignalWatch $watch, string $fingerprint, array $notEvent, array $belowThreshold, array $notFit = []): void
     {
-        if (! $this->rejections->enabled() || ($notEvent === [] && $belowThreshold === [])) {
+        if (! $this->rejections->enabled() || ($notEvent === [] && $belowThreshold === [] && $notFit === [])) {
             return;
         }
 
         $teamId = (int) $watch->team_id;
         $below = array_values(array_unique($belowThreshold));
-        $not = array_values(array_diff(array_unique($notEvent), $below));
+        $not = array_values(array_diff(array_unique($notEvent), $below, $notFit));
 
         $this->rejections->remember($teamId, $fingerprint, $not, SignalRejectionVerdict::NotEvent);
         $this->rejections->remember($teamId, $fingerprint, $below, SignalRejectionVerdict::BelowThreshold);
+        $this->rejections->remember($teamId, $fingerprint, $notFit, SignalRejectionVerdict::NotFit);
 
         Log::channel('signals')->info('Signal run remembered what it rejected.', [
             'team_id' => $teamId,
             'signal_watch_id' => (int) $watch->getKey(),
             'not_event' => count($not),
             'below_threshold' => count($below),
+            'not_fit' => count($notFit),
         ]);
     }
 
@@ -1629,6 +1682,13 @@ final class RunSignalWatchAction
 
         /** @var array<int, SignalCluster> $clusters */
         $clusters = [];
+        // A deal has two parties, and two outlets do not always lead with the same one: "Canal
+        // Roast acquires Beanfield" and "Beanfield snapped up" are one event with the subject and
+        // the counterparty swapped (v3 P3). Within a run, a row whose subject and counterparty are
+        // an earlier row's counterparty and subject is filed under that earlier subject. An exact
+        // swap only, per type and per run, so "A buys B" and "B buys C" stay two cards.
+        /** @var array<string, array<string, string>> $parties  event key => "subject|counterparty" => subject fingerprint */
+        $parties = [];
 
         foreach ($rows as $index => $row) {
             $published = $row['published_at'];
@@ -1638,11 +1698,24 @@ final class RunSignalWatchAction
                 continue;
             }
 
+            $eventKey = (string) $row['event_key'];
+            $fingerprint = $this->clusterer->subjectFingerprint(is_string($company) ? $company : null);
+            $counterparty = $this->clusterer->subjectFingerprint(
+                is_string($row['counterparty_name'] ?? null) ? $row['counterparty_name'] : null,
+            );
+
+            if ($fingerprint !== '' && $counterparty !== '') {
+                // Only an exact swap: this row's two parties are an earlier row's two parties
+                // the other way round. Anything looser joins "A buys B" to "B buys C".
+                $fingerprint = $parties[$eventKey][$counterparty.'|'.$fingerprint] ?? $fingerprint;
+                $parties[$eventKey][$fingerprint.'|'.$counterparty] ??= $fingerprint;
+            }
+
             $cluster = $this->clusterer->ensure(
                 teamId: $teamId,
-                eventKey: (string) $row['event_key'],
+                eventKey: $eventKey,
                 definitionId: is_int($row['signal_definition_id'] ?? null) ? $row['signal_definition_id'] : null,
-                fingerprint: $this->clusterer->subjectFingerprint(is_string($company) ? $company : null),
+                fingerprint: $fingerprint,
                 publishedAt: $published,
             );
 
@@ -1725,6 +1798,9 @@ final class RunSignalWatchAction
             'confidence' => $extracted->confidence,
             'relevance' => $extracted->relevance,
             'suggested_approach' => $extracted->suggestedApproach,
+            'seller_fit' => $extracted->sellerFit?->value,
+            'seller_fit_confidence' => $extracted->sellerFit === null ? null : $extracted->fitConfidence,
+            'why_it_matters' => $extracted->whyItMatters,
             'source_url' => $item->link,
             'source_name' => $item->source,
             // Which source found it, and which of the type's templates did (S13). The kind comes off
@@ -1789,25 +1865,6 @@ final class RunSignalWatchAction
     private function activeIcp(int $teamId): ?Icp
     {
         return Icp::query()->with('criteria')->where('team_id', $teamId)->where('is_active', true)->first();
-    }
-
-    /**
-     * A short, plain summary of the team's business for the prompt (trusted input).
-     */
-    private function profileSummary(?BusinessProfile $profile): string
-    {
-        if (! $profile instanceof BusinessProfile) {
-            return 'No business profile on record.';
-        }
-
-        $parts = array_filter([
-            $profile->company_name,
-            $profile->industry,
-            $profile->value_proposition,
-            $profile->products_services !== null ? implode(', ', $profile->products_services) : null,
-        ], static fn (?string $v): bool => $v !== null && trim($v) !== '');
-
-        return $parts === [] ? 'No business profile on record.' : implode(' — ', $parts);
     }
 
     /**

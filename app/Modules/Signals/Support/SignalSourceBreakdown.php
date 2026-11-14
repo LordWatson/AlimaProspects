@@ -209,6 +209,13 @@ final class SignalSourceBreakdown
                 continue;
             }
 
+            // AI research is paid for, but not out of *this* allowance: it has its own, in money,
+            // counted over `ai_requests` (ADR 0039). Counting it here too would spend a team's
+            // search allowance on a call that is already metered elsewhere.
+            if ($kind === SignalSourceKind::AiResearch) {
+                continue;
+            }
+
             $paid += $row['queries'] + $row['rejected'] + $row['skipped'];
         }
 

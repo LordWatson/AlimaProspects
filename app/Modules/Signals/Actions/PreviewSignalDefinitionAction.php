@@ -16,10 +16,10 @@ use App\Modules\Core\Exceptions\CapabilityException;
 use App\Modules\Core\Models\Team;
 use App\Modules\Core\Support\TeamContext;
 use App\Modules\Onboarding\Models\BusinessProfile;
+use App\Modules\Onboarding\Support\SellerBrief;
 use App\Modules\Signals\Contracts\SignalSourceProvider;
 use App\Modules\Signals\Data\ExtractedSignal;
 use App\Modules\Signals\Data\PreviewedItem;
-use App\Modules\Signals\Data\SignalDefinitionData;
 use App\Modules\Signals\Data\SignalPreviewResult;
 use App\Modules\Signals\Data\SignalQuerySpec;
 use App\Modules\Signals\Data\SignalSourceQuery;
@@ -114,7 +114,7 @@ final class PreviewSignalDefinitionAction
      * @throws CapabilityException when the team's plan does not include Signals at all.
      * @throws SignalsException on an empty draft, a spent budget, or an unusable provider.
      */
-    public function handle(Team $team, User $actor, SignalDefinition $definition): SignalPreviewResult
+    public function handle(Team $team, ?User $actor, SignalDefinition $definition): SignalPreviewResult
     {
         // Gated on `Signals` rather than on `SignalComposer`: previewing is how a hand-written type
         // gets checked, and the manual path stays on every plan that has Signals (plan decision
@@ -221,7 +221,7 @@ final class PreviewSignalDefinitionAction
      */
     private function reserve(
         Team $team,
-        User $actor,
+        ?User $actor,
         SignalDefinition $definition,
         int $searchCostMicros,
         int $queries,
@@ -255,7 +255,9 @@ final class PreviewSignalDefinitionAction
             return $this->teamContext->run($team, fn (): SignalPreview => DB::transaction(
                 fn (): SignalPreview => SignalPreview::query()->create([
                     'team_id' => $team->getKey(),
-                    'created_by' => $actor->getKey(),
+                    // Null when nobody pressed a button: a suggestion being tested for a member
+                    // who has since left, or the evaluation harness.
+                    'created_by' => $actor?->getKey(),
                     'draft_hash' => $this->draftHash($definition),
                     // **Both figures are reserved, not left to the settle.** The searches are about
                     // to happen, so their cost and their count are already owed — and
@@ -488,7 +490,9 @@ final class PreviewSignalDefinitionAction
             // so a caller with no context (a job, an admin path) would otherwise charge nobody and
             // make the credit guard a no-op.
             $response = $this->teamContext->run($team, fn () => $this->ai->structured('signals.extract_event', [
-                'business_profile' => $this->profileSummary($profile),
+                // The seller as a real run describes it, so the sample is judged as the feed
+                // will be. Partly read off the team's website: data, never instructions.
+                'business_profile' => UntrustedContent::from(SellerBrief::for($profile) ?? 'No business profile on record.'),
                 'location' => implode(', ', $spec->locations),
                 'event_types' => $this->definitionPrompt($definition),
                 'event_type_keys' => $definition->key,
@@ -581,8 +585,15 @@ final class PreviewSignalDefinitionAction
             return PreviewVerdict::BelowConfidence;
         }
 
-        if ($event->relevance < $thresholds['min_relevance']) {
+        // The same two rules, with the same floor, as a real run.
+        $minFit = (int) config('signals.seller_fit.min_confidence', 70);
+
+        if ($event->relevance < $thresholds['min_relevance'] && ! $event->isConfidentFit($minFit)) {
             return PreviewVerdict::BelowRelevance;
+        }
+
+        if ($event->isConfidentMisfit($minFit)) {
+            return PreviewVerdict::NotACustomer;
         }
 
         return PreviewVerdict::Kept;
@@ -734,22 +745,5 @@ final class PreviewSignalDefinitionAction
         }
 
         return (string) json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    }
-
-    private function profileSummary(?BusinessProfile $profile): string
-    {
-        if (! $profile instanceof BusinessProfile) {
-            return 'No business profile on record.';
-        }
-
-        $parts = array_filter([
-            $profile->company_name,
-            $profile->industry,
-            $profile->value_proposition,
-        ], static fn (?string $value): bool => $value !== null && trim($value) !== '');
-
-        return $parts === []
-            ? 'No business profile on record.'
-            : Str::limit(Str::squish(implode(' — ', $parts)), SignalDefinitionData::MAX_DESCRIPTION * 2, '');
     }
 }

@@ -73,6 +73,7 @@ final class PlanSignalQuotaSource implements SignalQuotaSource
                 : $plan->ceilingFor(BillingMetric::SignalQueries),
             monthlyPreviewQueries: $this->figure($declared, 'monthly_preview_queries', $floor->monthlyPreviewQueries),
             articleFetchMicros: $this->figure($declared, 'article_fetch_micros', $floor->articleFetchMicros),
+            aiResearchMicros: $this->figure($declared, 'ai_research_micros', $floor->aiResearchMicros),
             // **Both must say yes.** Each of these is a refusal, and a decorator must not be able
             // to hand back something the layer beneath it denied — so a plan that says nothing
             // leaves the module's own answer standing, and an explicit `false` on either side wins.

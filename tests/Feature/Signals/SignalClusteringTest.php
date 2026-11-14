@@ -112,7 +112,7 @@ function zephyrEvent(int $index = 0, int $confidence = 90): array
         'confidence' => $confidence,
         'relevance' => 80,
         'summary' => 'Regional Holdings has acquired Dubai logistics firm Zephyr.',
-        'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
     ];
 }
 

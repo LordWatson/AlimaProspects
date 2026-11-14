@@ -40,6 +40,9 @@ return [
         'max_tokens' => (int) env('AI_MAX_TOKENS', 2048),
         'temperature' => (float) env('AI_TEMPERATURE', 0.2),
         'timeout' => (int) env('AI_TIMEOUT', 60),
+        // A research call runs web searches on the provider's side before it answers, so it is
+        // slower. Kept under the queue's 90-second retry window, because the one caller is a job.
+        'research_timeout' => (int) env('AI_RESEARCH_TIMEOUT', 75),
     ],
 
     /*
@@ -92,17 +95,24 @@ return [
         'currency' => Currency::Usd->value,
 
         'models' => [
-            // Claude Sonnet (reasoning tier): ~$3 / Mtok input, ~$15 / Mtok output.
+            // List prices as of 2026-11-14. The figures here before were a previous generation's
+            // ($3/$15 and $1/$5), which overstated every recorded AI cost — Haiku's tenfold.
+            // Claude Sonnet 5.5 (reasoning tier): $2 / Mtok input, $10 / Mtok output.
             'claude-sonnet-5-5' => [
-                'input_micros_per_mtok' => 3_000_000,
-                'output_micros_per_mtok' => 15_000_000,
+                'input_micros_per_mtok' => 2_000_000,
+                'output_micros_per_mtok' => 10_000_000,
             ],
-            // Claude Haiku (cheap tier): ~$1 / Mtok input, ~$5 / Mtok output.
+            // Claude Haiku 5.5 (cheap tier): $0.10 / Mtok input, $0.50 / Mtok output, for prompts
+            // up to 100K tokens — ours are capped far below that.
             'claude-haiku-5-5' => [
-                'input_micros_per_mtok' => 1_000_000,
-                'output_micros_per_mtok' => 5_000_000,
+                'input_micros_per_mtok' => 100_000,
+                'output_micros_per_mtok' => 500_000,
             ],
         ],
+
+        // What the provider charges per web search a research call runs, on top of tokens:
+        // $10 per 1,000 searches as of 2026-11-14.
+        'web_search_micros_per_request' => (int) env('AI_WEB_SEARCH_COST_MICROS', 10_000),
 
         // Applied to any model not listed above (defaults to the reasoning-tier rate).
         'fallback' => [

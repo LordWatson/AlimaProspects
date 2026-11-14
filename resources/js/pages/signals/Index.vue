@@ -48,8 +48,8 @@ defineOptions({
 const props = defineProps<{
     signals: {
         data: Signal[];
-        links: PaginationLink[];
         meta: {
+            links: PaginationLink[];
             current_page: number;
             last_page: number;
             from: number | null;
@@ -797,7 +797,7 @@ onBeforeUnmount(() => {
 
                 <Pagination
                     v-if="signals.meta.last_page > 1"
-                    :links="signals.links"
+                    :links="signals.meta.links"
                     :meta="signals.meta"
                     :label="t('Signal pages')"
                 />

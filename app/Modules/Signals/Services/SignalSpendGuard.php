@@ -237,6 +237,21 @@ final class SignalSpendGuard
         );
     }
 
+    /**
+     * Micro-units this team may still spend on AI research this month, or null when there is no
+     * ceiling (v3 P4, ADR 0039).
+     *
+     * A number rather than a refusal, for {@see self::remainingArticleFetchMicros()}'s reason: the
+     * source is an enhancement, and a team at its ceiling keeps every other source.
+     */
+    public function remainingAiResearchMicros(Team $team): ?int
+    {
+        return SignalAllowance::remaining(
+            $this->allowanceFor($team)->aiResearchMicros,
+            $this->usage->aiResearchMicrosThisMonth($team),
+        );
+    }
+
     // --- Switches: whether a sub-feature exists for this team at all ---
 
     /**

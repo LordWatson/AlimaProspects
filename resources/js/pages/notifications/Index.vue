@@ -39,8 +39,8 @@ defineOptions({
 const props = defineProps<{
     notifications: {
         data: AppNotification[];
-        links: PaginationLink[];
         meta: {
+            links: PaginationLink[];
             current_page: number;
             last_page: number;
             from: number | null;
@@ -308,7 +308,7 @@ function markAllRead(): void {
 
         <Pagination
             v-if="notifications.meta.last_page > 1"
-            :links="notifications.links"
+            :links="notifications.meta.links"
             :meta="notifications.meta"
             label="Pages of notifications"
         />

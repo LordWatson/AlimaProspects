@@ -15,6 +15,7 @@ use App\Modules\Signals\Actions\ComposeSignalDefinitionAction;
 use App\Modules\Signals\Actions\DeleteSignalDefinitionAction;
 use App\Modules\Signals\Actions\ListSignalDefinitionsAction;
 use App\Modules\Signals\Actions\PreviewSignalDefinitionAction;
+use App\Modules\Signals\Actions\RequestSignalSuggestionsAction;
 use App\Modules\Signals\Actions\RotateSignalWebhookSecretAction;
 use App\Modules\Signals\Actions\SaveSignalDefinitionAction;
 use App\Modules\Signals\Actions\SubmitSignalDefinitionAction;
@@ -33,8 +34,10 @@ use App\Modules\Signals\Http\Requests\SubmitSignalDefinitionRequest;
 use App\Modules\Signals\Http\Resources\SignalDefinitionResource;
 use App\Modules\Signals\Http\Resources\SignalDraftResource;
 use App\Modules\Signals\Http\Resources\SignalPreviewResource;
+use App\Modules\Signals\Http\Resources\SignalSuggestionBatchResource;
 use App\Modules\Signals\Models\SignalDefinition;
 use App\Modules\Signals\Models\SignalDefinitionSubmission;
+use App\Modules\Signals\Models\SignalSuggestionBatch;
 use App\Modules\Signals\Policies\SignalDefinitionPolicy;
 use App\Modules\Signals\Services\PlatformPresetReader;
 use App\Modules\Signals\Services\PresetUpdateDiffer;
@@ -94,6 +97,10 @@ final class SignalDefinitionController extends Controller
 
         return Inertia::render('signals/Types', [
             'definitions' => SignalDefinitionResource::collection($mine)->resolve($request),
+            // The latest batch of suggested types, if the team has asked for one (Signals v3 P2).
+            'suggestions' => ($latest = SignalSuggestionBatch::query()->where('team_id', $team->getKey())->latest('id')->first()) instanceof SignalSuggestionBatch
+                ? (new SignalSuggestionBatchResource($latest))->toArray($request)
+                : null,
             // Only the presets the team has not already taken: a library that keeps offering what
             // you already have is a library you stop reading.
             'presets' => SignalDefinitionResource::collection(
@@ -409,6 +416,21 @@ final class SignalDefinitionController extends Controller
             // one of the declared ones is free, so a shared figure would misquote the moment it ships.
             'micros_per_search' => ($kind ?? SignalSourceKind::default())->costMicrosPerRequest(),
         ];
+    }
+
+    /**
+     * Ask Alima to suggest signal types for this business (Signals v3 P2). Queued: the answer
+     * arrives on the page's `suggestions` prop.
+     */
+    public function suggest(Request $request, RequestSignalSuggestionsAction $action): RedirectResponse
+    {
+        $team = $this->team($request);
+
+        $this->authorize('create', $this->transientDefinition($team));
+
+        $action->handle($team, $this->user($request));
+
+        return to_route('signal-definitions.index');
     }
 
     /**

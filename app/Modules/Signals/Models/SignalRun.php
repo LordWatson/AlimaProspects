@@ -54,6 +54,7 @@ class SignalRun extends Model
         'queries_requested',
         'results_count',
         'signals_created',
+        'not_fit_count',
         'cost_micros',
         'source_breakdown',
         'error',

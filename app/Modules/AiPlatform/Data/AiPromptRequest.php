@@ -26,6 +26,8 @@ final readonly class AiPromptRequest
         public float $temperature,
         public ?array $jsonSchema = null,
         public int $timeout = 60,
+        // Set only for a research call: the model may search the web while it answers.
+        public ?AiWebSearch $webSearch = null,
     ) {}
 
     public function expectsStructuredOutput(): bool

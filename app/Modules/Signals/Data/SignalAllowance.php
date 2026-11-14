@@ -71,6 +71,8 @@ final class SignalAllowance extends Data
         public readonly ?int $monthlyPreviewQueries,
         /** Micro-units a team may spend reading full articles this calendar month (UTC). */
         public readonly ?int $articleFetchMicros,
+        // Micro-units a month for AI research (v3 P4). Zero is a real answer: none.
+        public readonly ?int $aiResearchMicros,
         public readonly bool $playbooksEnabled,
         public readonly bool $webhookSourceEnabled,
     ) {}
@@ -91,6 +93,7 @@ final class SignalAllowance extends Data
             monthlySourceQueries: null,
             monthlyPreviewQueries: null,
             articleFetchMicros: null,
+            aiResearchMicros: null,
             playbooksEnabled: true,
             webhookSourceEnabled: true,
         );

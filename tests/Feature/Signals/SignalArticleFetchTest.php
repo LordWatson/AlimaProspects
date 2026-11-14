@@ -94,7 +94,7 @@ function fullTextEvent(array $overrides = []): array
         'confidence' => 95,
         'relevance' => 85,
         'summary' => 'Acme raised $40m from Regional Ventures, per the full article.',
-        'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => 'Ask a mutual connection for a LinkedIn introduction.',
     ], $overrides)]];
 }
 

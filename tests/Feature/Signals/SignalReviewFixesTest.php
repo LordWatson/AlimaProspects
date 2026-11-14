@@ -372,7 +372,7 @@ it('replaces a suggested approach that smuggles in a link', function (): void {
             'confidence' => 90,
             'relevance' => 80,
             'summary' => 'A company raised a round.',
-            'suggested_approach' => $hostile,
+            'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => $hostile,
         ]);
 
         // The approach line is read by a salesperson, and an article is attacker-controlled text.

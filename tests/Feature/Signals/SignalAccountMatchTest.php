@@ -128,7 +128,7 @@ function eventAbout(string $company, int $index = 0, ?string $person = null, ?st
         'confidence' => 90,
         'relevance' => 80,
         'summary' => $company.' raised a $40m round.',
-        'suggested_approach' => 'Ask a mutual connection for an introduction.',
+        'subject_fit' => 'unknown', 'fit_confidence' => 0, 'why_it_matters' => null, 'suggested_approach' => 'Ask a mutual connection for an introduction.',
     ];
 }
 

@@ -5,6 +5,62 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — 2026-11-14 — Signals v3 P2–P4: signals suggested for your business, a fairer place rule, and Claude as a source
+
+**Suggested signal types.** On the signal types screen, "Suggest signal types" reads your business
+profile and ideal customer and proposes up to five events worth watching for. Each is either a
+type from the library or one drafted for you, and each is tested against this week's news before
+it is ranked. Nothing is added until you add it. You can ask once a day, and it uses your AI
+allowance and some of the day's previews. On the test businesses, the suggested types put 39
+events on the feed and 20 were judged good; the library types managed 5 and 1.
+
+**The place on a watch is where it looks.** A watch on Manchester used to discard an event in
+Cheshire. It now keeps it, and how near a company has to be is judged from your own business
+profile: a local trade still does not see the other end of the country, a national one does. A
+different country is still left out. Two reports of one deal that lead with different companies
+now share a card.
+
+**Claude's web search as a signal source, switched off.** Alima can now ask Claude to search the
+web for a type of event when the other sources find little. Every event it returns must be on a
+page the search actually found, and it has its own monthly spending limit. It is built, tested
+and **off by default**: on the test businesses it cost about ten cents a call and found nothing
+worth having. ADRs 0038, 0039, 0040.
+
+### Changed — 2026-11-14 — Signals v3 P1: the classifier works again and judges the company
+
+The signal classifier was failing silently (see P0 below). Two causes, both fixed with new prompt
+versions: its output limit was too small for the current cheap model, and MySQL had re-ordered
+the answer schema so the model could not state an event's type. Every field of the answer is now
+required, which makes the stored order irrelevant.
+
+The classifier now also judges the company in the story against your business profile. A
+confident competitor or non-customer is left out of the feed and counted on the watch's run line
+("Left out, not your customers"). A company judged a customer gets one sentence on the card
+saying why the event matters to you, above the article it was read from. The type builder's
+preview applies the same rules.
+
+On the labelled test set, good events reaching the feed went from 0 of 28 to 23 of 28, and
+competitors and non-customers from 1 of 24 to none. Live results are still thin (5 cards from
+235 search results), because the library's searches were written for wealth events; that is the
+next two phases. ADR 0037.
+
+### Added — 2026-11-14 — Signals v3 P0: a measuring stick for the signal feed
+
+`php artisan signals:eval` runs four fixture businesses' signal types and reports what reaches the
+feed: twenty hand-labelled articles each through the real run, then the live feed graded by a
+judge prompt. It is live and paid, asks first, and never runs in `composer test`. The plan is
+`docs/plans/signals-v3-plan.md`; the numbers are in `docs/modules/signals.md` → _Signal evaluation_.
+
+**What the first run found:** the signal classifier is failing on the current cheap model. Its
+answers are cut off at a 2,048-token limit, so 27 of 47 classification calls failed and none of
+the 28 good labelled articles reached the feed. Runs still complete without an error. Not fixed
+in this phase; it is the first item of P1.
+
+**Fixed:** the AI price table was a model generation out of date (`config/ai-platform.php`).
+Sonnet 5.5 is $2 / $10 per million tokens, not $3 / $15; Haiku 5.5 is $0.10 / $0.50, not $1 / $5.
+Every AI cost recorded before today is overstated, cheap-tier calls tenfold, and teams' AI credit
+has been drawn down faster than it should have been.
+
 ### Changed — 2026-11-14 — The Alima Planner look, app-wide
 
 The frontend now follows the Alima Planner homepage reference. The app shell is flush: a full-height

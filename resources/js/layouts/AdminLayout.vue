@@ -156,7 +156,13 @@ const hasTeam = computed(() => page.props.auth.currentTeam !== null);
                 </div>
             </header>
 
-            <main class="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+            <!-- `scroll-region`: this element scrolls, not the window, so Inertia has to be told to
+                 send it back to the top on each visit. Without it a new page opens wherever the
+                 last one was left. -->
+            <main
+                scroll-region
+                class="flex-1 overflow-y-auto px-4 py-6 sm:px-6"
+            >
                 <slot />
             </main>
         </div>

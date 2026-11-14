@@ -56,8 +56,8 @@ defineOptions({
 const props = defineProps<{
     runs: {
         data: SignalPlaybookRun[];
-        links: PaginationLink[];
         meta: {
+            links: PaginationLink[];
             current_page: number;
             last_page: number;
             from: number | null;
@@ -344,7 +344,7 @@ function blockGuidance(step: PlaybookStepOutcome): string | null {
 
         <Pagination
             v-if="runs.data.length"
-            :links="runs.links"
+            :links="runs.meta.links"
             :meta="runs.meta"
             label="Activity pages"
         />
