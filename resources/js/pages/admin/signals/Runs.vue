@@ -210,7 +210,7 @@ function duration(ms: number | null): string {
                  WCAG 2.1.1, and this screen already got that right once (brand review). -->
             <div
                 v-if="summary.sources.length > 0"
-                class="mt-4 overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="mt-4 overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                 tabindex="0"
                 role="region"
                 aria-label="Cost and volume by signal source"
@@ -314,7 +314,7 @@ function duration(ms: number | null): string {
         </section>
 
         <form
-            class="flex flex-wrap items-end gap-3 rounded-2xl border border-border bg-card px-4 py-3"
+            class="flex flex-wrap items-end gap-3 rounded-[1.25rem] border border-transparent bg-card px-4 py-3 shadow-sm dark:border-border"
             @submit.prevent="apply"
         >
             <div class="flex flex-col gap-1">
@@ -348,7 +348,7 @@ function duration(ms: number | null): string {
 
         <template v-else>
             <div
-                class="overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                 tabindex="0"
                 role="region"
                 aria-label="Signal runs"

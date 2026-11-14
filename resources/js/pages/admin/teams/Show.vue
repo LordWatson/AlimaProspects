@@ -337,7 +337,7 @@ function removeMember(memberId: number): void {
 
             <form
                 v-else
-                class="flex flex-col gap-2 rounded-2xl border border-border bg-card px-5 py-4"
+                class="flex flex-col gap-2 rounded-[1.25rem] border border-transparent bg-card px-5 py-4 shadow-sm dark:border-border"
                 @submit.prevent="suspend"
             >
                 <Label for="suspend-reason">Reason</Label>

@@ -801,9 +801,7 @@ const grades = [
                 <code>docs/brand/brand-tokens.md</code> §7.7.
             </p>
 
-            <div
-                class="grid gap-px overflow-hidden rounded-3xl border border-border bg-border sm:grid-cols-2"
-            >
+            <div class="grid border-t-[1.5px] border-foreground sm:grid-cols-2">
                 <StatTile :kpi="demoKpi" />
                 <StatTile
                     :kpi="{

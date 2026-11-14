@@ -984,3 +984,29 @@ review would collapse the two spends into a dropdown labelled "Find with Alima";
 because a dropdown adds a click to the main first-run action on desktop, and the two buttons exist
 precisely so a member can see which spend they are authorising (ADR 0029, §7h's note on naming a
 cost). Confirm, or they become a menu whose items each still name their own spend.
+
+### 7p. Added 2026-11-14 (the Alima Planner alignment — ⚠️ pending brand-owner approval)
+
+The app and the landing page were restyled to match the Alima Planner homepage reference (a
+sister-product design built on this same system). Everything below is **our interpretation of that
+reference**, not of the two PDFs, so each item waits for the brand owner:
+
+- **New interaction tokens** in `app.css`: `lime-hover` `#c2d82f` (Lime CTA hover, which also lifts
+  2px), `ink-hover` `#2e2d3a`, `teal-deep` `#1a4547` (the sidebar's panda mark and member pill),
+  `line-soft` `#f0ece1` / dark `#2c2a3a` (row hairlines inside a card), and three shadows —
+  `lift` (a hovered tile), `pop` (a floating notice, menus), `frame` (dialogs, the framed product
+  shot). `--border` moved from `#ddd9cc` to the reference's `#e2ddcd`.
+- **Cards are borderless**: `bg-card` + `shadow-sm` at a **20px** radius (`rounded-[1.25rem]`),
+  which is off the 8/16/24 scale. Cream surface on Cloud Cream is ~1.07:1, so a card's edge is the
+  shadow; dark mode keeps `border-border`. Inputs keep `border-input` (3.1:1).
+- **Outline buttons** are a 1.5px Ink border that fills Ink on hover; the KPI strip is open (no
+  card) under a 1.5px Ink rule.
+- **The sidebar drops its icons** — label plus mono number, as the reference — and the logo carries
+  a mono "Prospects" product tag, set 16px clear of the lock-up (clear space X ≈ 15px at 36px).
+  The tag is a product name, not a retyped wordmark; confirm.
+- **Display sizes on the landing page** are fluid `clamp()` values taken from the reference
+  (headline up to 96px at −0.045em, section heads up to 76px); the reference's sub-12px mono labels
+  were **raised to 12px** here to keep §3's floor.
+- **Motion**: a 380ms fade-up on every screen change, a cycling headline word (stops after three
+  loops; pauses on hover/focus), floating hero notices, an Ink marquee. All of it is off under
+  `prefers-reduced-motion`.

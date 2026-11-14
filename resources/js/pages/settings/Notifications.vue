@@ -242,7 +242,7 @@ function submit(): void {
 
         <!-- Push -->
         <section
-            class="flex gap-3 rounded-2xl border border-border bg-card p-5"
+            class="flex gap-3 rounded-[1.25rem] border border-transparent bg-card p-5 shadow-sm dark:border-border"
         >
             <Smartphone
                 class="mt-0.5 size-5 shrink-0 text-brand"
@@ -268,7 +268,9 @@ function submit(): void {
         </section>
 
         <!-- The round-up -->
-        <section class="space-y-4 rounded-2xl border border-border bg-card p-5">
+        <section
+            class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-5 shadow-sm dark:border-border"
+        >
             <h2
                 class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
             >
@@ -323,7 +325,9 @@ function submit(): void {
         </section>
 
         <!-- The mute -->
-        <section class="space-y-4 rounded-2xl border border-border bg-card p-5">
+        <section
+            class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-5 shadow-sm dark:border-border"
+        >
             <div class="flex gap-3">
                 <BellOff
                     class="mt-0.5 size-5 shrink-0 text-muted-foreground"

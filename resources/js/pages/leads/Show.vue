@@ -463,7 +463,7 @@ onBeforeUnmount(() => {
           cream card surface, because this is the record rather than the destination.
         -->
         <header
-            class="space-y-5 rounded-2xl border border-border bg-card p-6"
+            class="space-y-5 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             data-test="lead-header"
         >
             <div

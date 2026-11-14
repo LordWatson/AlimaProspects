@@ -44,6 +44,13 @@
     --color-cream: #f5f2e8;
     --color-cream-surface: #fbfaf6;
 
+    /* Interaction shades from the Alima Planner reference — hover states only. */
+    --color-lime-hover: #c2d82f;
+    --color-ink-hover: #2e2d3a;
+    --color-teal-deep: #1a4547;
+    /* Hairline between rows inside a card — one step lighter than a card's own border. */
+    --color-line-soft: var(--line-soft);
+
     /* Accents — Orange is decorative only */
     --color-orange: #f03d2a;
     --color-orange-80: #f16150;
@@ -148,11 +155,92 @@
     /* Depth — Ink-tinted shadows */
     --shadow-sm: 0 1px 2px 0 rgb(24 23 35 / 0.06);
     --shadow-md: 0 8px 24px -4px rgb(24 23 35 / 0.1);
+    /* A raised tile on hover, a floating notice, a framed product shot. */
+    --shadow-lift: 0 18px 40px -20px rgb(24 23 35 / 0.45);
+    --shadow-pop: 0 12px 30px -12px rgb(24 23 35 / 0.35);
+    --shadow-frame: 0 30px 80px -30px rgb(24 23 35 / 0.55);
+
+    --radius-4xl: 2.25rem;
 
     /* Motion — fast 150 · base 250, brand easing */
     --ease-brand: cubic-bezier(0.2, 0.8, 0.2, 1);
     --duration-fast: 150ms;
     --duration-base: 250ms;
+
+    /* Screen entrance, the hero's cycling word, floating notices, the marquee, a live dot. */
+    --animate-screen: fade-up 380ms var(--ease-brand) both;
+    --animate-reveal: fade-up 700ms var(--ease-brand) both;
+    --animate-word: word-in 500ms var(--ease-brand) both;
+    --animate-marquee: marquee 34s linear infinite;
+    --animate-live: live-dot 1.8s ease-in-out infinite;
+    --animate-drawer: slide-in 260ms var(--ease-brand) both;
+
+    @keyframes fade-up {
+        from {
+            opacity: 0;
+            transform: translateY(12px);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+    @keyframes word-in {
+        from {
+            opacity: 0;
+            transform: translateY(40%) rotate(2deg);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+    @keyframes marquee {
+        from {
+            transform: translateX(0);
+        }
+        to {
+            transform: translateX(-50%);
+        }
+    }
+    @keyframes live-dot {
+        0%,
+        100% {
+            box-shadow: 0 0 0 0 rgb(91 189 127 / 0.6);
+        }
+        50% {
+            box-shadow: 0 0 0 6px rgb(91 189 127 / 0);
+        }
+    }
+    @keyframes slide-in {
+        from {
+            transform: translateX(24px);
+            opacity: 0;
+        }
+        to {
+            transform: none;
+            opacity: 1;
+        }
+    }
+    @keyframes pop-in {
+        from {
+            opacity: 0;
+            transform: scale(0.8) translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+    @keyframes floaty {
+        0%,
+        100% {
+            transform: translateY(0);
+        }
+        50% {
+            transform: translateY(-10px);
+        }
+    }
 }
 
 /*
@@ -197,7 +285,8 @@
     --destructive: #b52a1b; /* status.error — 5.7:1 */
     --destructive-foreground: #fbfaf6;
 
-    --border: #ddd9cc; /* warm dividers/cards */
+    --border: #e2ddcd; /* warm dividers/cards */
+    --line-soft: #f0ece1; /* row hairlines inside a card */
     --input: #8c8a8f; /* border.control — 3.1:1 inputs */
     --ring: #2c6cad; /* focus.ring — 4.9:1 */
 
@@ -234,7 +323,7 @@
     --sidebar-primary-foreground: #f5f2e8;
     --sidebar-accent: #e6ece9;
     --sidebar-accent-foreground: #173f41;
-    --sidebar-border: #ddd9cc;
+    --sidebar-border: #e2ddcd;
     --sidebar-ring: #2c6cad;
 }
 
@@ -268,6 +357,7 @@
     --destructive-foreground: #181723;
 
     --border: #3a3847;
+    --line-soft: #2c2a3a;
     --input: #514f5c;
     --ring: #6fa4d8;
 
@@ -359,4 +449,33 @@
         var(--color-teal) 83%,
         var(--color-cream) 100%
     );
+}
+
+/*
+  A floating notice (the landing hero's live toasts): pops in once, then drifts. The delay is set
+  per element with `--float-delay`, so four notices settle in sequence rather than together.
+*/
+@utility animate-float-in {
+    animation:
+        pop-in 600ms var(--float-delay, 200ms) both var(--ease-brand),
+        floaty 5.5s calc(var(--float-delay, 200ms) + 700ms) ease-in-out infinite;
+}
+
+/* Reveal on scroll where the browser can tie an animation to the viewport; plain fade otherwise. */
+@supports (animation-timeline: view()) {
+    .animate-reveal {
+        animation-timeline: view();
+        animation-range: entry 0% cover 25%;
+    }
+}
+
+/* The marquee and the live dots are decoration: nobody who asked for less motion gets them. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+    }
 }

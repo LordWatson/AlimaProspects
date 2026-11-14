@@ -230,7 +230,9 @@ const counts = computed(() => [
                 </p>
             </div>
 
-            <dl class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <dl
+                class="grid border-t-[1.5px] border-foreground sm:grid-cols-2 xl:grid-cols-5"
+            >
                 <!-- `chart-2`, the Teal single-series token: the panel has one accent, and
                      `chart-1` is Blue (brand review). -->
                 <StatTile
@@ -245,7 +247,7 @@ const counts = computed(() => [
         <!-- One series at a time, switched without a round trip. -->
         <section
             v-if="series.length > 0"
-            class="space-y-4 rounded-2xl border border-border bg-card p-6"
+            class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             aria-label="Daily trend"
         >
             <div class="flex flex-wrap items-start justify-between gap-3">
@@ -270,7 +272,7 @@ const counts = computed(() => [
                         v-for="option in series"
                         :key="option.key"
                         type="button"
-                        class="duration-fast rounded-full px-3 py-1 text-sm transition-colors ease-brand focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        class="rounded-full px-3 py-1 text-sm transition-colors duration-150 ease-brand focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                         :class="
                             option.key === chosen
                                 ? 'bg-teal font-semibold text-cream'
@@ -298,7 +300,7 @@ const counts = computed(() => [
         <section aria-label="Live counts">
             <h2 class="sr-only">Live counts</h2>
             <dl
-                class="flex flex-wrap gap-x-8 gap-y-3 rounded-2xl border border-border bg-card px-6 py-4"
+                class="flex flex-wrap gap-x-8 gap-y-3 rounded-[1.25rem] border border-transparent bg-card px-6 py-4 shadow-sm dark:border-border"
             >
                 <div
                     v-for="count in counts"
@@ -336,7 +338,7 @@ const counts = computed(() => [
                 <li
                     v-for="team in suspended"
                     :key="team.id"
-                    class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-border bg-card px-4 py-3"
+                    class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[1.25rem] border border-transparent bg-card px-4 py-3 shadow-sm dark:border-border"
                 >
                     <div class="min-w-0 flex-1">
                         <p class="truncate font-medium text-foreground">

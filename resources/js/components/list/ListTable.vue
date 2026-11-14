@@ -55,7 +55,7 @@ provide(listDensityKey, toRef(density));
         <div
             :class="
                 cn(
-                    'rounded-2xl border border-border bg-card',
+                    'rounded-[1.25rem] border border-transparent bg-card shadow-sm dark:border-border',
                     props.scroll ? 'overflow-x-auto' : 'overflow-clip',
                 )
             "
@@ -68,7 +68,7 @@ provide(listDensityKey, toRef(density));
                         '[&_tbody_tr:last-child_td]:border-b-0',
                         // The header band is opaque (rows pass underneath it) and takes the card's
                         // top corners with it.
-                        '[&_thead_th:first-child]:rounded-ss-2xl [&_thead_th:last-child]:rounded-se-2xl',
+                        '[&_thead_th:first-child]:rounded-ss-[1.25rem] [&_thead_th:last-child]:rounded-se-[1.25rem]',
                         // The header sits above a `raised` cell (z-10): body cells come
                         // later in the DOM, so an equal z-index let the checkbox column
                         // show through the band as the rows passed under it.

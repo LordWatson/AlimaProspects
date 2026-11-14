@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Component, HTMLAttributes } from 'vue';
-import { cn } from '@/lib/utils';
+import type { Component, HTMLAttributes } from "vue";
+import { cn } from "@/lib/utils";
 
 /*
  * Alima empty state — bright, warm, and encouraging (brand voice: lead with the
@@ -13,13 +13,13 @@ import { cn } from '@/lib/utils';
  */
 const props = withDefaults(
     defineProps<{
-        class?: HTMLAttributes['class'];
+        class?: HTMLAttributes["class"];
         icon?: Component;
         title: string;
         description?: string;
-        size?: 'sm' | 'default';
+        size?: "sm" | "default";
     }>(),
-    { size: 'default' },
+    { size: "default" },
 );
 </script>
 
@@ -28,7 +28,7 @@ const props = withDefaults(
         data-slot="empty-state"
         :class="
             cn(
-                'flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card/50 text-center',
+                'flex flex-col items-center justify-center rounded-[1.25rem] border border-dashed border-border bg-card/60 text-center',
                 props.size === 'sm' ? 'gap-3 px-5 py-8' : 'gap-4 px-6 py-14',
                 props.class,
             )
@@ -52,8 +52,8 @@ const props = withDefaults(
             <h3
                 :class="
                     cn(
-                        'font-semibold text-foreground',
-                        props.size === 'sm' ? 'text-base' : 'text-lg',
+                        'font-bold tracking-tight text-foreground',
+                        props.size === 'sm' ? 'text-lg' : 'text-2xl',
                     )
                 "
             >

@@ -121,7 +121,7 @@ const nothingWaiting = computed(
 
 <template>
     <section
-        class="rounded-3xl bg-card p-6 shadow-sm sm:p-8"
+        class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6"
         :aria-label="t('Your work')"
         data-test="dashboard-my-work"
     >

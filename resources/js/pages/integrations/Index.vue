@@ -298,7 +298,7 @@ function confirmed(): void {
             <!-- The add form -------------------------------------------------->
             <form
                 v-if="addOpen"
-                class="space-y-5 rounded-2xl border border-border bg-card p-6"
+                class="space-y-5 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 data-test="endpoint-form"
                 @submit.prevent="submit"
             >
@@ -421,7 +421,7 @@ function confirmed(): void {
             <article
                 v-for="endpoint in endpoints"
                 :key="endpoint.id"
-                class="space-y-4 rounded-2xl border border-border bg-card p-6"
+                class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 :aria-labelledby="`endpoint-url-${endpoint.id}`"
                 :data-test="`endpoint-${endpoint.id}`"
             >
@@ -549,7 +549,7 @@ function confirmed(): void {
               page open, and a signature they cannot verify is a signature they will skip.
             -->
             <details
-                class="rounded-2xl border border-border bg-card p-6"
+                class="rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 data-test="verify-help"
             >
                 <summary
@@ -608,7 +608,7 @@ function confirmed(): void {
             </div>
 
             <div
-                class="overflow-x-auto rounded-2xl border border-border bg-card"
+                class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm dark:border-border"
             >
                 <table class="w-full text-sm">
                     <thead class="text-start text-xs text-muted-foreground">
@@ -721,7 +721,7 @@ function confirmed(): void {
                 <article
                     v-for="provider in providers"
                     :key="provider.value"
-                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                     :data-test="`provider-${provider.value}`"
                 >
                     <div class="flex items-start justify-between gap-3">

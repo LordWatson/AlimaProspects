@@ -2,39 +2,74 @@
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import {
     ArrowRight,
-    Building2,
-    Languages,
+    Check,
+    CirclePlay,
     Lightbulb,
+    Plus,
     Radar,
-    Satellite,
     Send,
-    ShieldCheck,
     Sparkles,
-    Target,
+    Star,
 } from '@lucide/vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import PandaPeek from '@/components/PandaPeek.vue';
 import ProductShowcase from '@/components/marketing/ProductShowcase.vue';
 import Reveal from '@/components/marketing/Reveal.vue';
 import MarketingLayout from '@/layouts/MarketingLayout.vue';
-import { Button } from '@/components/ui/button';
 import { useI18n } from '@/composables/useI18n';
-import { dashboard, register } from '@/routes';
+import { useReducedMotion } from '@/composables/useReducedMotion';
+import { dashboard, login, register } from '@/routes';
 
 /*
- * The landing page. Its job is to make a stranger want to see the product, and then want the
- * whole story — so it shows the workspace moving before it explains anything, and it gives the
- * About page a real invitation rather than a link in the nav.
+ * The landing page, after the Alima Planner homepage: a statement whose last word cycles under a
+ * lime marker, live product notices floating beside the lead, the workspace framed on a teal band,
+ * a marquee of where the data comes from, a bento of what is inside, a teal proof band, the
+ * questions, and one Ink closing card with the page's only peek.
  *
- * Brand (brand-tokens.md): Cloud Cream leads; Acid Lime is the hero accent and carries the one
- * primary CTA; Signal Orange appears as the eyebrow dash, the full stops and the one rounded
- * rule, and never as a status (§1.2, §3). **One peek, one colour, one placement** (§5) — this
- * page spends its peek on the About invitation, because that is the moment meant to pull, and
- * the showcase is already the hero's figure.
+ * Everything on it is true of this product. The reference's pricing, before/after slider and ROI
+ * calculator are Planner features with no Prospects equivalent on a public page, so they are not
+ * here rather than here with invented numbers.
  */
 const { t } = useI18n();
 const page = usePage();
+const reduced = useReducedMotion();
 
-/** The pipeline, in the order the product runs it. */
+const startHref = computed(() =>
+    page.props.auth.user ? dashboard() : register(),
+);
+
+/* --- The cycling word ------------------------------------------------------------------------ */
+
+// Each is its own key, because a translator has to be free to inflect it for the line it ends.
+const words = computed(() => [t('lead'), t('signal'), t('match'), t('reply')]);
+const wordIndex = ref(0);
+const paused = ref(false);
+let ticks = 0;
+let timer: ReturnType<typeof setInterval> | undefined;
+
+/*
+ * Three loops, then it rests on the first word (WCAG 2.2.2: movement that lasts more than five
+ * seconds needs a way to stop — this one stops itself). Hovering or focusing the hero pauses it.
+ */
+onMounted(() => {
+    timer = setInterval(() => {
+        if (reduced.value || paused.value) {
+            return;
+        }
+
+        wordIndex.value = (wordIndex.value + 1) % words.value.length;
+        ticks += 1;
+
+        if (ticks >= words.value.length * 3) {
+            clearInterval(timer);
+        }
+    }, 2200);
+});
+
+onBeforeUnmount(() => clearInterval(timer));
+
+/* --- Content --------------------------------------------------------------------------------- */
+
 const steps = [
     {
         icon: Radar,
@@ -62,49 +97,142 @@ const steps = [
     },
 ];
 
-/** The parts of the system worth a stranger's attention, in the workspace's own order. */
-const capabilities = [
+/*
+ * The bento. `tone` is the tile's surface and `span` its footprint on the four-column grid; on a
+ * phone the grid becomes a swipe row and both are ignored.
+ */
+const tiles: {
+    eyebrow: string;
+    title: string;
+    body: string;
+    tone: 'teal' | 'lilac' | 'ink' | 'card' | 'lime';
+    span: string;
+}[] = [
     {
-        icon: Building2,
-        title: 'Your business, researched',
-        body: 'An AI background check on your own company reads your site and public sources, then fills the blanks you left — never overwriting your words.',
-    },
-    {
-        icon: Target,
-        title: 'Ideal customer profiles',
-        body: 'Define who you actually want in weighted criteria and exclusions. Change the definition and everything re-scores behind you.',
-    },
-    {
-        icon: Radar,
-        title: 'Multi-source discovery',
-        body: 'Three live sources, one run. Watch it work through them, and stop at the limit your plan sets.',
-    },
-    {
-        icon: Sparkles,
-        title: 'Hybrid scoring',
+        eyebrow: 'Hybrid scoring',
+        title: 'One score out of 100, with its reasons.',
         body: 'Your own criteria, weighed exactly as you set them, plus an AI read of the rest — one score out of 100 and a grade you can argue with.',
+        tone: 'teal',
+        span: 'lg:col-span-2',
     },
     {
-        icon: Satellite,
-        title: 'Trigger-event signals',
+        eyebrow: 'Trigger-event signals',
+        title: 'Arrive while it still matters.',
         body: 'Funding rounds, exits and relocations in your market, found in the news, classified and dated — so you arrive while it still matters.',
+        tone: 'lilac',
+        span: 'lg:col-span-2 lg:row-span-2',
     },
     {
-        icon: Send,
-        title: 'Compliant outreach',
+        eyebrow: 'Ideal customer profiles',
+        title: 'Say who you want.',
+        body: 'Define who you actually want in weighted criteria and exclusions. Change the definition and everything re-scores behind you.',
+        tone: 'card',
+        span: '',
+    },
+    {
+        eyebrow: 'Multi-source discovery',
+        title: 'Three sources, one run.',
+        body: 'Three live sources, one run. Watch it work through them, and stop at the limit your plan sets.',
+        tone: 'ink',
+        span: '',
+    },
+    {
+        eyebrow: 'Your business, researched',
+        title: 'It reads you first.',
+        body: 'An AI background check on your own company reads your site and public sources, then fills the blanks you left — never overwriting your words.',
+        tone: 'card',
+        span: '',
+    },
+    {
+        eyebrow: 'Compliant outreach',
+        title: 'Drafted, checked, then sent.',
         body: 'Personalised drafts, reusable briefs, a full contact log — and suppression, sender identity and the opt-out enforced at send time.',
+        tone: 'lime',
+        span: '',
     },
     {
-        icon: Lightbulb,
-        title: 'Insights that act',
+        eyebrow: 'Insights that act',
+        title: 'What to do this morning.',
         body: 'The companies you went quiet on, the strong matches nobody has approached, and the model’s read of your week.',
+        tone: 'card',
+        span: 'lg:col-span-2',
     },
     {
-        icon: ShieldCheck,
-        title: 'Privacy, enforced',
+        eyebrow: 'Privacy, enforced',
+        title: 'The rules are in the software.',
         body: 'Nothing is sourced until your lawful basis is written down, old data clears out every night, and a request to see or erase it is a screen, not a scramble.',
+        tone: 'teal',
+        span: 'lg:col-span-2',
     },
 ];
+
+const tileTone = {
+    teal: 'bg-teal text-cream',
+    lilac: 'bg-lilac text-ink',
+    ink: 'bg-ink text-cream',
+    card: 'bg-card text-foreground shadow-sm',
+    lime: 'bg-lime text-ink',
+} as const;
+
+const tileEyebrow = {
+    teal: 'text-lime',
+    lilac: 'text-ink',
+    ink: 'text-lime',
+    card: 'text-brand',
+    lime: 'text-ink',
+} as const;
+
+const tileBody = {
+    teal: 'text-cream/80',
+    lilac: 'text-ink/80',
+    ink: 'text-ink-20',
+    card: 'text-muted-foreground',
+    lime: 'text-ink/80',
+} as const;
+
+const sources = [
+    'Companies House',
+    'Google Places',
+    'Open web',
+    'News signals',
+    'UK GDPR',
+    'UAE PDPL',
+    'English',
+    'العربية',
+];
+const sparkTones = ['text-lime', 'text-orange', 'text-lilac'];
+
+const faqs = [
+    {
+        q: 'Where do the leads come from?',
+        a: 'Pull in companies that fit from Companies House, Google Places and the open web — deduplicated, attributed and dated as they land.',
+    },
+    {
+        q: 'How is a lead scored?',
+        a: 'Your own criteria, weighed exactly as you set them, plus an AI read of the rest — one score out of 100 and a grade you can argue with.',
+    },
+    {
+        q: 'What is a signal?',
+        a: 'Funding rounds, exits and relocations in your market, found in the news, classified and dated — so you arrive while it still matters.',
+    },
+    {
+        q: 'Does Alima send emails for me?',
+        a: 'Personalised drafts, reusable briefs, a full contact log — and suppression, sender identity and the opt-out enforced at send time.',
+    },
+    {
+        q: 'Does it work in Arabic?',
+        a: 'Sources, rules and tone differ by market — so Alima treats them as different, and the whole product speaks English and Arabic, right to left included.',
+    },
+    {
+        q: 'How do you handle personal data?',
+        a: 'Nothing is sourced until your lawful basis is written down, old data clears out every night, and a request to see or erase it is a screen, not a scramble.',
+    },
+];
+const openFaq = ref(0);
+
+function toggleFaq(index: number): void {
+    openFaq.value = openFaq.value === index ? -1 : index;
+}
 </script>
 
 <template>
@@ -113,329 +241,468 @@ const capabilities = [
     <MarketingLayout>
         <!-- Hero ---------------------------------------------------------------->
         <section
-            class="mx-auto w-full max-w-7xl px-5 pt-8 pb-16 sm:px-8 lg:pt-14"
+            @pointerenter="paused = true"
+            @pointerleave="paused = false"
+            @focusin="paused = true"
+            @focusout="paused = false"
+            class="mx-auto flex w-full max-w-[80rem] flex-col gap-[clamp(1.375rem,3vw,2.125rem)] px-5 pt-[clamp(2.5rem,6vw,5.25rem)] pb-[clamp(2.25rem,4vw,3.5rem)] sm:px-[clamp(1.25rem,5.5vw,5rem)]"
         >
             <p
-                class="flex items-center gap-3 font-mono text-xs tracking-eyebrow text-teal uppercase rtl:tracking-normal"
+                class="flex items-center gap-3.5 font-mono text-[0.8125rem] tracking-[0.24em] text-teal uppercase rtl:tracking-normal dark:text-brand"
             >
-                <span
-                    class="h-0.5 w-8 rounded-full bg-orange"
-                    aria-hidden="true"
-                />
+                <span class="h-0.5 w-7 bg-orange" aria-hidden="true" />
                 {{ t('Bold ideas. Real impact.') }}
             </p>
 
             <!--
-              The statement runs the full width rather than sharing a column with the lead. Its
-              break is deliberate — two lines, the second one landing on the orange full stop —
-              and at display sizes the first line needs the whole measure to keep it (§3: tight
-              leading, no widows). The lead and the actions sit under it on one baseline.
+              The statement names its whole sentence once for a screen reader, then draws the
+              cycling version for the eye: a word that changes every two seconds inside a live
+              heading would be read out every two seconds.
             -->
             <h1
-                class="mt-6 max-w-5xl text-5xl leading-[0.95] font-bold tracking-tight text-balance sm:text-6xl lg:text-7xl xl:text-[5.25rem]"
+                class="text-[clamp(2.75rem,6.6vw,6rem)] leading-[1.04] font-bold tracking-[-0.045em] rtl:leading-tight rtl:tracking-normal"
+                :aria-label="`${t('One calm workspace')} ${t('for every')} ${words[0]}.`"
             >
-                {{ t('Find the right prospects,') }}<br />
-                {{ t('reach them first') }}<span class="text-orange">.</span>
+                <span aria-hidden="true">
+                    {{ t('One calm workspace') }}<br />{{ t('for every') }}
+                    <span class="inline-grid text-start">
+                        <!-- The longest word holds the width, so the line never reflows. -->
+                        <span
+                            v-for="word in words"
+                            :key="`sizer-${word}`"
+                            class="invisible col-start-1 row-start-1 px-[0.06em] whitespace-nowrap"
+                            >{{ word }}.</span
+                        >
+                        <span
+                            :key="wordIndex"
+                            class="col-start-1 row-start-1 animate-word justify-self-start whitespace-nowrap"
+                            ><span
+                                class="bg-[linear-gradient(transparent_56%,var(--color-lime)_56%,var(--color-lime)_90%,transparent_90%)] px-[0.06em] text-teal dark:text-brand"
+                                >{{ words[wordIndex] }}</span
+                            ><span class="text-orange">.</span></span
+                        >
+                    </span>
+                </span>
             </h1>
 
-            <div
-                class="mt-10 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between lg:gap-16"
-            >
-                <p
-                    class="max-w-xl text-lg leading-relaxed text-foreground lg:text-xl"
+            <div class="flex flex-wrap items-end justify-between gap-8">
+                <div
+                    class="flex max-w-[37.5rem] flex-[1_1_28rem] flex-col gap-6"
                 >
-                    {{
-                        t(
-                            'Alima finds, qualifies and reaches the businesses most likely to buy — with AI built for the UK and the UAE, bilingual from day one.',
-                        )
-                    }}
-                </p>
-                <div class="flex shrink-0 flex-wrap items-center gap-3">
-                    <Button as-child size="lg" variant="lime">
+                    <p
+                        class="text-[clamp(1.125rem,1.5vw,1.3125rem)] leading-[1.55] text-ink-80 dark:text-muted-foreground"
+                    >
+                        {{
+                            t(
+                                'Alima finds, qualifies and reaches the businesses most likely to buy — with AI built for the UK and the UAE, bilingual from day one.',
+                            )
+                        }}
+                    </p>
+                    <div class="flex flex-wrap gap-2.5">
                         <Link
-                            :href="
-                                page.props.auth.user ? dashboard() : register()
-                            "
+                            :href="startHref"
+                            class="inline-flex min-h-14 items-center gap-2.5 rounded-full bg-lime px-7 text-[1.0625rem] font-semibold text-ink transition-[background-color,transform] duration-150 ease-brand hover:-translate-y-0.5 hover:bg-lime-hover focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none active:translate-y-0"
                         >
                             {{ t("Let's grow") }}
-                            <ArrowRight class="size-4 rtl:rotate-180" />
+                            <ArrowRight class="size-[18px] rtl:rotate-180" />
                         </Link>
-                    </Button>
-                    <Button as-child size="lg" variant="outline">
-                        <a href="#how">{{ t('See how it works') }}</a>
-                    </Button>
+                        <a
+                            href="#tour"
+                            class="inline-flex min-h-14 items-center gap-2.5 rounded-full border-[1.5px] border-foreground px-6.5 text-[1.0625rem] font-semibold text-foreground transition-colors duration-150 hover:bg-foreground hover:text-background focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+                        >
+                            <CirclePlay class="size-[18px]" />
+                            {{ t('See it working') }}
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Live notices: decoration, so hidden from assistive technology. -->
+                <div
+                    class="relative hidden h-[14.375rem] w-[29.375rem] shrink-0 lg:block"
+                    aria-hidden="true"
+                >
+                    <div
+                        class="absolute start-0 top-0 flex animate-float-in items-center gap-3 rounded-[1.125rem] bg-card px-4 py-3 text-sm leading-snug shadow-pop [--float-delay:200ms]"
+                    >
+                        <span
+                            class="flex size-9 items-center justify-center rounded-full bg-lime text-ink"
+                            ><Check class="size-[18px]" stroke-width="2.6"
+                        /></span>
+                        <span class="flex flex-col">
+                            <b class="font-semibold">{{
+                                t('New A-grade lead · scored 92')
+                            }}</b>
+                            <span class="text-xs text-muted-foreground">{{
+                                t('Ideal customer match · just now')
+                            }}</span>
+                        </span>
+                    </div>
+                    <div
+                        class="absolute end-0 top-14 flex animate-float-in items-center gap-3 rounded-[1.125rem] bg-ink px-4 py-3 text-sm leading-snug text-cream shadow-pop [--float-delay:600ms]"
+                    >
+                        <span
+                            class="font-mono text-xl font-medium text-lime"
+                            dir="ltr"
+                            >AED 40m</span
+                        >
+                        <span class="flex flex-col">
+                            <b class="font-semibold">{{
+                                t('Funding round spotted')
+                            }}</b>
+                            <span class="text-xs text-ink-20">{{
+                                t('Signals · Dubai')
+                            }}</span>
+                        </span>
+                    </div>
+                    <div
+                        class="absolute start-10 top-[7.375rem] flex animate-float-in items-center gap-3 rounded-[1.125rem] bg-card px-4 py-3 text-sm leading-snug shadow-pop [--float-delay:1000ms]"
+                    >
+                        <span
+                            class="flex size-9 items-center justify-center rounded-full bg-teal text-cream"
+                            ><Send class="size-4 rtl:-scale-x-100"
+                        /></span>
+                        <span class="flex flex-col">
+                            <b class="font-semibold">{{
+                                t('Draft ready for review')
+                            }}</b>
+                            <span class="text-xs text-muted-foreground">{{
+                                t('Outreach · in Arabic')
+                            }}</span>
+                        </span>
+                    </div>
+                    <div
+                        class="absolute end-[1.125rem] top-[10.75rem] flex animate-float-in items-center gap-2.5 rounded-[1.125rem] bg-lilac px-3.5 py-2.5 text-sm font-semibold text-ink shadow-pop [--float-delay:1400ms]"
+                    >
+                        <Star class="size-4" />
+                        {{ t('5 strong matches nobody has approached') }}
+                    </div>
                 </div>
             </div>
+        </section>
 
-            <!-- The workspace, moving ------------------------------------------>
-            <Reveal class="mt-14 lg:mt-20">
+        <!-- The workspace, moving, on a teal band --------------------------------->
+        <section
+            id="tour"
+            class="relative scroll-mt-24 px-3 pb-[clamp(3rem,6vw,5.5rem)] sm:px-[clamp(0.75rem,3vw,3rem)]"
+            :aria-label="t('The workspace')"
+        >
+            <div
+                class="absolute inset-x-0 bottom-0 h-3/5 bg-teal"
+                aria-hidden="true"
+            />
+            <Reveal class="relative mx-auto max-w-[84rem]">
                 <ProductShowcase />
             </Reveal>
         </section>
 
-        <!-- How it works -------------------------------------------------------->
+        <!-- Marquee --------------------------------------------------------------->
+        <section
+            class="overflow-hidden bg-ink py-6 text-cream"
+            :aria-label="t('Where the data comes from')"
+        >
+            <div
+                class="flex w-max animate-marquee gap-14 px-5 text-[clamp(1.375rem,2.6vw,2.125rem)] font-bold tracking-[-0.02em] whitespace-nowrap motion-reduce:w-auto motion-reduce:animate-none motion-reduce:flex-wrap motion-reduce:gap-x-8 motion-reduce:gap-y-2 rtl:tracking-normal"
+                dir="ltr"
+            >
+                <template v-for="copy in 2" :key="copy">
+                    <template v-for="(source, i) in sources" :key="source">
+                        <!-- The second copy only exists to make the loop seamless; with motion
+                             reduced the strip wraps instead, and shows each name once. -->
+                        <span
+                            :class="copy === 2 ? 'motion-reduce:hidden' : ''"
+                            :aria-hidden="copy === 2 ? 'true' : undefined"
+                            >{{ source }}</span
+                        >
+                        <span
+                            :class="[
+                                sparkTones[i % 3],
+                                copy === 2 ? 'motion-reduce:hidden' : '',
+                            ]"
+                            aria-hidden="true"
+                            >✦</span
+                        >
+                    </template>
+                </template>
+            </div>
+        </section>
+
+        <!-- How it works ---------------------------------------------------------->
         <section
             id="how"
-            class="mx-auto w-full max-w-7xl scroll-mt-28 px-5 py-16 sm:px-8 lg:py-24"
+            class="mx-auto flex w-full max-w-[80rem] scroll-mt-24 flex-col gap-9 px-5 py-[clamp(4rem,8vw,7rem)] sm:px-[clamp(1.25rem,5.5vw,5rem)]"
         >
-            <Reveal>
-                <p
-                    class="font-mono text-xs tracking-eyebrow text-teal uppercase rtl:tracking-normal"
-                >
-                    {{ t('How Alima works') }}
-                </p>
-                <h2
-                    class="mt-4 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl rtl:font-bold"
-                >
-                    {{ t('Four steps to your ')
-                    }}<span class="text-teal">{{ t('next customer') }}</span
-                    >.
-                </h2>
+            <Reveal class="flex flex-wrap items-end justify-between gap-6">
+                <div class="flex max-w-[51rem] flex-col gap-5">
+                    <p
+                        class="flex items-center gap-3.5 font-mono text-[0.8125rem] tracking-[0.24em] text-teal uppercase rtl:tracking-normal dark:text-brand"
+                    >
+                        <span class="h-0.5 w-7 bg-current" aria-hidden="true" />
+                        {{ t('How Alima works') }}
+                    </p>
+                    <h2
+                        class="text-[clamp(2.5rem,5.6vw,4.75rem)] leading-none font-bold tracking-[-0.045em] rtl:leading-tight rtl:tracking-normal"
+                    >
+                        {{ t('Four steps to your next customer')
+                        }}<span class="text-orange">.</span>
+                    </h2>
+                </div>
             </Reveal>
 
-            <div class="mt-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
                 <Reveal
                     v-for="(s, i) in steps"
                     :key="s.step"
                     :delay="i * 80"
-                    class="flex flex-col"
+                    class="flex flex-col border-t-[1.5px] border-foreground pt-4"
                 >
-                    <div class="h-px w-full bg-ink" aria-hidden="true" />
-                    <div class="mt-4 flex items-center gap-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="font-mono text-sm text-brand">{{
+                            s.step
+                        }}</span>
                         <span
-                            class="flex size-11 items-center justify-center rounded-full bg-accent text-teal"
+                            class="flex size-11 items-center justify-center rounded-full bg-muted text-brand"
                             aria-hidden="true"
                         >
                             <component :is="s.icon" class="size-5" />
                         </span>
-                        <span class="font-mono text-sm text-teal">{{
-                            s.step
-                        }}</span>
                     </div>
                     <h3
-                        class="mt-4 text-xl font-semibold tracking-tight rtl:font-bold"
+                        class="mt-5 text-2xl font-bold tracking-[-0.03em] rtl:tracking-normal"
                     >
                         {{ t(s.title) }}
                     </h3>
-                    <p class="mt-3 leading-relaxed text-muted-foreground">
+                    <p
+                        class="mt-3 text-base leading-relaxed text-ink-80 dark:text-muted-foreground"
+                    >
                         {{ t(s.body) }}
                     </p>
                 </Reveal>
             </div>
         </section>
 
-        <!-- What's inside ------------------------------------------------------->
-        <section class="mx-auto w-full max-w-7xl px-5 py-10 sm:px-8 lg:py-16">
-            <Reveal>
+        <!-- Bento ----------------------------------------------------------------->
+        <section
+            id="features"
+            class="mx-auto flex w-full max-w-[80rem] scroll-mt-24 flex-col gap-9 px-5 pb-[clamp(4rem,8vw,7rem)] sm:px-[clamp(1.25rem,5.5vw,5rem)]"
+        >
+            <Reveal class="flex flex-wrap items-end justify-between gap-6">
+                <div class="flex max-w-[51rem] flex-col gap-5">
+                    <p
+                        class="flex items-center gap-3.5 font-mono text-[0.8125rem] tracking-[0.24em] text-teal uppercase rtl:tracking-normal dark:text-brand"
+                    >
+                        <span class="h-0.5 w-7 bg-current" aria-hidden="true" />
+                        {{ t("What's inside") }}
+                    </p>
+                    <h2
+                        class="text-[clamp(2.5rem,5.6vw,4.75rem)] leading-none font-bold tracking-[-0.045em] rtl:leading-tight rtl:tracking-normal"
+                    >
+                        {{ t('One workspace, every part of the hunt')
+                        }}<span class="text-orange">.</span>
+                    </h2>
+                </div>
                 <p
-                    class="font-mono text-xs tracking-eyebrow text-teal uppercase rtl:tracking-normal"
+                    class="font-mono text-xs tracking-[0.16em] text-muted-foreground uppercase rtl:tracking-normal"
                 >
-                    {{ t("What's inside") }}
+                    <span class="hidden lg:inline"
+                        >{{ t('Hover the tiles') }} ↓</span
+                    >
+                    <span class="lg:hidden">{{ t('Swipe') }} →</span>
+                </p>
+            </Reveal>
+
+            <div
+                class="-mx-5 flex snap-x snap-mandatory [scrollbar-width:none] gap-3 overflow-x-auto px-5 pb-2 lg:mx-0 lg:grid lg:grid-cols-4 lg:overflow-visible lg:px-0 lg:pb-0 [&::-webkit-scrollbar]:hidden"
+            >
+                <article
+                    v-for="tile in tiles"
+                    :key="tile.eyebrow"
+                    class="flex w-[18rem] shrink-0 snap-start flex-col gap-3.5 rounded-[1.75rem] p-7 transition-[transform,box-shadow] duration-300 ease-brand hover:-translate-y-1.5 hover:shadow-lift lg:w-auto"
+                    :class="[tileTone[tile.tone], tile.span]"
+                >
+                    <p
+                        class="font-mono text-[0.6875rem] tracking-[0.2em] uppercase rtl:tracking-normal"
+                        :class="tileEyebrow[tile.tone]"
+                    >
+                        {{ t(tile.eyebrow) }}
+                    </p>
+                    <h3
+                        class="text-[1.75rem] leading-[1.08] font-bold tracking-[-0.03em] rtl:leading-tight rtl:tracking-normal"
+                    >
+                        {{ t(tile.title) }}
+                    </h3>
+                    <p
+                        class="mt-auto text-[0.9375rem] leading-[1.55]"
+                        :class="tileBody[tile.tone]"
+                    >
+                        {{ t(tile.body) }}
+                    </p>
+                </article>
+            </div>
+        </section>
+
+        <!-- Proof ----------------------------------------------------------------->
+        <section class="bg-teal text-cream">
+            <div
+                class="mx-auto flex max-w-[80rem] flex-col gap-12 px-5 py-[clamp(3.5rem,7vw,6rem)] sm:px-[clamp(1.25rem,5.5vw,5rem)]"
+            >
+                <Reveal
+                    class="grid grid-cols-[repeat(auto-fit,minmax(12.5rem,1fr))] gap-6"
+                >
+                    <div
+                        v-for="fact in [
+                            {
+                                figure: '3',
+                                label: 'live lead sources in one run',
+                            },
+                            {
+                                figure: '100',
+                                label: 'point score, with its reasons',
+                            },
+                            {
+                                figure: 'UK·UAE',
+                                label: 'built for both markets',
+                            },
+                            {
+                                figure: 'EN·AR',
+                                label: 'right to left included',
+                            },
+                        ]"
+                        :key="fact.figure"
+                        class="flex flex-col gap-1.5 border-t-2 border-cream pt-4"
+                    >
+                        <span
+                            class="text-[clamp(3.75rem,7vw,6.25rem)] leading-[0.9] font-bold tracking-[-0.05em] text-lime"
+                            dir="ltr"
+                            >{{ fact.figure }}</span
+                        >
+                        <span class="text-base text-teal-20">{{
+                            t(fact.label)
+                        }}</span>
+                    </div>
+                </Reveal>
+                <Reveal class="flex max-w-[61rem] flex-col gap-5">
+                    <h2
+                        class="text-[clamp(1.75rem,3.6vw,2.875rem)] leading-[1.2] font-light tracking-[-0.02em] rtl:tracking-normal"
+                    >
+                        {{ t('Built for the UK and the UAE')
+                        }}<span class="text-lime">.</span>
+                        {{
+                            t(
+                                'Sources, rules and tone differ by market — so Alima treats them as different, and the whole product speaks English and Arabic, right to left included.',
+                            )
+                        }}
+                    </h2>
+                </Reveal>
+            </div>
+        </section>
+
+        <!-- Questions ------------------------------------------------------------->
+        <section id="faq" class="scroll-mt-24 border-t border-border bg-card">
+            <div
+                class="mx-auto flex max-w-[80rem] flex-col gap-8 px-5 py-[clamp(4rem,8vw,7rem)] sm:px-[clamp(1.25rem,5.5vw,5rem)]"
+            >
+                <Reveal class="flex flex-wrap items-end justify-between gap-5">
+                    <h2
+                        class="text-[clamp(2.5rem,5vw,4rem)] leading-none font-bold tracking-[-0.045em] rtl:leading-tight rtl:tracking-normal"
+                    >
+                        {{ t('Good questions')
+                        }}<span class="text-orange">.</span>
+                    </h2>
+                    <p class="text-ink-80 dark:text-muted-foreground">
+                        {{ t('Got another one?') }}
+                        <Link
+                            :href="register()"
+                            class="font-semibold text-brand hover:underline"
+                            >{{ t("Let's talk") }}
+                            <span class="rtl:hidden">→</span
+                            ><span class="hidden rtl:inline">←</span></Link
+                        >
+                    </p>
+                </Reveal>
+
+                <div class="grid items-start gap-x-10 md:grid-cols-2">
+                    <div
+                        v-for="(faq, i) in faqs"
+                        :key="faq.q"
+                        class="border-t-[1.5px] border-foreground"
+                    >
+                        <h3>
+                            <button
+                                :id="`faq-q-${i}`"
+                                type="button"
+                                class="flex min-h-14 w-full items-center justify-between gap-5 py-5 text-start text-lg leading-snug font-semibold text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                                :aria-expanded="openFaq === i"
+                                :aria-controls="`faq-a-${i}`"
+                                @click="toggleFaq(i)"
+                            >
+                                {{ t(faq.q) }}
+                                <span
+                                    class="flex size-[2.125rem] shrink-0 items-center justify-center rounded-full transition-[background-color,color,transform] duration-300 ease-brand"
+                                    :class="
+                                        openFaq === i
+                                            ? 'rotate-45 bg-foreground text-background'
+                                            : 'bg-muted text-foreground'
+                                    "
+                                    aria-hidden="true"
+                                    ><Plus class="size-4"
+                                /></span>
+                            </button>
+                        </h3>
+                        <p
+                            v-if="openFaq === i"
+                            :id="`faq-a-${i}`"
+                            role="region"
+                            :aria-labelledby="`faq-q-${i}`"
+                            class="animate-screen pe-10 pb-5.5 text-base text-ink-80 dark:text-muted-foreground"
+                        >
+                            {{ t(faq.a) }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Closing CTA ----------------------------------------------------------->
+        <section
+            class="px-3 pt-[clamp(1.5rem,4vw,3rem)] pb-[clamp(2.5rem,5vw,4rem)] sm:px-[clamp(0.75rem,3vw,3rem)]"
+        >
+            <div
+                class="group relative mx-auto flex max-w-[84rem] flex-col gap-6.5 overflow-hidden rounded-4xl bg-ink px-[clamp(1.5rem,6vw,6rem)] pt-[clamp(2.5rem,7vw,6.5rem)] pb-[clamp(10.5rem,18vw,14.5rem)] text-cream"
+            >
+                <p
+                    class="relative z-10 flex items-center gap-3.5 font-mono text-[0.8125rem] tracking-[0.24em] text-lime uppercase rtl:tracking-normal"
+                >
+                    <span class="h-0.5 w-7 bg-orange" aria-hidden="true" />
+                    {{ t('Ready when you are') }}
                 </p>
                 <h2
-                    class="mt-4 max-w-2xl text-4xl font-bold tracking-tight sm:text-5xl rtl:font-bold"
+                    class="relative z-10 max-w-[56rem] text-[clamp(3.25rem,8vw,7.5rem)] leading-[0.95] font-bold tracking-[-0.05em] rtl:leading-tight rtl:tracking-normal"
                 >
-                    {{ t('One workspace,') }}<br />
-                    <span class="text-teal">{{ t('every part') }}</span>
-                    {{ t('of the hunt') }}.
+                    {{ t('Marketing brighter together.').replace(/\.$/, '')
+                    }}<span class="text-orange">.</span>
                 </h2>
-            </Reveal>
-
-            <Reveal
-                class="mt-12 grid gap-px overflow-hidden rounded-3xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4"
-            >
-                <div
-                    v-for="item in capabilities"
-                    :key="item.title"
-                    class="flex flex-col gap-4 bg-card p-7"
-                >
-                    <div
-                        class="flex size-12 items-center justify-center rounded-full bg-accent text-teal"
-                        aria-hidden="true"
+                <div class="relative z-10 flex flex-wrap gap-2.5">
+                    <Link
+                        :href="startHref"
+                        class="inline-flex min-h-14 items-center gap-2.5 rounded-full bg-lime px-7.5 text-[1.0625rem] font-semibold text-ink transition-[background-color,transform] duration-150 ease-brand hover:-translate-y-0.5 hover:bg-lime-hover focus-visible:ring-[3px] focus-visible:ring-cream focus-visible:ring-offset-2 focus-visible:ring-offset-ink focus-visible:outline-none"
                     >
-                        <component :is="item.icon" class="size-6" />
-                    </div>
-                    <h3
-                        class="text-lg font-semibold tracking-tight rtl:font-bold"
-                    >
-                        {{ t(item.title) }}
-                    </h3>
-                    <p class="leading-relaxed text-muted-foreground">
-                        {{ t(item.body) }}
-                    </p>
-                </div>
-            </Reveal>
-        </section>
-
-        <!-- Two markets --------------------------------------------------------->
-        <section class="mx-auto w-full max-w-7xl px-5 py-10 sm:px-8 lg:py-16">
-            <Reveal class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-                <div
-                    class="flex flex-col justify-between gap-10 rounded-3xl bg-teal p-10 text-cream sm:p-12"
-                >
-                    <div>
-                        <p
-                            class="font-mono text-xs tracking-eyebrow text-cream/75 uppercase rtl:tracking-normal"
-                        >
-                            {{ t('Two markets, one team') }}
-                        </p>
-                        <h2
-                            class="mt-4 max-w-md text-3xl leading-[1.1] font-bold tracking-tight text-balance sm:text-4xl rtl:font-bold"
-                        >
-                            {{ t('Built for the UK and the UAE')
-                            }}<span class="text-lime">.</span>
-                        </h2>
-                        <p class="mt-5 max-w-md leading-relaxed text-cream/75">
-                            {{
-                                t(
-                                    'Sources, rules and tone differ by market — so Alima treats them as different, and the whole product speaks English and Arabic, right to left included.',
-                                )
-                            }}
-                        </p>
-                    </div>
-                    <div class="flex items-center gap-3 text-cream">
-                        <Languages class="size-5 shrink-0" aria-hidden="true" />
-                        <p class="font-mono text-xs">EN · AR · RTL</p>
-                    </div>
-                </div>
-
-                <div
-                    class="flex flex-col justify-between gap-10 rounded-3xl border border-border bg-card p-10 sm:p-12"
-                >
-                    <div>
-                        <p
-                            class="font-mono text-xs tracking-eyebrow text-teal uppercase rtl:tracking-normal"
-                        >
-                            {{ t('Compliance is not a checkbox') }}
-                        </p>
-                        <h2
-                            class="mt-4 max-w-sm text-3xl leading-[1.1] font-bold tracking-tight sm:text-4xl rtl:font-bold"
-                        >
-                            {{ t('The rules are in the software')
-                            }}<span class="text-orange">.</span>
-                        </h2>
-                        <p
-                            class="mt-5 max-w-md leading-relaxed text-muted-foreground"
-                        >
-                            {{
-                                t(
-                                    'A recorded lawful basis gates discovery. Suppression, sender identity and the opt-out are conditions of sending, not settings someone can forget.',
-                                )
-                            }}
-                        </p>
-                    </div>
-                    <div class="flex items-center gap-3 text-teal">
-                        <ShieldCheck
-                            class="size-5 shrink-0"
-                            aria-hidden="true"
-                        />
-                        <p class="font-mono text-xs">
-                            {{ t('UK GDPR · UAE PDPL') }}
-                        </p>
-                    </div>
-                </div>
-            </Reveal>
-        </section>
-
-        <!-- The invitation to About --------------------------------------------->
-        <section class="mx-auto w-full max-w-7xl px-5 py-10 sm:px-8 lg:py-16">
-            <Reveal>
-                <Link
-                    href="/about"
-                    class="group duration-base relative block overflow-hidden rounded-3xl bg-ink px-8 py-14 text-cream transition-shadow ease-brand hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none sm:px-14 sm:py-20"
-                >
-                    <div
-                        class="relative z-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
-                    >
-                        <div class="max-w-2xl">
-                            <p
-                                class="font-mono text-xs tracking-eyebrow text-lilac uppercase rtl:tracking-normal"
-                            >
-                                {{ t('The bigger picture') }}
-                            </p>
-                            <h2
-                                class="mt-5 text-4xl leading-[1.05] font-bold tracking-tight text-balance sm:text-6xl rtl:font-bold"
-                            >
-                                {{ t("There's a lot more") }}<br />
-                                {{ t('under the hood')
-                                }}<span class="text-orange">.</span>
-                            </h2>
-                            <p class="mt-6 max-w-lg text-lg text-cream/70">
-                                {{
-                                    t(
-                                        'Every part of the pipeline, and the decisions behind it — where leads come from, how they are scored, and what we will not do with them.',
-                                    )
-                                }}
-                            </p>
-                            <span
-                                class="mt-8 inline-flex items-center gap-2 font-semibold text-lime"
-                            >
-                                {{ t('Read about Alima') }}
-                                <ArrowRight
-                                    class="duration-base size-4 transition-transform ease-brand group-hover:translate-x-1 rtl:rotate-180 rtl:group-hover:-translate-x-1"
-                                    aria-hidden="true"
-                                />
-                            </span>
-                        </div>
-
-                        <!--
-                          The page's one peek (brand-tokens.md §5): scaled up, set into the card's
-                          bottom end corner and cropped there, both eyes still in frame.
-
-                          It gets **its own grid column** rather than being positioned over the
-                          card. Floating it over the copy put the lead paragraph on top of the
-                          lilac ear at tablet widths — Cream on Lilac, which fails contrast, and
-                          §5 allows text only on a solid panel. A column cannot overlap. The
-                          negative margins cancel the card's padding so the box still reaches the
-                          corner, and the box clips the artwork at exactly the card's edge.
-
-                          Sized by the artwork's 383:278 ratio, never a square box — a square
-                          letterboxes it into a small floating panda instead of a peek. The widths
-                          keep it past §5's "≥3× any nearby logo" against the 134px header
-                          lock-up: 416px at `lg`, 512px at `xl`.
-                        -->
-                        <div
-                            class="relative -me-8 -mb-14 hidden h-64 w-[26rem] self-end overflow-hidden sm:-me-20 sm:-mb-20 lg:block xl:h-80 xl:w-[32rem]"
-                        >
-                            <PandaPeek
-                                class="absolute inset-x-0 -bottom-14 aspect-[383/278] w-full xl:-bottom-16"
-                            />
-                        </div>
-                    </div>
-                </Link>
-            </Reveal>
-        </section>
-
-        <!-- Closing CTA --------------------------------------------------------->
-        <section class="mx-auto w-full max-w-7xl px-5 pt-6 pb-24 sm:px-8">
-            <Reveal
-                class="flex flex-col items-start gap-6 border-t border-ink/80 pt-12 sm:flex-row sm:items-end sm:justify-between"
-            >
-                <div>
-                    <h2
-                        class="max-w-xl text-4xl font-bold tracking-tight sm:text-5xl rtl:font-bold"
-                    >
-                        {{ t('Ready to grow') }}<!--
-                          The mark is its own key because Arabic ends a question with "؟", not
-                          "?". Full stops are shared between the two scripts and stay literal.
-                        --><span class="text-orange">{{ t('?') }}</span>
-                    </h2>
-                    <p class="mt-4 max-w-md text-lg text-muted-foreground">
-                        {{ t("Let's build your pipeline together.") }}
-                    </p>
-                </div>
-                <Button
-                    v-if="!page.props.auth.user"
-                    as-child
-                    size="lg"
-                    variant="lime"
-                >
-                    <Link :href="register()">
                         {{ t("Let's grow") }}
-                        <ArrowRight class="size-4 rtl:rotate-180" />
+                        <ArrowRight class="size-[18px] rtl:rotate-180" />
                     </Link>
-                </Button>
-            </Reveal>
+                    <Link
+                        v-if="!page.props.auth.user"
+                        :href="login()"
+                        class="inline-flex min-h-14 items-center rounded-full border-[1.5px] border-ink-60 px-7 text-[1.0625rem] font-semibold text-cream transition-colors duration-150 hover:border-cream hover:bg-cream hover:text-ink focus-visible:ring-[3px] focus-visible:ring-cream focus-visible:outline-none"
+                    >
+                        {{ t('Log in') }}
+                    </Link>
+                </div>
+
+                <!-- The page's one peek, rising a little when the card is hovered. -->
+                <PandaPeek
+                    class="absolute -end-8 -bottom-[clamp(5.5rem,9vw,9.5rem)] aspect-[383/278] w-[clamp(18.75rem,40vw,35rem)] transition-transform duration-[400ms] ease-brand group-hover:-translate-y-9 group-hover:-rotate-4"
+                />
+            </div>
         </section>
     </MarketingLayout>
 </template>

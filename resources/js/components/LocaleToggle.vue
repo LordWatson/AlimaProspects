@@ -24,11 +24,12 @@ const { locale, available, setLocale, t } = useI18n();
         <DropdownMenuTrigger as-child>
             <Button
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
+                class="border border-border bg-card hover:border-foreground hover:bg-card"
                 :aria-label="t('Language')"
                 data-test="locale-toggle"
             >
-                <Languages class="size-5" />
+                <Languages class="size-4" />
             </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" class="min-w-44">

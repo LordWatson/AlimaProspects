@@ -74,7 +74,7 @@ function apply(): void {
 
 <template>
     <form
-        class="flex flex-wrap items-end gap-3 rounded-2xl border border-border bg-card px-4 py-3"
+        class="flex flex-wrap items-end gap-3 rounded-[1.25rem] border border-transparent bg-card px-4 py-3 shadow-sm dark:border-border"
         @submit.prevent="apply"
     >
         <div class="flex flex-col gap-1">

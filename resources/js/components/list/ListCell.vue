@@ -67,7 +67,7 @@ const alignClass = computed(
     <td
         :class="
             cn(
-                'border-b border-border align-middle',
+                'border-b border-line-soft align-middle',
                 padding,
                 alignClass,
                 props.hide ? hideClass : '',

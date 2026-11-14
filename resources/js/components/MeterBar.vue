@@ -96,7 +96,7 @@ const track = computed(
             aria-hidden="true"
         >
             <span
-                class="duration-base block h-full rounded-full transition-[width] ease-brand"
+                class="block h-full rounded-full transition-[width] duration-[250ms] ease-brand"
                 :class="fill"
                 :style="{ width: `${fraction * 100}%` }"
             />

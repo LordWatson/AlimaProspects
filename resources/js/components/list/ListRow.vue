@@ -32,8 +32,8 @@ const props = withDefaults(
     <tr
         :class="
             cn(
-                'group/row relative transition-colors focus-within:bg-accent/40 hover:bg-accent/40',
-                props.selected ? 'bg-accent/60' : '',
+                'group/row relative transition-colors duration-150 focus-within:bg-background hover:bg-background',
+                props.selected ? 'bg-lime-20 dark:bg-accent/60' : '',
                 props.class,
             )
         "

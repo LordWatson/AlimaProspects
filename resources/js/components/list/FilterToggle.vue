@@ -43,7 +43,7 @@ const emit = defineEmits<{ toggle: [] }>();
     <button
         type="button"
         :aria-pressed="props.pressed"
-        class="rounded-full transition-transform focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none active:scale-95"
+        class="rounded-full transition-transform duration-150 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none active:scale-95"
         :data-test="props.dataTest ?? undefined"
         @click="emit('toggle')"
     >
@@ -51,7 +51,9 @@ const emit = defineEmits<{ toggle: [] }>();
             :variant="props.pressed ? props.variant : 'outline'"
             :class="[
                 props.mono ? 'font-mono' : '',
-                props.pressed ? '' : 'border-input hover:bg-accent',
+                props.pressed
+                    ? ''
+                    : 'border-[1.5px] border-border hover:border-foreground',
             ]"
             dir="auto"
         >

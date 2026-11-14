@@ -194,7 +194,7 @@ const months = (days: number): number => Math.round(days / 30);
                 </section>
 
                 <section
-                    class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <h2 class="text-xl font-semibold text-teal">
                         {{ t('Contact us') }}

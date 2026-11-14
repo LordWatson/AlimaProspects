@@ -140,7 +140,7 @@ function allowance(value: number | null): string {
 
         <!-- What is actually in force, and why. -->
         <section
-            class="flex flex-col gap-3 rounded-2xl border border-border bg-card px-5 py-4"
+            class="flex flex-col gap-3 rounded-[1.25rem] border border-transparent bg-card px-5 py-4 shadow-sm dark:border-border"
             aria-label="Entitlements in force"
         >
             <div class="flex flex-wrap items-center gap-2">
@@ -212,7 +212,7 @@ function allowance(value: number | null): string {
             </h2>
 
             <form
-                class="flex flex-wrap items-end gap-3 rounded-2xl border border-border bg-card px-5 py-4"
+                class="flex flex-wrap items-end gap-3 rounded-[1.25rem] border border-transparent bg-card px-5 py-4 shadow-sm dark:border-border"
                 @submit.prevent="
                     modeForm.patch(`/admin/teams/${team.id}/billing/mode`, {
                         preserveScroll: true,
@@ -292,7 +292,7 @@ function allowance(value: number | null): string {
             </div>
 
             <form
-                class="grid gap-3 rounded-2xl border border-border bg-card px-5 py-4 sm:grid-cols-2"
+                class="grid gap-3 rounded-[1.25rem] border border-transparent bg-card px-5 py-4 shadow-sm sm:grid-cols-2 dark:border-border"
                 @submit.prevent="
                     grantForm.post(`/admin/teams/${team.id}/billing/grants`, {
                         preserveScroll: true,
@@ -385,7 +385,7 @@ function allowance(value: number | null): string {
             <div
                 v-for="row in capabilities"
                 :key="row.value"
-                class="flex flex-col gap-2 rounded-2xl border border-border bg-card px-5 py-4"
+                class="flex flex-col gap-2 rounded-[1.25rem] border border-transparent bg-card px-5 py-4 shadow-sm dark:border-border"
             >
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="font-medium text-foreground">

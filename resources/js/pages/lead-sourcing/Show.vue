@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
         <!-- Running -->
         <section
             v-if="isRunning"
-            class="flex flex-col items-center gap-5 rounded-2xl border border-border bg-card px-6 py-14 text-center"
+            class="flex flex-col items-center gap-5 rounded-[1.25rem] border border-transparent bg-card px-6 py-14 text-center shadow-sm dark:border-border"
             data-test="running"
         >
             <Spinner class="size-8 text-brand" />
@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
         <!-- Failed -->
         <section
             v-else-if="status === 'failed'"
-            class="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card px-6 py-12 text-center"
+            class="flex flex-col items-center gap-4 rounded-[1.25rem] border border-transparent bg-card px-6 py-12 text-center shadow-sm dark:border-border"
             role="alert"
             data-test="failed"
         >

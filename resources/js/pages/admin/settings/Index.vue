@@ -155,7 +155,7 @@ function setList(key: string, text: string): void {
             <div
                 v-for="setting in group.items"
                 :key="setting.key"
-                class="flex flex-col gap-2 rounded-2xl border border-border bg-card px-5 py-4"
+                class="flex flex-col gap-2 rounded-[1.25rem] border border-transparent bg-card px-5 py-4 shadow-sm dark:border-border"
             >
                 <div class="flex flex-wrap items-center gap-2">
                     <Label :for="`setting-${setting.key}`" class="text-base">

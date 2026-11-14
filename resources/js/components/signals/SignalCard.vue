@@ -185,7 +185,12 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
          articles is a list of "article, article, article" in a screen reader's landmark and
          element lists, which is the one view that exists to let somebody skip to the story they
          want. -->
-    <Card as="article" :aria-labelledby="headlineId" :data-test="cardTestId">
+    <Card
+        as="article"
+        class="transition-[transform,box-shadow] duration-[250ms] ease-brand hover:-translate-y-0.5 hover:shadow-pop"
+        :aria-labelledby="headlineId"
+        :data-test="cardTestId"
+    >
         <CardContent class="flex flex-col gap-4">
             <!-- Event type, place, relevance, date. The chip is the card's one accent; relevance
                  belongs here because it is the number the feed is ordered by. -->
@@ -267,7 +272,7 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
             <div class="space-y-2">
                 <h2
                     :id="headlineId"
-                    class="text-lg font-semibold text-foreground rtl:font-bold"
+                    class="text-lg leading-snug font-semibold tracking-tight text-foreground rtl:font-bold"
                     dir="auto"
                 >
                     {{ signal.headline }}
@@ -386,7 +391,7 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                     <Info class="size-4" aria-hidden="true" />
                     {{ t('Why you’re seeing this') }}
                     <ChevronDown
-                        class="duration-fast size-4 transition-transform ease-brand motion-reduce:transition-none"
+                        class="size-4 transition-transform duration-150 ease-brand motion-reduce:transition-none"
                         :class="showExplanation ? 'rotate-180' : ''"
                         aria-hidden="true"
                     />
@@ -528,7 +533,7 @@ const leadHref = computed(() => `/leads/${props.signal.lead?.id ?? ''}`);
                         })
                     }}
                     <ChevronDown
-                        class="duration-fast size-4 transition-transform ease-brand motion-reduce:transition-none"
+                        class="size-4 transition-transform duration-150 ease-brand motion-reduce:transition-none"
                         :class="showSources ? 'rotate-180' : ''"
                         aria-hidden="true"
                     />

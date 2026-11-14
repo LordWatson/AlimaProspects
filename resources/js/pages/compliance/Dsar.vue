@@ -184,7 +184,9 @@ function labelsFor(record: SubjectRecord): string {
         </PageHero>
 
         <!-- Search ------------------------------------------------------------>
-        <section class="rounded-2xl border border-border bg-card p-6">
+        <section
+            class="rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
+        >
             <form
                 class="flex flex-wrap items-end gap-4"
                 @submit.prevent="runSearch"

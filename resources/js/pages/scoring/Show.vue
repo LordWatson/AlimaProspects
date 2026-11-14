@@ -221,7 +221,7 @@ function sendFeedback(rating: 'good' | 'bad'): void {
         <template v-else>
             <!-- Grade panel -->
             <section
-                class="flex flex-col gap-6 rounded-2xl border border-border bg-card p-6 sm:flex-row sm:items-center sm:justify-between"
+                class="flex flex-col gap-6 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-border"
                 data-test="grade-panel"
             >
                 <div class="flex items-center gap-5">
@@ -311,7 +311,7 @@ function sendFeedback(rating: 'good' | 'bad'): void {
             <!-- Excluded by the profile -->
             <section
                 v-if="score.excluded"
-                class="flex items-start gap-3 rounded-2xl border border-border bg-card p-6"
+                class="flex items-start gap-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 role="status"
                 data-test="excluded"
             >
@@ -340,7 +340,7 @@ function sendFeedback(rating: 'good' | 'bad'): void {
             <!-- Explanation -->
             <section
                 v-if="score.explanation"
-                class="space-y-4 rounded-2xl border border-border bg-card p-6"
+                class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 data-test="explanation"
             >
                 <h2
@@ -587,7 +587,7 @@ function sendFeedback(rating: 'good' | 'bad'): void {
             <!-- Feedback -->
             <section
                 v-if="can.giveFeedback"
-                class="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 sm:flex-row sm:items-center sm:justify-between"
+                class="flex flex-col gap-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-border"
                 data-test="feedback"
             >
                 <div class="space-y-1">

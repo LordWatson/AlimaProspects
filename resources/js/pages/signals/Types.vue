@@ -1241,7 +1241,7 @@ function confirmRemove(): void {
              "take one of ours", and a blank text box first would hide that. -->
         <section
             v-if="can.manage"
-            class="space-y-3 rounded-2xl border border-border bg-card p-6"
+            class="space-y-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             data-test="composer"
         >
             <div class="flex items-start gap-3">
@@ -2007,7 +2007,7 @@ function confirmRemove(): void {
                     <li
                         v-for="preset in group.presets"
                         :key="preset.key"
-                        class="flex items-start justify-between gap-3 rounded-2xl border border-border bg-card p-4"
+                        class="flex items-start justify-between gap-3 rounded-[1.25rem] border border-transparent bg-card p-4 shadow-sm dark:border-border"
                         :data-test="`preset-${preset.key}`"
                     >
                         <div class="flex min-w-0 gap-3">
@@ -2086,7 +2086,7 @@ function confirmRemove(): void {
                 <li
                     v-for="submission in submissions"
                     :key="submission.id"
-                    class="space-y-1 rounded-2xl border border-border bg-card px-4 py-3"
+                    class="space-y-1 rounded-[1.25rem] border border-transparent bg-card px-4 py-3 shadow-sm dark:border-border"
                     :data-test="`submission-${submission.id}`"
                 >
                     <p
