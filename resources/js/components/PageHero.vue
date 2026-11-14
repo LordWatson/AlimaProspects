@@ -125,8 +125,8 @@ const statValue = computed(() => {
         class="relative isolate overflow-hidden rounded-3xl bg-ink text-cream"
         :class="
             isCompact
-                ? 'p-5 sm:p-7 lg:p-9'
-                : 'p-6 sm:p-9 lg:min-h-80 lg:p-12 lg:pb-14'
+                ? 'p-5 sm:p-7 lg:px-8 lg:py-7'
+                : 'p-6 sm:p-8 lg:min-h-[18rem] lg:px-[2.125rem] lg:py-[1.875rem]'
         "
     >
         <!--
@@ -141,36 +141,34 @@ const statValue = computed(() => {
         <PandaPeek
             v-if="peek"
             tone="text-lilac"
-            class="absolute -end-3 -bottom-8 z-0 aspect-[383/278] w-48 sm:-bottom-11 sm:w-64 lg:-bottom-14 lg:w-80 xl:-bottom-16 xl:w-[22rem]"
+            class="absolute -end-3 z-0 aspect-[383/278]"
+            :class="
+                stat
+                    ? '-bottom-9 w-36 sm:-bottom-11 sm:w-44 lg:-bottom-12 lg:w-48'
+                    : '-bottom-8 w-48 sm:-bottom-11 sm:w-64 lg:-bottom-14 lg:w-80 xl:-bottom-16 xl:w-[22rem]'
+            "
         />
 
         <!-- Eyebrow: number + section, and the date (or screen meta) -->
         <div
-            class="relative z-10 flex items-center justify-between gap-4 font-mono text-xs tracking-eyebrow text-cream/60 uppercase rtl:tracking-normal"
+            class="relative z-10 flex items-center justify-between gap-4 font-mono text-[0.6875rem] tracking-[0.16em] text-cream uppercase rtl:tracking-normal"
         >
             <span class="flex min-w-0 items-center gap-2">
-                <span
-                    class="size-2.5 shrink-0 rounded-sm bg-lime"
-                    aria-hidden="true"
-                />
+                <span class="size-2 shrink-0 bg-lime" aria-hidden="true" />
                 <span class="truncate"
                     ><template v-if="index">{{ index }} — </template
                     >{{ eyebrow }}</span
                 >
             </span>
-            <span v-if="metaText" class="shrink-0 tabular-nums">{{
+            <span v-if="metaText" class="shrink-0 text-ink-20 tabular-nums">{{
                 metaText
             }}</span>
         </div>
-        <div
-            class="relative z-10 mt-4 h-px w-full bg-cream/15"
-            aria-hidden="true"
-        />
 
         <div
             class="relative z-10 grid gap-8"
             :class="[
-                isCompact ? 'mt-6' : 'mt-8',
+                isCompact ? 'mt-5' : 'mt-5',
                 stat ? 'lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start' : '',
             ]"
         >
@@ -180,11 +178,11 @@ const statValue = computed(() => {
                      `dir="auto"` because it is data: a company name in the other script than the
                      UI sets its own direction, as the plain headers these heroes replaced did. -->
                 <h1
-                    class="leading-[0.98] font-bold tracking-tight break-words rtl:leading-tight"
+                    class="leading-[1.02] font-bold tracking-[-0.035em] break-words rtl:leading-tight rtl:tracking-normal"
                     :class="
                         isCompact
-                            ? 'text-3xl sm:text-4xl lg:text-5xl'
-                            : 'text-4xl sm:text-5xl lg:text-6xl xl:text-7xl'
+                            ? 'text-3xl sm:text-4xl'
+                            : 'text-[2.125rem] sm:text-5xl xl:text-[3.625rem]'
                     "
                 >
                     {{ statement.head
@@ -200,14 +198,14 @@ const statValue = computed(() => {
 
                 <!-- The one rounded Signal Orange rule per layout (decorative). -->
                 <div
-                    class="mt-6 h-1 w-14 rounded-full bg-orange"
+                    class="mt-4 h-[3px] w-10 rounded-full bg-orange"
                     aria-hidden="true"
                 />
 
                 <p
                     v-if="description"
-                    class="max-w-xl text-cream/70"
-                    :class="isCompact ? 'mt-5' : 'mt-7'"
+                    class="max-w-xl text-[0.9375rem] leading-relaxed text-ink-20"
+                    :class="isCompact ? 'mt-4' : 'mt-4'"
                 >
                     {{ description }}
                 </p>
@@ -217,7 +215,7 @@ const statValue = computed(() => {
                 <div
                     v-if="$slots.actions"
                     class="flex flex-wrap items-center gap-3"
-                    :class="isCompact ? 'mt-6' : 'mt-8'"
+                    :class="isCompact ? 'mt-5' : 'mt-5'"
                 >
                     <slot name="actions" />
                 </div>
@@ -226,18 +224,28 @@ const statValue = computed(() => {
             </div>
 
             <!-- The headline figure, set against the end edge above the peek. -->
-            <div v-if="stat" class="lg:text-end">
+            <!--
+              With a figure on the card the peek shrinks, and this column keeps the peek's visible
+              height free beneath it — a lime figure or a cream caption set over lilac is
+              unreadable, and a panda's eye through the number is not a peek (§5).
+            -->
+            <div v-if="stat" class="pb-20 lg:pb-24 lg:text-end">
                 <p
-                    class="font-mono text-xs tracking-eyebrow text-cream/60 uppercase rtl:tracking-normal"
+                    class="font-mono text-xs tracking-eyebrow text-lime uppercase rtl:tracking-normal"
                 >
                     {{ stat.label }}
                 </p>
                 <p
-                    class="mt-3 text-6xl leading-none font-bold tracking-tight text-lime tabular-nums lg:text-7xl"
+                    :class="
+                        isCompact
+                            ? 'text-6xl lg:text-7xl'
+                            : 'text-7xl lg:text-[6.75rem]'
+                    "
+                    class="mt-1 leading-[0.95] font-bold tracking-[-0.04em] text-lime tabular-nums"
                 >
                     {{ statValue }}
                 </p>
-                <p class="mt-3 text-sm text-cream/70">{{ stat.caption }}</p>
+                <p class="mt-2 text-sm text-cream">{{ stat.caption }}</p>
             </div>
         </div>
     </section>

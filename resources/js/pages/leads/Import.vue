@@ -209,7 +209,7 @@ function example(header: string): string {
         <form class="space-y-6" @submit.prevent="submit">
             <!-- The file -->
             <section
-                class="space-y-3 rounded-2xl border border-border bg-card p-6"
+                class="space-y-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             >
                 <h2
                     class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
@@ -247,7 +247,7 @@ function example(header: string): string {
             <!-- The mapping -->
             <section
                 v-if="hasFile"
-                class="space-y-4 rounded-2xl border border-border bg-card p-6"
+                class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 data-test="mapping"
             >
                 <div class="space-y-1">

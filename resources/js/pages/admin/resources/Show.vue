@@ -96,7 +96,7 @@ function destroy(): void {
         </AdminPageHeader>
 
         <dl
-            class="grid gap-x-6 gap-y-4 rounded-2xl border border-border bg-card px-5 py-5 sm:grid-cols-2"
+            class="grid gap-x-6 gap-y-4 rounded-[1.25rem] border border-transparent bg-card px-5 py-5 shadow-sm sm:grid-cols-2 dark:border-border"
         >
             <div
                 v-for="column in columns"

@@ -44,7 +44,7 @@ const { t } = useI18n();
         <ul class="flex flex-wrap items-center gap-1.5">
             <li v-for="chip in props.chips" :key="chip.id">
                 <span
-                    class="inline-flex items-center gap-1.5 rounded-full bg-brand/10 py-1 ps-3 pe-1 text-xs text-foreground"
+                    class="inline-flex items-center gap-1.5 rounded-full bg-foreground py-1 ps-3 pe-1 text-xs text-background"
                 >
                     <!-- The tint carries the brand; the words stay `text-foreground`.
                          `text-brand` on a 10% tint of itself is 4.3:1 on the dark card
@@ -58,7 +58,7 @@ const { t } = useI18n();
                     </span>
                     <button
                         type="button"
-                        class="flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-brand/15 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        class="flex size-5 items-center justify-center rounded-full text-background/70 transition-colors hover:bg-background/15 hover:text-background focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                         :aria-label="
                             t('Stop filtering by :group :value', {
                                 group: chip.group,

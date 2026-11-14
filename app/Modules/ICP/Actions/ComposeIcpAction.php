@@ -18,6 +18,7 @@ use App\Modules\ICP\Enums\CriterionType;
 use App\Modules\ICP\Exceptions\IcpException;
 use App\Modules\ICP\Http\Requests\ComposeIcpRequest;
 use App\Modules\Onboarding\Models\BusinessProfile;
+use App\Modules\Onboarding\Support\SellerBrief;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -141,24 +142,16 @@ final class ComposeIcpAction
      * brief alone, which is the right failure. A model told something made up drafts a confident
      * profile for the wrong business.
      */
-    private function profileSummary(Team $team): string
+    private function profileSummary(Team $team): UntrustedContent
     {
-        $profile = BusinessProfile::query()->where('team_id', $team->getKey())->first();
-
-        if (! $profile instanceof BusinessProfile) {
-            return 'Not yet described.';
-        }
-
-        $parts = array_filter([
-            $profile->company_name,
-            $profile->industry,
-            $profile->value_proposition,
-            $profile->products_services !== null ? implode(', ', $profile->products_services) : null,
-        ], static fn (?string $value): bool => $value !== null && trim($value) !== '');
-
-        return $parts === []
-            ? 'Not yet described.'
-            : Str::limit(Str::squish(implode(' — ', $parts)), 500, '');
+        // The whole seller description, not a one-line summary: the customers they already have,
+        // what a job costs and how they deliver are what set a profile's size and geography.
+        // Wrapped, because it now carries accepted background-check findings — text that began
+        // life on a web page.
+        return UntrustedContent::from(
+            SellerBrief::for(BusinessProfile::query()->where('team_id', $team->getKey())->first())
+                ?? 'Not yet described.',
+        );
     }
 
     /**

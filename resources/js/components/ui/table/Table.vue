@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import type { HTMLAttributes } from 'vue';
-import { cn } from '@/lib/utils';
+import type { HTMLAttributes } from "vue";
+import { cn } from "@/lib/utils";
 
-const props = defineProps<{ class?: HTMLAttributes['class'] }>();
+const props = defineProps<{ class?: HTMLAttributes["class"] }>();
 </script>
 
 <template>
     <div
         data-slot="table-container"
-        class="relative w-full overflow-x-auto rounded-lg border border-border bg-card"
+        class="relative w-full overflow-x-auto rounded-[1.25rem] border border-transparent bg-card px-2 shadow-sm dark:border-border"
     >
         <table
             data-slot="table"

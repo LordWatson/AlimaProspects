@@ -14,40 +14,46 @@ use App\Modules\LeadSourcing\Data\DiscoveryQuery;
 use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
-use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\Onboarding\Models\BusinessProfile;
 use App\Modules\Scoring\Services\DeterministicScorer;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Asks the model itself which companies fit the team's customer description, instead of asking an
- * index what it holds. The only {@see LeadSourceProvider} with no HTTP of its own: the transport,
- * the retries, the credit allowance, the response validation and the per-team cost ledger all
- * belong to {@see AiClient} (ADR 0005), so there is nothing here but the prompt and the mapping.
+ * Web search, read by a model (ADR 0035). It runs the run's search angles through
+ * {@see WebSearchProvider}, hands the real results to `lead_sourcing.ai_discovery`, and keeps only
+ * the companies the model can point to a result for.
  *
- * Why it exists, in one line: the index-backed providers return a **name and a website** and nothing
- * else, which leaves the ICP's Industry and Company size criteria Unknown and a discovered lead
- * graded on its geography alone (`Scoring\Services\DeterministicScorer`, rule 2). This source states a trade and
- * a headcount per company, so both halves of the hybrid score have something to judge.
+ * It used to name companies from what the model remembered, with nothing to check a name against:
+ * a fabricated company was a fabricated prospect, and the failure looked exactly like a real lead.
+ * **There is no recall path left.** What the model adds over a plain web search is a reading of
+ * each result — is this a company or an article, what trade is it in, would it buy from this
+ * business — and the two fields no index fills, a trade and (where the result states one) a
+ * headcount, which are what `Scoring\Services\DeterministicScorer` grades on.
  *
- * Three things about it that are not negotiable:
+ * Four things about it that are not negotiable:
  *
- * 1. **It is the least authoritative source there is** ({@see LeadSource::rank()} = 0). A model can
- *    be fluently wrong about a company that does not exist, which no register or crawler can be, so
- *    every other source corrects its fields on a merge and Enrichment treats the name it stored as
- *    provisional. A lead from here is a lead to check, and the UI says which source found it.
- * 2. **No named individual, ever** (ADR 0025). The schema has no person on it — not a founder, not a
- *    contact — so there is nothing to filter out later. Company-level facts only.
- * 3. **A failure fails the run.** Unlike {@see DiscoveryQueryShaper}, where AI is an improvement over
- *    a deterministic query, here the AI *is* the source: there is no degraded answer to fall back to,
- *    so an exhausted allowance or a transport error becomes a {@see LeadSourcingException} and the
- *    member is told, rather than handed an empty list that looks like "no companies match you".
+ * 1. **A named company must trace to a result.** Each company cites the number of the result it
+ *    came from; a citation that was not offered is dropped and counted, and the website stored is
+ *    the cited result's own address, never text the model wrote.
+ * 2. **It is still the least authoritative source there is** ({@see LeadSource::rank()} = 0). It is
+ *    a reading of a page, so every other source corrects its fields on a merge and Enrichment
+ *    treats the name it stored as provisional.
+ * 3. **No named individual, ever** (ADR 0025). The schema has no person on it.
+ * 4. **A failure fails the run.** Unlike {@see DiscoveryQueryShaper}, where AI improves on a
+ *    deterministic query, here the AI *is* the source: an exhausted allowance or a transport error
+ *    becomes a {@see LeadSourcingException} rather than an empty list that reads as "nobody
+ *    matches you". Search results that contain no fitting company are an honest empty list.
  */
 final class AiLeadSourceProvider implements LeadSourceProvider
 {
     public const string PROMPT_KEY = 'lead_sourcing.ai_discovery';
 
-    public function __construct(private readonly AiClient $ai) {}
+    public function __construct(
+        private readonly AiClient $ai,
+        private readonly WebSearchProvider $web,
+        private readonly DiscoveryPayloadBuilder $payload,
+    ) {}
 
     public function source(): LeadSource
     {
@@ -67,8 +73,26 @@ final class AiLeadSourceProvider implements LeadSourceProvider
         // applies, and the job slices to it afterwards.
         $wanted = max(1, min($query->limit, (int) config('lead-sourcing.providers.ai.max_results', 20)));
 
+        // The real results the model will read. The shaper's web angles where there are any; the
+        // member's own terms otherwise. More results than companies wanted, because a good share
+        // of any result page is articles and lists the model is told to skip.
+        $results = $this->web->discover(new DiscoveryQuery(
+            source: LeadSource::WebSearch,
+            terms: $query->queries[0] ?? $terms,
+            location: $query->location,
+            limit: (int) config('lead-sourcing.providers.ai.max_search_results', 30),
+            excludeTerms: $query->excludeTerms,
+            queries: array_slice($query->queries, 1),
+        ));
+
+        if ($results === []) {
+            return [];
+        }
+
         try {
             $response = $this->ai->structured(self::PROMPT_KEY, [
+                // The team in context, filtered explicitly; no context means no profile.
+                'seller' => $this->payload->businessBlock(BusinessProfile::current()),
                 // Wrapped even though it is first-party-ish: the terms are either a member's free
                 // text or a previous model's output, and neither is an instruction to this one.
                 'terms' => UntrustedContent::from($terms),
@@ -77,6 +101,18 @@ final class AiLeadSourceProvider implements LeadSourceProvider
                 'exclude_terms' => UntrustedContent::from(
                     $query->excludeTerms === [] ? 'none' : implode(', ', $query->excludeTerms),
                 ),
+                // Other people's web pages: data, never instructions.
+                'results' => UntrustedContent::from(implode("\n", array_map(
+                    static fn (SourcedLead $result, int $i): string => sprintf(
+                        '%d. %s — %s — %s',
+                        $i + 1,
+                        Str::limit((string) ($result->raw['title'] ?? $result->companyName), 150, ''),
+                        (string) $result->domain(),
+                        Str::limit(Str::squish((string) ($result->raw['snippet'] ?? '')), 300, ''),
+                    ),
+                    $results,
+                    array_keys($results),
+                ))),
                 'limit' => (string) $wanted,
             ]);
         } catch (AiCreditExceededException) {
@@ -86,9 +122,7 @@ final class AiLeadSourceProvider implements LeadSourceProvider
         } catch (UnknownPromptException $e) {
             // **Terminal, and a different kind of failure from an outage.** The prompt is seeded
             // reference data, so this says the row is not in this database, which no retry can
-            // change. Lumping it in with a transport error below spent all three of the job's
-            // attempts on it and told the member to try again shortly -- wrong advice, three times
-            // over. The fix is `db:seed --class=AiPromptTemplateSeeder`, so say so in the log.
+            // change. The fix is `db:seed --class=AiPromptTemplateSeeder`, so say so in the log.
             Log::channel('lead_sourcing')->error('AI lead discovery is not configured: the prompt is not seeded.', [
                 'prompt_key' => self::PROMPT_KEY,
                 'error_code' => $e->errorCode(),
@@ -105,8 +139,7 @@ final class AiLeadSourceProvider implements LeadSourceProvider
             ]);
 
             // Retryable: the queue re-runs it. An invalid response arrives here too, after the
-            // client has already retried it once against the schema — a second attempt is cheap
-            // next to telling a member their AI search found nothing when it never ran.
+            // client has already retried it once against the schema.
             throw LeadSourcingException::providerFailed($this->source()->value);
         }
 
@@ -116,31 +149,34 @@ final class AiLeadSourceProvider implements LeadSourceProvider
             return [];
         }
 
-        Log::channel('lead_sourcing')->info('AI lead discovery completed.', [
-            'icp_id' => $query->icpId,
-            'prompt_version' => $response->promptVersion,
-            'model' => $response->model,
-            'cost_micros' => $response->costMicros,
-            'cache_hit' => $response->cacheHit,
-            'companies' => count($companies),
-        ]);
-
         $leads = [];
         $seen = [];
+        $ungrounded = 0;
 
         foreach ($companies as $company) {
             if (! is_array($company)) {
                 continue;
             }
 
-            $lead = $this->mapCompany($company, $response->promptVersion, $response->model);
+            // The grounding, enforced here rather than trusted to the prompt: a company that cites
+            // a result it was never given is the model recalling, and is not stored.
+            $index = $company['source_index'] ?? null;
+            $result = is_int($index) ? ($results[$index - 1] ?? null) : null;
+
+            if (! $result instanceof SourcedLead) {
+                $ungrounded++;
+
+                continue;
+            }
+
+            $lead = $this->mapCompany($company, $result, $response->promptVersion, $response->model);
 
             if (! $lead instanceof SourcedLead) {
                 continue;
             }
 
-            // The same company twice in one answer is a real failure mode of a generative list.
-            // Collapsing on the identity key the job de-duplicates by keeps one rule, not two.
+            // Two companies read out of one result, or one company found by two results, is a real
+            // failure mode. Collapsing on the identity key the job de-duplicates by keeps one rule.
             $key = $lead->dedupeKey();
 
             if (isset($seen[$key])) {
@@ -155,26 +191,37 @@ final class AiLeadSourceProvider implements LeadSourceProvider
             }
         }
 
+        Log::channel('lead_sourcing')->info('AI lead discovery completed.', [
+            'icp_id' => $query->icpId,
+            'prompt_version' => $response->promptVersion,
+            'model' => $response->model,
+            'cost_micros' => $response->costMicros,
+            'cache_hit' => $response->cacheHit,
+            'results_read' => count($results),
+            'companies' => count($leads),
+            // Worth watching: a model that starts naming from memory shows up here first.
+            'ungrounded_dropped' => $ungrounded,
+        ]);
+
         return $leads;
     }
 
     public function costMicros(int $leadsReturned): int
     {
-        // **Zero on purpose, and not because it is free.** The call's real cost is already recorded,
-        // per team and per model, on the `ai_requests` ledger by the AI Platform — which is where
-        // `PlatformRollup` reads Claude spend from. Repeating it on `discovery_runs.cost_micros`
-        // would count one request twice in the platform margin, under two provider dimensions.
-        return 0;
+        // The **search** spend only. The model call's cost is already recorded, per team and per
+        // model, on the `ai_requests` ledger — which is where `PlatformRollup` reads Claude spend
+        // from — so repeating it here would count one request twice in the platform margin.
+        return $this->web->costMicros($leadsReturned);
     }
 
     /**
-     * Map one company object into a {@see SourcedLead}, keeping the model's own claim as the row's
-     * provenance: this lead exists because this prompt version of this model said so, and a stored
-     * reason is what lets a member judge it without re-running anything.
+     * Map one company the model picked into a {@see SourcedLead}. Identity comes from the search
+     * result it cited — the website and the source URL are the result's own — and only the reading
+     * (a trading name, a trade, a place) comes from the model.
      *
      * @param  array<array-key, mixed>  $company
      */
-    private function mapCompany(array $company, int $promptVersion, string $model): ?SourcedLead
+    private function mapCompany(array $company, SourcedLead $result, int $promptVersion, string $model): ?SourcedLead
     {
         $name = $this->text($company['company_name'] ?? null);
 
@@ -185,16 +232,19 @@ final class AiLeadSourceProvider implements LeadSourceProvider
         return new SourcedLead(
             source: LeadSource::Ai,
             companyName: $name,
-            website: $this->website($company['website'] ?? null),
+            website: $result->website,
             industry: $this->text($company['industry'] ?? null),
             employeeRange: $this->employeeRange($company['employee_range'] ?? null),
             locality: $this->text($company['locality'] ?? null),
             region: $this->text($company['region'] ?? null),
             country: $this->country($company['country'] ?? null),
-            // No `source_url`: there is no page this came off. The source label is the attribution,
-            // and `raw` carries the claim it was made on.
+            sourceUrl: $result->sourceUrl,
+            // The claim and the page it was read from, kept together: a lead from this source
+            // exists because this prompt version of this model read that result that way.
             raw: [
                 'claim' => $company,
+                'result' => array_intersect_key($result->raw, array_flip(['title', 'link', 'snippet', 'query'])),
+                'snippet' => $result->raw['snippet'] ?? null,
                 'prompt_key' => self::PROMPT_KEY,
                 'prompt_version' => $promptVersion,
                 'model' => $model,
@@ -203,35 +253,11 @@ final class AiLeadSourceProvider implements LeadSourceProvider
     }
 
     /**
-     * A bare http(s) homepage, or null. {@see SourcedLead} drops anything that is not http(s)
-     * anyway; prefixing a scheme-less domain here is what lets the **domain** dedupe key form, so an
-     * AI lead collapses with the web-search or Places record of the same company instead of becoming
-     * a second row keyed by its name.
-     */
-    private function website(mixed $value): ?string
-    {
-        $website = $this->text($value);
-
-        if ($website === null) {
-            return null;
-        }
-
-        if (Str::startsWith(Str::lower($website), ['http://', 'https://'])) {
-            return $website;
-        }
-
-        // A plausible bare host — with a path allowed, since "acme.com/about" is a domain the model
-        // has added a page to rather than a value to throw away — and not a sentence about one.
-        return preg_match('#^[a-z0-9.-]+\.[a-z]{2,}(/\S*)?$#i', $website) === 1 ? 'https://'.$website : null;
-    }
-
-    /**
      * An ISO 3166-1 alpha-2 country code, or null.
      *
-     * Dropped rather than coerced, because {@see Lead::$country} is a two-character column and
+     * Dropped rather than coerced, because `leads.country` is a two-character column and
      * {@see SourcedLead} fills it by truncation: "United Kingdom" asked for would be stored as "UN",
-     * which matches no geography criterion and reads as a country to anyone looking at the row. The
-     * prompt asks for the code; anything else is treated as not stated.
+     * which matches no geography criterion and reads as a country to anyone looking at the row.
      */
     private function country(mixed $value): ?string
     {
@@ -245,14 +271,11 @@ final class AiLeadSourceProvider implements LeadSourceProvider
     /**
      * A plausible headcount band ("11-50", "200-500", "1,000+", "50"), or null.
      *
-     * Dropped rather than stored, for the same reason {@see country()} drops a country name: the
-     * schema types this field as a free string with no bound, so the model can put anything here —
-     * and once did, when a run of broken JSON ("51-200','locality':'London'}]}…") bled into the
-     * string value, cleared schema validation, and overflowed the 64-char column it is stored in.
-     * {@see SourcedLead} clamps every text field to its column as the storage backstop; this is the
-     * data-quality half: a band that isn't a count is the model talking, not counting, and a wrong
-     * headcount mis-grades the lead ({@see DeterministicScorer} reads
-     * it for the Company-size criterion), so "not stated" is the honest value. The company is kept.
+     * Dropped rather than stored when it is not one: the schema types this field as a free string
+     * with no bound, and a run of broken JSON once bled into it, cleared schema validation and
+     * overflowed the 64-char column. A wrong headcount also mis-grades the lead
+     * ({@see DeterministicScorer} reads it for the Company-size criterion), so "not stated" is the
+     * honest value. The company is kept.
      */
     private function employeeRange(mixed $value): ?string
     {

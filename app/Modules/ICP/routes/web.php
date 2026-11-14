@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\ICP\Http\Controllers\Web\IcpController;
+use App\Modules\ICP\Http\Controllers\Web\IcpSuggestionController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
@@ -21,4 +22,17 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::put('icp/{icp}', [IcpController::class, 'update'])->whereNumber('icp')->name('icp.update');
     Route::post('icp/{icp}/activate', [IcpController::class, 'activate'])->whereNumber('icp')->name('icp.activate');
     Route::delete('icp/{icp}', [IcpController::class, 'destroy'])->whereNumber('icp')->name('icp.destroy');
+
+    // Suggestions for a profile (relevance P4). Asking for them is a paid model call, so it is
+    // throttled per member like the composer; answering one is not.
+    Route::post('icp/{icp}/suggestions', [IcpSuggestionController::class, 'store'])
+        ->whereNumber('icp')
+        ->middleware('throttle:6,60')
+        ->name('icp.suggestions.store');
+    Route::post('icp/suggestions/{suggestion}/accept', [IcpSuggestionController::class, 'accept'])
+        ->whereNumber('suggestion')
+        ->name('icp.suggestions.accept');
+    Route::post('icp/suggestions/{suggestion}/decline', [IcpSuggestionController::class, 'decline'])
+        ->whereNumber('suggestion')
+        ->name('icp.suggestions.decline');
 });

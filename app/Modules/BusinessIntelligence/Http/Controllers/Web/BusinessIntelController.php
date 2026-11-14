@@ -11,9 +11,11 @@ use App\Modules\BusinessIntelligence\Actions\FindReportAction;
 use App\Modules\BusinessIntelligence\Actions\GetLatestReportAction;
 use App\Modules\BusinessIntelligence\Actions\RerunBackgroundCheckAction;
 use App\Modules\BusinessIntelligence\Data\AcceptBackgroundCheckData;
+use App\Modules\BusinessIntelligence\Data\BackgroundCheckFindings;
 use App\Modules\BusinessIntelligence\Http\Requests\AcceptBackgroundCheckRequest;
 use App\Modules\BusinessIntelligence\Http\Resources\BusinessIntelReportResource;
 use App\Modules\BusinessIntelligence\Models\BusinessIntelReport;
+use App\Modules\BusinessIntelligence\Support\ProfileMapping;
 use App\Modules\Core\Models\Team;
 use App\Modules\Onboarding\Actions\GetOnboardingStateAction;
 use App\Modules\Onboarding\Models\BusinessProfile;
@@ -29,7 +31,7 @@ use Inertia\Response;
  */
 final class BusinessIntelController extends Controller
 {
-    public function show(Request $request, GetLatestReportAction $getLatest, GetOnboardingStateAction $getState): Response
+    public function show(Request $request, GetLatestReportAction $getLatest, GetOnboardingStateAction $getState, ProfileMapping $mapping): Response
     {
         $team = $this->team($request);
 
@@ -44,6 +46,12 @@ final class BusinessIntelController extends Controller
                 ? BusinessIntelReportResource::make($report)->resolve($request)
                 : null,
             'profile' => $this->serializeProfile($profile),
+            // What accepting would do to the profile, field by field: fill a blank, leave a match
+            // alone, or — where the team typed something else — ask. Built by the same class the
+            // accept Action applies, so the preview cannot disagree with the result.
+            'mapping' => $report instanceof BusinessIntelReport && $report->isReady() && $profile instanceof BusinessProfile
+                ? $mapping->rows($profile, BackgroundCheckFindings::fromAi($report->findings ?? []))
+                : [],
             'can' => ['manage' => $request->user()?->can('manage', $this->transientReport($team)) ?? false],
         ]);
     }

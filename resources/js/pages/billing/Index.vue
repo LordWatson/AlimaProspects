@@ -350,7 +350,7 @@ function resume(): void {
 
         <!-- Where the team stands -->
         <section
-            class="flex flex-col gap-6 rounded-2xl border border-border bg-card p-6"
+            class="flex flex-col gap-6 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             :aria-label="t('Your plan: :plan', { plan: planName })"
         >
             <header class="flex flex-wrap items-start justify-between gap-4">
@@ -415,7 +415,7 @@ function resume(): void {
 
         <!-- What's been used -->
         <section
-            class="flex flex-col gap-6 rounded-2xl border border-border bg-card p-6"
+            class="flex flex-col gap-6 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
         >
             <header class="flex flex-col gap-1">
                 <h2 class="text-lg font-semibold text-foreground">
@@ -508,7 +508,7 @@ function resume(): void {
         <!-- Invoices -->
         <section
             v-if="can.manage && invoices.length > 0"
-            class="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6"
+            class="flex flex-col gap-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
         >
             <h2 class="text-lg font-semibold text-foreground">
                 {{ t('Invoices') }}

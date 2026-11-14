@@ -63,7 +63,7 @@ const open = ref(props.chips.length > 0);
 
 <template>
     <section
-        class="rounded-2xl border border-border bg-card"
+        class="rounded-[1.25rem] border border-transparent bg-card shadow-sm dark:border-border"
         :aria-label="t('Filter and order this list')"
     >
         <div class="flex flex-wrap items-end gap-3 p-4">

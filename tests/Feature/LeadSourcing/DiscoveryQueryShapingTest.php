@@ -92,12 +92,11 @@ function shaper(): DiscoveryQueryShaper
 it('searches for the customers, not for companies like the team', function (): void {
     [$team, $profile, $icp, $fakeAi] = bootShaping();
 
-    $fakeAi->queueStructured([
-        'terms' => 'boutique hotels and restaurant groups',
+    $fakeAi->queueStructured(shapedQueries('boutique hotels and restaurant groups', [
         'customer_description' => 'Independent hospitality businesses that commission branding work',
         'exclude_terms' => ['graphic design', 'branding agency'],
         'reasoning' => 'Hospitality businesses rebrand often and buy design work.',
-    ]);
+    ]));
 
     $query = app(TeamContext::class)->run(
         $team,
@@ -117,11 +116,7 @@ it('searches for the customers, not for companies like the team', function (): v
 it('merges the model’s negative terms on top of the ICP’s own exclusions', function (): void {
     [$team, $profile, $icp, $fakeAi] = bootShaping();
 
-    $fakeAi->queueStructured([
-        'terms' => 'boutique hotels',
-        'customer_description' => 'Independent hotels',
-        'exclude_terms' => ['graphic design'],
-    ]);
+    $fakeAi->queueStructured(shapedQueries('boutique hotels', ['exclude_terms' => ['graphic design']]));
 
     $query = app(TeamContext::class)->run(
         $team,
@@ -175,10 +170,7 @@ it('falls back to the deterministic query rather than failing the run when the m
 it('returns no terms when the model cannot tell who buys, rather than searching the own trade', function (): void {
     [$team, $profile, $icp, $fakeAi] = bootShaping();
 
-    $fakeAi->queueStructured([
-        'terms' => '',
-        'customer_description' => 'Could not determine who buys from this business.',
-    ]);
+    $fakeAi->queueStructured(shapedQueries(''));
 
     $query = app(TeamContext::class)->run(
         $team,
@@ -222,7 +214,7 @@ it('can be switched off by config, leaving the deterministic query', function ()
 it('tells the model which provider it is writing for', function (): void {
     [$team, $profile, $icp, $fakeAi] = bootShaping();
 
-    $fakeAi->queueStructured(['terms' => 'boutique hotels', 'customer_description' => 'Hotels']);
+    $fakeAi->queueStructured(shapedQueries('boutique hotels'));
 
     app(TeamContext::class)->run(
         $team,
@@ -295,7 +287,7 @@ it('never shapes a run from another team’s ICP', function (): void {
         return $icp->load('criteria');
     });
 
-    $fakeAi->queueStructured(['terms' => 'boutique hotels', 'customer_description' => 'Hotels']);
+    $fakeAi->queueStructured(shapedQueries('boutique hotels'));
 
     // The action resolves the ICP team-scoped, so B's row is simply not found for A. This asserts
     // the stronger property: even handed the object, nothing of B's reaches A's prompt.
@@ -342,4 +334,57 @@ it('refuses to start a run against another team’s ICP id', function (): void {
         ->assertSessionHasErrors();
 
     expect(DiscoveryRun::query()->withoutGlobalScopes()->count())->toBe(0);
+});
+
+it('phrases the search for every provider from one model call', function (): void {
+    [$team, $profile, $icp, $fakeAi] = bootShaping();
+
+    $fakeAi->queueStructured([
+        'customer_description' => 'Independent hotels',
+        'web_queries' => ['boutique hotels', 'country house hotels', 'hotels like "The Gables"'],
+        'google_places' => 'boutique hotel',
+        // A word offered as a code is dropped: it would otherwise be sent to the register as a filter.
+        'companies_house' => ['name_terms' => 'hotel', 'sic_codes' => ['55100', 'hotels', '5510']],
+        'ai_brief' => 'Independent boutique hotels with 10-50 rooms',
+        'exclude_terms' => ['graphic design'],
+    ]);
+
+    $queries = app(TeamContext::class)->run($team, fn (): array => shaper()->shapeAll(
+        [LeadSource::WebSearch, LeadSource::CompaniesHouse, LeadSource::GooglePlaces, LeadSource::Ai],
+        $profile,
+        $icp,
+        25,
+    ));
+
+    expect($fakeAi->callCount())->toBe(1)
+        ->and($queries['web_search']->terms)->toBe('boutique hotels')
+        // Quotation marks are stripped: quoted queries are refused on some provider tiers.
+        ->and($queries['web_search']->queries)->toBe(['country house hotels', 'hotels like The Gables'])
+        ->and($queries['companies_house']->terms)->toBe('hotel')
+        ->and($queries['companies_house']->sicCodes)->toBe(['55100'])
+        ->and($queries['google_places']->terms)->toBe('boutique hotel')
+        ->and($queries['ai']->terms)->toBe('Independent boutique hotels with 10-50 rooms')
+        ->and($queries['ai']->excludeTerms)->toContain('graphic design');
+
+    // And the angles survive the trip through a run's stored params.
+    $stored = DiscoveryQuery::fromParams(LeadSource::WebSearch, $queries['web_search']->toParams());
+    expect($stored->queries)->toBe(['country house hotels', 'hotels like The Gables']);
+});
+
+it('tells the model what the business charges and who it already sells to', function (): void {
+    [$team, $profile, $icp, $fakeAi] = bootShaping();
+
+    $profile->forceFill([
+        'pricing_min' => 250_000, 'pricing_max' => 1_500_000, 'pricing_currency' => 'gbp',
+        'customer_examples' => ['Pollen Bakery'], 'competitors' => ['Studio Eight'],
+    ])->save();
+
+    $fakeAi->queueStructured(shapedQueries('boutique hotels'));
+
+    app(TeamContext::class)->run($team, fn (): DiscoveryQuery => shaper()->shape(LeadSource::WebSearch, $profile, $icp, 25));
+
+    expect($fakeAi->lastRequest()?->prompt ?? '')
+        ->toContain('2,500 to 15,000 GBP')
+        ->toContain('Pollen Bakery')
+        ->toContain('Studio Eight');
 });

@@ -111,7 +111,7 @@ const hint = computed(() => {
                 // `text-muted-foreground` is 4.8:1 on the canvas but only 4.47:1 on the
                 // opaque header band, which is under AA. The band had to become opaque
                 // for the header to be sticky, so the text moved instead.
-                'border-b border-border bg-accent align-middle font-mono text-xs font-medium tracking-eyebrow text-foreground/80 uppercase rtl:tracking-normal',
+                'border-b border-border bg-card align-middle font-mono text-[0.625rem] font-medium tracking-[0.14em] text-muted-foreground uppercase rtl:tracking-normal',
                 padding,
                 alignClass,
                 props.hide ? hideClass : '',

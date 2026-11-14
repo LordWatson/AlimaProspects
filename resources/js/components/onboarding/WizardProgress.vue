@@ -63,7 +63,7 @@ function select(step: OnboardingStepMeta, index: number): void {
             :aria-valuemax="total"
         >
             <div
-                class="duration-base h-full rounded-full bg-brand transition-[inline-size] ease-brand"
+                class="h-full rounded-full bg-brand transition-[inline-size] duration-[250ms] ease-brand"
                 :style="{ inlineSize: `${percent}%` }"
             />
         </div>

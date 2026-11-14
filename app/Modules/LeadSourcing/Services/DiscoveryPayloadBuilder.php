@@ -9,6 +9,7 @@ use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\Onboarding\Models\BusinessProfile;
+use App\Modules\Onboarding\Support\SellerBrief;
 use App\Modules\Scoring\Services\ScoringPayloadBuilder;
 use Illuminate\Support\Str;
 
@@ -42,19 +43,7 @@ final class DiscoveryPayloadBuilder
             );
         }
 
-        $lines = [
-            'Our company: '.$this->orUnknown($profile->company_name),
-            'What we sell: '.$this->orUnknown($this->list($profile->products_services)),
-            'Why customers choose us: '.$this->orUnknown($profile->value_proposition),
-            'Our own industry (NEVER search for this — it is our competition): '
-                .$this->orUnknown($profile->industry),
-            'Where we operate: '.$this->orUnknown($this->list($profile->locations)),
-            'Regions we serve: '.$this->orUnknown($this->list($profile->regions_served)),
-            'Customers we already have: '.$this->orUnknown($this->list($profile->customer_examples)),
-            'Our website: '.$this->orUnknown($profile->website),
-        ];
-
-        return new UntrustedContent(implode("\n", $lines));
+        return new UntrustedContent((string) SellerBrief::for($profile));
     }
 
     /**
@@ -126,12 +115,15 @@ final class DiscoveryPayloadBuilder
     {
         return match ($source) {
             LeadSource::CompaniesHouse => implode("\n", [
-                'This is the UK Companies House register. It matches against REGISTERED COMPANY NAMES '
-                    .'only — not activities, descriptions or websites.',
-                'So give a short trade word or two that tends to appear IN a company name '
-                    .'("joinery", "dental practice", "letting agents"). A sentence, a question or a '
-                    .'segment description returns nothing.',
-                'It cannot filter by location, so the location is ignored for this provider.',
+                'This is the UK Companies House register. It can be searched two ways.',
+                'By SIC code (preferred): give up to four five-digit UK SIC 2007 codes for the trades the '
+                    .'CUSTOMERS are in, in `sic_codes`. The register is then filtered to active companies '
+                    .'with those codes in the location. Only give a code you are sure of; leave the list '
+                    .'empty rather than guess.',
+                'By name (the fallback): `name_terms` matches against REGISTERED COMPANY NAMES only — not '
+                    .'activities, descriptions or websites. So give a short trade word or two that tends '
+                    .'to appear IN a company name ("joinery", "dental practice", "letting agents"). A '
+                    .'sentence, a question or a segment description returns nothing.',
             ]),
             LeadSource::GooglePlaces => implode("\n", [
                 'This is the Google Places text search. It finds businesses with a physical presence by '
@@ -143,49 +135,29 @@ final class DiscoveryPayloadBuilder
                     .'afterwards, so keep the query itself narrow.',
             ]),
             LeadSource::WebSearch => implode("\n", [
-                'This is a web search (Google via Serper). It reads whole pages, so natural phrasing '
-                    .'works and you may use quoted phrases for precision.',
-                'It DOES support negative terms: anything in `exclude_terms` is appended as -"term", so '
-                    .'name the trades and competitor names that would otherwise crowd the results.',
-                'Aim at pages that list or describe customer companies. Directory, social and '
-                    .'aggregator domains are discarded automatically, so do not target them.',
+                'This is a web search (Google via Serper). Each result becomes one candidate company, so '
+                    .'a query must surface the OWN WEBSITES OF CUSTOMER COMPANIES — not articles, lists, '
+                    .'directories or "contact us" pages.',
+                'Give up to three queries in `web_queries`, each a different angle and each a few plain '
+                    .'keywords: (1) the strongest customer trade; (2) a second customer trade, or the trade '
+                    .'plus the situation that makes it buy; (3) companies like the named existing '
+                    .'customers. No quotation marks, no OR chains, no "contact us" or "family run" filler: '
+                    .'a long query returns pages about the topic rather than companies in it.',
+                'Anything in `exclude_terms` is removed from the results, so name the trades and '
+                    .'competitor names that would otherwise crowd them.',
             ]),
             LeadSource::Ai => implode("\n", [
-                'This is not a search engine at all: the terms are handed to a model that names the '
-                    .'companies it knows of, from its own knowledge of the market.',
+                'This is not a search engine: `ai_brief` is handed to a model that picks out the '
+                    .'matching companies.',
                 'So describe the KIND of company to name, in the words a person would use — '
-                    .'"independent boutique hotels", "mid-size private dental groups". No search '
-                    .'operators, no quoted phrases, no site: filters; they mean nothing here.',
-                'It has no index to miss things in, but it also cannot look anything up, so a very '
-                    .'narrow niche or a very small local trade will return few companies rather than '
-                    .'wrong ones. The location is used, and exclusions are honoured in the answer.',
+                    .'"independent boutique hotels", "mid-size private dental groups" — including the '
+                    .'size and situation that make one a good customer. No search operators.',
             ]),
             // Import, Manual and Signal label where a lead came from; none of them is a provider that
             // can be searched, and StartDiscoveryRequest only accepts the runnable sources. Reached
             // only by a programming error, so say nothing useful rather than invent a brief.
             default => 'This source cannot be searched.',
         };
-    }
-
-    /**
-     * @param  list<string>|null  $values
-     */
-    private function list(?array $values): ?string
-    {
-        if ($values === null || $values === []) {
-            return null;
-        }
-
-        return implode(', ', array_slice($values, 0, self::MAX_LIST));
-    }
-
-    private function orUnknown(?string $value): string
-    {
-        if ($value === null || trim($value) === '') {
-            return 'unknown';
-        }
-
-        return $this->value($value);
     }
 
     private function value(string $value): string

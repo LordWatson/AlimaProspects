@@ -5,15 +5,19 @@ declare(strict_types=1);
 namespace App\Modules\LeadSourcing\Jobs;
 
 use App\Modules\Core\Support\TeamContext;
+use App\Modules\LeadSourcing\Actions\RecordLeadEvidenceAction;
 use App\Modules\LeadSourcing\Contracts\LeadSourceProvider;
 use App\Modules\LeadSourcing\Data\DiscoveryQuery;
+use App\Modules\LeadSourcing\Data\EvidenceItem;
 use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\DiscoveryRunStatus;
+use App\Modules\LeadSourcing\Enums\EvidenceKind;
 use App\Modules\LeadSourcing\Events\DiscoveryRunCompleted;
 use App\Modules\LeadSourcing\Events\DiscoveryRunProgressed;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
 use App\Modules\LeadSourcing\Models\DiscoveryRun;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\LeadSourcing\Services\CandidateRelevanceGate;
 use App\Modules\LeadSourcing\Services\LeadCandidateFilter;
 use App\Modules\LeadSourcing\Services\LeadSourceProviderRegistry;
 use Illuminate\Bus\Queueable;
@@ -83,8 +87,10 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
         LeadSourceProviderRegistry $registry,
         TeamContext $teamContext,
         LeadCandidateFilter $filter,
+        CandidateRelevanceGate $gate,
+        RecordLeadEvidenceAction $recordEvidence,
     ): void {
-        $teamContext->run($this->teamId, function () use ($registry, $filter): void {
+        $teamContext->run($this->teamId, function () use ($registry, $filter, $gate, $recordEvidence): void {
             $run = $this->startRun();
 
             // Already finished (idempotent retry) or gone — nothing to do.
@@ -126,11 +132,21 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
             [$leads, $rejected] = $filter->apply($query, $leads);
 
             // Enforce the run's size here too — never rely solely on the provider to honour the cap.
+            // Before the gate, so it never pays to judge a candidate the run would not have kept.
             $leads = array_slice($leads, 0, max(0, $run->requested_limit));
+
+            // Then the judgement word matching cannot make: is this company one the team could
+            // sell to, or one that sells what they sell (ADR 0035)? External work, outside any
+            // transaction; it lets everything through unjudged rather than fail the run.
+            $this->broadcast($run, DiscoveryRunStatus::Running, 45, 'Checking they fit your business', count($leads));
+            $screened = $gate->screen($query, $leads);
+            $leads = $screened['kept'];
 
             $this->broadcast($run, DiscoveryRunStatus::Running, 60, 'Saving the companies we found', count($leads));
 
             $created = $this->persistLeads($run, $leads);
+
+            $this->recordFit($recordEvidence, $leads, $screened['reasons']);
 
             // Recorded the moment the leads exist, not only on completion. Billing meters a team's
             // lead allowance from this column, and a run that dies between persisting and settling
@@ -140,11 +156,17 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
                 $run->forceFill(['leads_found' => count($leads), 'leads_created' => $created])->save();
             });
 
-            DB::transaction(function () use ($run, $leads, $created, $provider, $returned): void {
+            DB::transaction(function () use ($run, $leads, $created, $provider, $returned, $screened): void {
                 $run->forceFill([
                     'status' => DiscoveryRunStatus::Completed,
                     'leads_found' => count($leads),
                     'leads_created' => $created,
+                    'leads_rejected' => count($screened['rejected']),
+                    'rejections' => array_slice(
+                        $screened['rejected'],
+                        0,
+                        (int) config('lead-sourcing.relevance_gate.rejection_sample', 20),
+                    ),
                     'cost_micros' => $provider->costMicros($returned),
                     'error_message' => null,
                     'completed_at' => now(),
@@ -158,6 +180,8 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
                 'leads_found' => count($leads),
                 'leads_created' => $created,
                 'leads_excluded' => $rejected,
+                'leads_judged' => $screened['judged'],
+                'leads_refused_by_gate' => count($screened['rejected']),
                 'shaped_query' => $query->shaped,
                 'cost_micros' => $provider->costMicros($returned),
             ]);
@@ -188,6 +212,42 @@ final class DiscoverLeadsJob implements ShouldBeUnique, ShouldQueue
                 $this->markFailed($run, $exception);
             }
         });
+    }
+
+    /**
+     * Keep the gate's reason for each company it judged a fit, as evidence on the lead (ADR 0035
+     * §5): "why is this company here" is answered in the panel that already answers it, rather
+     * than by a second score. Idempotent — the evidence writer de-duplicates on the item itself, so
+     * a retried run or a re-discovered company does not stack a second copy.
+     *
+     * @param  list<SourcedLead>  $leads
+     * @param  array<string, string>  $reasons  keyed by {@see SourcedLead::dedupeKey()}
+     */
+    private function recordFit(RecordLeadEvidenceAction $recordEvidence, array $leads, array $reasons): void
+    {
+        foreach ($leads as $sourced) {
+            $reason = $reasons[$sourced->dedupeKey()] ?? null;
+
+            if ($reason === null) {
+                continue;
+            }
+
+            $lead = Lead::query()
+                ->where('team_id', $this->teamId)
+                ->where('dedupe_key', $sourced->dedupeKey())
+                ->first();
+
+            if ($lead instanceof Lead) {
+                $recordEvidence->handle($lead, new EvidenceItem(
+                    kind: EvidenceKind::AiInference,
+                    source: CandidateRelevanceGate::EVIDENCE_SOURCE,
+                    title: (string) __('Looks like a fit for your business'),
+                    summary: $reason,
+                    sourceLabel: (string) __('Alima\'s reading'),
+                    sourceUrl: $sourced->sourceUrl,
+                ));
+            }
+        }
     }
 
     /**

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useVModel } from '@vueuse/core';
-import type { HTMLAttributes } from 'vue';
-import { cn } from '@/lib/utils';
+import { useVModel } from "@vueuse/core";
+import type { HTMLAttributes } from "vue";
+import { cn } from "@/lib/utils";
 
 /*
  * A plain `<select>`, styled to match `Input`.
@@ -17,14 +17,14 @@ import { cn } from '@/lib/utils';
 const props = defineProps<{
     modelValue?: string | number | null;
     defaultValue?: string | number | null;
-    class?: HTMLAttributes['class'];
+    class?: HTMLAttributes["class"];
 }>();
 
 const emits = defineEmits<{
-    (e: 'update:modelValue', payload: string | number | null): void;
+    (e: "update:modelValue", payload: string | number | null): void;
 }>();
 
-const modelValue = useVModel(props, 'modelValue', emits, {
+const modelValue = useVModel(props, "modelValue", emits, {
     passive: true,
     defaultValue: props.defaultValue,
 });
@@ -36,7 +36,7 @@ const modelValue = useVModel(props, 'modelValue', emits, {
         data-slot="native-select"
         :class="
             cn(
-                'border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none dark:bg-input/30 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+                'border-input h-9 w-full min-w-0 rounded-xl border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none dark:bg-input/30 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
                 'focus-visible:border-ring focus-visible:ring-ring focus-visible:ring-[3px]',
                 'aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40',
                 props.class,

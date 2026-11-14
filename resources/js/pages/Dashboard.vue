@@ -190,7 +190,7 @@ const flow = [
 
         <!-- Headline KPIs -->
         <section
-            class="grid grid-cols-1 gap-px overflow-hidden rounded-3xl border border-border bg-border sm:grid-cols-2 xl:grid-cols-4"
+            class="grid grid-cols-1 border-t-[1.5px] border-foreground sm:grid-cols-2 xl:grid-cols-4"
             :aria-label="t('Headline numbers')"
         >
             <StatTile
@@ -224,7 +224,7 @@ const flow = [
         <template v-if="report.has_data">
             <!-- Trend + fit mix -->
             <div class="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
-                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                <section class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6">
                     <TrendChart
                         :points="report.trend"
                         :granularity="report.trend_granularity"
@@ -238,11 +238,15 @@ const flow = [
                   no other pair of charts on this screen says so.
                 -->
                 <div class="flex flex-col gap-5">
-                    <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                    <section
+                        class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6"
+                    >
                         <GradeMixBar :slices="report.grades" />
                     </section>
 
-                    <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                    <section
+                        class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6"
+                    >
                         <div class="flex items-start justify-between gap-3">
                             <div>
                                 <p
@@ -290,7 +294,7 @@ const flow = [
 
             <!-- Breakdowns -->
             <div class="grid gap-5 lg:grid-cols-3">
-                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                <section class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p
@@ -321,7 +325,7 @@ const flow = [
                     </div>
                 </section>
 
-                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                <section class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p
@@ -352,7 +356,7 @@ const flow = [
                     </div>
                 </section>
 
-                <section class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+                <section class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p
@@ -403,7 +407,7 @@ const flow = [
             -->
             <section
                 v-if="activeTable"
-                class="rounded-3xl bg-card p-6 shadow-sm sm:p-8"
+                class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6"
                 :aria-label="t('Performance')"
             >
                 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -461,7 +465,7 @@ const flow = [
         -->
         <section
             v-else-if="report.has_ever_sourced"
-            class="rounded-3xl bg-card p-6 shadow-sm sm:p-8"
+            class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6"
         >
             <p
                 class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
@@ -496,7 +500,7 @@ const flow = [
         </section>
 
         <!-- Zero state: how Alima works, with the next step on each card. -->
-        <section v-else class="rounded-3xl bg-card p-6 shadow-sm sm:p-8">
+        <section v-else class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6">
             <p
                 class="font-mono text-xs tracking-eyebrow text-brand uppercase rtl:tracking-normal"
             >
@@ -564,7 +568,7 @@ const flow = [
         -->
         <section
             v-if="report.allowances.length"
-            class="rounded-3xl bg-card p-6 shadow-sm sm:p-8"
+            class="rounded-[1.25rem] bg-card p-5 shadow-sm sm:p-6"
             :aria-label="t('This month\'s allowances')"
             data-test="dashboard-allowances"
         >

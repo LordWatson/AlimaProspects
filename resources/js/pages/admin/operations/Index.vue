@@ -186,7 +186,7 @@ function outcomeVariant(
 
             <div
                 v-else
-                class="overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                 tabindex="0"
                 role="region"
                 aria-label="Failed jobs"
@@ -301,7 +301,7 @@ function outcomeVariant(
 
             <div
                 v-else
-                class="overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                 tabindex="0"
                 role="region"
                 aria-label="Queue depth"
@@ -361,7 +361,7 @@ function outcomeVariant(
             </div>
 
             <div
-                class="overflow-x-auto rounded-2xl border border-border bg-card focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="overflow-x-auto rounded-[1.25rem] border border-transparent bg-card shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none dark:border-border"
                 tabindex="0"
                 role="region"
                 aria-label="Scheduled commands"

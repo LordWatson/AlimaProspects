@@ -215,6 +215,7 @@ final class ScoreLeadAction
     {
         try {
             $response = $this->ai->structured(self::PROMPT_KEY, [
+                'seller' => $this->payload->sellerBlock(),
                 'icp' => $this->payload->icpBlock($icp),
                 // Provider-sourced and page-extracted facts: data, never instructions.
                 'lead' => $this->payload->leadBlock($lead),

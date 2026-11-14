@@ -20,4 +20,9 @@ final class NullIcpCalibrationSource implements IcpCalibrationSource
     {
         return IcpCalibration::empty();
     }
+
+    public function feedback(Icp $icp): array
+    {
+        return ['good' => [], 'bad' => [], 'rejected' => []];
+    }
 }

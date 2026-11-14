@@ -486,7 +486,7 @@ onBeforeUnmount(() => {
             <!-- New signals arrived while the member was reading -->
             <div
                 v-if="arrived > 0"
-                class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-transparent bg-card p-4 shadow-sm dark:border-border"
                 role="status"
                 aria-live="polite"
                 data-test="new-signals-banner"
@@ -520,11 +520,11 @@ onBeforeUnmount(() => {
                             scope === option.value ? 'page' : undefined
                         "
                         :data-test="`scope-${option.value}`"
-                        class="rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                        class="inline-flex h-[34px] items-center rounded-full border-[1.5px] px-3.5 text-xs font-semibold transition-colors duration-150 ease-brand focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none rtl:font-bold"
                         :class="
                             scope === option.value
-                                ? 'border-brand bg-brand/10 font-semibold text-foreground rtl:font-bold'
-                                : 'border-border font-medium text-muted-foreground hover:text-foreground'
+                                ? 'border-foreground bg-foreground text-background'
+                                : 'border-border text-foreground hover:border-foreground'
                         "
                     >
                         {{ t(option.label) }}
@@ -548,11 +548,9 @@ onBeforeUnmount(() => {
                      bookmarked and shared. `role="tab"` would promise arrow-key traversal and a
                      tabpanel that aren't there — and the Filters button could not live inside a
                      tablist, which only allows tabs. -->
-                <div
-                    class="flex flex-wrap items-center gap-2 border-b border-border"
-                >
+                <div class="flex flex-wrap items-center gap-2">
                     <nav
-                        class="flex flex-wrap items-center gap-2"
+                        class="flex flex-wrap items-center gap-1 rounded-full bg-muted p-1"
                         :aria-label="t('Signal status')"
                     >
                         <Link
@@ -566,23 +564,28 @@ onBeforeUnmount(() => {
                                     : undefined
                             "
                             :data-test="`tab-${tab.value}`"
-                            class="-mb-px rounded-t-md border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                            class="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[0.8125rem] font-semibold transition-[background-color,box-shadow,color] duration-150 ease-brand focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none rtl:font-bold"
                             :class="
                                 filters.status === tab.value
-                                    ? 'border-brand text-brand'
-                                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                                    ? 'bg-card text-foreground shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground'
                             "
                         >
                             {{ t(tab.label) }}
                             <span
-                                class="ms-1 font-mono text-xs tabular-nums"
+                                class="rounded-full px-1.5 font-mono text-[0.5625rem] leading-4 font-medium tabular-nums"
+                                :class="
+                                    filters.status === tab.value
+                                        ? 'bg-brand text-brand-foreground'
+                                        : 'bg-card text-muted-foreground'
+                                "
                                 dir="ltr"
                                 >{{ counts[tab.value] ?? 0 }}</span
                             >
                         </Link>
                     </nav>
 
-                    <div class="ms-auto mb-1 flex flex-wrap items-center gap-2">
+                    <div class="ms-auto flex flex-wrap items-center gap-2">
                         <!-- The sort (S12). A real `<select>` through the shared base component,
                              not a menu: two options, one of which is almost always right, and a
                              native control is the one every assistive technology already knows.
@@ -662,7 +665,7 @@ onBeforeUnmount(() => {
                 <div
                     v-show="showFilters"
                     id="signal-filters"
-                    class="space-y-4 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <!-- The same chip as the leads list, so a filter looks like a filter
                          wherever a member meets one. The tick is what keeps the on state from
@@ -776,7 +779,7 @@ onBeforeUnmount(() => {
                 v-if="signals.data.length"
                 ref="listRef"
                 tabindex="-1"
-                class="duration-fast space-y-4 transition-opacity ease-brand focus:outline-none"
+                class="space-y-4 transition-opacity duration-150 ease-brand focus:outline-none"
                 :class="busy ? 'opacity-55' : ''"
                 :aria-busy="busy ? 'true' : undefined"
                 data-test="signal-list"

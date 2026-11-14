@@ -329,7 +329,7 @@ const outcomeBadge = (attempt: ContactAttempt): string =>
             <!-- The message -->
             <div class="space-y-6">
                 <section
-                    class="space-y-5 rounded-2xl border border-border bg-card p-6"
+                    class="space-y-5 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
                 >
                     <ChannelPicker
                         v-model="draft.channel"
@@ -661,7 +661,9 @@ const outcomeBadge = (attempt: ContactAttempt): string =>
 
             <!-- The evidence -->
             <aside class="space-y-6">
-                <section class="rounded-2xl border border-border bg-card p-5">
+                <section
+                    class="rounded-[1.25rem] border border-transparent bg-card p-5 shadow-sm dark:border-border"
+                >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
@@ -719,7 +721,9 @@ const outcomeBadge = (attempt: ContactAttempt): string =>
                     </p>
                 </section>
 
-                <section class="rounded-2xl border border-border bg-card p-5">
+                <section
+                    class="rounded-[1.25rem] border border-transparent bg-card p-5 shadow-sm dark:border-border"
+                >
                     <h2
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >

@@ -233,7 +233,7 @@ function isActive(destination: AdminDestination): boolean {
                     @click="toggle(group.key)"
                 >
                     <ChevronDown
-                        class="duration-fast size-3.5 shrink-0 transition-transform ease-brand"
+                        class="size-3.5 shrink-0 transition-transform duration-150 ease-brand"
                         :class="
                             isOpen(group.key) ? '' : '-rotate-90 rtl:rotate-90'
                         "
@@ -260,7 +260,7 @@ function isActive(destination: AdminDestination): boolean {
                         v-for="destination in group.destinations"
                         :key="destination.href"
                         :href="destination.href"
-                        class="duration-fast flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition-colors ease-brand focus-visible:ring-[3px] focus-visible:ring-cream focus-visible:outline-none focus-visible:ring-inset"
+                        class="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition-colors duration-150 ease-brand focus-visible:ring-[3px] focus-visible:ring-cream focus-visible:outline-none focus-visible:ring-inset"
                         :class="
                             isActive(destination)
                                 ? 'bg-teal font-semibold text-cream'

@@ -256,7 +256,7 @@ const answers = computed(() =>
 
         <!-- Where it stands ---------------------------------------------------->
         <section
-            class="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-border bg-card p-6"
+            class="flex flex-wrap items-start justify-between gap-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
         >
             <div class="space-y-2">
                 <div class="flex items-center gap-3">
@@ -351,7 +351,7 @@ const answers = computed(() =>
         <!-- The assessment, for somebody who may change it ---------------------->
         <form
             v-if="can.manage"
-            class="space-y-6 rounded-2xl border border-border bg-card p-6"
+            class="space-y-6 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             @submit.prevent="saveDraft"
         >
             <!--
@@ -547,7 +547,7 @@ const answers = computed(() =>
         <!-- The assessment, for somebody who may only read it ------------------->
         <section
             v-else
-            class="space-y-6 rounded-2xl border border-border bg-card p-6"
+            class="space-y-6 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             data-test="lia-readonly"
         >
             <!-- Who can change it, said plainly. The alternative — and what this screen used to

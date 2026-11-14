@@ -5,6 +5,33 @@ All notable changes to AlimaProspects are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — 2026-11-14 — The Alima Planner look, app-wide
+
+The frontend now follows the Alima Planner homepage reference. The app shell is flush: a full-height
+Deep Teal rail of labels and numbers (no icons) beside a 60px topbar that carries a "New lead"
+pill, a leads search that keeps the list's other filters, the notification bell, the language and
+appearance switches and a locale-aware date. Every screen fades up on arrival. The kit moved with
+it — pill buttons whose Lime primary lifts on hover and whose outline fills Ink, borderless 20px
+cards on a soft shadow (swapped across 46 screens), open KPI strips under an Ink rule, list rows
+that warm to cream on hover, rounder dialogs, menus and inputs. The Signals feed's status tabs are
+a segmented control and its scopes are Ink filter pills. The landing page is rebuilt: a cycling
+headline word under a Lime marker, floating product notices, the workspace framed on a teal band,
+an Ink marquee of sources, a bento of capabilities, a teal proof band of true figures, an FAQ and
+an Ink closing card; the public header and footer were redone to match. The interpretations the
+PDFs do not cover are recorded as pending in `docs/brand/brand-tokens.md` §7p.
+
+The lead record and the lead score page got the same treatment: the score is the hero's figure, the
+summary rows are an open strip, the dial draws itself and counts up, bars grow in, the grade's
+reasoning sits on a teal card, and the feedback answer turns Lime and pops. On the landing page the
+product tour's tabs are readable on the teal band, every bento tile is filled (the wide ones now
+carry small drawings that move on hover), and the proof figures no longer collide.
+
+**Fixed:** assigning somebody on the lead page did nothing visible and silently replaced whoever
+was already on the lead. The page never loaded the lead's assignees, tags or stage, so the panel
+believed nobody was assigned and sent only the person clicked; `FindLeadAction` now loads all
+three (and the work panel's card, which was never imported, now renders). The member pills are a
+searchable picker that scales to any team size, with a stage progress bar above it.
+
 ### Changed — 2026-11-09 — The lead record reads as one screen
 
 The page a member spends their day on had grown five different section shells and two different

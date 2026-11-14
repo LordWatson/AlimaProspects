@@ -648,7 +648,7 @@ function runPreview(): void {
         <section
             v-for="playbook in playbooks"
             :key="playbook.id"
-            class="space-y-4 rounded-2xl border border-border bg-card p-6"
+            class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             :data-test="`playbook-${playbook.id}`"
         >
             <div class="flex flex-wrap items-start justify-between gap-3">
@@ -780,7 +780,7 @@ function runPreview(): void {
                 <li
                     v-for="run in recent"
                     :key="run.id"
-                    class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-border bg-card px-4 py-3"
+                    class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[1.25rem] border border-transparent bg-card px-4 py-3 shadow-sm dark:border-border"
                 >
                     <span
                         class="text-base font-semibold text-foreground rtl:font-bold"

@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\LeadSourcing\Services;
 
+use App\Modules\Core\Enums\Market;
+use App\Modules\Core\Support\TeamContext;
 use App\Modules\LeadSourcing\Data\DiscoveryQuery;
 use App\Modules\LeadSourcing\Data\SourcedLead;
 use App\Modules\LeadSourcing\Enums\LeadSource;
 use App\Modules\LeadSourcing\Exceptions\LeadSourcingException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Str;
 
 /**
@@ -33,10 +36,27 @@ final class WebSearchProvider extends AbstractHttpLeadSourceProvider
         return LeadSource::WebSearch;
     }
 
+    /**
+     * How many requests the last {@see self::discover()} made. The contract's `costMicros()` takes a
+     * lead count, but this provider is billed per request and now makes several, so the count is
+     * remembered between the two calls the job makes back to back.
+     */
+    private int $requestsMade = 0;
+
     public function discover(DiscoveryQuery $query): array
     {
-        $q = $this->searchQuery($query);
-        if ($q === '') {
+        $this->requestsMade = 0;
+
+        // The main query, then the other angles the shaper wrote (a second trade, lookalikes of the
+        // team's existing customers). One broad query was the baseline's weakest source: several
+        // narrow ones each surface a different slice of the same customers.
+        $angles = array_slice(
+            array_values(array_unique(array_filter([trim($query->terms), ...$query->queries]))),
+            0,
+            max(1, (int) config('lead-sourcing.providers.web_search.max_queries', 3)),
+        );
+
+        if ($angles === []) {
             return [];
         }
 
@@ -47,80 +67,113 @@ final class WebSearchProvider extends AbstractHttpLeadSourceProvider
             throw LeadSourcingException::providerUnavailable($this->source()->value);
         }
 
-        $apiKey = $this->requireApiKey('lead-sourcing.providers.web_search.api_key');
-        $baseUrl = rtrim((string) config('lead-sourcing.providers.web_search.base_url'), '/');
-        $num = max(1, min($query->limit, 100));
-
-        $response = $this->guarded(fn () => $this->http
-            ->baseUrl($baseUrl)
-            ->withHeaders(['X-API-KEY' => $apiKey])
-            ->timeout((int) config('lead-sourcing.providers.web_search.timeout', 10))
-            ->connectTimeout((int) config('lead-sourcing.providers.web_search.connect_timeout', 5))
-            ->retry(
-                (int) config('lead-sourcing.providers.web_search.retry_times', 2),
-                (int) config('lead-sourcing.providers.web_search.retry_sleep_ms', 250),
-                $this->retryWhen(),
-                throw: false,
-            )
-            ->acceptJson()
-            ->post('/search', [
-                'q' => $q,
-                'num' => $num,
-            ]));
-
-        /** @var array<array-key, mixed> $organic */
-        $organic = (array) $response->json('organic', []);
-
         /** @var list<string> $ignore */
         $ignore = (array) config('lead-sourcing.providers.web_search.ignore_domains', []);
+        $perQuery = max(10, (int) ceil($query->limit / count($angles)));
 
         $leads = [];
         $seenDomains = [];
 
-        foreach ($organic as $result) {
-            if (! is_array($result)) {
-                continue;
-            }
-
-            $lead = $this->mapResult($result);
-            if (! $lead instanceof SourcedLead) {
-                continue;
-            }
-
-            $domain = $lead->domain();
-
-            // Skip aggregator/social/directory domains — they aren't a company's own site, and
-            // would otherwise all collapse into a single `domain:` lead.
-            if ($domain !== null && $this->isIgnored($domain, $ignore)) {
-                continue;
-            }
-
-            // Collapse multiple pages from the same site within a single response.
-            if ($domain !== null) {
-                if (isset($seenDomains[$domain])) {
+        foreach ($angles as $angle) {
+            foreach ($this->organic($angle, $query, $perQuery) as $result) {
+                if (! is_array($result)) {
                     continue;
                 }
-                $seenDomains[$domain] = true;
-            }
 
-            $leads[] = $lead;
+                $lead = $this->mapResult([...$result, 'query' => $angle]);
+                if (! $lead instanceof SourcedLead) {
+                    continue;
+                }
 
-            if (count($leads) >= $query->limit) {
-                break;
+                $domain = $lead->domain();
+
+                // Skip aggregator/social/directory domains — they aren't a company's own site, and
+                // would otherwise all collapse into a single `domain:` lead.
+                if ($domain !== null && $this->isIgnored($domain, $ignore)) {
+                    continue;
+                }
+
+                // Collapse multiple pages from the same site, within a response and across angles.
+                if ($domain !== null) {
+                    if (isset($seenDomains[$domain])) {
+                        continue;
+                    }
+                    $seenDomains[$domain] = true;
+                }
+
+                $leads[] = $lead;
             }
         }
 
-        return $leads;
+        return array_slice($leads, 0, $query->limit);
     }
 
     public function costMicros(int $leadsReturned): int
     {
-        // Billed per query (a run makes one); a no-op run (empty terms → no request) shows no cost.
-        if ($leadsReturned === 0) {
-            return 0;
-        }
+        // Billed per request, whether or not it returned anything we kept.
+        return $this->requestsMade * (int) config('lead-sourcing.providers.web_search.cost_micros_per_request', 3_000);
+    }
 
-        return (int) config('lead-sourcing.providers.web_search.cost_micros_per_request', 3_000);
+    /**
+     * One search request's organic results.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function organic(string $terms, DiscoveryQuery $query, int $num): array
+    {
+        $apiKey = $this->requireApiKey('lead-sourcing.providers.web_search.api_key');
+        $baseUrl = rtrim((string) config('lead-sourcing.providers.web_search.base_url'), '/');
+
+        $post = function (string $q) use ($apiKey, $baseUrl, $num): Response {
+            $this->requestsMade++;
+
+            return $this->http
+                ->baseUrl($baseUrl)
+                ->withHeaders(['X-API-KEY' => $apiKey])
+                ->timeout((int) config('lead-sourcing.providers.web_search.timeout', 10))
+                ->connectTimeout((int) config('lead-sourcing.providers.web_search.connect_timeout', 5))
+                ->retry(
+                    (int) config('lead-sourcing.providers.web_search.retry_times', 2),
+                    (int) config('lead-sourcing.providers.web_search.retry_sleep_ms', 250),
+                    $this->retryWhen(),
+                    throw: false,
+                )
+                ->acceptJson()
+                ->post('/search', array_filter(['q' => $q, 'num' => min($num, 100), 'gl' => $this->country()]));
+        };
+
+        $response = $this->guarded(function () use ($post, $terms, $query): Response {
+            $response = $post($this->searchQuery($terms, $query));
+
+            // Serper refuses some query patterns outright on some account tiers — a quoted negative
+            // with more than ten results on the free tier answers `400 Query pattern not allowed`.
+            // That is a verdict about the query, not about the provider, and the exclusions are
+            // applied again after the fact by {@see LeadCandidateFilter}; so ask once more without
+            // them rather than failing a run the plain query would have served.
+            if ($response->status() === 400 && str_contains(Str::lower($response->body()), 'not allowed')) {
+                return $post($this->searchQuery($terms, $query, withExclusions: false));
+            }
+
+            return $response;
+        });
+
+        return (array) $response->json('organic', []);
+    }
+
+    /**
+     * The country to search from, as the provider's `gl` hint, from the market the team sells
+     * into. Without it a place name is read wherever it is most famous: a search for foundries in
+     * "Birmingham" came back with Alabama's (relevance eval, P1).
+     */
+    private function country(): ?string
+    {
+        // The ambient team, which every discovery job runs inside. No team in context (a console
+        // probe, a unit test) means no hint, and the provider's own default.
+        return match (Market::tryFrom((string) app(TeamContext::class)->team()?->market)) {
+            Market::Uk => 'gb',
+            Market::Uae => 'ae',
+            default => null,
+        };
     }
 
     /**
@@ -137,18 +190,13 @@ final class WebSearchProvider extends AbstractHttpLeadSourceProvider
      * Terms are quoted so a multi-word exclusion is treated as a phrase, and the negatives are capped
      * so the operators can never crowd out the query itself.
      */
-    private function searchQuery(DiscoveryQuery $query): string
+    private function searchQuery(string $terms, DiscoveryQuery $query, bool $withExclusions = true): string
     {
-        $terms = trim($query->terms);
         $location = trim((string) $query->location);
-
-        if ($terms === '') {
-            return '';
-        }
 
         $q = $location !== '' ? "{$terms} {$location}" : $terms;
 
-        foreach (array_slice($query->excludeTerms, 0, self::MAX_NEGATIVE_TERMS) as $exclude) {
+        foreach ($withExclusions ? array_slice($query->excludeTerms, 0, self::MAX_NEGATIVE_TERMS) : [] as $exclude) {
             $exclude = trim(str_replace('"', '', $exclude));
 
             if ($exclude === '') {

@@ -191,16 +191,23 @@ function isLast(activity: LeadActivity): boolean {
 
     <ol v-else class="space-y-0" data-test="timeline">
         <li
-            v-for="activity in props.activities"
+            v-for="(activity, index) in props.activities"
             :key="activity.id"
-            class="flex gap-4 pb-6 last:pb-0"
+            class="flex animate-screen gap-4 pb-6 last:pb-0"
+            :style="{ animationDelay: `${Math.min(index, 10) * 40}ms` }"
             :data-test="`activity-${activity.type}`"
         >
             <!-- The marker column owns the rail, so the line is centred on the marker by layout
                  rather than by a hand-measured offset. Hidden on the last entry, so the list ends. -->
             <div class="flex shrink-0 flex-col items-center">
+                <!-- The newest entry is the one that is news: Teal, the rest quiet. -->
                 <span
-                    class="flex size-9 items-center justify-center rounded-full bg-accent text-muted-foreground"
+                    class="flex size-9 items-center justify-center rounded-full"
+                    :class="
+                        index === 0
+                            ? 'bg-brand text-brand-foreground'
+                            : 'bg-muted text-muted-foreground'
+                    "
                     aria-hidden="true"
                 >
                     <component :is="icons[activity.type]" class="size-4" />

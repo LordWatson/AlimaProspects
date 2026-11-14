@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { Ban, Check, Pencil, Plus, Star, Target, Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import IcpCalibrationPanel from '@/components/icp/IcpCalibrationPanel.vue';
+import IcpSuggestionsPanel from '@/components/icp/IcpSuggestionsPanel.vue';
 import MeterBar from '@/components/MeterBar.vue';
 import PageHero from '@/components/PageHero.vue';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +12,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useFormat } from '@/composables/useFormat';
 import { useI18n } from '@/composables/useI18n';
 import { importanceKey } from '@/lib/importance';
-import type { Icp, IcpCalibration, IcpCriterion } from '@/types';
+import type { Icp, IcpCalibration, IcpCriterion, IcpSuggestion } from '@/types';
 
 /*
  * The team's ideal-customer profiles.
@@ -35,8 +36,12 @@ defineOptions({
 const props = defineProps<{
     icps: Icp[];
     calibration: IcpCalibration | null;
+    /** Changes Alima proposes for the active profile that nobody has answered yet. */
+    suggestions: IcpSuggestion[];
     can: { manage: boolean };
 }>();
+
+const activeIcp = computed(() => props.icps.find((icp) => icp.is_active));
 
 const { t } = useI18n();
 const { date, number } = useFormat();
@@ -363,6 +368,16 @@ function destroy(icp: Icp): void {
             v-if="calibration && icps.length"
             :calibration="calibration"
             :icp-name="activeIcpName"
+        />
+
+        <!-- After the calibration, because it is the answer to it: this is how the profile is
+             grading, and this is what Alima would change about it. -->
+        <IcpSuggestionsPanel
+            v-if="activeIcp"
+            :icp-id="activeIcp.id"
+            :icp-name="activeIcp.name"
+            :suggestions="suggestions"
+            :can-manage="can.manage"
         />
     </div>
 </template>

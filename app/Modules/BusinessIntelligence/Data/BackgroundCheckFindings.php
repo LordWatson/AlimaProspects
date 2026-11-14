@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\BusinessIntelligence\Data;
 
 use App\Modules\AiPlatform\Data\StructuredAiResponse;
+use App\Modules\Core\Enums\Currency;
+use App\Modules\Onboarding\Enums\DeliveryModel;
 use Illuminate\Support\Str;
 use Spatie\LaravelData\Data;
 
@@ -36,6 +38,14 @@ final class BackgroundCheckFindings extends Data
      * @param  list<string>  $targetCustomers  kinds of organisation that buy
      * @param  list<string>  $decisionMakerTitles  job titles that buy, at a customer
      * @param  list<string>  $competitors  businesses that sell what the team sells
+     * @param  list<string>  $proofCustomers  customers the site names — the best lookalike seeds there are
+     * @param  list<string>  $problemsSolved
+     * @param  list<string>  $buyingTriggers  situations that make a customer ready to buy
+     * @param  list<string>  $antiCustomers  who the business says it does not serve
+     * @param  int|null  $pricingMin  minor units
+     * @param  int|null  $pricingMax  minor units
+     * @param  list<array{field: string, value: string, page: int, quote: string, confidence: int, url?: string}>  $evidence
+     *                                                                                                                        the page and the words each finding rests on
      */
     public function __construct(
         public string $summary,
@@ -47,6 +57,16 @@ final class BackgroundCheckFindings extends Data
         public array $decisionMakerTitles = [],
         public array $competitors = [],
         public ?float $confidence = null,
+        public array $proofCustomers = [],
+        public array $problemsSolved = [],
+        public array $buyingTriggers = [],
+        public array $antiCustomers = [],
+        public ?int $pricingMin = null,
+        public ?int $pricingMax = null,
+        public ?Currency $pricingCurrency = null,
+        public ?DeliveryModel $deliveryModel = null,
+        public ?string $customerSizeRange = null,
+        public array $evidence = [],
     ) {}
 
     /**
@@ -74,7 +94,103 @@ final class BackgroundCheckFindings extends Data
             decisionMakerTitles: self::strings($data['decision_maker_titles'] ?? []),
             competitors: self::strings($data['competitors'] ?? []),
             confidence: isset($data['confidence']) ? (float) $data['confidence'] : null,
+            proofCustomers: self::strings($data['proof_customers'] ?? []),
+            problemsSolved: self::strings($data['problems_solved'] ?? []),
+            buyingTriggers: self::strings($data['buying_triggers'] ?? []),
+            antiCustomers: self::strings($data['anti_customers'] ?? []),
+            pricingMin: self::money($data['pricing_min'] ?? null),
+            pricingMax: self::money($data['pricing_max'] ?? null),
+            // A value outside the enum is "not stated", never coerced: these two steer a search.
+            pricingCurrency: Currency::tryFrom(Str::lower((string) self::nullableText($data['pricing_currency'] ?? null))),
+            deliveryModel: DeliveryModel::tryFrom(Str::lower((string) self::nullableText($data['delivery_model'] ?? null))),
+            // Clamped to its column: the model was asked for "10-200 employees" and once wrote a sentence.
+            customerSizeRange: ($size = self::nullableText($data['customer_size_range'] ?? null)) === null ? null : Str::limit($size, 64, ''),
+            evidence: self::evidence($data['evidence'] ?? []),
         );
+    }
+
+    /**
+     * The same findings, keeping only the evidence that is really on the page it cites.
+     *
+     * The prompt is told to copy a short exact quote for each finding it can support. A prompt
+     * describes a constraint, it does not enforce one — so each quote is looked for in the text
+     * that was actually read, and an entry whose quote is not there (a paraphrase, a page number
+     * that was never offered, something recalled) is dropped. The finding itself stays: it is then
+     * simply a finding with nothing to show for it, and the review screen says so.
+     *
+     * @param  list<array{url: string, text: string}>  $pages  as sent to the model, numbered from 1
+     */
+    public function withVerifiedEvidence(array $pages): self
+    {
+        $kept = [];
+
+        foreach ($this->evidence as $item) {
+            $page = $pages[$item['page'] - 1] ?? null;
+            $quote = self::fold($item['quote']);
+
+            // Too short to be evidence of anything: "we do" is on every page.
+            if ($page === null || mb_strlen($quote) < 12 || ! str_contains(self::fold($page['text']), $quote)) {
+                continue;
+            }
+
+            $kept[] = [...$item, 'url' => $page['url']];
+        }
+
+        $clone = clone $this;
+        $clone->evidence = $kept;
+
+        return $clone;
+    }
+
+    /**
+     * Case- and whitespace-insensitive, with typographic quotes and dashes flattened: a page's
+     * curly apostrophe and the model's straight one are the same quote.
+     */
+    private static function fold(string $text): string
+    {
+        return Str::lower(Str::squish(strtr($text, [
+            '’' => "'", '‘' => "'", '“' => '"', '”' => '"', '–' => '-', '—' => '-',
+        ])));
+    }
+
+    /**
+     * A price in major units, as minor units. Null for anything that is not a positive number.
+     */
+    private static function money(mixed $value): ?int
+    {
+        return is_numeric($value) && (float) $value > 0 && (float) $value < 1_000_000_000
+            ? (int) round((float) $value * 100)
+            : null;
+    }
+
+    /**
+     * @return list<array{field: string, value: string, page: int, quote: string, confidence: int, url?: string}>
+     */
+    private static function evidence(mixed $value): array
+    {
+        $rows = [];
+
+        foreach (is_array($value) ? $value : [] as $row) {
+            if (! is_array($row) || ! is_string($row['field'] ?? null) || ! is_string($row['quote'] ?? null)) {
+                continue;
+            }
+
+            $rows[] = array_filter([
+                'field' => Str::limit($row['field'], 40, ''),
+                'value' => self::text($row['value'] ?? ''),
+                'page' => (int) ($row['page'] ?? 0),
+                'quote' => Str::limit(Str::squish($row['quote']), 300, ''),
+                'confidence' => max(0, min(100, (int) ($row['confidence'] ?? 0))),
+                // Present on a stored report, where the quote has already been checked.
+                'url' => is_string($row['url'] ?? null) ? $row['url'] : null,
+            ], static fn (mixed $v): bool => $v !== null);
+
+            if (count($rows) >= 40) {
+                break;
+            }
+        }
+
+        return $rows;
     }
 
     /**
@@ -106,6 +222,17 @@ final class BackgroundCheckFindings extends Data
             'decision_maker_titles' => $this->decisionMakerTitles,
             'competitors' => $this->competitors,
             'confidence' => $this->confidence,
+            'proof_customers' => $this->proofCustomers,
+            'problems_solved' => $this->problemsSolved,
+            'buying_triggers' => $this->buyingTriggers,
+            'anti_customers' => $this->antiCustomers,
+            // Major units, as the prompt returns them, so a stored report reads back the same way.
+            'pricing_min' => $this->pricingMin === null ? null : $this->pricingMin / 100,
+            'pricing_max' => $this->pricingMax === null ? null : $this->pricingMax / 100,
+            'pricing_currency' => $this->pricingCurrency?->value,
+            'delivery_model' => $this->deliveryModel?->value,
+            'customer_size_range' => $this->customerSizeRange,
+            'evidence' => $this->evidence,
         ];
     }
 

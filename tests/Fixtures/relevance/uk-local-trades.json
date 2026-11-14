@@ -1,0 +1,221 @@
+{
+    "key": "uk-local-trades",
+    "note": "Every company in this file is fictional. `about` is written as a search snippet would read.",
+    "location": "Leeds",
+    "sources": ["web_search", "ai", "companies_house", "google_places"],
+    "profile": {
+        "company_name": "Aire Valley Electrical",
+        "website": "https://airevalleyelectrical.example",
+        "industry": "Electrical contracting",
+        "company_size": "small",
+        "locations": ["Leeds"],
+        "regions_served": ["uk"],
+        "primary_market": "uk",
+        "products_services": [
+            "Commercial electrical installation",
+            "EICR testing and certification",
+            "Emergency lighting and fire alarm maintenance",
+            "EV charger installation"
+        ],
+        "value_proposition": "A commercial electrical contractor that landlords and facilities teams in West Yorkshire can leave to it: fixed prices, certificates on the day, out-of-hours work.",
+        "pricing_min": 40000,
+        "pricing_max": 5000000,
+        "pricing_currency": "gbp",
+        "customer_examples": [
+            "Calder Property Management",
+            "Headrow Shopfitting",
+            "St Aidan's Academy Trust"
+        ]
+    },
+    "pages": {
+        "/": "Aire Valley Electrical. Commercial electricians in Leeds. NICEIC approved contractor with 14 engineers. Call for a fixed quote.",
+        "/services": "We look after offices, shops, schools, warehouses and rented property portfolios. Services: electrical installation and fit-out, EICR periodic inspection, emergency lighting and fire alarm testing, EV charge points, planned maintenance contracts. Out-of-hours and half-term work available. We cover Leeds, Bradford, Wakefield and Harrogate and do not travel outside West and North Yorkshire.",
+        "/clients": "Who we work for. Letting agents and block managers, facilities managers, shopfitters and main contractors, and school business managers. Clients include Calder Property Management, Headrow Shopfitting and St Aidan's Academy Trust. We do not do domestic rewires for homeowners.",
+        "/about": "A family firm since 2004. Landlords call us when an EICR is due or a tenancy is changing; contractors call us when a fit-out programme needs an electrical subcontractor at short notice. Jobs range from a £400 inspection to £50,000 fit-outs."
+    },
+    "ground_truth": "Organisations within roughly 25 miles of Leeds that own, manage or fit out commercial or rented buildings and repeatedly need a commercial electrician: letting agents, block and property management companies, facilities management firms, shopfitters and fit-out contractors, building contractors without in-house electricians, schools and academy trusts, warehouse and office operators, care homes, housing associations. Not electricians or M&E contractors; not electrical wholesalers; not homeowners; not organisations outside Yorkshire.",
+    "companies": [
+        {
+            "name": "Kirkstall Lettings & Management",
+            "website": "https://kirkstalllettings.example",
+            "about": "Letting agent managing 900 rental properties across Leeds.",
+            "label": "good",
+            "why": "Needs EICRs at volume."
+        },
+        {
+            "name": "Briggate Block Management",
+            "website": "https://briggateblock.example",
+            "about": "Residential block and estate management in West Yorkshire.",
+            "label": "good",
+            "why": "Communal electrics and emergency lighting."
+        },
+        {
+            "name": "Ridings Facilities Services",
+            "website": "https://ridingsfs.example",
+            "about": "Facilities management for offices and retail parks in Yorkshire.",
+            "label": "good",
+            "why": "Subcontracts electrical work."
+        },
+        {
+            "name": "Oakwell Shopfitters Ltd",
+            "website": "https://oakwellshopfitters.example",
+            "about": "Retail and hospitality fit-out contractor based in Wakefield.",
+            "label": "good",
+            "why": "Needs an electrical subcontractor."
+        },
+        {
+            "name": "Wharfedale Learning Trust",
+            "website": "https://wharfedaletrust.example",
+            "about": "Multi-academy trust of nine primary and secondary schools.",
+            "label": "good",
+            "why": "Estate of school buildings."
+        },
+        {
+            "name": "Electric Avenue Coffee Ltd",
+            "website": "https://electricavenuecoffee.example",
+            "about": "Independent coffee chain opening its sixth shop in Leeds.",
+            "label": "good",
+            "why": "New shop fit-outs; 'Electric' in the name must not exclude it."
+        },
+        {
+            "name": "Holbeck Logistics Park",
+            "website": "https://holbecklogistics.example",
+            "about": "Warehouse and industrial unit operator with 40 tenants.",
+            "label": "good",
+            "why": "Commercial landlord."
+        },
+        {
+            "name": "Roundhay Care Homes",
+            "website": "https://roundhaycare.example",
+            "about": "Four residential care homes in north Leeds.",
+            "label": "good",
+            "why": "Compliance testing obligations."
+        },
+        {
+            "name": "Pennine Housing Association",
+            "website": "https://penninehousing.example",
+            "about": "Social landlord with 3,200 homes in Bradford and Calderdale.",
+            "label": "good",
+            "why": "Large testing programme."
+        },
+        {
+            "name": "Harewood Construction",
+            "website": "https://harewoodconstruction.example",
+            "about": "Main contractor for commercial refurbishments up to £3m, Harrogate.",
+            "label": "good",
+            "why": "Hires electrical subcontractors."
+        },
+        {
+            "name": "Cornish Coast Holiday Lets",
+            "website": "https://cornishcoastlets.example",
+            "about": "Holiday cottage management in Newquay.",
+            "label": "bad",
+            "why": "Too far away."
+        },
+        {
+            "name": "Mrs J Whitaker",
+            "website": "https://example.invalid/whitaker",
+            "about": "Homeowner looking for a rewire quote.",
+            "label": "bad",
+            "why": "A private individual."
+        },
+        {
+            "name": "Leeds Vinyl Records",
+            "website": "https://leedsvinyl.example",
+            "about": "Online-only second-hand record seller.",
+            "label": "bad",
+            "why": "No premises to maintain."
+        },
+        {
+            "name": "Yorkshire Dales Wedding Photography",
+            "website": "https://dalesweddingphoto.example",
+            "about": "Natural wedding photography across Yorkshire.",
+            "label": "bad",
+            "why": "Sole trader, no buildings."
+        },
+        {
+            "name": "Thames Gateway Property Group",
+            "website": "https://thamesgatewayproperty.example",
+            "about": "Commercial landlord in Essex and Kent.",
+            "label": "bad",
+            "why": "Right kind, wrong region."
+        },
+        {
+            "name": "Aire Accountancy Services",
+            "website": "https://aireaccountancy.example",
+            "about": "Two-partner accountancy practice in a serviced office.",
+            "label": "bad",
+            "why": "Landlord handles the building."
+        },
+        {
+            "name": "Trades Directory Yorkshire",
+            "website": "https://tradesdirectoryyorks.example",
+            "about": "Find a local tradesperson near you.",
+            "label": "bad",
+            "why": "A directory."
+        },
+        {
+            "name": "Leeds City Council",
+            "website": "https://leedscouncil.example",
+            "about": "Local authority for the city of Leeds.",
+            "label": "bad",
+            "why": "Procures through frameworks a 14-person firm is not on."
+        },
+        {
+            "name": "Moortown Mobile Dog Grooming",
+            "website": "https://moortowngrooming.example",
+            "about": "Dog grooming at your door.",
+            "label": "bad",
+            "why": "No premises."
+        },
+        {
+            "name": "Global Freight Software Inc",
+            "website": "https://globalfreightsoftware.example",
+            "about": "US logistics software company.",
+            "label": "bad",
+            "why": "Wrong country and sector."
+        },
+        {
+            "name": "Calverley Electrical Contractors",
+            "website": "https://calverleyelectrical.example",
+            "about": "Commercial and industrial electricians, Leeds and Bradford.",
+            "label": "competitor",
+            "why": "Same trade."
+        },
+        {
+            "name": "Brightwire",
+            "website": "https://brightwire.example",
+            "about": "EICR testing, fire alarms and emergency lighting for landlords in West Yorkshire.",
+            "label": "competitor",
+            "why": "Same service; no trade word in the name."
+        },
+        {
+            "name": "Northern M&E Services",
+            "website": "https://northernme.example",
+            "about": "Mechanical and electrical contractor for commercial fit-outs.",
+            "label": "competitor",
+            "why": "M&E contractor."
+        },
+        {
+            "name": "ChargePoint Yorkshire",
+            "website": "https://chargepointyorks.example",
+            "about": "EV charger installers for businesses and fleets.",
+            "label": "competitor",
+            "why": "Competes on EV installs."
+        },
+        {
+            "name": "Sparks & Sons",
+            "website": "https://sparksandsons.example",
+            "about": "Family electricians since 1978. Domestic and commercial.",
+            "label": "competitor",
+            "why": "Electricians."
+        },
+        {
+            "name": "SafeTest Compliance",
+            "website": "https://safetestcompliance.example",
+            "about": "PAT testing, fixed wire testing and fire alarm servicing nationwide.",
+            "label": "competitor",
+            "why": "Sells the same compliance testing."
+        }
+    ]
+}

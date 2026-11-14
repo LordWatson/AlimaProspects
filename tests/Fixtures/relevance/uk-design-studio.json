@@ -1,0 +1,220 @@
+{
+    "key": "uk-design-studio",
+    "note": "Every company in this file is fictional. `about` is written as a search snippet would read.",
+    "location": "Manchester",
+    "sources": ["web_search", "ai", "companies_house", "google_places"],
+    "profile": {
+        "company_name": "Kiln & Co Studio",
+        "website": "https://kilnandco.example",
+        "industry": "Graphic design",
+        "company_size": "micro",
+        "locations": ["Manchester"],
+        "regions_served": ["uk"],
+        "primary_market": "uk",
+        "products_services": [
+            "Brand identity",
+            "Packaging design",
+            "Menu and signage design"
+        ],
+        "value_proposition": "A small studio that gets independent food and drink brands shelf-ready: identity, packaging and print in one place.",
+        "pricing_min": 250000,
+        "pricing_max": 1500000,
+        "pricing_currency": "gbp",
+        "customer_examples": [
+            "Pollen Bakery",
+            "Three Rivers Gin",
+            "Hatch Street Food Market"
+        ]
+    },
+    "pages": {
+        "/": "Kiln & Co Studio. Branding and packaging design for independent food and drink. We are a five-person design studio in Manchester's Northern Quarter. Get in touch to talk about your launch.",
+        "/services": "What we do. We name, brand and package products for bakeries, distillers, coffee roasters, restaurants and street food traders who are ready to move from a market stall to a retail shelf. Services: brand identity, packaging design, menus and signage, launch artwork. We work with founders and marketing managers directly.",
+        "/case-studies": "Our work. A full rebrand for Pollen Bakery ahead of its second shop. Bottle and label design for Three Rivers Gin, now stocked in forty independent retailers. Wayfinding and signage for Hatch Street Food Market.",
+        "/pricing": "Pricing. Projects typically start at £2,500. A full identity and packaging range is usually between £6,000 and £15,000. We are a small studio and do not take on national chains or agencies looking for white-label work."
+    },
+    "ground_truth": "Independent UK food and drink producers and hospitality operators (bakeries, distilleries, breweries, coffee roasters, restaurants, street food brands, delis), roughly 2-50 staff, in the North West first and the rest of the UK second, that sell a physical product or run venues and need branding or packaging. Not design studios, agencies, printers or freelancers; not national chains with in-house design teams; not businesses outside food, drink and hospitality.",
+    "companies": [
+        {
+            "name": "Saltmarsh Sourdough",
+            "website": "https://saltmarshsourdough.example",
+            "about": "Wholesale and retail artisan bakery in Lancaster supplying cafes and farm shops across the North West.",
+            "label": "good",
+            "why": "Independent bakery moving into retail."
+        },
+        {
+            "name": "Copper Pike Distillery",
+            "website": "https://copperpike.example",
+            "about": "Small-batch gin and rum distillery in the Peak District. Shop our bottles online.",
+            "label": "good",
+            "why": "Drinks producer with a bottled product."
+        },
+        {
+            "name": "Ancoats Coffee Roasters",
+            "website": "https://ancoatsroasters.example",
+            "about": "Speciality coffee roasted in Manchester. Wholesale, subscriptions and two cafes.",
+            "label": "good",
+            "why": "Roaster with packaged product and venues."
+        },
+        {
+            "name": "Designer Outlet Deli Ltd",
+            "website": "https://outletdeli.example",
+            "about": "Family-run delicatessen and hamper company in Cheshire Oaks.",
+            "label": "good",
+            "why": "A deli; the word 'Designer' in the name must not exclude it."
+        },
+        {
+            "name": "Hollin Brook Brewery",
+            "website": "https://hollinbrook.example",
+            "about": "Independent craft brewery and taproom in Stockport launching a canned range.",
+            "label": "good",
+            "why": "Launching packaged cans."
+        },
+        {
+            "name": "Mesa Verde Taqueria",
+            "website": "https://mesaverde.example",
+            "about": "Street food trader turned restaurant group with three sites in Manchester and Leeds.",
+            "label": "good",
+            "why": "Growing hospitality group."
+        },
+        {
+            "name": "Fell & Furrow Preserves",
+            "website": "https://fellandfurrow.example",
+            "about": "Handmade chutneys and jams from Cumbria, stocked in 40 independent shops.",
+            "label": "good",
+            "why": "Producer needing shelf packaging."
+        },
+        {
+            "name": "Little Ouse Kombucha",
+            "website": "https://littleouse.example",
+            "about": "Brewed-in-Norfolk kombucha, now in cans. Stockist enquiries welcome.",
+            "label": "good",
+            "why": "Drinks startup outside the North West but UK."
+        },
+        {
+            "name": "The Plough at Marton",
+            "website": "https://ploughmarton.example",
+            "about": "Independent gastropub with rooms, new owners reopening in spring.",
+            "label": "good",
+            "why": "Venue relaunch."
+        },
+        {
+            "name": "Brightside Chocolate Co",
+            "website": "https://brightsidechocolate.example",
+            "about": "Bean-to-bar chocolate maker in Sheffield selling online and to gift retailers.",
+            "label": "good",
+            "why": "Packaged confectionery."
+        },
+        {
+            "name": "Pennine Fleet Leasing",
+            "website": "https://penninefleet.example",
+            "about": "Van and car leasing for businesses across Greater Manchester.",
+            "label": "bad",
+            "why": "Not food, drink or hospitality."
+        },
+        {
+            "name": "Greggson National Bakeries plc",
+            "website": "https://greggson.example",
+            "about": "The UK's largest bakery chain with over 2,000 shops and an in-house brand team.",
+            "label": "bad",
+            "why": "National chain with in-house design."
+        },
+        {
+            "name": "Mersey Dental Care",
+            "website": "https://merseydental.example",
+            "about": "NHS and private dental practice in Liverpool.",
+            "label": "bad",
+            "why": "Wrong sector."
+        },
+        {
+            "name": "Harlow & Finch Solicitors",
+            "website": "https://harlowfinch.example",
+            "about": "Commercial property and employment law firm, Manchester.",
+            "label": "bad",
+            "why": "Wrong sector."
+        },
+        {
+            "name": "Catering Equipment Direct",
+            "website": "https://cateringequipmentdirect.example",
+            "about": "Trade supplier of commercial ovens and refrigeration to restaurants.",
+            "label": "bad",
+            "why": "Sells to hospitality; not a brand that needs packaging."
+        },
+        {
+            "name": "Foodhub Jobs Board",
+            "website": "https://foodhubjobs.example",
+            "about": "Thousands of chef and waiting staff vacancies across the UK.",
+            "label": "bad",
+            "why": "A directory, not a producer."
+        },
+        {
+            "name": "Kowalski Sp. z o.o. Piekarnia",
+            "website": "https://kowalskipiekarnia.example",
+            "about": "Rodzinna piekarnia w Krakowie.",
+            "label": "bad",
+            "why": "Outside the UK."
+        },
+        {
+            "name": "Northgate Self Storage",
+            "website": "https://northgatestorage.example",
+            "about": "Secure storage units in Salford from £12 a week.",
+            "label": "bad",
+            "why": "Wrong sector."
+        },
+        {
+            "name": "Tastecraft Flavourings Ltd",
+            "website": "https://tastecraft.example",
+            "about": "Industrial flavour house supplying multinational food manufacturers.",
+            "label": "bad",
+            "why": "Industrial B2B ingredient supplier, no consumer brand."
+        },
+        {
+            "name": "Manchester Food Bank Trust",
+            "website": "https://mcrfoodbank.example",
+            "about": "Charity distributing emergency food parcels.",
+            "label": "bad",
+            "why": "A charity, not a buyer of packaging design."
+        },
+        {
+            "name": "Studio Eight",
+            "website": "https://studioeight.example",
+            "about": "Brand and packaging studio for food and drink challengers, Leeds.",
+            "label": "competitor",
+            "why": "Same work; no trade word in the name."
+        },
+        {
+            "name": "Apex Graphic Design",
+            "website": "https://apexgraphicdesign.example",
+            "about": "Logo, print and web design in Manchester.",
+            "label": "competitor",
+            "why": "A design studio."
+        },
+        {
+            "name": "Fold & Form",
+            "website": "https://foldandform.example",
+            "about": "Packaging designers and structural engineers for drinks brands.",
+            "label": "competitor",
+            "why": "Packaging design."
+        },
+        {
+            "name": "Goodlabel Creative",
+            "website": "https://goodlabel.example",
+            "about": "We design labels and identities for craft breweries and distillers.",
+            "label": "competitor",
+            "why": "Same niche."
+        },
+        {
+            "name": "Marlowe Brand Agency",
+            "website": "https://marlowebrand.example",
+            "about": "Full-service branding agency working with hospitality groups nationwide.",
+            "label": "competitor",
+            "why": "Branding agency."
+        },
+        {
+            "name": "Inkwell Print & Design",
+            "website": "https://inkwellprint.example",
+            "about": "Menus, signage and artwork designed and printed in-house, Bolton.",
+            "label": "competitor",
+            "why": "Offers the same design service with print."
+        }
+    ]
+}

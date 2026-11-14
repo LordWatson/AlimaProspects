@@ -29,6 +29,28 @@ return [
     // values genuinely describe buyers, and the reason a design studio used to be shown design
     // studios when they didn't. One model call per source per run; never called from the job, so a
     // retry can't re-bill it.
+    /*
+    |--------------------------------------------------------------------------
+    | Relevance gate (ADR 0035)
+    |--------------------------------------------------------------------------
+    |
+    | One cheap-tier, batched AI judgement of each candidate against the team's own business
+    | before it becomes a lead. It refuses only a `not_fit` or `competitor` verdict at or above
+    | `min_confidence`; everything else is kept. `batch_size` x `max_calls` is the most candidates
+    | one run will pay to judge — the rest pass unjudged. Switch it off and discovery behaves as
+    | it did before: the word-matching exclusion filter only.
+    |
+    */
+
+    'relevance_gate' => [
+        'enabled' => (bool) env('LEAD_SOURCING_RELEVANCE_GATE', true),
+        'min_confidence' => (int) env('LEAD_SOURCING_RELEVANCE_GATE_MIN_CONFIDENCE', 70),
+        'batch_size' => (int) env('LEAD_SOURCING_RELEVANCE_GATE_BATCH', 25),
+        'max_calls' => (int) env('LEAD_SOURCING_RELEVANCE_GATE_MAX_CALLS', 2),
+        // How many refused companies a run keeps as a sample for the member to check.
+        'rejection_sample' => 20,
+    ],
+
     'query_shaping' => [
         'enabled' => (bool) env('LEAD_SOURCING_QUERY_SHAPING', true),
     ],
@@ -87,6 +109,10 @@ return [
             // Indicative billed cost of one search query, in micro-units (~$0.003).
             'cost_micros_per_request' => (int) env('WEB_SEARCH_COST_MICROS', 3_000),
 
+            // How many of the shaper's query angles one run may send. Each is a billed request, so
+            // this is the ceiling on what a web-search run costs.
+            'max_queries' => (int) env('WEB_SEARCH_MAX_QUERIES', 3),
+
             // Aggregator / social / directory domains that are not a company's own site. Results on
             // these are skipped so distinct companies don't all collapse to one `domain:` lead.
             'ignore_domains' => [
@@ -102,6 +128,11 @@ return [
             // requests: the run's own limit still applies and the job slices to it. No API key of
             // its own — the AI Platform owns the Anthropic credentials (config/ai.php).
             'max_results' => (int) env('AI_LEAD_SOURCE_MAX_RESULTS', 20),
+
+            // How many search results the model is given to pick companies out of (ADR 0035).
+            // More than `max_results`, because a good share of any result page is articles and
+            // lists it is told to skip. An input-token cost.
+            'max_search_results' => (int) env('AI_LEAD_SOURCE_MAX_SEARCH_RESULTS', 30),
         ],
 
     ],

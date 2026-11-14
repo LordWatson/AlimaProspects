@@ -65,7 +65,7 @@ const segments: Array<{
 
 <template>
     <section
-        class="space-y-6 rounded-2xl border border-border bg-card p-6"
+        class="space-y-6 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
         data-test="calibration"
     >
         <div class="space-y-1">

@@ -208,6 +208,14 @@ export type DiscoveryRun = {
     requested_limit: number;
     leads_found: number;
     leads_created: number;
+    /** Candidates the relevance check refused before they became leads. */
+    leads_rejected: number;
+    /** A capped sample of them: a company name, a verdict and a one-line reason. */
+    rejections: {
+        name: string;
+        verdict: 'competitor' | 'not_fit';
+        reason: string;
+    }[];
     cost_micros: number;
     error_message: string | null;
     started_at: string | null;

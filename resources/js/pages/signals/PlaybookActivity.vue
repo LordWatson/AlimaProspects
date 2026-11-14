@@ -183,7 +183,7 @@ function blockGuidance(step: PlaybookStepOutcome): string | null {
             <li
                 v-for="run in runs.data"
                 :key="run.id"
-                class="space-y-3 rounded-2xl border border-border bg-card p-5"
+                class="space-y-3 rounded-[1.25rem] border border-transparent bg-card p-5 shadow-sm dark:border-border"
                 :data-test="`run-${run.id}`"
             >
                 <div class="flex flex-wrap items-start justify-between gap-3">

@@ -178,7 +178,7 @@ function months(days: number): number {
                 <article
                     v-for="assessment in assessments"
                     :key="assessment.market"
-                    class="group/card relative space-y-3 rounded-2xl border border-border bg-card p-6 transition-colors focus-within:border-brand/40 hover:border-brand/40"
+                    class="group/card relative space-y-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm transition-colors focus-within:border-brand/40 hover:border-brand/40 dark:border-border"
                     :data-test="`lia-${assessment.market}`"
                 >
                     <div class="flex items-start justify-between gap-3">
@@ -299,7 +299,7 @@ function months(days: number): number {
 
         <!-- Retention --------------------------------------------------------->
         <section
-            class="space-y-4 rounded-2xl border border-border bg-card p-6"
+            class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             data-test="retention"
         >
             <div>
@@ -488,7 +488,7 @@ function months(days: number): number {
         <section class="grid gap-4 md:grid-cols-2">
             <article
                 v-if="can.dsar"
-                class="flex flex-col gap-3 rounded-2xl border border-border bg-card p-6"
+                class="flex flex-col gap-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             >
                 <Search class="size-5 text-teal" aria-hidden="true" />
                 <h2 class="font-semibold text-foreground">
@@ -510,7 +510,7 @@ function months(days: number): number {
 
             <article
                 v-if="can.export"
-                class="flex flex-col gap-3 rounded-2xl border border-border bg-card p-6"
+                class="flex flex-col gap-3 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
             >
                 <Download class="size-5 text-teal" aria-hidden="true" />
                 <h2 class="font-semibold text-foreground">

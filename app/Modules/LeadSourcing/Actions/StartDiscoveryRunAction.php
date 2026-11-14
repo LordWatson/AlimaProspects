@@ -74,11 +74,15 @@ final class StartDiscoveryRunAction
             // call to return nothing.
             $profile = BusinessProfile::query()->where('team_id', $team->getKey())->first();
 
+            // One model call phrases the search for every selected provider (prompt v2); a register
+            // query with SIC codes has something to search by even without a name term.
+            $shaped = $this->shaper->shapeAll($data->sources, $profile, $icp, $limit, $data->terms, $data->location);
+
             $queries = [];
             foreach ($data->sources as $source) {
-                $query = $this->shaper->shape($source, $profile, $icp, $limit, $data->terms, $data->location);
+                $query = $shaped[$source->value];
 
-                if (trim($query->terms) === '') {
+                if (trim($query->terms) === '' && $query->sicCodes === []) {
                     throw LeadSourcingException::nothingToSearch();
                 }
 

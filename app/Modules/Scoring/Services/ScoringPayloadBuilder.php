@@ -9,6 +9,8 @@ use App\Modules\Enrichment\Models\LeadContact;
 use App\Modules\ICP\Models\Icp;
 use App\Modules\ICP\Models\IcpCriterion;
 use App\Modules\LeadSourcing\Models\Lead;
+use App\Modules\Onboarding\Models\BusinessProfile;
+use App\Modules\Onboarding\Support\SellerBrief;
 use App\Modules\Scoring\Data\CriterionScore;
 use App\Modules\Scoring\Data\DeterministicScore;
 use App\Modules\Scoring\Enums\CriterionMatch;
@@ -73,6 +75,19 @@ final class ScoringPayloadBuilder
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * The business doing the selling (prompt v3). The criteria say what a good customer looks
+     * like; only this says who the lead would be buying *from*, which is what tells a customer
+     * from a competitor that happens to match the criteria. The profile of the team in context,
+     * filtered explicitly, so it can only ever be the scoring team's own.
+     */
+    public function sellerBlock(): UntrustedContent
+    {
+        return UntrustedContent::from(
+            SellerBrief::for(BusinessProfile::current()) ?? 'unknown — this team has not described its business.',
+        );
     }
 
     /**

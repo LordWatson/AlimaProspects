@@ -1,0 +1,220 @@
+{
+    "key": "uk-need-based-agency",
+    "note": "Every company in this file is fictional. `about` is written as a search snippet would read. This fixture has no vertical on purpose: the buyer is defined by a need.",
+    "location": "Bristol",
+    "sources": ["web_search", "ai", "google_places"],
+    "profile": {
+        "company_name": "Tidewater Digital",
+        "website": "https://tidewaterdigital.example",
+        "industry": "Web design and digital marketing",
+        "company_size": "micro",
+        "locations": ["Bristol"],
+        "regions_served": ["uk"],
+        "primary_market": "uk",
+        "products_services": [
+            "Website design and build",
+            "Local SEO",
+            "Google Ads management"
+        ],
+        "value_proposition": "First proper websites for small businesses and startups: live in four weeks, built to be found locally, with someone to ring afterwards.",
+        "pricing_min": 180000,
+        "pricing_max": 900000,
+        "pricing_currency": "gbp",
+        "customer_examples": [
+            "Redcliffe Physio",
+            "Bramble & Rye Catering",
+            "Totterdown Roofing"
+        ]
+    },
+    "pages": {
+        "/": "Tidewater Digital. Websites for small businesses that have outgrown a Facebook page. A Bristol web design and marketing agency. Free website review.",
+        "/services": "If you are newly trading, have no website, or have one that looks ten years old and brings in no enquiries, we build you a fast, modern site and get it found on Google. Website design, local SEO and Google Ads management. We work with owners directly.",
+        "/work": "Recent launches: Redcliffe Physio, Bramble & Rye Catering, Totterdown Roofing. We work with startups and small firms of any trade: tradespeople, clinics, caterers, consultants, shops.",
+        "/pricing": "Website design from £1,800. Local SEO and Google Ads from £350 a month. Most sites cost between £1,800 and £9,000. We are too small for enterprise tenders and we do not build for other agencies."
+    },
+    "ground_truth": "Small UK businesses and startups of any trade, about 1-25 staff, in Bristol and the South West first, that are newly incorporated or growing and have no website, a dated website, or a poor local search presence, and where the owner makes the decision. The trade does not matter; the need does. Not web designers, marketing or SEO agencies, freelancers or website-builder platforms; not established companies with an in-house marketing team; not large enterprises.",
+    "companies": [
+        {
+            "name": "Southville Plumbing & Heating",
+            "website": "https://southvilleplumbing.example",
+            "about": "Local plumbers. Site last updated 2014. Call us for a quote.",
+            "label": "good",
+            "why": "Small trade with a dated site."
+        },
+        {
+            "name": "Clifton Canine Hydrotherapy",
+            "website": "https://cliftoncanine.example",
+            "about": "New hydrotherapy centre for dogs opening this summer in Bristol.",
+            "label": "good",
+            "why": "New local business."
+        },
+        {
+            "name": "Avon Gorge Joinery Ltd",
+            "website": "https://avongorgejoinery.example",
+            "about": "Bespoke staircases and fitted furniture. Incorporated this year.",
+            "label": "good",
+            "why": "Newly incorporated."
+        },
+        {
+            "name": "Web & Weave Textiles",
+            "website": "https://webandweave.example",
+            "about": "Handwoven homeware studio selling at markets, online shop coming soon.",
+            "label": "good",
+            "why": "A textile maker; 'Web' in the name must not exclude it."
+        },
+        {
+            "name": "Harbourside Osteopathy",
+            "website": "https://harboursideosteo.example",
+            "about": "Two-practitioner osteopathy clinic. Book by phone.",
+            "label": "good",
+            "why": "Clinic with no online booking presence."
+        },
+        {
+            "name": "Mendip Marquee Hire",
+            "website": "https://mendipmarquees.example",
+            "about": "Family-run marquee hire for weddings across Somerset.",
+            "label": "good",
+            "why": "Small seasonal business reliant on enquiries."
+        },
+        {
+            "name": "Bedminster Bookkeeping",
+            "website": "https://bedminsterbookkeeping.example",
+            "about": "Bookkeeper for sole traders and small limited companies.",
+            "label": "good",
+            "why": "Owner-run service business."
+        },
+        {
+            "name": "Severn Solar Installers",
+            "website": "https://severnsolar.example",
+            "about": "MCS-certified solar and battery installers, started 2025.",
+            "label": "good",
+            "why": "Startup trade."
+        },
+        {
+            "name": "Stokes Croft Vegan Bakes",
+            "website": "https://stokescroftbakes.example",
+            "about": "Wholesale vegan cakes for cafes. Find us on Instagram.",
+            "label": "good",
+            "why": "Social-only presence."
+        },
+        {
+            "name": "Portishead Driving School",
+            "website": "https://portisheaddriving.example",
+            "about": "Three instructors covering Portishead and Clevedon.",
+            "label": "good",
+            "why": "Local service, small team."
+        },
+        {
+            "name": "Westcountry Building Society",
+            "website": "https://westcountrybs.example",
+            "about": "Mutual with 60 branches and 1,400 staff.",
+            "label": "bad",
+            "why": "Large, in-house marketing."
+        },
+        {
+            "name": "Aerodyne Composites plc",
+            "website": "https://aerodynecomposites.example",
+            "about": "Aerospace manufacturer employing 2,000 at Filton.",
+            "label": "bad",
+            "why": "Enterprise."
+        },
+        {
+            "name": "Bristol Business Listings",
+            "website": "https://bristollistings.example",
+            "about": "Free directory of local businesses.",
+            "label": "bad",
+            "why": "A directory."
+        },
+        {
+            "name": "Hamburg Hafen Logistik GmbH",
+            "website": "https://hafenlogistik.example",
+            "about": "Hafenlogistik in Hamburg.",
+            "label": "bad",
+            "why": "Outside the UK."
+        },
+        {
+            "name": "NHS Bristol Community Health",
+            "website": "https://bristolcommunityhealth.example",
+            "about": "NHS community services provider.",
+            "label": "bad",
+            "why": "Public body."
+        },
+        {
+            "name": "Fintrack Technologies",
+            "website": "https://fintrack.example",
+            "about": "Series B fintech with a 30-person marketing team.",
+            "label": "bad",
+            "why": "Has an in-house team."
+        },
+        {
+            "name": "Dissolved Trading Co Ltd",
+            "website": "https://example.invalid/dissolved",
+            "about": "Company status: dissolved.",
+            "label": "bad",
+            "why": "No longer trading."
+        },
+        {
+            "name": "University of the Severn",
+            "website": "https://unisevern.example",
+            "about": "Research university with 25,000 students.",
+            "label": "bad",
+            "why": "Institution."
+        },
+        {
+            "name": "MegaMart Supermarkets",
+            "website": "https://megamart.example",
+            "about": "National supermarket chain.",
+            "label": "bad",
+            "why": "Enterprise."
+        },
+        {
+            "name": "Tesla Owners Club South West",
+            "website": "https://teslaownerssw.example",
+            "about": "Enthusiast club for owners.",
+            "label": "bad",
+            "why": "A club, not a business."
+        },
+        {
+            "name": "Pixel Harbour",
+            "website": "https://pixelharbour.example",
+            "about": "Bristol web design studio for small businesses.",
+            "label": "competitor",
+            "why": "Same service."
+        },
+        {
+            "name": "Rank Local SEO",
+            "website": "https://ranklocalseo.example",
+            "about": "Local SEO agency for tradespeople.",
+            "label": "competitor",
+            "why": "SEO agency."
+        },
+        {
+            "name": "Fernhill",
+            "website": "https://fernhill.example",
+            "about": "We design and build websites for startups. Fixed price, four weeks.",
+            "label": "competitor",
+            "why": "Same offer; nothing in the name says so."
+        },
+        {
+            "name": "Greenlight Marketing Agency",
+            "website": "https://greenlightmarketing.example",
+            "about": "Google Ads and social media management in the South West.",
+            "label": "competitor",
+            "why": "Marketing agency."
+        },
+        {
+            "name": "Sam Okafor Freelance Web Developer",
+            "website": "https://samokafor.example",
+            "about": "Freelance WordPress developer in Bath.",
+            "label": "competitor",
+            "why": "Freelancer doing the same work."
+        },
+        {
+            "name": "SiteSnap",
+            "website": "https://sitesnap.example",
+            "about": "Build your own business website in minutes.",
+            "label": "competitor",
+            "why": "Website-builder platform."
+        }
+    ]
+}

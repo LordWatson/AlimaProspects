@@ -34,11 +34,12 @@ const ActiveIcon = computed(() => {
         <DropdownMenuTrigger as-child>
             <Button
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
+                class="border border-border bg-card hover:border-foreground hover:bg-card"
                 :aria-label="t('Appearance')"
                 data-test="appearance-toggle"
             >
-                <component :is="ActiveIcon" class="size-5" />
+                <component :is="ActiveIcon" class="size-4" />
             </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" class="min-w-36">

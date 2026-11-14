@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import {
+    AlertTriangle as TriangleAlert,
     ArrowLeft,
     Ban,
     CornerDownLeft,
@@ -71,6 +72,8 @@ defineOptions({
 const props = defineProps<{
     icp: Icp | null;
     criterionTypes: CriterionTypeMeta[];
+    /** The team's own trade, so the editor can say when a signal names it. Null if unknown. */
+    ownIndustry: string | null;
 }>();
 
 const { t } = useI18n();
@@ -209,6 +212,50 @@ function removeAt(index: number): void {
 const filledSignals = computed(() =>
     signalRows.value.filter((r) => r.row.value.trim() !== ''),
 );
+
+/**
+ * Industry signals that name the team's own trade. A profile describes the team's customers, and
+ * nothing stops one naming the team itself, which quietly turns discovery into a search for
+ * competitors. So the editor says so. It only says so: a business that sells to its own trade is
+ * a real case, and the member is the one who knows.
+ */
+const ownTradeSignals = computed(() => {
+    const own = (props.ownIndustry ?? '').trim().toLowerCase();
+
+    if (own.length < 4) {
+        return [];
+    }
+
+    return filledSignals.value
+        .filter(({ row }) => {
+            const value = row.value.trim().toLowerCase();
+
+            // One contains the other, and the shorter is most of the longer: "graphic design"
+            // inside "graphic design studio", not "care" inside "healthcare".
+            const shorter = Math.min(value.length, own.length);
+            const longer = Math.max(value.length, own.length);
+
+            return (
+                row.type === 'industry' &&
+                value.length >= 4 &&
+                shorter / longer >= 0.5 &&
+                (value.includes(own) || own.includes(value))
+            );
+        })
+        .map(({ row }) => row.value.trim());
+});
+
+/** The one-click version of the note's own advice. */
+function moveOwnTradeToExclusions(): void {
+    const flagged = new Set(ownTradeSignals.value);
+
+    form.criteria.forEach((row) => {
+        if (row.type === 'industry' && flagged.has(row.value.trim())) {
+            row.type = 'exclusion';
+            row.weight = null;
+        }
+    });
+}
 
 const filledExclusions = computed(() =>
     exclusionRows.value.filter((r) => r.row.value.trim() !== ''),
@@ -555,6 +602,48 @@ function submit(): void {
             :title="t('Signals')"
             :description="t('What a great-fit business looks like.')"
         >
+            <!-- Carries its meaning with an icon and a real heading, not with the tint alone. -->
+            <div
+                v-if="ownTradeSignals.length"
+                class="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/12 p-4"
+                role="status"
+                data-test="own-trade-warning"
+            >
+                <span
+                    class="flex size-8 shrink-0 items-center justify-center rounded-full text-warning"
+                    aria-hidden="true"
+                >
+                    <TriangleAlert class="size-4" />
+                </span>
+                <div class="space-y-1">
+                    <h3
+                        class="text-sm font-semibold text-foreground rtl:font-bold"
+                    >
+                        {{ t('This looks like your own trade') }}
+                    </h3>
+                    <p class="text-sm text-foreground/80" dir="auto">
+                        {{
+                            t(
+                                '“:value” is close to what your own business does (:own). A profile describes your customers, so this sends Alima looking for businesses like yours. Keep it only if you sell to your own trade.',
+                                {
+                                    value: ownTradeSignals.join(', '),
+                                    own: ownIndustry ?? '',
+                                },
+                            )
+                        }}
+                    </p>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-test="move-to-exclusions"
+                        @click="moveOwnTradeToExclusions"
+                    >
+                        {{ t('Move to exclusions') }}
+                    </Button>
+                </div>
+            </div>
+
             <ul v-if="signalRows.length" class="space-y-3">
                 <li
                     v-for="{ row, index } in signalRows"

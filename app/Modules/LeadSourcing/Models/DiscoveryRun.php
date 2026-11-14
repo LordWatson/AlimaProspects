@@ -33,6 +33,8 @@ use Illuminate\Support\Carbon;
  * @property int $requested_limit
  * @property int $leads_found
  * @property int $leads_created
+ * @property int $leads_rejected candidates the relevance gate refused before they became leads
+ * @property list<array{name: string, verdict: string, reason: string}>|null $rejections a capped sample of them
  * @property int $cost_micros
  * @property string|null $error_message
  * @property Carbon|null $started_at
@@ -60,6 +62,8 @@ class DiscoveryRun extends Model
         'requested_limit',
         'leads_found',
         'leads_created',
+        'leads_rejected',
+        'rejections',
         'cost_micros',
         'error_message',
         'started_at',
@@ -104,6 +108,7 @@ class DiscoveryRun extends Model
     {
         return [
             'source' => LeadSource::class,
+            'rejections' => 'array',
             'status' => DiscoveryRunStatus::class,
             'params' => 'array',
             'requested_limit' => 'integer',

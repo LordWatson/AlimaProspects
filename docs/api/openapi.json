@@ -10587,6 +10587,32 @@
                     "leads_created": {
                         "type": "integer"
                     },
+                    "leads_rejected": {
+                        "type": "integer",
+                        "description": "What the relevance gate left out, and a sample of why \u2014 company names and one-line\nreasons only, so a member can check it dropped the right things."
+                    },
+                    "rejections": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string"
+                                },
+                                "verdict": {
+                                    "type": "string"
+                                },
+                                "reason": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "name",
+                                "verdict",
+                                "reason"
+                            ]
+                        }
+                    },
                     "cost_micros": {
                         "type": "integer"
                     },
@@ -10630,6 +10656,8 @@
                     "requested_limit",
                     "leads_found",
                     "leads_created",
+                    "leads_rejected",
+                    "rejections",
                     "cost_micros",
                     "error_message",
                     "started_at",
@@ -11305,6 +11333,34 @@
                             "null"
                         ]
                     },
+                    "tps_status": {
+                        "type": "string",
+                        "description": "The do-not-call verdict (PL5). `unchecked` is **not** `clear`, and the label says so\n\u2014 the distinction is the whole value of the column. `allows_dial_link` is what a\nclient binds to rather than comparing the status itself: a literal compare against\none case is a bug waiting for the enum to grow (ADR 0029's own lesson).",
+                        "enum": [
+                            "unchecked",
+                            "clear",
+                            "registered",
+                            "not_applicable"
+                        ]
+                    },
+                    "tps_status_label": {
+                        "type": "string",
+                        "enum": [
+                            "Not screened",
+                            "Not on TPS/CTPS",
+                            "Do not cold call \u2014 TPS/CTPS",
+                            "Outside TPS/CTPS"
+                        ]
+                    },
+                    "tps_checked_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "allows_dial_link": {
+                        "type": "boolean"
+                    },
                     "is_role_based": {
                         "type": "boolean"
                     },
@@ -11384,6 +11440,10 @@
                     "phone_type_label",
                     "phone_accepts_messaging",
                     "phone_source",
+                    "tps_status",
+                    "tps_status_label",
+                    "tps_checked_at",
+                    "allows_dial_link",
                     "is_role_based",
                     "is_personal",
                     "is_inferred",
@@ -11820,6 +11880,10 @@
                             "allows_direct_marketing"
                         ]
                     },
+                    "subscriber_type": {
+                        "type": "string",
+                        "description": "What kind of subscriber this is for direct-marketing purposes, where a regime draws\nthat distinction (PL5). Null for a prospect no such rule covers, which is a\ndifferent thing from \"we cannot tell\" \u2014 the latter is a value and warns."
+                    },
                     "contacts": {
                         "type": "array",
                         "description": "Resolved to a plain list rather than handed over as a resource collection: a nested\ncollection keeps its own `data` wrapper, which would leave the client reading\n`lead.contacts.data` on one screen and `lead.contacts` on the next.",
@@ -11983,7 +12047,8 @@
                     "collected_at",
                     "enriched_at",
                     "has_personal_data",
-                    "outreach_restriction"
+                    "outreach_restriction",
+                    "subscriber_type"
                 ],
                 "title": "LeadResource"
             },
@@ -12378,6 +12443,9 @@
                             "signal_on_account",
                             "playbook_fired",
                             "insights_ready",
+                            "export_ready",
+                            "integration_needs_reauth",
+                            "webhook_disabled",
                             "credit_low",
                             "payment_failed",
                             "assessment_review_due",
@@ -12687,7 +12755,8 @@
                         "enum": [
                             "email",
                             "domain",
-                            "phone"
+                            "phone",
+                            "company_number"
                         ]
                     },
                     "type_label": {
@@ -12695,7 +12764,8 @@
                         "enum": [
                             "Email address",
                             "Domain",
-                            "Phone number"
+                            "Phone number",
+                            "Company number"
                         ]
                     },
                     "value_preview": {
@@ -15879,7 +15949,8 @@
                         "enum": [
                             "email",
                             "domain",
-                            "phone"
+                            "phone",
+                            "company_number"
                         ]
                     },
                     "value": {

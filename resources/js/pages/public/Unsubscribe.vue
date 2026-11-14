@@ -36,7 +36,9 @@ const { t } = useI18n();
 
     <MarketingLayout bare>
         <div class="mx-auto max-w-xl px-5 py-20 sm:py-28">
-            <div class="space-y-5 rounded-2xl border border-border bg-card p-8">
+            <div
+                class="space-y-5 rounded-[1.25rem] border border-transparent bg-card p-8 shadow-sm dark:border-border"
+            >
                 <!-- Done ----------------------------------------------------->
                 <template v-if="done">
                     <CheckCircle2

@@ -27,4 +27,17 @@ final class IcpException extends DomainException
 
         return $e;
     }
+
+    /**
+     * Suggestions could not be drafted: no AI credit, or no schema-valid answer. Nothing has
+     * changed and nothing was stored, so the member can simply try again later.
+     */
+    public static function suggestionsUnavailable(): self
+    {
+        $e = new self('Alima can’t suggest improvements right now. Your profile is unchanged. Try again in a little while.');
+        $e->errorCode = 'icp.suggestions_unavailable';
+        $e->status = 503;
+
+        return $e;
+    }
 }

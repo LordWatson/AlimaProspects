@@ -53,10 +53,54 @@ it('sends the query with the api key header', function (): void {
     });
 });
 
-it('reports a per-query cost', function (): void {
+it('runs every query angle, merges them by domain and bills each request', function (): void {
     config()->set('lead-sourcing.providers.web_search.cost_micros_per_request', 3_000);
 
-    expect(app(WebSearchProvider::class)->costMicros(10))->toBe(3_000);
+    Http::fake(['google.serper.dev/*' => Http::sequence()
+        ->push(['organic' => [
+            ['title' => 'Alpha Hotel', 'link' => 'https://alpha.example/rooms'],
+            ['title' => 'Beta Inn', 'link' => 'https://beta.example/'],
+        ]])
+        ->push(['organic' => [
+            // The same company found by the second angle is one candidate, not two.
+            ['title' => 'Alpha Hotel — About', 'link' => 'https://alpha.example/about'],
+            ['title' => 'Gamma Lodge', 'link' => 'https://gamma.example/'],
+        ]]),
+    ]);
+
+    $provider = app(WebSearchProvider::class);
+    $leads = $provider->discover(new DiscoveryQuery(
+        source: LeadSource::WebSearch,
+        terms: 'boutique hotels',
+        location: 'Bath',
+        queries: ['country house hotels'],
+    ));
+
+    expect(array_map(static fn ($lead): string => $lead->companyName, $leads))->toBe(['Alpha Hotel', 'Beta Inn', 'Gamma Lodge'])
+        // Which angle found a candidate is kept, so a run can say why it surfaced.
+        ->and($leads[2]->raw['query'])->toBe('country house hotels')
+        ->and($provider->costMicros(count($leads)))->toBe(6_000);
+
+    Http::assertSentCount(2);
+});
+
+it('asks again without exclusions when the provider refuses the query pattern', function (): void {
+    Http::fake(['google.serper.dev/*' => Http::sequence()
+        ->push(['message' => 'Query pattern not allowed for free accounts.', 'statusCode' => 400], 400)
+        ->push(['organic' => [['title' => 'Alpha Hotel', 'link' => 'https://alpha.example/']]]),
+    ]);
+
+    $leads = app(WebSearchProvider::class)->discover(new DiscoveryQuery(
+        source: LeadSource::WebSearch,
+        terms: 'boutique hotels',
+        excludeTerms: ['graphic design'],
+    ));
+
+    // A refused pattern is a verdict about the query, not an outage: the run is served by the
+    // plain query, and the exclusions are still applied afterwards by the candidate filter.
+    expect($leads)->toHaveCount(1);
+
+    Http::assertSent(fn ($request): bool => ($request['q'] ?? '') === 'boutique hotels');
 });
 
 it('fails clearly when the configured driver is not implemented', function (): void {

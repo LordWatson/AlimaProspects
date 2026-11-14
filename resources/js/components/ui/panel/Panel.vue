@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { type HTMLAttributes, useId } from 'vue';
-import { Badge } from '@/components/ui/badge';
-import { useFormat } from '@/composables/useFormat';
-import { cn } from '@/lib/utils';
+import { type HTMLAttributes, useId } from "vue";
+import { Badge } from "@/components/ui/badge";
+import { useFormat } from "@/composables/useFormat";
+import { cn } from "@/lib/utils";
 
 /*
  * The one section shell for a record screen: a cream card, a DM Mono eyebrow heading, and the
@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
  */
 const props = withDefaults(
     defineProps<{
-        class?: HTMLAttributes['class'];
+        class?: HTMLAttributes["class"];
         /** Already translated — a panel title is copy, and `t()` belongs to the caller. */
         title: string;
         /** Shown beside the title where the panel's content is a countable list. */
@@ -43,13 +43,13 @@ const headingId = useId();
     <section
         :class="
             cn(
-                'rounded-2xl border border-border bg-card p-6',
+                'rounded-[1.25rem] border border-transparent bg-card p-5 shadow-sm sm:p-6 dark:border-border',
                 props.class,
             )
         "
         :aria-labelledby="headingId"
     >
-        <header class="mb-4 space-y-2 border-b border-border pb-4">
+        <header class="mb-4 space-y-2 border-b border-line-soft pb-3">
             <div
                 class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
             >
