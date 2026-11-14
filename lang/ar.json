@@ -2726,5 +2726,12 @@
     "reply": "رد",
     "right to left included": "بما في ذلك الكتابة من اليمين إلى اليسار",
     "signal": "إشارة",
-    "Main menu": "القائمة الرئيسية"
+    "Main menu": "القائمة الرئيسية",
+    "Fit score": "نتيجة الملاءمة",
+    "Find a teammate…": "ابحث عن زميل…",
+    "Nobody on your team matches that.": "لا أحد في فريقك يطابق ذلك.",
+    "A lead can have up to :max people on it.": "يمكن أن يعمل على العميل المحتمل :max أشخاص كحد أقصى.",
+    "Find a teammate": "ابحث عن زميل",
+    "Assign": "تعيين",
+    "Stage :n of :total": "المرحلة :n من :total"
 }

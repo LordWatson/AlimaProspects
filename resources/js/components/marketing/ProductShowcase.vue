@@ -609,29 +609,25 @@ onBeforeUnmount(stop);
                 :aria-selected="index === active"
                 :aria-controls="`showcase-panel-${screen.key}`"
                 :tabindex="index === active ? 0 : -1"
-                class="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors duration-[250ms] ease-brand focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                class="flex h-11 items-center gap-2 rounded-full border-[1.5px] px-4 text-sm font-semibold transition-[background-color,color,border-color,transform] duration-[250ms] ease-brand focus-visible:ring-[3px] focus-visible:ring-cream focus-visible:ring-offset-2 focus-visible:ring-offset-teal focus-visible:outline-none active:scale-95"
                 :class="
                     index === active
-                        ? 'bg-ink text-cream'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        ? 'border-cream bg-cream text-ink'
+                        : 'border-cream/40 text-cream hover:border-cream hover:bg-cream/10'
                 "
                 @click="select(index)"
                 @keydown="onTabKeydown($event, index)"
             >
                 <span
                     class="font-mono text-[0.625rem]"
-                    :class="
-                        index === active ? 'text-lime' : 'text-muted-foreground'
-                    "
+                    :class="index === active ? 'text-teal' : 'text-cream/75'"
                     >{{ screen.n }}</span
                 >
                 {{ screen.tab }}
             </button>
         </div>
 
-        <p
-            class="mt-4 text-center font-mono text-[0.625rem] text-muted-foreground"
-        >
+        <p class="mt-4 text-center font-mono text-xs text-cream/75">
             {{
                 t(
                     'Illustrative screens. The companies and figures are made up.',

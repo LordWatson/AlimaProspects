@@ -63,6 +63,13 @@ final class FindLeadAction
                 // The timeline attributes each entry to a person or to Alima, so the name is
                 // needed; nothing else about the account is.
                 'activities.user:id,name',
+                // The work panel and the summary rail: who is on the lead, its labels and its
+                // stage. Without these the screen showed "Nobody" and an empty tag list, and the
+                // assignee toggles — which send the whole new set — replaced the team on every
+                // click with just the person clicked.
+                'assignments.user:id,name',
+                'tags',
+                'pipelineStage',
             ])
             ->findOrFail($leadId));
     }

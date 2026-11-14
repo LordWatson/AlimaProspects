@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import {
+    TransitionPresets,
+    usePreferredReducedMotion,
+    useTransition,
+} from '@vueuse/core';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from '@/composables/useI18n';
 import type { ScoreGrade } from '@/types';
 
@@ -39,8 +44,24 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 const clamped = computed(() => Math.min(100, Math.max(0, props.score)));
 
+/*
+ * The arc draws itself and the figure counts up to the score on arrival — the moment a member
+ * opens a lead is the moment the grade is news. Both read one tweened value, so they never
+ * disagree; the accessible name always carries the real score. Instant under reduced motion.
+ */
+const target = ref(0);
+const reducedMotion = usePreferredReducedMotion();
+const shown = useTransition(target, {
+    duration: computed(() => (reducedMotion.value === 'reduce' ? 0 : 900)),
+    transition: TransitionPresets.easeOutCubic,
+});
+
+onMounted(() => (target.value = clamped.value));
+// A regrade moves the dial from where it was to the new score.
+watch(clamped, (value) => (target.value = value));
+
 const dash = computed(
-    () => `${(clamped.value / 100) * CIRCUMFERENCE} ${CIRCUMFERENCE}`,
+    () => `${(shown.value / 100) * CIRCUMFERENCE} ${CIRCUMFERENCE}`,
 );
 
 // The same mapping as `GradeBadge`, because a grade that is green on one screen and teal on the
@@ -108,7 +129,7 @@ const spoken = computed(() =>
             aria-hidden="true"
             dir="ltr"
         >
-            {{ clamped }}
+            {{ Math.round(shown) }}
         </p>
     </div>
 </template>

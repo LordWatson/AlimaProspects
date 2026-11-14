@@ -436,6 +436,15 @@ onBeforeUnmount(() => {
             :eyebrow="t('Lead')"
             :title="t('Everything on')"
             :accent="lead.company_name"
+            :stat="
+                score
+                    ? {
+                          label: t('Fit score'),
+                          value: score.score,
+                          caption: t(score.grade_label),
+                      }
+                    : null
+            "
             size="compact"
         >
             <template #actions>
@@ -462,10 +471,7 @@ onBeforeUnmount(() => {
           Where this came from, and the five things a member opens the screen to find out — on the
           cream card surface, because this is the record rather than the destination.
         -->
-        <header
-            class="space-y-5 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
-            data-test="lead-header"
-        >
+        <header class="space-y-4" data-test="lead-header">
             <div
                 class="flex items-center justify-between gap-4 font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
             >
@@ -504,10 +510,10 @@ onBeforeUnmount(() => {
               in one place beats the same control in two.
             -->
             <dl
-                class="flex flex-wrap gap-x-8 gap-y-4 border-t border-border pt-5"
+                class="grid grid-cols-2 border-t-[1.5px] border-foreground sm:grid-cols-3 lg:grid-cols-5 [&>div]:border-b [&>div]:border-border [&>div]:p-4 lg:[&>div]:border-e lg:[&>div]:border-b-0 lg:[&>div:last-child]:border-e-0"
                 data-test="lead-rail"
             >
-                <div class="space-y-1">
+                <div class="space-y-2">
                     <dt
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
@@ -544,7 +550,7 @@ onBeforeUnmount(() => {
                     </dd>
                 </div>
 
-                <div class="space-y-1">
+                <div class="space-y-2">
                     <dt
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
@@ -560,7 +566,7 @@ onBeforeUnmount(() => {
                     </dd>
                 </div>
 
-                <div class="min-w-0 space-y-1">
+                <div class="min-w-0 space-y-2">
                     <dt
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
@@ -571,7 +577,7 @@ onBeforeUnmount(() => {
                     </dd>
                 </div>
 
-                <div class="space-y-1">
+                <div class="space-y-2">
                     <dt
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
@@ -592,7 +598,7 @@ onBeforeUnmount(() => {
                     </dd>
                 </div>
 
-                <div class="space-y-1">
+                <div class="space-y-2">
                     <dt
                         class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
                     >
@@ -953,20 +959,21 @@ onBeforeUnmount(() => {
                          card, not something to know before reaching out. -->
                     <LeadNoticeRow v-if="dataState" :notice="dataState" />
 
-                    <dl
-                        v-if="facts.length"
-                        class="grid gap-x-6 gap-y-4 sm:grid-cols-2"
-                    >
+                    <!-- Each fact on its own warm tile, so a full card reads as a set of answers
+                         rather than a form. -->
+                    <dl v-if="facts.length" class="grid gap-2 sm:grid-cols-2">
                         <div
                             v-for="fact in facts"
                             :key="fact.label"
-                            class="space-y-0.5"
+                            class="space-y-1.5 rounded-2xl bg-background p-4 transition-colors duration-150 hover:bg-muted"
                         >
-                            <dt class="text-xs text-muted-foreground">
+                            <dt
+                                class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                            >
                                 {{ t(fact.label) }}
                             </dt>
                             <dd
-                                class="flex items-center gap-1.5 text-sm text-foreground"
+                                class="flex items-center gap-1.5 text-sm font-semibold text-foreground"
                                 :dir="fact.ltr ? 'ltr' : 'auto'"
                             >
                                 {{ fact.value }}
@@ -993,7 +1000,7 @@ onBeforeUnmount(() => {
 
                     <ul
                         v-if="lead.technologies.length"
-                        class="flex flex-wrap gap-1.5 border-t border-border pt-4"
+                        class="flex flex-wrap gap-1.5 border-t border-line-soft pt-4"
                     >
                         <li
                             v-for="tech in lead.technologies"

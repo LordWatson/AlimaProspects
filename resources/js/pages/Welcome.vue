@@ -107,6 +107,8 @@ const tiles: {
     body: string;
     tone: 'teal' | 'lilac' | 'ink' | 'card' | 'lime';
     span: string;
+    /** A small drawing that moves on hover; only the wide tiles carry one. */
+    visual?: 'scores' | 'signals' | 'chart' | 'privacy';
 }[] = [
     {
         eyebrow: 'Hybrid scoring',
@@ -114,13 +116,15 @@ const tiles: {
         body: 'Your own criteria, weighed exactly as you set them, plus an AI read of the rest — one score out of 100 and a grade you can argue with.',
         tone: 'teal',
         span: 'lg:col-span-2',
+        visual: 'scores',
     },
     {
         eyebrow: 'Trigger-event signals',
         title: 'Arrive while it still matters.',
         body: 'Funding rounds, exits and relocations in your market, found in the news, classified and dated — so you arrive while it still matters.',
         tone: 'lilac',
-        span: 'lg:col-span-2 lg:row-span-2',
+        span: 'lg:col-span-2',
+        visual: 'signals',
     },
     {
         eyebrow: 'Ideal customer profiles',
@@ -156,6 +160,7 @@ const tiles: {
         body: 'The companies you went quiet on, the strong matches nobody has approached, and the model’s read of your week.',
         tone: 'card',
         span: 'lg:col-span-2',
+        visual: 'chart',
     },
     {
         eyebrow: 'Privacy, enforced',
@@ -163,6 +168,7 @@ const tiles: {
         body: 'Nothing is sourced until your lawful basis is written down, old data clears out every night, and a request to see or erase it is a screen, not a scramble.',
         tone: 'teal',
         span: 'lg:col-span-2',
+        visual: 'privacy',
     },
 ];
 
@@ -189,6 +195,21 @@ const tileBody = {
     card: 'text-muted-foreground',
     lime: 'text-ink/80',
 } as const;
+
+// Illustrative only: three grades and how far each bar fills when the tile is hovered.
+const scoreBars = [
+    { grade: 'A', value: 92 },
+    { grade: 'B', value: 74 },
+    { grade: 'C', value: 51 },
+];
+const signalChips = ['Funding round', 'Acquisition', 'Relocation'];
+const chipTone = ['bg-ink text-cream', 'bg-cream text-ink', 'bg-lime text-ink'];
+const chipFan = [
+    '-rotate-6 group-hover:-translate-x-[7.5rem] group-hover:-rotate-12',
+    'z-10 group-hover:-translate-y-3',
+    'rotate-6 group-hover:translate-x-[7.5rem] group-hover:rotate-12',
+];
+const chartBars = [38, 52, 44, 66, 58, 81, 72, 94];
 
 const sources = [
     'Companies House',
@@ -516,11 +537,11 @@ function toggleFaq(index: number): void {
                 <article
                     v-for="tile in tiles"
                     :key="tile.eyebrow"
-                    class="flex w-[18rem] shrink-0 snap-start flex-col gap-3.5 rounded-[1.75rem] p-7 transition-[transform,box-shadow] duration-300 ease-brand hover:-translate-y-1.5 hover:shadow-lift lg:w-auto"
+                    class="group flex w-[18rem] shrink-0 snap-start flex-col gap-3.5 rounded-[1.75rem] p-7 transition-[transform,box-shadow] duration-300 ease-brand hover:-translate-y-1.5 hover:shadow-lift lg:w-auto"
                     :class="[tileTone[tile.tone], tile.span]"
                 >
                     <p
-                        class="font-mono text-[0.6875rem] tracking-[0.2em] uppercase rtl:tracking-normal"
+                        class="font-mono text-xs tracking-eyebrow uppercase rtl:tracking-normal"
                         :class="tileEyebrow[tile.tone]"
                     >
                         {{ t(tile.eyebrow) }}
@@ -531,11 +552,97 @@ function toggleFaq(index: number): void {
                         {{ t(tile.title) }}
                     </h3>
                     <p
-                        class="mt-auto text-[0.9375rem] leading-[1.55]"
-                        :class="tileBody[tile.tone]"
+                        class="text-[0.9375rem] leading-[1.55]"
+                        :class="[
+                            tileBody[tile.tone],
+                            tile.visual ? '' : 'mt-auto',
+                        ]"
                     >
                         {{ t(tile.body) }}
                     </p>
+
+                    <!-- Decoration that answers the hover: drawn, so hidden from a screen reader. -->
+                    <div
+                        v-if="tile.visual"
+                        class="mt-auto pt-3"
+                        aria-hidden="true"
+                    >
+                        <!-- Scores: bars fill to their value. -->
+                        <div
+                            v-if="tile.visual === 'scores'"
+                            class="flex flex-col gap-2.5"
+                        >
+                            <div
+                                v-for="bar in scoreBars"
+                                :key="bar.grade"
+                                class="flex items-center gap-3 text-sm"
+                            >
+                                <span
+                                    class="flex size-7 shrink-0 items-center justify-center rounded-full bg-lime font-mono text-xs font-medium text-ink"
+                                    >{{ bar.grade }}</span
+                                >
+                                <span
+                                    class="h-2 flex-1 overflow-hidden rounded-full bg-cream/15"
+                                >
+                                    <span
+                                        class="block h-full w-[14%] rounded-full bg-lime transition-[width] duration-[900ms] ease-brand group-hover:w-(--w) motion-reduce:w-(--w)"
+                                        :style="{ '--w': `${bar.value}%` }"
+                                    />
+                                </span>
+                                <span
+                                    class="w-8 text-end font-mono text-xs tabular-nums"
+                                    dir="ltr"
+                                    >{{ bar.value }}</span
+                                >
+                            </div>
+                        </div>
+
+                        <!-- Signals: three chips that fan out. -->
+                        <div
+                            v-else-if="tile.visual === 'signals'"
+                            class="relative flex h-24 items-end justify-center"
+                        >
+                            <span
+                                v-for="(chip, i) in signalChips"
+                                :key="chip"
+                                class="absolute bottom-0 rounded-2xl px-4 py-3 text-sm font-semibold shadow-pop transition-transform duration-500 ease-brand"
+                                :class="[chipTone[i], chipFan[i]]"
+                                >{{ t(chip) }}</span
+                            >
+                        </div>
+
+                        <!-- Insights: a week of bars that rise. -->
+                        <div
+                            v-else-if="tile.visual === 'chart'"
+                            class="flex h-20 items-end gap-2"
+                        >
+                            <span
+                                v-for="(height, i) in chartBars"
+                                :key="i"
+                                class="flex-1 origin-bottom scale-y-[0.35] rounded-t-md transition-transform duration-500 ease-brand group-hover:scale-y-100 motion-reduce:scale-y-100"
+                                :class="
+                                    i === chartBars.length - 1
+                                        ? 'bg-teal'
+                                        : 'bg-teal/25'
+                                "
+                                :style="{
+                                    height: `${height}%`,
+                                    transitionDelay: `${i * 40}ms`,
+                                }"
+                            />
+                        </div>
+
+                        <!-- Privacy: the two laws, and a live dot. -->
+                        <p
+                            v-else-if="tile.visual === 'privacy'"
+                            class="flex items-center gap-3 font-mono text-xs text-teal-20"
+                        >
+                            <span
+                                class="size-2 animate-live rounded-full bg-lime"
+                            />
+                            {{ t('UK GDPR · UAE PDPL') }}
+                        </p>
+                    </div>
                 </article>
             </div>
         </section>
@@ -571,7 +678,7 @@ function toggleFaq(index: number): void {
                         class="flex flex-col gap-1.5 border-t-2 border-cream pt-4"
                     >
                         <span
-                            class="text-[clamp(3.75rem,7vw,6.25rem)] leading-[0.9] font-bold tracking-[-0.05em] text-lime"
+                            class="text-[clamp(3rem,4.4vw,4rem)] leading-[0.9] font-bold tracking-[-0.04em] whitespace-nowrap text-lime"
                             dir="ltr"
                             >{{ fact.figure }}</span
                         >

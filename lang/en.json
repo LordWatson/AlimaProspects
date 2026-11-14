@@ -2726,5 +2726,12 @@
     "reply": "reply",
     "right to left included": "right to left included",
     "signal": "signal",
-    "Main menu": "Main menu"
+    "Main menu": "Main menu",
+    "Fit score": "Fit score",
+    "Find a teammate…": "Find a teammate…",
+    "Nobody on your team matches that.": "Nobody on your team matches that.",
+    "A lead can have up to :max people on it.": "A lead can have up to :max people on it.",
+    "Find a teammate": "Find a teammate",
+    "Assign": "Assign",
+    "Stage :n of :total": "Stage :n of :total"
 }

@@ -1010,3 +1010,8 @@ reference**, not of the two PDFs, so each item waits for the brand owner:
 - **Motion**: a 380ms fade-up on every screen change, a cycling headline word (stops after three
   loops; pauses on hover/focus), floating hero notices, an Ink marquee. All of it is off under
   `prefers-reduced-motion`.
+- **The lead record and the score page** carry the score as the hero's Lime figure, their summary
+  rows as the open KPI strip, and the grade's explanation on a Deep Teal card set large and light
+  (the reference's proof quote). The score dial draws itself and counts up on arrival, meter bars
+  grow in, the newest history entry is Teal, and a feedback answer pops when chosen — all instant
+  under reduced motion.

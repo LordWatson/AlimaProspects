@@ -4,6 +4,8 @@ import {
     ArrowLeft,
     Ban,
     Building2,
+    Check,
+    CircleAlert,
     RefreshCw,
     Sparkles,
     Target,
@@ -144,6 +146,15 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                       })
                     : null
             "
+            :stat="
+                score
+                    ? {
+                          label: t('Fit score'),
+                          value: score.score,
+                          caption: t(score.grade_label),
+                      }
+                    : null
+            "
             size="compact"
         >
             <template #actions>
@@ -219,93 +230,84 @@ function sendFeedback(rating: 'good' | 'bad'): void {
         </EmptyState>
 
         <template v-else>
-            <!-- Grade panel -->
+            <!--
+              The grade, as the reference's open strip under an Ink rule rather than one more card:
+              four cells, each a label and a figure. The dial draws itself on arrival.
+            -->
             <section
-                class="flex flex-col gap-6 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-border"
+                class="grid border-t-[1.5px] border-foreground sm:grid-cols-2 lg:grid-cols-4"
                 data-test="grade-panel"
+                :aria-label="t('Grade')"
             >
-                <div class="flex items-center gap-5">
+                <div
+                    class="flex items-center gap-4 border-b border-border p-4 sm:border-e sm:p-5 lg:border-b-0"
+                >
                     <ScoreDial
                         :score="score.score"
                         :grade="score.grade"
                         :grade-label="t(score.grade_label)"
-                        size="lg"
                     />
-                    <div class="space-y-1.5">
-                        <div class="flex items-center gap-2">
-                            <GradeBadge
-                                :grade="score.grade"
-                                :label="t(score.grade_label)"
-                            />
-                            <span
-                                class="text-base font-semibold text-foreground rtl:font-bold"
-                            >
-                                {{ t(score.grade_label) }}
-                            </span>
-                        </div>
+                    <div class="min-w-0 space-y-1.5">
+                        <GradeBadge
+                            :grade="score.grade"
+                            :label="t(score.grade_label)"
+                        />
                         <p class="text-sm text-muted-foreground">
                             {{ t(score.grade_description) }}
                         </p>
                     </div>
                 </div>
 
-                <!-- How the blend came out. Both halves are out of 100, and the em dash is the
-                     honest answer where the AI half never ran (brand-tokens.md §7g.3). -->
-                <dl
-                    class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm sm:max-w-xs"
+                <!-- Both halves are out of 100, and the em dash is the honest answer where the AI
+                     half never ran (brand-tokens.md §7g.3). -->
+                <div
+                    v-for="half in [
+                        {
+                            key: 'rules',
+                            label: t('From your criteria'),
+                            value: score.deterministic_score,
+                        },
+                        {
+                            key: 'ai',
+                            label: t('From the AI review'),
+                            value: score.ai_score,
+                        },
+                    ]"
+                    :key="half.key"
+                    class="flex flex-col gap-3 border-b border-border p-4 sm:p-5 lg:border-e lg:border-b-0"
+                    :class="
+                        half.key === 'rules' ? '' : 'sm:border-e sm:border-b-0'
+                    "
                 >
-                    <dt class="text-muted-foreground">
-                        {{ t('From your criteria') }}
-                    </dt>
-                    <dd class="flex items-center justify-end gap-3">
-                        <MeterBar
-                            :value="score.deterministic_score"
-                            width="sm"
-                            :label="
-                                t(':score out of 100', {
-                                    score: score.deterministic_score,
-                                })
-                            "
-                        />
-                        <span
-                            class="w-7 text-end font-mono text-foreground tabular-nums"
-                            aria-hidden="true"
-                            dir="ltr"
-                            >{{ score.deterministic_score }}</span
-                        >
-                    </dd>
-                    <dt class="text-muted-foreground">
-                        {{ t('From the AI review') }}
-                    </dt>
-                    <dd class="flex items-center justify-end gap-3">
-                        <MeterBar
-                            v-if="score.ai_score !== null"
-                            :value="score.ai_score"
-                            width="sm"
-                            :label="
-                                t(':score out of 100', {
-                                    score: score.ai_score,
-                                })
-                            "
-                        />
-                        <span
-                            class="w-7 text-end font-mono text-foreground tabular-nums"
-                            :aria-hidden="
-                                score.ai_score !== null ? 'true' : undefined
-                            "
-                            dir="ltr"
-                            >{{ score.ai_score ?? '—' }}</span
-                        >
-                    </dd>
-                    <template v-if="scoredAt">
-                        <dt class="text-muted-foreground">
-                            {{ t('Graded') }}
-                        </dt>
-                        <dd class="text-end text-muted-foreground" dir="auto">
-                            {{ scoredAt }}
-                        </dd>
-                    </template>
-                </dl>
+                    <p
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    >
+                        {{ half.label }}
+                    </p>
+                    <p
+                        class="text-[2.75rem] leading-none font-bold tracking-[-0.03em] tabular-nums"
+                        dir="ltr"
+                    >
+                        {{ half.value ?? '—' }}
+                    </p>
+                    <MeterBar
+                        v-if="half.value !== null"
+                        :value="half.value"
+                        width="full"
+                        :label="t(':score out of 100', { score: half.value })"
+                    />
+                </div>
+
+                <div class="flex flex-col gap-3 p-4 sm:p-5">
+                    <p
+                        class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    >
+                        {{ t('Graded') }}
+                    </p>
+                    <p class="text-lg font-semibold" dir="auto">
+                        {{ scoredAt ?? '—' }}
+                    </p>
+                </div>
             </section>
 
             <!-- Excluded by the profile -->
@@ -337,63 +339,73 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                 </div>
             </section>
 
-            <!-- Explanation -->
+            <!-- Explanation: Alima's read, set large on Deep Teal like the reference's quote. -->
             <section
                 v-if="score.explanation"
-                class="space-y-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm dark:border-border"
+                class="space-y-6 rounded-[1.75rem] bg-teal p-6 text-cream sm:p-8"
                 data-test="explanation"
             >
                 <h2
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    class="flex items-center gap-3.5 font-mono text-xs tracking-eyebrow text-lime uppercase rtl:tracking-normal"
                 >
+                    <span class="h-0.5 w-7 bg-current" aria-hidden="true" />
                     {{ t('Why this lead matches') }}
                 </h2>
-                <p class="leading-relaxed text-foreground" dir="auto">
+                <p
+                    class="max-w-4xl text-xl leading-snug font-light tracking-[-0.01em] sm:text-2xl rtl:tracking-normal"
+                    dir="auto"
+                >
                     {{ score.explanation }}
                 </p>
 
                 <div
                     v-if="score.strengths.length || score.concerns.length"
-                    class="grid gap-5 border-t border-border pt-4 sm:grid-cols-2"
+                    class="grid gap-3 sm:grid-cols-2"
                 >
-                    <div v-if="score.strengths.length" class="space-y-2">
-                        <h3
-                            class="text-sm font-semibold text-foreground rtl:font-bold"
-                        >
+                    <div
+                        v-if="score.strengths.length"
+                        class="space-y-3 rounded-[1.25rem] bg-cream/10 p-5"
+                    >
+                        <h3 class="text-sm font-semibold rtl:font-bold">
                             {{ t('In its favour') }}
                         </h3>
-                        <ul class="space-y-1.5">
+                        <ul class="space-y-2">
                             <li
                                 v-for="item in score.strengths"
                                 :key="item"
-                                class="flex items-start gap-2 text-sm text-muted-foreground"
+                                class="flex items-start gap-2.5 text-sm text-cream/90"
                                 dir="auto"
                             >
                                 <span
-                                    class="mt-1.5 size-1.5 shrink-0 rounded-full bg-success"
+                                    class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-lime text-ink"
                                     aria-hidden="true"
-                                />
+                                    ><Check class="size-3" stroke-width="3"
+                                /></span>
                                 {{ item }}
                             </li>
                         </ul>
                     </div>
-                    <div v-if="score.concerns.length" class="space-y-2">
-                        <h3
-                            class="text-sm font-semibold text-foreground rtl:font-bold"
-                        >
+                    <div
+                        v-if="score.concerns.length"
+                        class="space-y-3 rounded-[1.25rem] bg-cream/10 p-5"
+                    >
+                        <h3 class="text-sm font-semibold rtl:font-bold">
                             {{ t('Worth checking') }}
                         </h3>
-                        <ul class="space-y-1.5">
+                        <ul class="space-y-2">
                             <li
                                 v-for="item in score.concerns"
                                 :key="item"
-                                class="flex items-start gap-2 text-sm text-muted-foreground"
+                                class="flex items-start gap-2.5 text-sm text-cream/90"
                                 dir="auto"
                             >
                                 <span
-                                    class="mt-1.5 size-1.5 shrink-0 rounded-full bg-warning"
+                                    class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-lilac text-ink"
                                     aria-hidden="true"
-                                />
+                                    ><CircleAlert
+                                        class="size-3"
+                                        stroke-width="3"
+                                /></span>
                                 {{ item }}
                             </li>
                         </ul>
@@ -404,9 +416,10 @@ function sendFeedback(rating: 'good' | 'bad'): void {
             <!-- Breakdown -->
             <section class="space-y-3" data-test="breakdown">
                 <h2
-                    class="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase rtl:tracking-normal"
+                    class="text-2xl font-bold tracking-[-0.03em] rtl:tracking-normal"
                 >
-                    {{ t('Criterion by criterion') }}
+                    {{ t('Criterion by criterion')
+                    }}<span class="text-orange" aria-hidden="true">.</span>
                 </h2>
 
                 <ListTable
@@ -511,7 +524,7 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                      so the AI review judged them. Neutral: they counted towards neither side. -->
                 <div
                     v-if="deferred.length"
-                    class="space-y-2 rounded-2xl border border-dashed border-border bg-card/50 p-5"
+                    class="space-y-2 rounded-[1.25rem] border border-dashed border-border bg-card/60 p-5"
                     data-test="deferred"
                 >
                     <h3
@@ -550,7 +563,7 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                 <!-- Criteria we couldn't judge: a data gap, never a mark against the lead -->
                 <div
                     v-if="unassessed.length"
-                    class="space-y-2 rounded-2xl border border-dashed border-border bg-card/50 p-5"
+                    class="space-y-2 rounded-[1.25rem] border border-dashed border-border bg-card/60 p-5"
                     data-test="unassessed"
                 >
                     <h3
@@ -584,17 +597,19 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                 </div>
             </section>
 
-            <!-- Feedback -->
+            <!-- Feedback: an Ink card; the chosen answer turns Lime and pops. -->
             <section
                 v-if="can.giveFeedback"
-                class="flex flex-col gap-4 rounded-[1.25rem] border border-transparent bg-card p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-border"
+                class="flex flex-col gap-5 rounded-[1.75rem] bg-ink p-6 text-cream sm:flex-row sm:items-center sm:justify-between sm:p-8"
                 data-test="feedback"
             >
-                <div class="space-y-1">
-                    <h2 class="font-semibold text-foreground rtl:font-bold">
+                <div class="space-y-1.5">
+                    <h2
+                        class="text-2xl font-bold tracking-[-0.03em] rtl:font-bold rtl:tracking-normal"
+                    >
                         {{ t('Did Alima get this right?') }}
                     </h2>
-                    <p class="text-sm text-muted-foreground">
+                    <p class="text-sm text-ink-20" aria-live="polite">
                         {{
                             myRating
                                 ? t('Thanks — that helps Alima grade better.')
@@ -605,9 +620,12 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                     </p>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <Button
-                        :variant="myRating === 'good' ? 'brand' : 'outline'"
+                        :key="`good-${myRating}`"
+                        size="lg"
+                        :variant="myRating === 'good' ? 'lime' : 'hero'"
+                        :class="myRating === 'good' ? 'animate-pop' : ''"
                         :disabled="feedbackForm.processing"
                         :aria-pressed="myRating === 'good'"
                         data-test="feedback-good"
@@ -617,7 +635,10 @@ function sendFeedback(rating: 'good' | 'bad'): void {
                         {{ t('Looks right') }}
                     </Button>
                     <Button
-                        :variant="myRating === 'bad' ? 'brand' : 'outline'"
+                        :key="`bad-${myRating}`"
+                        size="lg"
+                        :variant="myRating === 'bad' ? 'lime' : 'hero'"
+                        :class="myRating === 'bad' ? 'animate-pop' : ''"
                         :disabled="feedbackForm.processing"
                         :aria-pressed="myRating === 'bad'"
                         data-test="feedback-bad"

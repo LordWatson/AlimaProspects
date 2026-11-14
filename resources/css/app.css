@@ -174,6 +174,8 @@
     --animate-marquee: marquee 34s linear infinite;
     --animate-live: live-dot 1.8s ease-in-out infinite;
     --animate-drawer: slide-in 260ms var(--ease-brand) both;
+    /* A choice confirmed: a quick press-and-spring. */
+    --animate-pop: pop 380ms var(--ease-brand);
 
     @keyframes fade-up {
         from {
@@ -220,6 +222,17 @@
         to {
             transform: none;
             opacity: 1;
+        }
+    }
+    @keyframes pop {
+        0% {
+            transform: scale(0.92);
+        }
+        60% {
+            transform: scale(1.06);
+        }
+        100% {
+            transform: none;
         }
     }
     @keyframes pop-in {

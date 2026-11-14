@@ -141,7 +141,12 @@ const statValue = computed(() => {
         <PandaPeek
             v-if="peek"
             tone="text-lilac"
-            class="absolute -end-3 -bottom-8 z-0 aspect-[383/278] w-48 sm:-bottom-11 sm:w-64 lg:-bottom-14 lg:w-80 xl:-bottom-16 xl:w-[22rem]"
+            class="absolute -end-3 z-0 aspect-[383/278]"
+            :class="
+                stat
+                    ? '-bottom-9 w-36 sm:-bottom-11 sm:w-44 lg:-bottom-12 lg:w-48'
+                    : '-bottom-8 w-48 sm:-bottom-11 sm:w-64 lg:-bottom-14 lg:w-80 xl:-bottom-16 xl:w-[22rem]'
+            "
         />
 
         <!-- Eyebrow: number + section, and the date (or screen meta) -->
@@ -219,18 +224,28 @@ const statValue = computed(() => {
             </div>
 
             <!-- The headline figure, set against the end edge above the peek. -->
-            <div v-if="stat" class="lg:text-end">
+            <!--
+              With a figure on the card the peek shrinks, and this column keeps the peek's visible
+              height free beneath it — a lime figure or a cream caption set over lilac is
+              unreadable, and a panda's eye through the number is not a peek (§5).
+            -->
+            <div v-if="stat" class="pb-20 lg:pb-24 lg:text-end">
                 <p
-                    class="font-mono text-[0.6875rem] tracking-[0.16em] text-lime uppercase rtl:tracking-normal"
+                    class="font-mono text-xs tracking-eyebrow text-lime uppercase rtl:tracking-normal"
                 >
                     {{ stat.label }}
                 </p>
                 <p
-                    class="mt-1 text-7xl leading-[0.95] font-bold tracking-[-0.04em] text-lime tabular-nums lg:text-[6.75rem]"
+                    :class="
+                        isCompact
+                            ? 'text-6xl lg:text-7xl'
+                            : 'text-7xl lg:text-[6.75rem]'
+                    "
+                    class="mt-1 leading-[0.95] font-bold tracking-[-0.04em] text-lime tabular-nums"
                 >
                     {{ statValue }}
                 </p>
-                <p class="mt-2 text-sm text-cream">{{ stat.caption }} ↗</p>
+                <p class="mt-2 text-sm text-cream">{{ stat.caption }}</p>
             </div>
         </div>
     </section>
